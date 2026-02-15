@@ -1,0 +1,21 @@
+#---------------------------------------------------------------------------
+# OSAL common setup for including in stand alone or mission documentation
+#---------------------------------------------------------------------------
+
+# Allow overrides
+@INCLUDE_PATH          = /home/sdh2983/cfs/cFS
+
+# Default settings
+@INCLUDE               = /home/sdh2983/cfs/cFS/osal/docs/src/default-settings.doxyfile
+
+# Minimum set of source files (includes *.dox, followed by public headers)
+INPUT                 +=  \
+  /home/sdh2983/cfs/cFS/osal/docs/src/osal_frontpage.dox \
+  /home/sdh2983/cfs/cFS/osal/docs/src/osal_fs.dox \
+  /home/sdh2983/cfs/cFS/osal/docs/src/osal_timer.dox
+
+# Public header list is generated from the interface includes of the osal_public_api target
+@INCLUDE               = /home/sdh2983/cfs/cFS/build/docs/osal-public-api.doxyfile
+
+# Strip source dir from path
+STRIP_FROM_PATH       += /home/sdh2983/cfs/cFS

@@ -1,0 +1,2 @@
+/usr/bin/ar qc libtblobj_cpu1_cfeTestAppTable.tbla381ab17973bb0f4461737570fe291974c1339c2.a CMakeFiles/tblobj_cpu1_cfeTestAppTable.tbla381ab17973bb0f4461737570fe291974c1339c2.dir/tables/cfe_test_tbl.c.o
+/usr/bin/ranlib libtblobj_cpu1_cfeTestAppTable.tbla381ab17973bb0f4461737570fe291974c1339c2.a

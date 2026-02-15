@@ -1,0 +1,2 @@
+/usr/bin/ar qc libendian_api.a CMakeFiles/endian_api.dir/cfe_psp_endian_common.c.o CMakeFiles/endian_api.dir/cfe_psp_endian_wrappers.c.o
+/usr/bin/ranlib libendian_api.a

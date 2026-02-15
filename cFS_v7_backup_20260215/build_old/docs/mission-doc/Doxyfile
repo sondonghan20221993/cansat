@@ -1,0 +1,50 @@
+#---------------------------------------------------------------------------
+# Sample doxygen setup for generating mission documentation
+#---------------------------------------------------------------------------
+
+# Allow overrides
+@INCLUDE_PATH          = /home/sdh2983/cfs/cFS
+
+# Common configuration and default settings
+@INCLUDE               = /home/sdh2983/cfs/cFS/build/docs/cfe-common.doxyfile
+
+# Example mission doc design setup
+PROJECT_NAME           = "SampleMission"
+PROJECT_BRIEF          = "Core Flight System project built using \"sample\" configuration"
+OUTPUT_DIRECTORY       = /home/sdh2983/cfs/cFS/build/docs/mission-doc
+WARN_LOGFILE           = mission-doc-warnings.log
+
+# Include mission defs directory
+INPUT                 += /home/sdh2983/cfs/cFS/sample_defs
+STRIP_FROM_PATH       += /home/sdh2983/cfs/cFS/sample_defs
+
+# The user content doxyfile contains paths to the mission-specific applications
+INPUT += /home/sdh2983/cfs/cFS/cfe/modules/core_api
+INPUT += /home/sdh2983/cfs/cFS/cfe/modules/core_private
+INPUT += /home/sdh2983/cfs/cFS/apps/ci_lab
+INPUT += /home/sdh2983/cfs/cFS/apps/to_lab
+INPUT += /home/sdh2983/cfs/cFS/apps/sch_lab
+INPUT += /home/sdh2983/cfs/cFS/cfe/modules/cfe_assert
+INPUT += /home/sdh2983/cfs/cFS/cfe/modules/cfe_testcase
+INPUT += /home/sdh2983/cfs/cFS/apps/sample_app
+INPUT += /home/sdh2983/cfs/cFS/libs/sample_lib
+INPUT += /home/sdh2983/cfs/cFS/cfe/modules/es
+INPUT += /home/sdh2983/cfs/cFS/cfe/modules/evs
+INPUT += /home/sdh2983/cfs/cFS/cfe/modules/fs
+INPUT += /home/sdh2983/cfs/cFS/cfe/modules/sb
+INPUT += /home/sdh2983/cfs/cFS/cfe/modules/tbl
+INPUT += /home/sdh2983/cfs/cFS/cfe/modules/time
+@INCLUDE = /home/sdh2983/cfs/cFS/build/docs/osal-detaildesign.doxyfile
+INPUT += /home/sdh2983/cfs/cFS/psp
+INPUT += /home/sdh2983/cfs/cFS/cfe/modules/msg
+INPUT += /home/sdh2983/cfs/cFS/cfe/modules/sbr
+INPUT += /home/sdh2983/cfs/cFS/cfe/modules/resourceid
+INPUT += /home/sdh2983/cfs/cFS/cfe/modules/config
+
+@INCLUDE = /home/sdh2983/cfs/cFS/build/docs/tgtsystem-content-aarch64_linux_gnu_default_cpu1.doxyfile
+
+
+# Exclude coverage tests, stubs and associated framework from the documentation
+EXCLUDE_PATTERNS       += "*/ut-stubs/*"
+EXCLUDE_PATTERNS       += "*/ut-coverage/*"
+EXCLUDE_PATTERNS       += "*/unit-test*/*"

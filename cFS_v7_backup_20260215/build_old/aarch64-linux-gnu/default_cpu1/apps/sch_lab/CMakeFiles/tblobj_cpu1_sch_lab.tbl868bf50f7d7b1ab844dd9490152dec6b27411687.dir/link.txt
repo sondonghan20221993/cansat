@@ -1,0 +1,2 @@
+/usr/bin/ar qc libtblobj_cpu1_sch_lab.tbl868bf50f7d7b1ab844dd9490152dec6b27411687.a CMakeFiles/tblobj_cpu1_sch_lab.tbl868bf50f7d7b1ab844dd9490152dec6b27411687.dir/fsw/tables/sch_lab_table.c.o
+/usr/bin/ranlib libtblobj_cpu1_sch_lab.tbl868bf50f7d7b1ab844dd9490152dec6b27411687.a

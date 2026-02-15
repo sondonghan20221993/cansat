@@ -1,0 +1,41 @@
+file(REMOVE_RECURSE
+  "CMakeFiles/tbl.dir/fsw/src/cfe_tbl_accdesc.c.o"
+  "CMakeFiles/tbl.dir/fsw/src/cfe_tbl_accdesc.c.o.d"
+  "CMakeFiles/tbl.dir/fsw/src/cfe_tbl_api.c.o"
+  "CMakeFiles/tbl.dir/fsw/src/cfe_tbl_api.c.o.d"
+  "CMakeFiles/tbl.dir/fsw/src/cfe_tbl_dispatch.c.o"
+  "CMakeFiles/tbl.dir/fsw/src/cfe_tbl_dispatch.c.o.d"
+  "CMakeFiles/tbl.dir/fsw/src/cfe_tbl_dump.c.o"
+  "CMakeFiles/tbl.dir/fsw/src/cfe_tbl_dump.c.o.d"
+  "CMakeFiles/tbl.dir/fsw/src/cfe_tbl_dumpctl.c.o"
+  "CMakeFiles/tbl.dir/fsw/src/cfe_tbl_dumpctl.c.o.d"
+  "CMakeFiles/tbl.dir/fsw/src/cfe_tbl_handlelink.c.o"
+  "CMakeFiles/tbl.dir/fsw/src/cfe_tbl_handlelink.c.o.d"
+  "CMakeFiles/tbl.dir/fsw/src/cfe_tbl_internal.c.o"
+  "CMakeFiles/tbl.dir/fsw/src/cfe_tbl_internal.c.o.d"
+  "CMakeFiles/tbl.dir/fsw/src/cfe_tbl_load.c.o"
+  "CMakeFiles/tbl.dir/fsw/src/cfe_tbl_load.c.o.d"
+  "CMakeFiles/tbl.dir/fsw/src/cfe_tbl_loadbuff.c.o"
+  "CMakeFiles/tbl.dir/fsw/src/cfe_tbl_loadbuff.c.o.d"
+  "CMakeFiles/tbl.dir/fsw/src/cfe_tbl_passthru_codec.c.o"
+  "CMakeFiles/tbl.dir/fsw/src/cfe_tbl_passthru_codec.c.o.d"
+  "CMakeFiles/tbl.dir/fsw/src/cfe_tbl_registry.c.o"
+  "CMakeFiles/tbl.dir/fsw/src/cfe_tbl_registry.c.o.d"
+  "CMakeFiles/tbl.dir/fsw/src/cfe_tbl_regrec.c.o"
+  "CMakeFiles/tbl.dir/fsw/src/cfe_tbl_regrec.c.o.d"
+  "CMakeFiles/tbl.dir/fsw/src/cfe_tbl_task.c.o"
+  "CMakeFiles/tbl.dir/fsw/src/cfe_tbl_task.c.o.d"
+  "CMakeFiles/tbl.dir/fsw/src/cfe_tbl_task_cmds.c.o"
+  "CMakeFiles/tbl.dir/fsw/src/cfe_tbl_task_cmds.c.o.d"
+  "CMakeFiles/tbl.dir/fsw/src/cfe_tbl_transaction.c.o"
+  "CMakeFiles/tbl.dir/fsw/src/cfe_tbl_transaction.c.o.d"
+  "CMakeFiles/tbl.dir/fsw/src/cfe_tbl_valresult.c.o"
+  "CMakeFiles/tbl.dir/fsw/src/cfe_tbl_valresult.c.o.d"
+  "libtbl.a"
+  "libtbl.pdb"
+)
+
+# Per-language clean rules from dependency scanning.
+foreach(lang C)
+  include(CMakeFiles/tbl.dir/cmake_clean_${lang}.cmake OPTIONAL)
+endforeach()

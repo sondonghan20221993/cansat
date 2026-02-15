@@ -1,0 +1,46 @@
+/*
+ *  NASA Docket No. GSC-18,370-1, and identified as "Operating System Abstraction Layer"
+ *
+ *  Copyright (c) 2019 United States Government as represented by
+ *  the Administrator of the National Aeronautics and Space Administration.
+ *  All Rights Reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
+/* pull in the OSAL configuration */
+#include "stub-map-to-real.h"
+#include "osconfig.h"
+#include "ut-osapi-module.h"
+
+/*
+ * The UT test case provides its own static symbol table
+ */
+#define OS_STATIC_SYMTABLE_SOURCE   OS_UT_STATIC_SYMBOL_TABLE
+
+/*
+ * Now include all extra logic required to stub-out subsequent calls to
+ * library functions and replace with our own
+ */
+#include "osapi-module.c"
+
+
+int32 Osapi_Call_SymbolLookup_Static(cpuaddr *SymbolAddress, const char *SymbolName)
+{
+    return OS_SymbolLookup_Static(SymbolAddress, SymbolName);
+}
+
+int32 Osapi_Call_ModuleLoad_Static(const char *ModuleName)
+{
+    return OS_ModuleLoad_Static(ModuleName);
+}

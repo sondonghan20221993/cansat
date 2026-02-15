@@ -1,0 +1,405 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"/>
+<meta http-equiv="Content-Security-Policy" content="
+default-src 'self' https: data: blob:;
+script-src 'self' https: blob: 'unsafe-eval' 'unsafe-inline';
+style-src  'self' https: 'unsafe-inline';
+img-src    'self' https: data: blob: https://a.tile.openstreetmap.org https://b.tile.openstreetmap.org https://c.tile.openstreetmap.org https://cdn.jsdelivr.net https://*.basemaps.cartocdn.com;
+connect-src 'self' https://api.cesium.com https://assets.cesium.com https: blob: ws://localhost:765 ws://127.0.0.1:765 wss:;
+worker-src 'self' https: blob:;
+font-src   'self' https: data:;
+"><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Cesium Live Path</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cesium@latest/Build/Cesium/Widgets/widgets.css">
+<script>window.CESIUM_BASE_URL="https://cdn.jsdelivr.net/npm/cesium@latest/Build/Cesium/";</script>
+<script src="https://cdn.jsdelivr.net/npm/cesium@latest/Build/Cesium/Cesium.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/roslib/build/roslib.min.js"></script>
+
+<style>
+  html, body { width:100%; height:100%; margin:0; padding:0; overflow:hidden; }
+  #c { position:fixed; inset:0; }  /* ✅ 이 줄이 핵심 */
+  #hud{
+    position:fixed; top:10px; left:10px; z-index:9;
+    background:rgba(0,0,0,.55); color:#fff; padding:10px 12px;
+    font:13px system-ui; border-radius:10px
+  }
+</style>
+
+
+</head><body><div id="c"></div><div id="hud"><div>ws: <code id="u">ws://localhost:765</code> <span id="s">DISCONNECTED</span></div><div>/fix: <span id="f">NO DATA</span></div><div><code id="lla">-</code> pts:<code id="n">0</code></div></div>
+<script>
+Cesium.Ion.defaultAccessToken="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI4OTc2YjJiZC1jNmU0LTQ2MGUtYjVmMi05ZjY5MzBmZTQwZjAiLCJpZCI6Mzg3MDYwLCJpYXQiOjE3NzAyMjQwODN9.z7oE612Rt2SVGvdIr8Z9x17wuygG_7mSmTtfVy2bQt0";
+const v = new Cesium.Viewer("c", {
+  terrainProvider: Cesium.Terrain.fromWorldTerrain(),
+  timeline: false,
+  animation: false,
+  geocoder: false,
+  baseLayerPicker: false,
+  sceneModePicker: false,
+  navigationHelpButton: false,
+  infoBox: false,
+  selectionIndicator: false,
+  imageryProvider: false, // 디버깅용: 기본 베이스맵 차단
+});
+
+// --- AUTO FIX v5: expose viewer globally + force OSM + camera ---
+try {
+  window.viewer = v;
+  v.resize && v.resize();
+  v.scene && (v.scene.globe.show = true);
+  if (v.imageryLayers) {
+    v.imageryLayers.removeAll(true);
+    v.imageryLayers.addImageryProvider(
+      new Cesium.UrlTemplateImageryProvider({ url: "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png" })
+    );
+  }
+  if (v.scene) {
+    v.scene.requestRenderMode = false;
+  }
+  if (v.camera) {
+    v.camera.setView({
+      destination: Cesium.Cartesian3.fromDegrees(127.0, 37.5, 2000000)
+    });
+  }
+  v.scene && v.scene.requestRender();
+  console.log("[AUTO FIX v5] applied, window.viewer set");
+} catch (e) {
+  console.warn("[AUTO FIX v5] failed:", e);
+}
+// --- /AUTO FIX v5 ---
+
+// 렌더 루프 + 지형 가림 방지 기본값
+v.scene.requestRenderMode = false;
+v.scene.globe.enableLighting = false;
+v.scene.globe.show = true;
+// 궤적/마커가 지형 뒤로 '지하'처럼 꺼져 보이는 현상 방지
+v.scene.globe.depthTestAgainstTerrain = false;
+
+// 위성(Esri World Imagery) 베이스맵 강제
+v.imageryLayers.removeAll(true);
+v.imageryLayers.addImageryProvider(new Cesium.UrlTemplateImageryProvider({
+  url: "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+}));
+
+// 안전 디버그
+try {
+  const prov0 = v.imageryLayers.get(0).imageryProvider;
+  console.log("[DBG] provider0 =", prov0?.constructor?.name, prov0);
+  console.log("[DBG] provider0 url =", prov0?._resource?.url || prov0?._resource?._url || prov0?.url);
+  console.log("[DBG] viewport=", document.documentElement.clientWidth, document.documentElement.clientHeight);
+  console.log("[DBG] canvas=", v.canvas.clientWidth, v.canvas.clientHeight);
+  console.log("[DBG] globe.show =", v.scene.globe.show);
+  console.log("[DBG] imageryLayers.length =", v.imageryLayers.length);
+} catch (e) {
+  console.error("[DBG failed]", e);
+}
+
+
+  // 건물 로드(ion 토큰 필요할 수 있음)
+  //const p = (Cesium.createOsmBuildingsAsync
+  //  ? Cesium.createOsmBuildingsAsync()
+  //  : Cesium.Cesium3DTileset.fromIonAssetId(96188));
+
+  //p.then(t => v.scene.primitives.add(t)).catch(e => console.error("[Buildings failed]", e));
+
+  // Path 표시
+  const pos = [];
+  v.entities.add({
+    polyline: {
+      positions: new Cesium.CallbackProperty(() => pos.slice(), false),
+      width: 3,
+    },
+  });
+  v.entities.add({
+    position: new Cesium.CallbackProperty(() => (pos.length ? pos[pos.length - 1] : undefined), false),
+    point: { pixelSize: 10, outlineWidth: 2 },
+  });
+
+  // ROS 연결
+  const S = document.getElementById("s"),
+        F = document.getElementById("f"),
+        LLA = document.getElementById("lla"),
+        N = document.getElementById("n");
+
+  const ros = new ROSLIB.Ros({ url: "ws://localhost:765" });
+  ros.on("connection", () => { S.textContent = "CONNECTED"; S.style.color = "#7CFC00"; });
+  ros.on("close",      () => { S.textContent = "DISCONNECTED"; S.style.color = "#ff6b6b"; });
+  ros.on("error",      () => { S.textContent = "ERROR"; S.style.color = "#ff6b6b"; });
+  const sub = new ROSLIB.Topic({
+    ros,
+    name: "/fix",
+    messageType: "sensor_msgs/msg/NavSatFix",
+  });
+
+  let lastT = 0, lastC = null, first = false;
+  function dist(a, b) { return (!a || !b) ? 1e9 : Cesium.Cartesian3.distance(a, b); }
+
+  sub.subscribe(m => {
+    const lat = m.latitude, lon = m.longitude, alt = (m.altitude ?? 0);
+    const now = Date.now();
+    const c = Cesium.Cartesian3.fromDegrees(lon, lat, alt);
+
+    if ((now - lastT) > 200 || dist(c, lastC) > 0.2) {
+      pos.push(c);
+      lastC = c;
+      lastT = now;
+
+      F.textContent = "OK"; F.style.color = "#7CFC00";
+      LLA.textContent = `${lat.toFixed(8)}, ${lon.toFixed(8)}, ${alt.toFixed(2)}`;
+      N.textContent = String(pos.length);
+
+      if (!first) {
+        first = true;
+        v.camera.flyTo({
+          destination: Cesium.Cartesian3.fromDegrees(lon, lat, Math.max(alt + 80, 120)),
+          duration: 0.8,
+        });
+      }
+    }
+  });
+
+
+</script>
+
+
+
+<script>
+// --- v9: keep markers visible on zoom + enable real 3D (terrain/buildings) ---
+(function () {
+  function styleMarkers(viewer) {
+    try {
+      const ents = viewer.entities && viewer.entities.values ? viewer.entities.values : [];
+      let n = 0;
+      for (const e of ents) {
+        // Billboards (icons)
+        if (e.billboard) {
+          // prevent disappearing due to depth test / terrain
+          e.billboard.disableDepthTestDistance = Number.POSITIVE_INFINITY;
+          // keep anchored to ground if height is unknown
+          if (Cesium.HeightReference && e.billboard.heightReference !== Cesium.HeightReference.CLAMP_TO_GROUND) {
+            e.billboard.heightReference = Cesium.HeightReference.CLAMP_TO_GROUND;
+          }
+          // avoid vanishing at far distances (tune as needed)
+          if (!e.billboard.scaleByDistance) {
+            e.billboard.scaleByDistance = new Cesium.NearFarScalar(1.0e3, 1.0, 2.0e7, 0.4);
+          }
+          n++;
+        }
+        // Points
+        if (e.point) {
+          e.point.disableDepthTestDistance = Number.POSITIVE_INFINITY;
+          if (Cesium.HeightReference && e.point.heightReference !== Cesium.HeightReference.CLAMP_TO_GROUND) {
+            e.point.heightReference = Cesium.HeightReference.CLAMP_TO_GROUND;
+          }
+          if (!e.point.scaleByDistance) {
+            e.point.scaleByDistance = new Cesium.NearFarScalar(1.0e3, 1.0, 2.0e7, 0.6);
+          }
+          n++;
+        }
+        // Labels
+        if (e.label) {
+          e.label.disableDepthTestDistance = Number.POSITIVE_INFINITY;
+          if (Cesium.HeightReference && e.label.heightReference !== Cesium.HeightReference.CLAMP_TO_GROUND) {
+            e.label.heightReference = Cesium.HeightReference.CLAMP_TO_GROUND;
+          }
+          n++;
+        }
+      }
+      console.log("[v9] marker style applied:", n);
+    } catch (e) {
+      console.warn("[v9] marker style failed:", e);
+    }
+  }
+
+  async function enableReal3D(viewer) {
+    // Token: query string ?ion=... or localStorage CESIUM_ION_TOKEN
+    const qs = new URLSearchParams(location.search);
+    const token = window.CESIUM_ION_TOKEN || qs.get("ion") || localStorage.getItem("CESIUM_ION_TOKEN");
+    if (token) Cesium.Ion.defaultAccessToken = token;
+
+    // Terrain (real 3D relief)
+    try {
+      viewer.terrainProvider = await Cesium.createWorldTerrainAsync();
+      viewer.scene.globe.depthTestAgainstTerrain = false; // keep trajectory/markers visible
+      console.log("[v9] world terrain enabled");
+    } catch (e) {
+      viewer.terrainProvider = new Cesium.EllipsoidTerrainProvider();
+      console.warn("[v9] world terrain unavailable (token/CSP/network). Using ellipsoid.", e);
+      // On-screen hint
+      try {
+        const hint = document.createElement("div");
+        hint.style.cssText="position:fixed;z-index:99997;left:8px;bottom:8px;max-width:620px;font:12px/1.35 monospace;background:rgba(120,0,0,0.7);color:#fff;padding:10px;border-radius:8px;";
+        hint.textContent="3D 지형(World Terrain)이 안 켜졌습니다. ion 토큰 필요.\n방법: URL에 ?ion=YOUR_TOKEN 또는 콘솔: localStorage.setItem('CESIUM_ION_TOKEN','YOUR_TOKEN'); location.reload();";
+        document.body.appendChild(hint);
+      } catch(_){}
+    }
+
+    // Buildings (3D)
+    try {
+      viewer.scene.primitives.add(await (Cesium.createOsmBuildingsAsync?Cesium.createOsmBuildingsAsync():Promise.resolve(Cesium.createOsmBuildings())));
+      console.log("[v9] OSM buildings enabled");
+    } catch (e) {
+      console.warn("[v9] OSM buildings unavailable.", e);
+    }
+
+    viewer.scene.requestRenderMode = false;
+    viewer.scene.requestRender();
+  }
+
+  // Run when viewer exists
+  let tries = 0;
+  const t = setInterval(() => {
+    tries++;
+    const viewer = window.viewer;
+    if (viewer && viewer.scene) {
+      clearInterval(t);
+      // Ensure globe visible and continuous render
+      viewer.scene.globe.show = true;
+      viewer.scene.requestRenderMode = false;
+
+      styleMarkers(viewer);
+      enableReal3D(viewer);
+      // Re-apply after a short delay (in case entities are added later)
+      setTimeout(() => styleMarkers(viewer), 1500);
+    }
+    if (tries > 200) clearInterval(t);
+  }, 100);
+})();
+</script>
+
+
+<script>
+(function(){
+  try{
+    const d=document.createElement('div');
+    d.style.cssText="position:fixed;z-index:99996;right:8px;top:8px;max-width:520px;font:11px/1.3 monospace;background:rgba(0,0,0,0.6);color:#fff;padding:8px 10px;border-radius:8px;";
+    d.textContent="v10: OSM Buildings loader uses createOsmBuildingsAsync() when available (Cesium API change).";
+    document.body.appendChild(d);
+  }catch(e){}
+})();
+</script>
+
+
+<script>
+// --- v11: Building styling (mode 1) + trajectory visibility fix ---
+(function () {
+  function styleBuildings(osm) {
+    try {
+      // Expose for later tweaking
+      window.osmBuildings = osm;
+
+      // Height-based coloring (simple, high contrast)
+      osm.style = new Cesium.Cesium3DTileStyle({
+        color: {
+          conditions: [
+            ["${height} >= 200", "color('#ffb347', 1.0)"],
+            ["${height} >= 100", "color('#ffd59e', 1.0)"],
+            ["${height} >= 50",  "color('#fff2dd', 1.0)"],
+            ["true",             "color('#ffffff', 0.95)"]
+          ]
+        }
+      });
+
+      // Some builds expose a debug option to show outlines; keep best-effort
+      if (osm.debugShowBoundingVolume !== undefined) {
+        // leave off by default
+      }
+      console.log("[v11] buildings styled");
+    } catch (e) {
+      console.warn("[v11] buildings style failed:", e);
+    }
+  }
+
+  function fixTrajectory(viewer) {
+    try {
+      const ents = viewer.entities && viewer.entities.values ? viewer.entities.values : [];
+      let hit = 0;
+
+      for (const e of ents) {
+        // Polyline trajectory
+        if (e && e.polyline) {
+          // Make sure it renders above terrain and is visible when zooming
+          e.polyline.width = 6;
+          e.polyline.material = new Cesium.PolylineGlowMaterialProperty({
+            glowPower: 0.18,
+            color: Cesium.Color.CYAN
+          });
+
+          // If available, keep line visible even when behind terrain/buildings
+          if (e.polyline.disableDepthTestDistance !== undefined) {
+            e.polyline.disableDepthTestDistance = Number.POSITIVE_INFINITY;
+          }
+
+          // If your polyline was clamped, it can be occluded; keep it clamped but disable depth test distance
+          if (e.polyline.clampToGround !== undefined) {
+            e.polyline.clampToGround = false;
+          }
+
+          hit++;
+        }
+
+        // PathGraphics (animated path)
+        if (e && e.path) {
+          e.path.width = 6;
+          e.path.material = new Cesium.PolylineGlowMaterialProperty({
+            glowPower: 0.18,
+            color: Cesium.Color.CYAN
+          });
+          if (e.path.disableDepthTestDistance !== undefined) {
+            e.path.disableDepthTestDistance = Number.POSITIVE_INFINITY;
+          }
+          hit++;
+        }
+      }
+
+      // If nothing found, print a hint
+      if (hit === 0) console.warn("[v11] no polyline/path entity found to style");
+      else console.log("[v11] trajectory styled:", hit);
+    } catch (e) {
+      console.warn("[v11] trajectory fix failed:", e);
+    }
+  }
+
+  async function run() {
+    // Wait for viewer
+    let tries = 0;
+    while ((!window.viewer || !window.viewer.scene) && tries < 80) {
+      await new Promise(r => setTimeout(r, 100));
+      tries++;
+    }
+    const viewer = window.viewer;
+    if (!viewer) return;
+
+    // Keep rendering
+    viewer.scene.requestRenderMode = false;
+
+    // Trajectory may be added later; apply now and again after 2s
+    fixTrajectory(viewer);
+    setTimeout(() => fixTrajectory(viewer), 2000);
+
+    // If buildings primitive exists, style it; else try to find a Cesium3DTileset in primitives
+    try {
+      // Most recent add is at end; scan for Cesium3DTileset instances
+      const prims = viewer.scene.primitives;
+      let found = null;
+      if (prims && prims.length !== undefined) {
+        for (let i = prims.length - 1; i >= 0; i--) {
+          const p = prims.get(i);
+          if (p && p.constructor && p.constructor.name && p.constructor.name.includes("Cesium3DTileset")) {
+            found = p; break;
+          }
+        }
+      }
+      if (found) styleBuildings(found);
+      else if (window.osmBuildings) styleBuildings(window.osmBuildings);
+    } catch (e) {
+      console.warn("[v11] buildings scan failed:", e);
+    }
+  }
+
+  run();
+})();
+</script>
+
+</body></html>
+
+

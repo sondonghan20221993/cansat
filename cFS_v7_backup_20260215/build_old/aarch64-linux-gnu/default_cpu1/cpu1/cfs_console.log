@@ -1,0 +1,91 @@
+OS_BSP_Initialize():Maximum user msg queue depth = 100
+CFE_PSP: Default Reset SubType = 1
+CFE_PSP: Default CPU ID = 1
+CFE_PSP: Default Spacecraft ID = 66
+CFE_PSP: Default CPU Name: cpu1
+OS_Posix_GetSchedulerParams():202:Policy 1: available, min-max: 1-99
+OS_Posix_GetSchedulerParams():202:Policy 2: available, min-max: 1-99
+OS_Posix_TaskAPI_Impl_Init():388:Selected policy 2 for RT tasks, root task = 99
+CFE_PSP: initializing module 'soft_timebase' with ID 0110ff00
+CFE_PSP: Instantiated software timebase 'cFS-Master' running at 10000 usec
+CFE_PSP: initializing module 'timebase_posix_clock' with ID 0110ff01
+CFE_PSP: Using POSIX monotonic clock as CFE timebase
+CFE_PSP: initializing module 'eeprom_mmap_file' with ID 0110ff02
+CFE_PSP: Using MMAP simulated EEPROM implementation
+CFE_PSP: initializing module 'ram_notimpl' with ID 0110ff03
+CFE_PSP: Physical RAM access not implemented
+CFE_PSP: EEPROM Range (2) created: Start Address = FFFFAB63F000, Size = 00080000 Status = 0
+CFE_PSP: initializing module 'port_notimpl' with ID 0110ff04
+CFE_PSP: I/O Port access not implemented
+CFE_PSP: initializing module 'iodriver' with ID 0110ff05
+CFE_PSP: initializing module 'linux_sysmon' with ID 0110ff06
+CFE_PSP: initializing module 'endian_api' with ID 0110ff07
+CFE_PSP: Host CPU Endian=LITTLE
+CFE_PSP: Normal exit from previous cFE instance
+CFE_PSP: Starting the cFE with a PROCESSOR reset.
+1980-001-03:30:52.03147 CFE_ES_Main: CFE_ES_Main in EARLY_INIT state
+1980-001-03:30:52.03176 CFE_ES_InitializeFileSystems: Volatile Disk has 99 Percent free space.
+CFE_PSP: CFE_PSP_AttachExceptions called
+1980-001-03:30:52.03236 CFE_ES_Main: CFE_ES_Main entering CORE_STARTUP state
+1980-001-03:30:52.03238 CFE_ES_CreateObjects: Starting Object Creation calls.
+1980-001-03:30:52.03238 CFE_ES_CreateObjects: Calling CFE_Config_Init
+1980-001-03:30:52.03242 CFE_ES_CreateObjects: Calling CFE_ES_CDSEarlyInit
+1980-001-03:30:52.03253 CFE_ES_CreateObjects: Calling CFE_EVS_EarlyInit
+1980-001-03:30:52.03258 CFE_EVS_EarlyInit: Event Log restored, n=0, c=20, f=1, m=1, o=12
+1980-001-03:30:52.03260 CFE_ES_CreateObjects: Calling CFE_SB_EarlyInit
+1980-001-03:30:52.03396 CFE_ES_CreateObjects: Calling CFE_TIME_EarlyInit
+1980-012-14:03:20.00000 CFE_ES_CreateObjects: Calling CFE_TBL_EarlyInit
+1980-012-14:03:20.00181 CFE_ES_CreateObjects: Calling CFE_FS_EarlyInit
+EVS Port1 1980-012-14:03:20.05250 66/1/CFE_EVS 1: cFE EVS Initialized: CFE_EVS v7.0.0+dev0 (Draco) v7.0.0 Official Release, EDS disabled
+1980-012-14:03:20.15276 CFE_SB_AppInit: Registered 4 events for filtering
+EVS Port1 1980-012-14:03:20.15316 66/1/CFE_SB 1: cFE SB Initialized: CFE_SB v7.0.0+dev0 (Draco) v7.0.0 Official Release, EDS disabled
+EVS Port1 1980-012-14:03:20.15327 66/1/CFE_SB 14: No subscribers for MsgId 0x808,sender CFE_SB
+EVS Port1 1980-012-14:03:20.26264 66/1/CFE_ES 1: cFE ES Initialized: CFE_ES v7.0.0+dev0 (Draco) v7.0.0 Official Release, EDS disabled
+EVS Port1 1980-012-14:03:20.26271 66/1/CFE_SB 14: No subscribers for MsgId 0x808,sender CFE_ES
+EVS Port1 1980-012-14:03:20.26274 66/1/CFE_ES 2: cFS Versions: cfe v7.0.0+dev0, osal v7.0.0+dev0, psp v7.0.0+dev0. cFE chksm 2309
+EVS Port1 1980-012-14:03:20.26278 66/1/CFE_SB 14: No subscribers for MsgId 0x808,sender CFE_ES
+EVS Port1 1980-012-14:03:20.26281 66/1/CFE_ES 91: Version Info: Mission SampleMission, version git:v7.0.0-2-g83c735e
+EVS Port1 1980-012-14:03:20.26286 66/1/CFE_SB 14: No subscribers for MsgId 0x808,sender CFE_ES
+EVS Port1 1980-012-14:03:20.26289 66/1/CFE_ES 91: Version Info: Module CORE_API, version git:v7.0.0-2-g70b80172
+EVS Port1 1980-012-14:03:20.26293 66/1/CFE_ES 91: Version Info: Module ES, version git:v7.0.0-2-g70b80172
+EVS Port1 1980-012-14:03:20.26298 66/1/CFE_ES 91: Version Info: Module EVS, version git:v7.0.0-2-g70b80172
+EVS Port1 1980-012-14:03:20.26303 66/1/CFE_ES 91: Version Info: Module FS, version git:v7.0.0-2-g70b80172
+EVS Port1 1980-012-14:03:20.26307 66/1/CFE_ES 91: Version Info: Module SB, version git:v7.0.0-2-g70b80172
+EVS Port1 1980-012-14:03:20.26312 66/1/CFE_ES 91: Version Info: Module TBL, version git:v7.0.0-2-g70b80172
+EVS Port1 1980-012-14:03:20.26316 66/1/CFE_ES 91: Version Info: Module TIME, version git:v7.0.0-2-g70b80172
+EVS Port1 1980-012-14:03:20.26321 66/1/CFE_ES 91: Version Info: Module OSAL, version git:v7.0.0
+EVS Port1 1980-012-14:03:20.26325 66/1/CFE_ES 91: Version Info: Module PSP, version git:v7.0.0
+EVS Port1 1980-012-14:03:20.26330 66/1/CFE_ES 91: Version Info: Module MSG, version git:v7.0.0-2-g70b80172
+EVS Port1 1980-012-14:03:20.26335 66/1/CFE_ES 91: Version Info: Module SBR, version git:v7.0.0-2-g70b80172
+EVS Port1 1980-012-14:03:20.26338 66/1/CFE_ES 91: Version Info: Module RESOURCEID, version git:v7.0.0-2-g70b80172
+EVS Port1 1980-012-14:03:20.26342 66/1/CFE_ES 91: Version Info: Module CONFIG, version git:v7.0.0-2-g70b80172
+EVS Port1 1980-012-14:03:20.26347 66/1/CFE_ES 92: Build 202602151146 by sdh2983@sdh2983, config sample
+EVS Port1 1980-012-14:03:20.35578 66/1/CFE_TIME 1: cFE TIME Initialized: CFE_TIME v7.0.0+dev0 (Draco) v7.0.0 Official Release, EDS disabled
+EVS Port1 1980-012-14:03:20.45466 66/1/CFE_TBL 1: cFE TBL Initialized: CFE_TBL v7.0.0+dev0 (Draco) v7.0.0 Official Release, EDS disabled
+1980-012-14:03:20.50431 CFE_ES_CreateObjects: Finished ES CreateObject table entries.
+1980-012-14:03:20.50437 CFE_ES_Main: CFE_ES_Main entering CORE_READY state
+OS_FileOpen_Impl():110:open(/dev/shm/osal:RAM/cfe_es_startup.scr): No such file or directory
+1980-012-14:03:20.50459 CFE_ES_StartApplications: Cannot Open Volatile Startup file: /ram/cfe_es_startup.scr, Trying Nonvolatile.
+1980-012-14:03:20.50468 CFE_ES_StartApplications: Opened ES App Startup file: /cf/cfe_es_startup.scr
+1980-012-14:03:20.50757 CFE_ES_ParseFileEntry: Loading shared library: /cf/cfe_assert.so
+1980-012-14:03:20.50974 [BEGIN] CFE FUNCTIONAL TEST
+1980-012-14:03:20.50983 [BEGIN] 01 CFE-STARTUP
+1980-012-14:03:20.51204 CFE_ES_ParseFileEntry: Loading shared library: /cf/sample_lib.so
+SAMPLE Lib Initialized.Sample Lib v7.0.0+dev0 (Draco) v7.0.0 Official Release, EDS disabled
+1980-012-14:03:20.51452 CFE_ES_ParseFileEntry: Loading file: /cf/sample_app.so, APP: SAMPLE_APP
+1980-012-14:03:20.51725 CFE_ES_ParseFileEntry: Loading file: /cf/ci_lab.so, APP: CI_LAB
+1980-012-14:03:20.52008 CFE_ES_ParseFileEntry: Loading file: /cf/to_lab.so, APP: TO_LAB
+1980-012-14:03:20.52209 CFE_ES_ParseFileEntry: Loading file: /cf/sch_lab.so, APP: SCH_LAB
+OS_FileOpen_Impl():110:open(./cf/sample_app_tbl.tbl): No such file or directory
+EVS Port1 1980-012-14:03:20.56599 66/1/CFE_TBL 53: LoadFile,app=SAMPLE_APP,file=/cf/sample_app_tbl.tbl,tbl=[unknown]:Unable to open, Status = -1
+EVS Port1 1980-012-14:03:20.56617 66/1/SAMPLE_APP 1: Sample App Initialized.Sample App v7.0.0+dev0 (Draco) v7.0.0 Official Release, EDS disabled
+1980-012-14:03:20.56628 CFE_ES_ExitApp: Application SAMPLE_APP called CFE_ES_ExitApp
+EVS Port1 1980-012-14:03:20.57167 66/1/TO_LAB 1: TO Lab Initialized.TO Lab v7.0.0+dev0 (Draco) v7.0.0 Official Release, EDS disabled, Awaiting enable command.
+EVS Port1 1980-012-14:03:20.57185 66/1/TO_LAB 3: AUTOENABLE FINAL: IP 10.200.103.230
+1980-012-14:03:20.57204 CI_LAB listening on UDP port: 1234
+EVS Port1 1980-012-14:03:20.57208 66/1/CI_LAB 3: CI Lab Initialized.CI Lab App v7.0.0+dev0 (Draco) v7.0.0 Official Release, EDS disabled
+SCH Lab Initialized.SCH Lab v7.0.0+dev0 (Draco) v7.0.0 Official Release, EDS disabled
+1980-012-14:03:20.62275 CFE_ES_Main: CFE_ES_Main entering APPS_INIT state
+1980-012-14:03:20.62283 CFE_ES_Main: CFE_ES_Main entering OPERATIONAL state
+EVS Port1 1980-012-14:03:21.00048 66/1/CFE_TIME 21: Stop FLYWHEEL
+EVS Port1 1980-012-14:03:21.46640 66/1/CFE_ES 14: Exit Application SAMPLE_APP Completed.
