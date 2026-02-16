@@ -1,4 +1,4 @@
 /**:
   ros__parameters:
-    wss_uri: "localhost"
+    wss_uri: "10.200.103.6"
     wss_port: 8765

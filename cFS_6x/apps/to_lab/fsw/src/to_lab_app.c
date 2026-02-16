@@ -103,7 +103,7 @@ void TO_Lab_AppMain(void)
 
    TO_init();
 
-   strcpy(tlm_dest_IP, "192.168.219.113");  // 노트북 IP
+   strcpy(tlm_dest_IP, "10.200.103.230");  // 지상국 IP
    suppress_sendto = FALSE; 
 
    TO_openTLM();        // 소켓 생성
