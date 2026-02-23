@@ -7,8 +7,12 @@ import serial
 import json
 import struct
 import os
+import time
 
 class GPSIMUDriver(Node):
+    GPS_MID = 1
+    IMU_MID = 2
+
     def __init__(self):
         super().__init__('gps_imu_driver')
         
@@ -19,19 +23,10 @@ class GPSIMUDriver(Node):
         self.gps_pub = self.create_publisher(NavSatFix, '/fix', 10)
         self.imu_pub = self.create_publisher(Imu, '/imu', 10)
         
-        # GPS UART 연결 (9600)
-        gps_port = None
-        for port in ['/dev/serial0', '/dev/ttyAMA0', '/dev/ttyUSB0']:
-            if os.path.exists(port):
-                gps_port = port
-                break
-        
-        try:
-            self.gps_serial = serial.Serial(gps_port, 9600, timeout=1)
-            self.get_logger().info(f'GPS 연결됨: {gps_port}')
-        except Exception as e:
-            self.get_logger().error(f'GPS 연결 실패: {e}')
-            self.gps_serial = None
+        self.gps_ports = ['/dev/serial0', '/dev/ttyAMA0', '/dev/ttyUSB0']
+        self.gps_serial = None
+        self.last_gps_retry_log_time = 0.0
+        self.connect_gps()
         
         # IMU I2C 연결
         try:
@@ -45,9 +40,33 @@ class GPSIMUDriver(Node):
             self.i2c = None
         
         self.timer = self.create_timer(0.5, self.publish_data)
+
+    def find_gps_port(self):
+        for port in self.gps_ports:
+            if os.path.exists(port):
+                return port
+        return None
+
+    def connect_gps(self):
+        gps_port = self.find_gps_port()
+        if not gps_port:
+            return False
+        try:
+            self.gps_serial = serial.Serial(gps_port, 9600, timeout=1)
+            self.get_logger().info(f'GPS 연결됨: {gps_port}')
+            return True
+        except Exception as e:
+            self.get_logger().error(f'GPS 연결 실패: {e}')
+            self.gps_serial = None
+            return False
     
     def read_gps(self):
         if not self.gps_serial:
+            now = time.monotonic()
+            if now - self.last_gps_retry_log_time > 5.0:
+                self.get_logger().warn('GPS 미연결 상태. 재연결 시도 중...')
+                self.last_gps_retry_log_time = now
+            self.connect_gps()
             return None
         try:
             if self.gps_serial.in_waiting:
@@ -58,8 +77,13 @@ class GPSIMUDriver(Node):
                         lat = float(parts[3][:2]) + float(parts[3][2:])/60
                         lon = float(parts[5][:3]) + float(parts[5][3:])/60
                         return {'lat': lat, 'lon': lon, 'alt': 0}
-        except:
-            pass
+        except Exception as e:
+            self.get_logger().warn(f'GPS read 오류: {e}')
+            try:
+                self.gps_serial.close()
+            except Exception:
+                pass
+            self.gps_serial = None
         return None
     
     def read_imu(self):
@@ -102,23 +126,28 @@ class GPSIMUDriver(Node):
             imu_msg.linear_acceleration.y = 0.0
             imu_msg.linear_acceleration.z = 0.0
         self.imu_pub.publish(imu_msg)
-        
-        # RACS2 브릿지용 JSON publish (항상 보내기)
-        data = {
-            'gps': gps if gps else {'lat': 0, 'lon': 0, 'alt': 0},
-            'imu': imu if imu else {'ax': 0, 'ay': 0, 'az': 0}
-        }
-        
-        msg = RACS2UserMsg()
-        msg.cfs_message_id = 1
 
-        body = json.dumps(data).encode('utf-8')
-        msg.body_data = [body[i:i+1] for i in range(len(body))]
-        msg.body_data_length = len(body)
+        # RACS2 브릿지용 JSON publish (GPS/IMU를 서로 다른 MID로 분리)
+        gps_data = gps if gps else {'lat': 0, 'lon': 0, 'alt': 0}
+        imu_data = imu if imu else {'ax': 0, 'ay': 0, 'az': 0}
 
-        self.racs2_pub.publish(msg)
-        
-        self.get_logger().info(f'GPS: {data["gps"]}, IMU: {data["imu"]}')
+        gps_msg_racs2 = RACS2UserMsg()
+        gps_msg_racs2.cfs_message_id = self.GPS_MID
+        gps_body = json.dumps({'type': 'gps', 'gps': gps_data}).encode('utf-8')
+        gps_msg_racs2.body_data = [gps_body[i:i+1] for i in range(len(gps_body))]
+        gps_msg_racs2.body_data_length = len(gps_body)
+        self.racs2_pub.publish(gps_msg_racs2)
+
+        imu_msg_racs2 = RACS2UserMsg()
+        imu_msg_racs2.cfs_message_id = self.IMU_MID
+        imu_body = json.dumps({'type': 'imu', 'imu': imu_data}).encode('utf-8')
+        imu_msg_racs2.body_data = [imu_body[i:i+1] for i in range(len(imu_body))]
+        imu_msg_racs2.body_data_length = len(imu_body)
+        self.racs2_pub.publish(imu_msg_racs2)
+
+        self.get_logger().info(
+            f'GPS(MID={self.GPS_MID}): {gps_data}, IMU(MID={self.IMU_MID}): {imu_data}'
+        )
 
 def main():
     rclpy.init()

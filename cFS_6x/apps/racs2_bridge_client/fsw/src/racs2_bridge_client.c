@@ -82,14 +82,14 @@ static int callback_example( struct lws *wsi, enum lws_callback_reasons reason, 
             uint16_t id_seg1 = ((uint8_t*)in)[0];
             uint16_t id_seg2 = ((uint8_t*)in)[1];
             uint16_t message_id = id_seg1 << 8 | id_seg2;
-            OS_printf("RACS2_BRIDGE_CLIENT: recv cFS message ID : 0x%x, forward MID : 0x%x\n",
-                      message_id, RACS2_BRIDGE_FORWARD_MID);
+            OS_printf("RACS2_BRIDGE_CLIENT: recv cFS message ID from header : 0x%x\n",
+                      message_id);
             // if (is_new_msgid(message_id)) {
             //     // CFE_SB_InitMsg(&RACS2_UserMsgPkt, RACS2_BRIDGE_MID, RACS2_USER_MSG_LNGTH, false);
             //     CFE_SB_InitMsg(&RACS2_UserMsgPkt, message_id, RACS2_USER_MSG_LNGTH, true);
             //     OS_printf("RACS2_BRIDGE_CLIENT: CFE_SB_InitMsg for MsgId[%x]\n\n\n\n\n\n\n", message_id);
             // }
-            CFE_SB_InitMsg(&RACS2_UserMsgPkt, RACS2_BRIDGE_FORWARD_MID, RACS2_USER_MSG_LNGTH, true);
+            CFE_SB_InitMsg(&RACS2_UserMsgPkt, message_id, RACS2_USER_MSG_LNGTH, true);
             // Set body data length
             uint8_t body_data_length = len - RACS2_BRIDGE_HEADER_LENGTH;
             RACS2_UserMsgPkt.body_data_length = body_data_length;

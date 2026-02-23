@@ -55,6 +55,8 @@ static TO_subscription_t  TO_SubTable[] =
             {CI_LAB_HK_TLM_MID,     {0,0},  4},
             {SAMPLE_APP_HK_TLM_MID, {0,0},  4},
             {0x0883,              {0,0},  4},
+            {0x0001,              {0,0},  4},
+            {0x0002,              {0,0},  4},
 
 #if 0
             /* Add these if needed */
