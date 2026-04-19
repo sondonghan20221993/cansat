@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from reconstruction.models.job import JobStatus
+from reconstruction.models.job import ReconstructionResponse
 
 
 # ---------------------------------------------------------------------------
@@ -156,4 +157,26 @@ class ReconstructionResult:
                 processing_status=JobStatus.DEGRADED,
                 quality_indicators=quality_indicators or {},
             ),
+        )
+
+    @classmethod
+    def from_response(
+        cls,
+        response: ReconstructionResponse,
+        image_set_id: Any,
+        images_used: int,
+    ) -> "ReconstructionResult":
+        return cls(
+            job_id=response.job_id,
+            image_set_id=image_set_id,
+            status=response.status,
+            output_ref=response.result_ref,
+            output_format=response.output_format,
+            quality=QualityMetadata(
+                images_used=images_used,
+                processing_status=response.status,
+                quality_indicators=response.quality_meta,
+            ),
+            error_code=response.error_code,
+            extra=response.extra,
         )

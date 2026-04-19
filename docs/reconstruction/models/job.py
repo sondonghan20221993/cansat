@@ -94,6 +94,7 @@ class ReconstructionRequest:
                       defined in the interface spec (REC-IFC-01 TBD fields)
     """
 
+    image_set_id: Any
     images: List[ImageDescriptor]
     output_format: str
     job_id: str = field(default_factory=generate_job_id)
@@ -133,6 +134,7 @@ class ReconstructionResponse:
     job_id: str
     status: JobStatus
     result_ref: Optional[Any] = None        # TODO(OI-REC-03, OI-REC-07): define
+    output_format: Optional[str] = None
     quality_meta: Dict[str, Any] = field(default_factory=dict)
     error_code: Optional[str] = None        # TODO(REC-IFC-03): define enum
     processing_duration_s: Optional[float] = None

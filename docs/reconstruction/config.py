@@ -52,6 +52,7 @@ class ReconstructionConfig:
     # Backend selection — allows swapping DUSt3R-family model (REC-PROC-06)
     # -------------------------------------------------------------------------
     backend_name: str = "dust3r"  # e.g. "dust3r", "mast3r", or future variants
+    server_mode: str = "remote-fixed"
 
     # -------------------------------------------------------------------------
     # Extra backend-specific kwargs forwarded to the backend at construction.
