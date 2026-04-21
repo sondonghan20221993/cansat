@@ -49,6 +49,16 @@
 | Pose / Alignment Module | Transform and calibration logic | TBD         |
 | cFS Integration Layer | Message and runtime behavior  | TBD           |
 
+### 3.3 Reconstruction 검증 UI 테스트
+
+| TC ID       | 테스트 명                                  | 입력 조건                                                        | 기대 출력                                                              | 대응 요구사항                        |
+|-------------|--------------------------------------------|------------------------------------------------------------------|------------------------------------------------------------------------|--------------------------------------|
+| TC-REC-01   | 고정 좌표계(ENU) 점군 시각화 일관성 검증   | 동일 이미지 세트, 동일 frame/transform 파라미터로 2회 실행      | 2회 결과의 transform.linear/translate 동일, 점군 축 방향 일관          | REC-OUT-12, REC-VER-08               |
+| TC-REC-02   | 카메라 궤적-이미지 매핑 검증               | camera_trajectory 포함 결과를 UI에서 클릭                        | 선택 노드의 image_id/source_path가 해당 카메라 노드와 일치             | REC-OUT-11, REC-OUT-13, REC-VER-09   |
+| TC-REC-03   | 좌표 변환 파라미터 적용 검증               | yaw/pitch/roll/translation을 비영(0) 값으로 설정                 | UI 표기 linear matrix/trajectory/point cloud가 동일 파라미터로 변환됨  | REC-OUT-12, REC-VER-08               |
+| TC-REC-04   | HTTP polling 원격 실행 검증                | `POST /jobs` 후 `GET /jobs/{job_id}` polling                     | job_id가 유지되고 최종 status/result_ref/output_format이 반환됨        | REC-PROC-09, REC-PROC-12, REC-PROC-13A |
+| TC-REC-05   | Artifact 자동 다운로드 검증                | 성공한 job에 대해 `GET /jobs/{job_id}/artifact` 호출             | 클라이언트가 artifact를 로컬 경로에 저장하고 viewer 입력으로 사용 가능 | REC-PROC-11, REC-PROC-13B, REC-OUT-01 |
+
 ---
 
 ## 4. Module Integration Test Plan
@@ -108,6 +118,13 @@
 | UWB-OUT-04~07    | 04-uwb-requirements.md      | Unit Test           | TC-UWB-13   |
 | UWB-OUT-09       | 04-uwb-requirements.md      | Unit Test           | TC-UWB-14   |
 | UWB-OUT-10       | 04-uwb-requirements.md      | Unit Test           | TC-UWB-15   |
+| REC-OUT-11       | 05-reconstruction-requirements.md | Unit Test      | TC-REC-02   |
+| REC-OUT-12       | 05-reconstruction-requirements.md | Unit Test      | TC-REC-01, TC-REC-03 |
+| REC-OUT-13       | 05-reconstruction-requirements.md | Unit Test      | TC-REC-02   |
+| REC-VER-08       | 05-reconstruction-requirements.md | Unit Test      | TC-REC-01, TC-REC-03 |
+| REC-VER-09       | 05-reconstruction-requirements.md | Unit Test      | TC-REC-02   |
+| REC-PROC-13A     | 05-reconstruction-requirements.md | Integration Test | TC-REC-04 |
+| REC-PROC-13B     | 05-reconstruction-requirements.md | Integration Test | TC-REC-05 |
 
 ---
 
@@ -117,3 +134,4 @@
 - OI-VER-02: GEOMETRY_INVALID 판별 임계값(condition number 기준) 확정 후
   TC-UWB-10 pass criteria 갱신 필요
 - OI-VER-03: 각 모듈 단위 테스트 pass criteria TBD 항목 확정 필요
+- OI-VER-04: Reconstruction UI 테스트용 기준 이미지 세트 및 기준 변환 파라미터(골든 데이터) 확정 필요

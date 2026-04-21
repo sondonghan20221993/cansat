@@ -11,10 +11,12 @@ if DOCS_DIR not in sys.path:
 
 from reconstruction.backends.dust3r_backend import Dust3rBackend
 from reconstruction.backends.feature_sfm_backend import FeatureSfmBackend
+from reconstruction.artifact_loader import load_reconstruction_artifact
 from reconstruction.client.server_client import ServerClient
 from reconstruction.core.orchestrator import ReconstructionOrchestrator
 from reconstruction.exporters.glb_exporter import GlbExporter
 from reconstruction.models.job import ImageDescriptor, JobStatus, ReconstructionRequest
+from reconstruction.models.wire import request_from_dict, request_to_dict, response_from_dict, response_to_dict
 from reconstruction.server.service import ReconstructionService
 from reconstruction.validation.image_validator import ImageValidator
 
@@ -135,6 +137,29 @@ class ReconstructionSkeletonTest(unittest.TestCase):
         self.assertEqual(result.output_format, "glb")
         self.assertTrue(str(result.output_ref).endswith(".glb"))
         self.assertGreater(result.quality.quality_indicators.get("successful_pairs", 0), 0)
+
+        loaded = load_reconstruction_artifact(str(result.output_ref))
+        self.assertEqual(loaded.output_format, "glb")
+        self.assertGreater(len(loaded.points), 0)
+        self.assertEqual(len(loaded.points), len(loaded.colors))
+
+    def test_wire_contract_preserves_request_and_response_identity(self) -> None:
+        request = ReconstructionRequest(
+            image_set_id="wire-set",
+            images=[self._make_image("server/path/image.png", "img-wire")],
+            output_format="glb",
+        )
+        decoded_request = request_from_dict(request_to_dict(request))
+
+        self.assertEqual(decoded_request.job_id, request.job_id)
+        self.assertEqual(decoded_request.images[0].source_path, "server/path/image.png")
+        self.assertEqual(decoded_request.output_format, "glb")
+
+        response = ReconstructionService(Dust3rBackend(), GlbExporter()).fetch_result(request.job_id)
+        decoded_response = response_from_dict(response_to_dict(response))
+
+        self.assertEqual(decoded_response.job_id, request.job_id)
+        self.assertEqual(decoded_response.status, JobStatus.PENDING)
 
 
 if __name__ == "__main__":

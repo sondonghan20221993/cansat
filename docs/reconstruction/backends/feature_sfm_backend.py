@@ -56,6 +56,9 @@ class FeatureSfmBackend(ReconstructionBackend):
         total_matches = 0
         total_inliers = 0
         successful_pairs = 0
+        camera_positions: List[np.ndarray] = [np.zeros(3, dtype=np.float64)]
+        current_rotation = np.eye(3, dtype=np.float64)
+        current_translation = np.zeros(3, dtype=np.float64)
 
         for idx in range(len(frames) - 1):
             pair_result = self._triangulate_pair(frames[idx], frames[idx + 1])
@@ -67,8 +70,26 @@ class FeatureSfmBackend(ReconstructionBackend):
             total_inliers += pair_result["inlier_count"]
             successful_pairs += 1
 
+            rel_rotation = pair_result["rotation"]
+            rel_translation = pair_result["translation"]
+            current_translation = current_translation + current_rotation @ rel_translation
+            current_rotation = rel_rotation @ current_rotation
+            camera_positions.append(current_translation.copy())
+
         if not all_points:
             raise RuntimeError("No valid 3D points could be reconstructed from the provided image sequence.")
+
+        camera_traj = []
+        for idx, descriptor in enumerate(frames):
+            if idx < len(camera_positions):
+                pos = camera_positions[idx]
+            else:
+                pos = camera_positions[-1]
+            camera_traj.append({
+                "image_id": descriptor["descriptor"].image_id,
+                "source_path": descriptor["descriptor"].source_path,
+                "position": [float(pos[0]), float(pos[1]), float(pos[2])],
+            })
 
         return {
             "points": all_points,
@@ -77,6 +98,7 @@ class FeatureSfmBackend(ReconstructionBackend):
             "successful_pairs": successful_pairs,
             "match_count": total_matches,
             "inlier_count": total_inliers,
+            "camera_trajectory": camera_traj,
         }
 
     def _triangulate_pair(self, frame_a: Dict[str, Any], frame_b: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -142,6 +164,8 @@ class FeatureSfmBackend(ReconstructionBackend):
             "colors": colors,
             "match_count": len(matches),
             "inlier_count": int(inliers.sum()),
+            "rotation": rotation,
+            "translation": translation.reshape(3),
         }
 
     def postprocess(
@@ -167,6 +191,7 @@ class FeatureSfmBackend(ReconstructionBackend):
                 "inlier_count": raw_result["inlier_count"],
                 "point_count": len(raw_result["points"]),
             },
+            "camera_trajectory": raw_result.get("camera_trajectory", []),
         }
 
     @property

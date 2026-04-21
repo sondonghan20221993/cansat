@@ -29,6 +29,7 @@ system documents and the interface specification (03-interface-specification.md)
 - DUSt3R-family inference and reconstruction processing on the remote GPU server
 - 3D result generation and quality evaluation
 - Result packaging and return to the ground-side system
+- Ground-side fixed-frame visualization metadata generation for validation UI
 
 ### 2.2 Out of Scope
 
@@ -85,6 +86,8 @@ system documents and the interface specification (03-interface-specification.md)
 - **REC-PROC-11**: The remote GPU server SHALL return reconstruction outputs and execution status to the ground-side computer after processing.
 - **REC-PROC-12**: The reconstruction module SHALL preserve job identity between request and response so that returned outputs can be matched to the originating image set.
 - **REC-PROC-13**: The reconstruction module SHALL record reconstruction failure status when remote execution fails, times out, or returns invalid outputs.
+- **REC-PROC-13A**: The prototype remote execution path SHALL support HTTP polling using `POST /jobs`, `GET /jobs/{job_id}`, and `GET /jobs/{job_id}/artifact` until the final transport is frozen.
+- **REC-PROC-13B**: The ground-side client SHALL download completed reconstruction artifacts automatically after successful remote execution and SHALL pass the downloaded artifact to the fixed-frame visualization or downstream integration path.
 
 ### 4.4 Result Packaging
 
@@ -114,6 +117,12 @@ system documents and the interface specification (03-interface-specification.md)
 - **REC-OUT-08**: When reconstruction fails, the module SHALL return a failure result structure that downstream modules can detect consistently.
 - **REC-OUT-09**: When only partial or low-confidence reconstruction is available, the module SHALL mark the result as degraded.
 - **REC-OUT-10**: All failure and degraded outputs SHALL carry an error or status code that is traceable through logs or status fields.
+
+### 5.4 Fixed-Frame Visualization Output (Ground-Side Validation)
+
+- **REC-OUT-11**: The reconstruction output SHALL include camera trajectory metadata linked to input image identifiers for validation visualization.
+- **REC-OUT-12**: The reconstruction output SHALL provide enough metadata for fixed-frame visualization, including frame identifier and transform parameters applied by the ground-side viewer.
+- **REC-OUT-13**: The ground-side validation UI SHALL be able to select a camera trajectory node and identify the corresponding source image.
 
 ---
 
@@ -162,6 +171,8 @@ The following verification items SHALL be formally defined in
 - **REC-VER-05**: Verify remote job submission from the ground-side computer to the A6000-class server and result return (integration test).
 - **REC-VER-06**: Verify that the reconstruction pipeline can be replaced (model swap) without breaking the module boundary contract.
 - **REC-VER-07**: Verify that the output format can be changed without requiring redesign of the full reconstruction module.
+- **REC-VER-08**: Verify fixed-frame visualization consistency (point cloud + camera trajectory) under the selected frame preset and transform parameters.
+- **REC-VER-09**: Verify image linkage in validation UI by selecting a camera node and confirming corresponding image identifier/path metadata.
 
 ---
 
@@ -175,4 +186,5 @@ The following verification items SHALL be formally defined in
 | OI-REC-04  | Reconstruction quality indicators and acceptance thresholds need to be finalized.            | TBD   | Open   |
 | OI-REC-05  | Criteria distinguishing degraded versus failed reconstruction outcomes need to be finalized. | TBD   | Open   |
 | OI-REC-06  | Runtime and throughput targets for the reconstruction pipeline need to be finalized.         | TBD   | Open   |
-| OI-REC-07  | Remote execution protocol between the ground-side computer and the A6000 server (transport, authentication, retry policy) needs to be finalized. | TBD | Open |
+| OI-REC-07  | Remote execution protocol between the ground-side computer and the A6000 server is currently HTTP polling for prototype use. Authentication, retry policy, and event-driven alternatives need to be finalized. | HTTP polling prototype | Open |
+| OI-REC-08  | Fixed-frame identifier and transform metadata fields for validation UI output need to be frozen in interface specification. | TBD | Open |
