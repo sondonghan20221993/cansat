@@ -59,6 +59,14 @@
 | TC-REC-04   | HTTP polling 원격 실행 검증                | `POST /jobs` 후 `GET /jobs/{job_id}` polling                     | job_id가 유지되고 최종 status/result_ref/output_format이 반환됨        | REC-PROC-09, REC-PROC-12, REC-PROC-13A |
 | TC-REC-05   | Artifact 자동 다운로드 검증                | 성공한 job에 대해 `GET /jobs/{job_id}/artifact` 호출             | 클라이언트가 artifact를 로컬 경로에 저장하고 viewer 입력으로 사용 가능 | REC-PROC-11, REC-PROC-13B, REC-OUT-01 |
 
+### 3.4 Pose / Frame Alignment Sensor Tests
+
+| TC ID | 테스트 명 | 입력 조건 | 기대 출력 | 대응 요구사항 |
+|---|---|---|---|---|
+| TC-ALIGN-01 | GPS/UWB/IMU 입력 계약 검증 | GPS_Message, IMU_Message, UWB Position_Result 동시 입력 | 각 원본 측정값이 보존되고 timestamp/source_frame 메타데이터가 유지됨 | ALIGN-PROC-01, ALIGN-PROC-02 |
+| TC-ALIGN-02 | Reconstruction-to-World 정렬 메타데이터 검증 | reconstruction artifact와 센서 pose/transform 입력 | scale/rotation/translation을 포함한 Reconstruction-to-World transform 생성 | ALIGN-PROC-04, ALIGN-PROC-05 |
+| TC-ALIGN-03 | 센서 결측 fallback 검증 | GPS 또는 IMU 일부 결측 | 결측 센서만 unavailable로 표시하고 가능한 alignment output은 유지 | ALIGN-ERR-04 |
+
 ---
 
 ## 4. Module Integration Test Plan
@@ -125,6 +133,11 @@
 | REC-VER-09       | 05-reconstruction-requirements.md | Unit Test      | TC-REC-02   |
 | REC-PROC-13A     | 05-reconstruction-requirements.md | Integration Test | TC-REC-04 |
 | REC-PROC-13B     | 05-reconstruction-requirements.md | Integration Test | TC-REC-05 |
+| ALIGN-PROC-01    | 06-pose-frame-alignment-requirements.md | Integration Test | TC-ALIGN-01 |
+| ALIGN-PROC-02    | 06-pose-frame-alignment-requirements.md | Integration Test | TC-ALIGN-01 |
+| ALIGN-PROC-04    | 06-pose-frame-alignment-requirements.md | Integration Test | TC-ALIGN-02 |
+| ALIGN-PROC-05    | 06-pose-frame-alignment-requirements.md | Integration Test | TC-ALIGN-02 |
+| ALIGN-ERR-04     | 06-pose-frame-alignment-requirements.md | Integration Test | TC-ALIGN-03 |
 
 ---
 

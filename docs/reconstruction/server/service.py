@@ -26,6 +26,8 @@ class ReconstructionService:
     def submit(self, request: ReconstructionRequest) -> str:
         try:
             self._backend.load()
+            if hasattr(self._backend, "_current_job_id"):
+                setattr(self._backend, "_current_job_id", request.job_id)
             preprocessed = self._backend.preprocess(request.images, aux_pose=request.aux_pose)
             raw_result = self._backend.infer(preprocessed)
             packaged = self._backend.postprocess(
@@ -34,10 +36,16 @@ class ReconstructionService:
                 job_id=request.job_id,
                 image_set_id=request.image_set_id,
             )
-            exported = self._exporter.export(
-                normalized_scene=packaged["normalized_scene"],
-                artifact_name=request.job_id,
-            )
+            if packaged.get("artifact_ref"):
+                exported = {
+                    "output_ref": packaged["artifact_ref"],
+                    "output_format": packaged.get("output_format") or request.output_format,
+                }
+            else:
+                exported = self._exporter.export(
+                    normalized_scene=packaged["normalized_scene"],
+                    artifact_name=request.job_id,
+                )
             response = ReconstructionResponse(
                 job_id=request.job_id,
                 status=JobStatus.SUCCESS,

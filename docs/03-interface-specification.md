@@ -46,6 +46,15 @@ Error_Code 체계를 준수 SHALL.
 | `valid`        | bool        | Yes  | True = valid position, False = invalid position         |
 | `error_code`   | uint8       | Yes  | 아래 Error_Code 열거형 참조. 정상 시 NONE(0x00)        |
 
+### 3.2A Input Data (GPS / IMU / Pose Alignment)
+
+| Name | Source | Format | Notes |
+|---|---|---|---|
+| `GPS_Message` | GPS receiver | latitude, longitude, altitude, timestamp | Raw global position. Conversion to local ENU/NED is handled by alignment policy. |
+| `IMU_Message` | IMU sensor | attitude, angular_rate, acceleration, timestamp | Body-frame motion/orientation input. Axis convention is hardware-calibration dependent. |
+| `Camera_Pose_Message` | Camera or vision pipeline | pose, timestamp, camera_id | Optional camera pose estimate when available. |
+| `Frame_Transform_Message` | Calibration/config | source_frame, target_frame, transform, validity | Static or dynamic transform metadata used by alignment. |
+
 ### 3.3 Output Data (Reconstruction 검증 UI 연동)
 
 Reconstruction 결과의 좌표 기반 검증 UI 연동 필드 정의:

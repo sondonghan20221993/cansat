@@ -23,6 +23,8 @@ List the top-level components.
 | Component | Description | Inputs | Outputs |
 | --- | --- | --- | --- |
 | UWB Module | TBD | TBD | TBD |
+| GPS Interface | Receives global position measurements when available | GPS receiver data | GPS position/time metadata |
+| IMU Interface | Receives vehicle attitude, angular rate, and acceleration data | IMU sensor data | IMU/body-frame motion metadata |
 | Reconstruction Module | TBD | TBD | TBD |
 | Pose / Alignment Module | TBD | TBD | TBD |
 | cFS Integration Layer | TBD | TBD | TBD |
@@ -32,9 +34,10 @@ List the top-level components.
 Describe how data flows through the full system.
 
 1. Sensor and source data are acquired.
-2. Positioning and reconstruction processing are executed.
-3. Coordinate alignment is applied.
-4. Results are packaged and delivered through the integration layer.
+2. UWB, GPS, IMU, camera, and image-source metadata are timestamped and packaged.
+3. Positioning and reconstruction processing are executed.
+4. Coordinate alignment is applied into the system World / Map frame.
+5. Results are packaged and delivered through the integration layer.
 
 ## 5. Common Rules
 
@@ -52,7 +55,9 @@ Define system-wide conventions.
 ### 6.1 Functional Requirements
 
 - The system shall ...
-- The system shall ...
+- The system shall support UWB, GPS, IMU, camera, and reconstruction data as independent sensor/source inputs.
+- The system shall preserve source-specific measurements before converting them into a common World / Map coordinate frame.
+- The system shall allow reconstruction outputs to remain in a relative reconstruction frame until alignment metadata is available.
 
 ### 6.2 Performance Requirements
 

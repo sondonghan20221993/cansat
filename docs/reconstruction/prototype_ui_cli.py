@@ -249,7 +249,7 @@ def _build_html(
             y: camY,
             z: camZ,
             text: camText,
-            hovertemplate: '%{text}<extra></extra>',
+            hovertemplate: '%{{text}}<extra></extra>',
             marker: {{ size: 6, color: '#f59e0b' }},
             line: {{ color: '#fbbf24', width: 3 }},
             name: 'camera-trajectory'

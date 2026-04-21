@@ -99,7 +99,7 @@ class ReconstructionSkeletonTest(unittest.TestCase):
             pass
 
         self.assertEqual(result.status, JobStatus.FAILED)
-        self.assertEqual(result.error_code, "BACKEND_NOT_IMPLEMENTED")
+        self.assertEqual(result.error_code, "SERVER_EXECUTION_FAILED")
         self.assertEqual(result.output_format, None)
 
     def test_feature_backend_can_emit_success_and_glb_path(self) -> None:

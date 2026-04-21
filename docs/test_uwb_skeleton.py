@@ -51,7 +51,7 @@ class UwbSkeletonTest(unittest.TestCase):
         result = processor.finalize_cycle()
 
         self.assertTrue(result.valid)
-        self.assertEqual(result.distances[0], 999.0)
+        self.assertAlmostEqual(result.distances[0], _distance(self.anchors["A1"], target), places=6)
 
     def test_missing_distance_returns_invalid_result(self) -> None:
         processor = self._make_processor()
