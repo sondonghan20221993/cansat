@@ -31,6 +31,7 @@ Define requirements for integrating modules into the cFS environment.
 - **CFS-CFG-02**: Configuration validation SHALL occur during initialization before publishing module outputs.
 - **CFS-CFG-03**: Invalid required configuration SHALL prevent the affected module from entering nominal operation and SHALL emit a traceable event.
 - **CFS-CFG-04**: Runtime parameter updates SHALL be accepted only for fields explicitly marked runtime-changeable in the owning module specification.
+- **CFS-CFG-05**: The UWB module SHALL be individually enableable/disableable through configuration. When disabled, missing UWB-specific configuration such as Anchor coordinates SHALL NOT prevent non-UWB modules from entering nominal operation.
 
 ## 6. Logging and Event Handling
 
@@ -49,9 +50,11 @@ Define requirements for integrating modules into the cFS environment.
 
 ## 8. Test Requirements
 
-- Unit tests for message handling
-- Integration tests with cFS services
-- Failure-injection tests for event and timer behavior
+- **CFS-VER-01**: The verification plan SHALL include tests for app initialization and shutdown behavior.
+- **CFS-VER-02**: The verification plan SHALL include tests for Software Bus routing and payload reference preservation.
+- **CFS-VER-03**: The verification plan SHALL include tests for timer behavior and non-blocking callback policy.
+- **CFS-VER-04**: The verification plan SHALL include tests for configuration validation and runtime update policy.
+- **CFS-VER-05**: The verification plan SHALL include failure-injection tests for event and logging behavior.
 
 ## 9. Open Items
 

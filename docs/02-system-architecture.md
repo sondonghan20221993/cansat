@@ -10,7 +10,7 @@ List the major modules and their relationships.
 
 | Module | Responsibility | Depends On |
 | --- | --- | --- |
-| UWB Module | Position estimation from anchor/tag data | Sensor input |
+| UWB Module | Optional position estimation from anchor/tag data | Sensor input; may be disabled by mission configuration |
 | GPS Interface | Global position acquisition and local frame conversion support | GPS receiver |
 | IMU Interface | Attitude, angular rate, and acceleration acquisition | IMU sensor |
 | Reconstruction Module | 3D reconstruction from image/sensor input | Camera and sensor input |
@@ -24,6 +24,7 @@ List the major modules and their relationships.
 - Estimate distance and position
 - Validate ranging data
 - Provide structured outputs
+- Support clean disable/removal through configuration without blocking GPS, IMU, reconstruction, or alignment processing
 
 ### 3.2 Reconstruction Module
 
@@ -65,6 +66,8 @@ Describe how information moves between modules.
 3. Alignment logic transforms source outputs into a common World / Map frame.
 4. cFS integration distributes outputs to downstream consumers.
 
+If UWB is disabled or unavailable, data flow SHALL continue with the remaining enabled sources and the alignment output SHALL record UWB as unavailable.
+
 ## 5. Connectivity Between Modules
 
 | Source Module | Target Module | Interface Type | Notes |
@@ -73,6 +76,7 @@ Describe how information moves between modules.
 | GPS Interface | Pose / Frame Alignment Module | Data message | GPS position and timestamp |
 | IMU Interface | Pose / Frame Alignment Module | Data message | Attitude, angular rate, acceleration |
 | Reconstruction Module | Pose / Frame Alignment Module | Data message | 3D result and metadata |
+| Pose / Frame Alignment Module | Reconstruction Module / Map Manifest | Metadata update | Per-chunk transform and alignment_status update via accumulated map manifest interface |
 | Pose / Frame Alignment Module | cFS Integration Layer | Data message | Unified output |
 | cFS Integration Layer | All Modules | Control/config interface | Runtime control |
 
@@ -81,6 +85,7 @@ Describe how information moves between modules.
 - Use consistent interface definitions across modules.
 - Preserve traceability from requirements to verification.
 - Isolate module responsibilities where possible.
+- Treat UWB as an optional source module, not as a mandatory dependency of reconstruction or accumulated map visualization.
 
 ## 7. Open Items
 

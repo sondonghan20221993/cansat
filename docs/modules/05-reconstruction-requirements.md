@@ -30,6 +30,7 @@ system documents and the interface specification (03-interface-specification.md)
 - 3D result generation and quality evaluation
 - Result packaging and return to the ground-side system
 - Ground-side fixed-frame visualization metadata generation for validation UI
+- Accumulated map input/output contract for appending multiple reconstruction chunks
 
 ### 2.2 Out of Scope
 
@@ -52,7 +53,7 @@ system documents and the interface specification (03-interface-specification.md)
 ### 3.2 Optional Auxiliary Inputs
 
 - **REC-IN-05**: The reconstruction module SHALL accept camera intrinsic parameters as an optional input when available.
-- **REC-IN-06**: The reconstruction module SHALL accept external camera pose, UWB position, or other localization data as optional auxiliary input when available.
+- **REC-IN-06**: The reconstruction module SHALL accept external camera pose, UWB position, or other localization data only as optional auxiliary metadata for job packaging and traceability. Primary sensor fusion and World / Map frame alignment SHALL be owned by the Pose / Frame Alignment module.
 - **REC-IN-07**: Optional auxiliary inputs SHALL NOT be a mandatory precondition for starting reconstruction.
 - **REC-IN-08**: The reconstruction module SHALL be capable of producing a reconstruction result using image inputs alone, without any auxiliary input.
 
@@ -76,7 +77,7 @@ system documents and the interface specification (03-interface-specification.md)
 - **REC-PROC-04**: The reconstruction module SHALL use a DUSt3R-family method as the primary reconstruction pipeline.
 - **REC-PROC-05**: The reconstruction module SHALL estimate scene structure from image inputs using the selected DUSt3R-family model.
 - **REC-PROC-06**: The reconstruction module SHALL be modularized so that the selected reconstruction model can be replaced, upgraded, or reconfigured without changing the module boundary contract.
-- **REC-PROC-07**: When optional auxiliary pose or localization input is provided, the reconstruction module SHALL use it only as auxiliary information and SHALL NOT treat it as a required input.
+- **REC-PROC-07**: When optional auxiliary pose or localization input defined in REC-IN-06 is provided, the reconstruction module SHALL use it only for auxiliary metadata packaging, traceability, or backend hints and SHALL NOT treat it as a required input or perform primary sensor fusion.
 - **REC-PROC-08**: The reconstruction module SHALL continue to support image-only reconstruction when no auxiliary pose input is available.
 
 ### 4.3 Remote Execution
@@ -94,6 +95,17 @@ system documents and the interface specification (03-interface-specification.md)
 - **REC-PROC-14**: The reconstruction module SHALL package the 3D reconstruction output together with quality metadata and processing status.
 - **REC-PROC-15**: The reconstruction module SHALL distinguish successful, degraded, and failed reconstruction outcomes. *(Criteria: see OI-REC-05)*
 - **REC-PROC-16**: The reconstruction module SHALL make the returned result available to downstream alignment or integration modules through the defined interface.
+
+### 4.5 Accumulated Map Handling
+
+- **REC-PROC-17**: The ground-side reconstruction path SHALL own creation and append operations for the persistent accumulated map manifest.
+- **REC-PROC-18**: Each map chunk SHALL preserve its originating reconstruction `job_id`, `image_set_id`, local artifact reference, output format, timestamp, quality metadata, and frame/alignment metadata.
+- **REC-PROC-19**: The accumulated map SHALL NOT assume that independent reconstruction chunks already share a metric World / Map frame unless a valid Reconstruction-to-World transform is attached.
+- **REC-PROC-20**: When a chunk does not have a valid World-frame alignment transform, the accumulated map SHALL store it as `UNALIGNED` or `PARTIAL_ALIGNMENT` rather than silently merging it as a final map.
+- **REC-PROC-21**: The accumulated map update path SHALL allow the Pose / Frame Alignment module to update or replace chunk transform metadata through the manifest update interface without modifying the raw reconstruction artifact.
+- **REC-PROC-22**: The accumulated map manifest SHALL be persisted as a ground-side file so that map state can be recovered after process restart.
+- **REC-PROC-23**: The accumulated map append operation SHALL reject duplicate `job_id` entries by default unless an explicit replacement policy is configured.
+- **REC-PROC-24**: The accumulated map SHALL support marking a chunk as invalidated without deleting the raw artifact.
 
 ---
 
@@ -123,6 +135,14 @@ system documents and the interface specification (03-interface-specification.md)
 - **REC-OUT-11**: The reconstruction output SHALL expose camera trajectory metadata as defined in 03-interface-specification.md Section 3.3.
 - **REC-OUT-12**: The reconstruction output SHALL expose fixed-frame visualization metadata as defined in 03-interface-specification.md Section 3.3.
 - **REC-OUT-13**: The ground-side validation UI SHALL use the image linkage fields defined in 03-interface-specification.md Section 3.3.
+
+### 5.5 Accumulated Map Output
+
+- **REC-OUT-14**: The reconstruction module SHALL support an accumulated map manifest that references one or more reconstruction chunks.
+- **REC-OUT-15**: The accumulated map manifest SHALL include map identifier, chunk list, artifact references, per-chunk alignment status, per-chunk transform metadata, and quality metadata.
+- **REC-OUT-16**: The accumulated map viewer SHALL be able to render multiple chunks in a shared display frame while distinguishing unaligned chunks from aligned chunks.
+- **REC-OUT-17**: The accumulated map output SHALL preserve traceability from each displayed map chunk back to its source images and reconstruction job.
+- **REC-OUT-18**: Unaligned chunks SHALL be rendered in their own reconstruction frame for diagnostic visualization and SHALL be visually marked as non-metric map contributions.
 
 ---
 
@@ -163,7 +183,25 @@ formally defined in 03-interface-specification.md:
 
 The reconstruction verification cases and traceability SHALL be owned by
 08-verification-plan.md. This module document only reserves the REC-VER-01
-through REC-VER-09 requirement identifiers.
+through REC-VER-13 requirement identifiers.
+
+Reserved verification identifiers:
+
+| ID | Verification intent |
+| --- | --- |
+| REC-VER-01 | Nominal end-to-end reconstruction |
+| REC-VER-02 | Image-only reconstruction path |
+| REC-VER-03 | Optional auxiliary input path |
+| REC-VER-04 | Reconstruction failure handling |
+| REC-VER-05 | Remote job submission and result return |
+| REC-VER-06 | Reconstruction backend replacement |
+| REC-VER-07 | Output format replacement |
+| REC-VER-08 | Fixed-frame visualization consistency |
+| REC-VER-09 | Camera trajectory / image linkage |
+| REC-VER-10 | Accumulated map append |
+| REC-VER-11 | Accumulated map rendering |
+| REC-VER-12 | Raw artifact preservation |
+| REC-VER-13 | Per-chunk alignment update and unaligned chunk handling |
 
 ---
 
@@ -179,3 +217,5 @@ through REC-VER-09 requirement identifiers.
 | OI-REC-06  | Runtime and throughput targets for the reconstruction pipeline need to be finalized.         | TBD   | Open   |
 | OI-REC-07  | Prototype remote execution transport is resolved as HTTP polling and defined in 03-interface-specification.md Section 3.4. Authentication, retry policy, and event-driven alternatives remain future work. | HTTP polling prototype | Resolved for prototype |
 | OI-REC-08  | Fixed-frame identifier and transform metadata fields for validation UI output need to be frozen in interface specification. | TBD | Open |
+| OI-REC-09  | Accumulated map manifest schema is defined in 03-interface-specification.md Section 3.5. Default storage location remains to be finalized. | TBD | Partially resolved |
+| OI-REC-10  | Default policy: UNALIGNED chunks may be displayed diagnostically but SHALL NOT be treated as metric map contributions. PARTIAL_ALIGNMENT criteria remain to be finalized. | TBD | Partially resolved |
