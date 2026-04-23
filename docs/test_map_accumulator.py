@@ -5,12 +5,16 @@ import sys
 import tempfile
 import unittest
 import json
+import threading
+import time
+import urllib.request
 
 DOCS_DIR = os.path.dirname(os.path.abspath(__file__))
 if DOCS_DIR not in sys.path:
     sys.path.insert(0, DOCS_DIR)
 
-from reconstruction.map_accumulator_cli import main as map_cli_main
+from reconstruction.inbox_monitor import InboxMonitor, InboxMonitorConfig
+from reconstruction.map_accumulator_cli import build_map_state, main as map_cli_main, serve_live_map
 from reconstruction.map_manifest import ChunkTransform, MapChunk, create_manifest, load_manifest, save_manifest
 
 
@@ -162,6 +166,87 @@ class MapAccumulatorTest(unittest.TestCase):
                 "--chunk-id", "missing",
                 "--alignment-status", "ALIGNED",
             ]), 0)
+
+    def test_live_map_state_reports_status_panel_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manifest_path = os.path.join(tmpdir, "map_manifest.json")
+            first_ply = os.path.join(tmpdir, "first.ply")
+            second_ply = os.path.join(tmpdir, "second.ply")
+            write_ascii_ply(first_ply, 0.0)
+            write_ascii_ply(second_ply, 1.0)
+            manifest = create_manifest("map-live")
+            manifest.append_chunk(MapChunk(
+                chunk_id="chunk-1",
+                job_id="job-1",
+                image_set_id="set-1",
+                artifact_ref="first.ply",
+                output_format="ply",
+            ))
+            manifest.append_chunk(MapChunk(
+                chunk_id="chunk-2",
+                job_id="job-2",
+                image_set_id="set-2",
+                artifact_ref="second.ply",
+                output_format="ply",
+            ))
+            save_manifest(manifest, manifest_path)
+            state = build_map_state(manifest_path, max_points_per_chunk=10)
+            self.assertEqual(state["chunk_count"], 2)
+            self.assertEqual(state["rendered_point_count"], 4)
+            self.assertTrue(state["last_updated"])
+
+    def test_inbox_monitor_dispatches_and_moves_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            inbox = os.path.join(tmpdir, "inbox")
+            processed = os.path.join(tmpdir, "processed")
+            rejected = os.path.join(tmpdir, "rejected")
+            os.makedirs(inbox, exist_ok=True)
+            calls: list[tuple[list[str], str]] = []
+
+            def dispatch(images: list[str], image_set_id: str) -> dict:
+                calls.append((list(images), image_set_id))
+                return {"job_id": image_set_id, "status": "success"}
+
+            for idx in range(3):
+                with open(os.path.join(inbox, f"{idx:03d}.png"), "wb") as fp:
+                    fp.write(b"\x89PNG\r\n\x1a\nfakepngdata")
+
+            monitor = InboxMonitor(
+                InboxMonitorConfig(
+                    inbox_dir=inbox,
+                    processed_dir=processed,
+                    rejected_dir=rejected,
+                    chunk_size=3,
+                ),
+                dispatch,
+            )
+            monitor.run_once()
+
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(len(os.listdir(inbox)), 0)
+            self.assertEqual(len(os.listdir(processed)), 3)
+            self.assertEqual(len(monitor.state.buffer), 0)
+
+    def test_inbox_monitor_rejects_invalid_images_without_stopping(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            inbox = os.path.join(tmpdir, "inbox")
+            processed = os.path.join(tmpdir, "processed")
+            rejected = os.path.join(tmpdir, "rejected")
+            os.makedirs(inbox, exist_ok=True)
+            with open(os.path.join(inbox, "bad.png"), "wb") as fp:
+                fp.write(b"not-an-image")
+            monitor = InboxMonitor(
+                InboxMonitorConfig(
+                    inbox_dir=inbox,
+                    processed_dir=processed,
+                    rejected_dir=rejected,
+                    chunk_size=2,
+                ),
+                lambda images, image_set_id: {},
+            )
+            monitor.run_once()
+            self.assertEqual(len(os.listdir(rejected)), 1)
+            self.assertEqual(len(os.listdir(inbox)), 0)
 
 
 if __name__ == "__main__":

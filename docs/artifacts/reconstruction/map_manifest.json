@@ -1,0 +1,173 @@
+{
+  "map_id": "dust3r-map",
+  "created_at": "2026-04-23T15:25:35Z",
+  "updated_at": "2026-04-23T15:30:02Z",
+  "display_frame_id": "map",
+  "chunks": [
+    {
+      "chunk_id": "chunk-001",
+      "job_id": "chunk-001-job",
+      "image_set_id": "chunk-001",
+      "artifact_ref": "downloads\\b25e24b9-3654-4422-83e5-ff664a8b5ecb.ply",
+      "output_format": "ply",
+      "alignment_status": "UNALIGNED",
+      "transform": null,
+      "invalidated": false,
+      "metadata": {}
+    },
+    {
+      "chunk_id": "chunk-002",
+      "job_id": "chunk-002-job",
+      "image_set_id": "chunk-002",
+      "artifact_ref": "downloads\\e5edaf8e-b846-4f86-9948-bf171cd4308f.ply",
+      "output_format": "ply",
+      "alignment_status": "UNALIGNED",
+      "transform": null,
+      "invalidated": false,
+      "metadata": {}
+    },
+    {
+      "chunk_id": "chunk-003",
+      "job_id": "chunk-003-job",
+      "image_set_id": "chunk-003",
+      "artifact_ref": "downloads\\4da1762c-7b07-453e-95dd-8f7ae784e662.ply",
+      "output_format": "ply",
+      "alignment_status": "UNALIGNED",
+      "transform": null,
+      "invalidated": false,
+      "metadata": {}
+    },
+    {
+      "chunk_id": "chunk-004",
+      "job_id": "chunk-004-job",
+      "image_set_id": "chunk-004",
+      "artifact_ref": "downloads\\6bc6156e-94f6-40e6-ac07-dbdb7448b8d6.ply",
+      "output_format": "ply",
+      "alignment_status": "UNALIGNED",
+      "transform": null,
+      "invalidated": false,
+      "metadata": {}
+    },
+    {
+      "chunk_id": "chunk-005",
+      "job_id": "chunk-005-job",
+      "image_set_id": "chunk-005",
+      "artifact_ref": "downloads\\ffe1de1a-a154-45af-b078-2b39d9d13f3d.ply",
+      "output_format": "ply",
+      "alignment_status": "UNALIGNED",
+      "transform": null,
+      "invalidated": false,
+      "metadata": {}
+    },
+    {
+      "chunk_id": "chunk-006",
+      "job_id": "chunk-006-job",
+      "image_set_id": "chunk-006",
+      "artifact_ref": "downloads\\0d8b18bc-8a44-42c1-9459-576d64b84938.ply",
+      "output_format": "ply",
+      "alignment_status": "UNALIGNED",
+      "transform": null,
+      "invalidated": false,
+      "metadata": {}
+    },
+    {
+      "chunk_id": "chunk-007",
+      "job_id": "chunk-007-job",
+      "image_set_id": "chunk-007",
+      "artifact_ref": "downloads\\7aadb8c6-2ae6-4c3a-ba4f-61d4f22239ed.ply",
+      "output_format": "ply",
+      "alignment_status": "UNALIGNED",
+      "transform": null,
+      "invalidated": false,
+      "metadata": {}
+    },
+    {
+      "chunk_id": "chunk-008",
+      "job_id": "chunk-008-job",
+      "image_set_id": "chunk-008",
+      "artifact_ref": "downloads\\358dfec9-cefe-4fda-af81-47d92d2e17c7.ply",
+      "output_format": "ply",
+      "alignment_status": "UNALIGNED",
+      "transform": null,
+      "invalidated": false,
+      "metadata": {}
+    },
+    {
+      "chunk_id": "chunk-009",
+      "job_id": "chunk-009-job",
+      "image_set_id": "chunk-009",
+      "artifact_ref": "downloads\\a0c2cc2e-39c4-4499-a63f-dece21208744.ply",
+      "output_format": "ply",
+      "alignment_status": "UNALIGNED",
+      "transform": null,
+      "invalidated": false,
+      "metadata": {}
+    },
+    {
+      "chunk_id": "chunk-010",
+      "job_id": "chunk-010-job",
+      "image_set_id": "chunk-010",
+      "artifact_ref": "downloads\\03d28829-d518-4103-bb76-8c9b3737cd85.ply",
+      "output_format": "ply",
+      "alignment_status": "UNALIGNED",
+      "transform": null,
+      "invalidated": false,
+      "metadata": {}
+    },
+    {
+      "chunk_id": "chunk-011",
+      "job_id": "chunk-011-job",
+      "image_set_id": "chunk-011",
+      "artifact_ref": "downloads\\bc882870-3830-4839-a114-e8de1f47197c.ply",
+      "output_format": "ply",
+      "alignment_status": "UNALIGNED",
+      "transform": null,
+      "invalidated": false,
+      "metadata": {}
+    },
+    {
+      "chunk_id": "chunk-012",
+      "job_id": "chunk-012-job",
+      "image_set_id": "chunk-012",
+      "artifact_ref": "downloads\\141718cd-d575-4d3d-8bc1-5250fc05a6d3.ply",
+      "output_format": "ply",
+      "alignment_status": "UNALIGNED",
+      "transform": null,
+      "invalidated": false,
+      "metadata": {}
+    },
+    {
+      "chunk_id": "chunk-013",
+      "job_id": "chunk-013-job",
+      "image_set_id": "chunk-013",
+      "artifact_ref": "downloads\\ec728de5-52e3-4165-9815-0a1b4b6c2a83.ply",
+      "output_format": "ply",
+      "alignment_status": "UNALIGNED",
+      "transform": null,
+      "invalidated": false,
+      "metadata": {}
+    },
+    {
+      "chunk_id": "chunk-014",
+      "job_id": "chunk-014-job",
+      "image_set_id": "chunk-014",
+      "artifact_ref": "downloads\\4b188c9e-e199-43f2-86d1-26393a224bd7.ply",
+      "output_format": "ply",
+      "alignment_status": "UNALIGNED",
+      "transform": null,
+      "invalidated": false,
+      "metadata": {}
+    },
+    {
+      "chunk_id": "chunk-015",
+      "job_id": "chunk-015-job",
+      "image_set_id": "chunk-015",
+      "artifact_ref": "downloads\\f245fd1f-0ae7-41bd-b762-b83c1facf849.ply",
+      "output_format": "ply",
+      "alignment_status": "UNALIGNED",
+      "transform": null,
+      "invalidated": false,
+      "metadata": {}
+    }
+  ]
+}

@@ -31,6 +31,9 @@ system documents and the interface specification (03-interface-specification.md)
 - Result packaging and return to the ground-side system
 - Ground-side fixed-frame visualization metadata generation for validation UI
 - Accumulated map input/output contract for appending multiple reconstruction chunks
+- Ground-side image inbox monitoring and buffer-based automatic job dispatch
+- Processed image file lifecycle management (inbox → processed separation)
+- Live-updating accumulated map viewer (server-push or polling, no manual reload)
 
 ### 2.2 Out of Scope
 
@@ -61,6 +64,15 @@ system documents and the interface specification (03-interface-specification.md)
 
 - **REC-IN-09**: The ground-side computer SHALL receive input images and associated metadata before submitting a reconstruction request.
 - **REC-IN-10**: The ground-side computer SHALL package reconstruction inputs and forward them to the remote reconstruction server.
+
+### 3.4 Inbox-Based Automatic Image Ingestion
+
+- **REC-IN-11**: The ground-side system SHALL support a designated inbox directory from which new image files are automatically detected and staged for reconstruction without requiring manual per-image invocation.
+- **REC-IN-12**: The ground-side system SHALL maintain an in-memory or on-disk image buffer. Images detected in the inbox SHALL be added to the buffer in arrival order.
+- **REC-IN-13**: When the buffer reaches the configured chunk size, the ground-side system SHALL automatically dispatch a reconstruction job using the buffered images and clear those images from the buffer.
+- **REC-IN-14**: The ground-side system SHALL move each image file from the inbox directory to a separate processed directory after the image has been included in a dispatched reconstruction job. Images that have not yet been dispatched SHALL remain in the inbox or buffer and SHALL NOT be mixed with already-processed images.
+- **REC-IN-15**: The inbox monitoring loop SHALL be continuously running and SHALL NOT require a process restart to pick up new images.
+- **REC-IN-16**: If an image file in the inbox is unreadable or fails validation, the ground-side system SHALL move it to a rejected subdirectory and SHALL log the failure without stopping the monitoring loop.
 
 ---
 
@@ -107,6 +119,12 @@ system documents and the interface specification (03-interface-specification.md)
 - **REC-PROC-23**: The accumulated map append operation SHALL reject duplicate `job_id` entries by default unless an explicit replacement policy is configured.
 - **REC-PROC-24**: The accumulated map SHALL support marking a chunk as invalidated without deleting the raw artifact.
 
+### 4.6 Processed Image Lifecycle
+
+- **REC-PROC-25**: The ground-side system SHALL maintain a strict separation between unprocessed images (inbox) and processed images (processed directory) at all times. An image file SHALL exist in exactly one of these locations at any given time.
+- **REC-PROC-26**: Image files SHALL be moved atomically or via a rename operation from inbox to processed directory after the reconstruction job that includes them has been successfully dispatched. A copy-then-delete strategy is acceptable only if the delete step is guaranteed before the next monitoring cycle reads the inbox.
+- **REC-PROC-27**: The ground-side system SHALL NOT re-read or re-buffer an image that has already been moved to the processed directory.
+
 ---
 
 ## 5. Output Requirements
@@ -143,6 +161,13 @@ system documents and the interface specification (03-interface-specification.md)
 - **REC-OUT-16**: The accumulated map viewer SHALL be able to render multiple chunks in a shared display frame while distinguishing unaligned chunks from aligned chunks.
 - **REC-OUT-17**: The accumulated map output SHALL preserve traceability from each displayed map chunk back to its source images and reconstruction job.
 - **REC-OUT-18**: Unaligned chunks SHALL be rendered in their own reconstruction frame for diagnostic visualization and SHALL be visually marked as non-metric map contributions.
+
+### 5.6 Live Viewer Output
+
+- **REC-OUT-19**: The ground-side accumulated map viewer SHALL update its displayed content automatically when a new reconstruction chunk is appended to the manifest, without requiring the user to close and reopen the viewer.
+- **REC-OUT-20**: The viewer SHALL use a server-push or browser-polling mechanism to detect manifest changes. The update interval for polling-based implementations SHALL be configurable and SHALL default to no more than 5 seconds.
+- **REC-OUT-21**: The viewer SHALL display the current chunk count, rendered point count, and last-updated timestamp in the UI panel so the user can confirm that live updates are being received.
+- **REC-OUT-22**: A viewer update SHALL NOT require a full page reload. New chunk data SHALL be merged into the existing 3D scene incrementally.
 
 ---
 
@@ -183,7 +208,7 @@ formally defined in 03-interface-specification.md:
 
 The reconstruction verification cases and traceability SHALL be owned by
 08-verification-plan.md. This module document only reserves the REC-VER-01
-through REC-VER-13 requirement identifiers.
+through REC-VER-18 requirement identifiers.
 
 Reserved verification identifiers:
 
@@ -202,6 +227,11 @@ Reserved verification identifiers:
 | REC-VER-11 | Accumulated map rendering |
 | REC-VER-12 | Raw artifact preservation |
 | REC-VER-13 | Per-chunk alignment update and unaligned chunk handling |
+| REC-VER-14 | Inbox monitoring: automatic image detection and buffer accumulation |
+| REC-VER-15 | Inbox monitoring: automatic job dispatch when buffer reaches chunk size |
+| REC-VER-16 | Processed image lifecycle: inbox/processed separation and no re-read |
+| REC-VER-17 | Live viewer: automatic update without page reload when new chunk is appended |
+| REC-VER-18 | Live viewer: chunk count, point count, and last-updated timestamp displayed |
 
 ---
 
@@ -219,3 +249,5 @@ Reserved verification identifiers:
 | OI-REC-08  | Fixed-frame identifier and transform metadata fields for validation UI output need to be frozen in interface specification. | TBD | Open |
 | OI-REC-09  | Accumulated map manifest schema is defined in 03-interface-specification.md Section 3.5. Default storage location remains to be finalized. | TBD | Partially resolved |
 | OI-REC-10  | Default policy: UNALIGNED chunks may be displayed diagnostically but SHALL NOT be treated as metric map contributions. PARTIAL_ALIGNMENT criteria remain to be finalized. | TBD | Partially resolved |
+| OI-REC-11  | Inbox monitoring poll interval and filesystem watch mechanism (inotify, polling, or OS-native) need to be finalized for the target deployment platform. | TBD | Open |
+| OI-REC-12  | Live viewer update mechanism (SSE, WebSocket, or browser polling) and update interval need to be finalized. Current prototype assumption is browser polling at ≤5 s interval. | TBD | Open |

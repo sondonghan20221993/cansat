@@ -3,8 +3,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import threading
 import webbrowser
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Sequence
+from urllib.parse import parse_qs, urlparse
 
 import numpy as np
 
@@ -140,6 +144,92 @@ def _build_map_html(title: str, traces: list[dict[str, Any]], manifest_payload: 
 """
 
 
+def _build_live_map_html(title: str, poll_interval_ms: int) -> str:
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{title}</title>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <style>
+    :root {{
+      --bg: #0d1117; --panel: #161b22; --fg: #e6edf3; --muted: #8b949e; --accent: #58a6ff; --border: #30363d;
+    }}
+    body {{ margin:0; background:#0d1117; color:var(--fg); font-family:Consolas, "Courier New", monospace; display:grid; grid-template-columns:340px 1fr; min-height:100vh; }}
+    .panel {{ border-right:1px solid var(--border); padding:16px; background:var(--panel); overflow:auto; }}
+    h1 {{ font-size:16px; margin:0 0 10px; color:var(--accent); }}
+    h2 {{ font-size:13px; margin:16px 0 8px; color:#c9d1d9; }}
+    pre {{ margin:0; font-size:12px; color:var(--muted); white-space:pre-wrap; word-break:break-word; border:1px solid var(--border); border-radius:8px; padding:10px; background:rgba(0,0,0,0.2); }}
+    #plot {{ width:100%; height:100vh; }}
+  </style>
+</head>
+<body>
+  <aside class="panel">
+    <h1>Accumulated Map Live Viewer</h1>
+    <h2>Status</h2>
+    <pre id="status"></pre>
+    <h2>Manifest</h2>
+    <pre id="manifest"></pre>
+  </aside>
+  <main id="plot"></main>
+  <script>
+    const plotEl = document.getElementById('plot');
+    const statusEl = document.getElementById('status');
+    const manifestEl = document.getElementById('manifest');
+    const knownChunks = new Set();
+    const traces = [];
+    const axisTraces = [
+      {{type:'scatter3d', mode:'lines', x:[0,1], y:[0,0], z:[0,0], line:{{color:'#ff4d4f', width:6}}, name:'X'}},
+      {{type:'scatter3d', mode:'lines', x:[0,0], y:[0,1], z:[0,0], line:{{color:'#52c41a', width:6}}, name:'Y'}},
+      {{type:'scatter3d', mode:'lines', x:[0,0], y:[0,0], z:[0,1], line:{{color:'#1677ff', width:6}}, name:'Z'}}
+    ];
+
+    Plotly.newPlot(plotEl, axisTraces.slice(), {{
+      paper_bgcolor:'#0d1117', plot_bgcolor:'#0d1117', font:{{color:'#e6edf3'}}, margin:{{l:0,r:0,b:0,t:30}},
+      title:'Accumulated Reconstruction Map (Live)', scene:{{aspectmode:'data', xaxis:{{title:'X'}}, yaxis:{{title:'Y'}}, zaxis:{{title:'Z'}}}}
+    }}, {{responsive:true}});
+
+    function updateStatus(state) {{
+      statusEl.textContent = JSON.stringify({{
+        chunk_count: state.chunk_count,
+        rendered_point_count: state.rendered_point_count,
+        last_updated: state.last_updated,
+        poll_interval_ms: {poll_interval_ms}
+      }}, null, 2);
+      manifestEl.textContent = JSON.stringify(state.manifest_summary, null, 2);
+    }}
+
+    async function poll() {{
+      const response = await fetch('/map_state');
+      const state = await response.json();
+      updateStatus(state);
+      for (const chunk of state.chunks) {{
+        if (knownChunks.has(chunk.chunk_id)) continue;
+        knownChunks.add(chunk.chunk_id);
+        traces.push({{
+          type: 'scatter3d',
+          mode: 'markers',
+          x: chunk.points.map(p => p[0]),
+          y: chunk.points.map(p => p[1]),
+          z: chunk.points.map(p => p[2]),
+          marker: {{ size: 2, color: chunk.colors.map(c => `rgb(${{c[0]}},${{c[1]}},${{c[2]}})`), opacity: 0.85 }},
+          name: chunk.chunk_id,
+          customdata: chunk.points.map(_ => [chunk.alignment_status, chunk.artifact_ref]),
+          hovertemplate: `${{chunk.chunk_id}}<br>%{{customdata[0]}}<br>%{{customdata[1]}}<extra></extra>`
+        }});
+        Plotly.addTraces(plotEl, [traces[traces.length - 1]]);
+      }}
+    }}
+
+    poll();
+    setInterval(() => {{ poll().catch(console.error); }}, {poll_interval_ms});
+  </script>
+</body>
+</html>
+"""
+
+
 def render_map(manifest_path: str, output_html: str, max_points_per_chunk: int) -> dict[str, Any]:
     if max_points_per_chunk <= 0:
         raise ValueError("--max-points-per-chunk must be > 0")
@@ -189,6 +279,72 @@ def render_map(manifest_path: str, output_html: str, max_points_per_chunk: int) 
     }
 
 
+def build_map_state(manifest_path: str, max_points_per_chunk: int) -> dict[str, Any]:
+    manifest = load_manifest(manifest_path)
+    chunks_payload: list[dict[str, Any]] = []
+    total_points = 0
+    for chunk in manifest.active_chunks():
+        artifact_path = _resolve_artifact_path(manifest_path, chunk.artifact_ref)
+        artifact = load_reconstruction_artifact(artifact_path)
+        points, colors = _sample_points(artifact.points, artifact.colors, max_points_per_chunk)
+        points = _apply_chunk_transform(points, _identity_if_unaligned(chunk.transform))
+        total_points += int(len(points))
+        chunks_payload.append({
+            "chunk_id": chunk.chunk_id,
+            "alignment_status": chunk.alignment_status,
+            "artifact_ref": chunk.artifact_ref,
+            "points": points.tolist(),
+            "colors": colors.tolist(),
+        })
+    return {
+        "chunk_count": len(chunks_payload),
+        "rendered_point_count": total_points,
+        "last_updated": manifest.updated_at,
+        "manifest_summary": {
+            "map_id": manifest.map_id,
+            "display_frame_id": manifest.display_frame_id,
+            "updated_at": manifest.updated_at,
+            "chunk_ids": [chunk.chunk_id for chunk in manifest.active_chunks()],
+        },
+        "chunks": chunks_payload,
+    }
+
+
+def serve_live_map(manifest_path: str, host: str, port: int, poll_interval_s: float, max_points_per_chunk: int) -> None:
+    viewer_html = _build_live_map_html("Accumulated Map Live Viewer", int(max(poll_interval_s, 0.1) * 1000))
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802
+            parsed = urlparse(self.path)
+            if parsed.path == "/":
+                payload = viewer_html.encode("utf-8")
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+                return
+            if parsed.path == "/map_state":
+                payload = json.dumps(build_map_state(manifest_path, max_points_per_chunk)).encode("utf-8")
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+                return
+            self.send_error(HTTPStatus.NOT_FOUND)
+
+        def log_message(self, format: str, *args: Any) -> None:  # noqa: A003
+            return
+
+    server = ThreadingHTTPServer((host, port), Handler)
+    try:
+        server.serve_forever()
+    finally:
+        server.server_close()
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Create, update, and render accumulated reconstruction map manifests.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -227,6 +383,14 @@ def main(argv: list[str] | None = None) -> int:
     render.add_argument("--output-html", required=True)
     render.add_argument("--max-points-per-chunk", type=int, default=15000)
     render.add_argument("--open", action="store_true")
+
+    live = subparsers.add_parser("serve_live_map")
+    live.add_argument("--manifest", required=True)
+    live.add_argument("--host", default="127.0.0.1")
+    live.add_argument("--port", type=int, default=8011)
+    live.add_argument("--poll-interval-s", type=float, default=5.0)
+    live.add_argument("--max-points-per-chunk", type=int, default=15000)
+    live.add_argument("--open", action="store_true")
 
     args = parser.parse_args(argv)
 
@@ -273,9 +437,22 @@ def main(argv: list[str] | None = None) -> int:
         path = save_manifest(manifest, args.manifest)
         payload = {"status": "invalidated", "manifest": path, "chunk_id": args.chunk_id, "invalidated": True}
     else:
-        payload = render_map(args.manifest, args.output_html, args.max_points_per_chunk)
-        if args.open:
-            webbrowser.open(f"file:///{payload['viewer_html'].replace(os.sep, '/')}")
+        if args.command == "render_map":
+            payload = render_map(args.manifest, args.output_html, args.max_points_per_chunk)
+            if args.open:
+                webbrowser.open(f"file:///{payload['viewer_html'].replace(os.sep, '/')}")
+        else:
+            url = f"http://{args.host}:{args.port}/"
+            if args.open:
+                threading.Timer(0.3, lambda: webbrowser.open(url)).start()
+            print(json.dumps({
+                "status": "serving",
+                "url": url,
+                "manifest": os.path.abspath(args.manifest),
+                "poll_interval_s": args.poll_interval_s,
+            }, indent=2))
+            serve_live_map(args.manifest, args.host, args.port, args.poll_interval_s, args.max_points_per_chunk)
+            return 0
 
     print(json.dumps(payload, indent=2))
     return 0
