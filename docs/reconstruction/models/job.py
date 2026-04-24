@@ -147,3 +147,51 @@ class ReconstructionResponse:
     processing_duration_s: Optional[float] = None
     completed_at: Optional[datetime] = None
     extra: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class SessionTransformUpdate:
+    alignment_status: str
+    world_transform: Optional[Dict[str, Any]] = None
+    updated_by: Optional[str] = None
+
+
+@dataclass
+class ReconstructionSession:
+    session_id: str
+    image_sequence_id: Optional[str]
+    status: str
+    frame_count: int = 0
+    keyframe_count: int = 0
+    rendered_point_count: int = 0
+    ordered_frames: List[ImageDescriptor] = field(default_factory=list)
+    pose_stream_ref: Optional[Any] = None
+    map_state_ref: Optional[Any] = None
+    current_frame_ref: Optional[str] = None
+    exported_artifact_ref: Optional[str] = None
+    exported_output_format: Optional[str] = None
+    alignment_status: str = "UNALIGNED"
+    world_transform: Optional[Dict[str, Any]] = None
+    tracking_state: str = "initializing"
+    last_updated: Optional[datetime] = None
+    session_config: Dict[str, Any] = field(default_factory=dict)
+    error_code: Optional[str] = None
+
+
+@dataclass
+class SessionOperationResponse:
+    session_id: str
+    status: str
+    frame_count: Optional[int] = None
+    keyframe_count: Optional[int] = None
+    rendered_point_count: Optional[int] = None
+    pose_stream_ref: Optional[Any] = None
+    map_state_ref: Optional[Any] = None
+    current_frame_ref: Optional[str] = None
+    alignment_status: Optional[str] = None
+    world_transform: Optional[Dict[str, Any]] = None
+    tracking_state: Optional[str] = None
+    last_updated: Optional[datetime] = None
+    artifact_ref: Optional[str] = None
+    output_format: Optional[str] = None
+    error_code: Optional[str] = None

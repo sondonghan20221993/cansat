@@ -11,8 +11,13 @@ from urllib.parse import urlparse
 from reconstruction.backends.dust3r_backend import Dust3rBackend
 from reconstruction.backends.feature_sfm_backend import FeatureSfmBackend
 from reconstruction.exporters.glb_exporter import GlbExporter
-from reconstruction.models.job import ReconstructionRequest
-from reconstruction.models.wire import request_from_dict, response_to_dict
+from reconstruction.models.wire import (
+    image_descriptor_from_dict,
+    request_from_dict,
+    response_to_dict,
+    session_response_to_dict,
+    session_transform_update_from_dict,
+)
 from reconstruction.server.service import ReconstructionService
 
 
@@ -30,12 +35,27 @@ def make_server(host: str, port: int, backend_name: str, artifact_root: str) -> 
                 response = self.service.fetch_result(parts[1])
                 self._send_json(response_to_dict(response))
                 return
+            if len(parts) == 2 and parts[0] == "sessions":
+                response = self.service.get_session_state(parts[1])
+                self._send_json(session_response_to_dict(response))
+                return
+            if len(parts) == 3 and parts[0] == "sessions" and parts[2] == "state":
+                response = self.service.get_session_state(parts[1])
+                self._send_json(session_response_to_dict(response))
+                return
             if len(parts) == 3 and parts[0] == "jobs" and parts[2] == "artifact":
                 response = self.service.fetch_result(parts[1])
                 if not response.result_ref:
                     self._send_json({"error": "artifact_not_available"}, status=404)
                     return
                 self._send_file(str(response.result_ref))
+                return
+            if len(parts) == 3 and parts[0] == "sessions" and parts[2] == "artifact":
+                response = self.service.get_session_state(parts[1])
+                if not response.artifact_ref:
+                    self._send_json({"error": "artifact_not_available"}, status=404)
+                    return
+                self._send_file(str(response.artifact_ref))
                 return
             self._send_json({"error": "not_found"}, status=404)
 
@@ -53,9 +73,35 @@ def make_server(host: str, port: int, backend_name: str, artifact_root: str) -> 
                     "artifact_url": f"/jobs/{job_id}/artifact",
                 }, status=202)
                 return
+            if parsed.path == "/sessions":
+                payload = self._read_json()
+                response = self.service.start_session(payload.get("image_sequence_id"), payload.get("session_config"))
+                self._send_json(session_response_to_dict(response), status=202)
+                return
             parts = _path_parts(parsed.path)
             if len(parts) == 3 and parts[0] == "jobs" and parts[2] == "cancel":
                 self._send_json({"job_id": parts[1], "accepted": False, "reason": "cancel_not_supported"})
+                return
+            if len(parts) == 3 and parts[0] == "sessions" and parts[2] == "frames":
+                payload = self._read_json()
+                ordered_frames = [image_descriptor_from_dict(item) for item in payload.get("ordered_frames", [])]
+                response = self.service.append_frames(parts[1], ordered_frames)
+                self._send_json(session_response_to_dict(response), status=202)
+                return
+            if len(parts) == 3 and parts[0] == "sessions" and parts[2] == "transform":
+                payload = self._read_json()
+                response = self.service.update_session_transform(parts[1], session_transform_update_from_dict(payload))
+                self._send_json(session_response_to_dict(response))
+                return
+            if len(parts) == 3 and parts[0] == "sessions" and parts[2] == "export":
+                payload = self._read_json()
+                response = self.service.export_session_artifact(parts[1], str(payload.get("output_format", "ply")))
+                self._send_json(session_response_to_dict(response))
+                return
+            if len(parts) == 3 and parts[0] == "sessions" and parts[2] == "end":
+                payload = self._read_json()
+                response = self.service.end_session(parts[1], str(payload.get("mode", "finalize")))
+                self._send_json(session_response_to_dict(response))
                 return
             self._send_json({"error": "not_found"}, status=404)
 

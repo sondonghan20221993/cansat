@@ -79,6 +79,10 @@ Additional reconstruction verification cases:
 | TC-REC-23   | Invalid image rejected to rejected/ | Drop an unreadable file into inbox | File is moved to rejected/ subdirectory; monitoring loop continues without stopping | REC-IN-16 |
 | TC-REC-24   | Live viewer auto-update | Append a new chunk to manifest while viewer is open | Viewer displays updated chunk count and new point cloud data without page reload within configured poll interval | REC-VER-17 |
 | TC-REC-25   | Live viewer status panel | Open viewer and append two chunks sequentially | Panel shows correct chunk count, rendered point count, and last-updated timestamp after each append | REC-VER-18 |
+| TC-REC-26   | Session start and ordered frame append | Start a sequence session and append one ordered frame batch | Session enters `active`, frame count increases, and pose/map state becomes queryable through the session-state contract | REC-VER-10 |
+| TC-REC-27   | Session transform update | Apply `update_session_transform` to an existing active or completed session | Session alignment metadata updates without redefining the session as independent artifact chunks | REC-VER-13 |
+| TC-REC-28   | Session export to artifact path | Export a completed session and then archive the result through the artifact path | Export returns `artifact_ref`; optional archive/manifest insertion preserves traceability without altering the existing session-state contract | REC-VER-12 |
+| TC-REC-29   | Session-state live viewer | Open live session viewer while session state is updated | Viewer shows session id, frame count, tracking state, `pose_stream_ref`/`map_state_ref` file-backed resources, and trajectory/map visualization without requiring export to manifest first | REC-VER-19 |
 
 ### 3.4 Pose / Frame Alignment Sensor Tests
 
@@ -203,6 +207,7 @@ to avoid mixing implementation requirements and verification requirements.
 | REC-PROC-22      | 05-reconstruction-requirements.md | Unit Test | TC-REC-16 |
 | REC-PROC-23      | 05-reconstruction-requirements.md | Unit Test | TC-REC-17 |
 | REC-PROC-24      | 05-reconstruction-requirements.md | Unit Test | TC-REC-18 |
+| REC-PROC-24A     | 05-reconstruction-requirements.md | Integration Test | TC-REC-26, TC-REC-27 |
 | REC-IN-11        | 05-reconstruction-requirements.md | Integration Test | TC-REC-19, TC-REC-20 |
 | REC-IN-12        | 05-reconstruction-requirements.md | Integration Test | TC-REC-19 |
 | REC-IN-13        | 05-reconstruction-requirements.md | Integration Test | TC-REC-20 |
@@ -221,6 +226,13 @@ to avoid mixing implementation requirements and verification requirements.
 | REC-OUT-16       | 05-reconstruction-requirements.md | Integration Test | TC-REC-14 |
 | REC-OUT-17       | 05-reconstruction-requirements.md | Unit/Integration Test | TC-REC-13 |
 | REC-OUT-18       | 05-reconstruction-requirements.md | Integration Test | TC-REC-14, TC-ALIGN-05 |
+| REC-OUT-04A      | 05-reconstruction-requirements.md | Integration Test | TC-REC-26 |
+| REC-OUT-13A      | 05-reconstruction-requirements.md | Integration Test | TC-REC-26 |
+| REC-PROC-13D     | 05-reconstruction-requirements.md | Integration Test | TC-REC-26, TC-REC-29 |
+| REC-PROC-13E     | 05-reconstruction-requirements.md | Integration Test | TC-REC-26, TC-REC-29 |
+| REC-OUT-13B      | 05-reconstruction-requirements.md | Integration Test | TC-REC-29 |
+| REC-OUT-23       | 05-reconstruction-requirements.md | Integration Test | TC-REC-29 |
+| REC-OUT-24       | 05-reconstruction-requirements.md | Integration Test | TC-REC-29 |
 | ALIGN-PROC-01    | 06-pose-frame-alignment-requirements.md | Integration Test | TC-ALIGN-01 |
 | ALIGN-PROC-02    | 06-pose-frame-alignment-requirements.md | Integration Test | TC-ALIGN-01 |
 | ALIGN-PROC-04    | 06-pose-frame-alignment-requirements.md | Integration Test | TC-ALIGN-02 |
@@ -263,15 +275,16 @@ to avoid mixing implementation requirements and verification requirements.
 | REC-VER-07 | 05-reconstruction-requirements.md | Unit Test | TC-REC-12 |
 | REC-VER-08 | 05-reconstruction-requirements.md | Unit Test | TC-REC-01, TC-REC-03 |
 | REC-VER-09 | 05-reconstruction-requirements.md | Unit Test | TC-REC-02 |
-| REC-VER-10 | 05-reconstruction-requirements.md | Unit/Integration Test | TC-REC-13 |
+| REC-VER-10 | 05-reconstruction-requirements.md | Unit/Integration Test | TC-REC-13, TC-REC-26 |
 | REC-VER-11 | 05-reconstruction-requirements.md | Integration Test | TC-REC-14 |
-| REC-VER-12 | 05-reconstruction-requirements.md | Unit Test | TC-REC-15 |
-| REC-VER-13 | 05-reconstruction-requirements.md | Integration Test | TC-ALIGN-04, TC-ALIGN-05 |
+| REC-VER-12 | 05-reconstruction-requirements.md | Unit/Integration Test | TC-REC-15, TC-REC-28 |
+| REC-VER-13 | 05-reconstruction-requirements.md | Integration Test | TC-ALIGN-04, TC-ALIGN-05, TC-REC-27 |
 | REC-VER-14 | 05-reconstruction-requirements.md | Integration Test | TC-REC-19 |
 | REC-VER-15 | 05-reconstruction-requirements.md | Integration Test | TC-REC-20 |
 | REC-VER-16 | 05-reconstruction-requirements.md | Integration Test | TC-REC-21, TC-REC-22 |
 | REC-VER-17 | 05-reconstruction-requirements.md | Integration Test | TC-REC-24 |
 | REC-VER-18 | 05-reconstruction-requirements.md | Integration Test | TC-REC-25 |
+| REC-VER-19 | 05-reconstruction-requirements.md | Integration Test | TC-REC-29 |
 | ALIGN-VER-01 | 06-pose-frame-alignment-requirements.md | Unit Test | TC-ALIGN-07 |
 | ALIGN-VER-02 | 06-pose-frame-alignment-requirements.md | Integration Test | TC-ALIGN-01, TC-ALIGN-02 |
 | ALIGN-VER-03 | 06-pose-frame-alignment-requirements.md | Integration Test | TC-ALIGN-08 |

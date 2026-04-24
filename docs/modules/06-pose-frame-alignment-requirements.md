@@ -7,7 +7,11 @@ Define requirements for aligning UWB, GPS, IMU, camera, reconstruction, and map 
 The Pose / Frame Alignment module is responsible for converting sensor-specific
 coordinate outputs into the system common World / Map frame. Image-based 3D
 reconstruction outputs are treated as relative reconstruction-frame geometry
-until aligned using available sensor pose information.
+until aligned using available sensor pose information. When a sequence-based
+SLAM backend already provides internally consistent session poses and map state,
+the alignment module SHALL align that session as a whole to the World / Map
+frame rather than prioritizing post hoc registration of independent 3D artifacts
+from the same session.
 
 ## 2. Coordinate Frames
 
@@ -92,9 +96,9 @@ For reconstruction output, the module SHALL estimate or apply:
 - **ALIGN-PROC-05**: The module SHALL NOT modify the raw reconstruction artifact; it SHALL output aligned metadata or an aligned derivative artifact/reference.
 - **ALIGN-PROC-06**: When GPS and UWB are both available, the module SHALL preserve both source measurements and record which source was used as the primary position reference for each aligned output.
 - **ALIGN-PROC-07**: IMU attitude SHALL be usable as an auxiliary orientation constraint for camera pose or reconstruction alignment, but missing IMU data SHALL NOT automatically invalidate reconstruction output.
-- **ALIGN-PROC-08**: For accumulated maps, the module SHALL calculate or apply a separate Reconstruction-to-World transform for each reconstruction chunk.
+- **ALIGN-PROC-08**: For accumulated maps, the module SHALL calculate or apply a separate Reconstruction-to-World transform for each reconstruction chunk, or a single session-to-World transform for each internally consistent SLAM session.
 - **ALIGN-PROC-09**: The module SHALL preserve per-chunk alignment status so that aligned, partially aligned, and unaligned chunks can coexist in the accumulated map manifest.
-- **ALIGN-PROC-10**: The module SHALL update chunk transform metadata through the accumulated map manifest update interface after initial map insertion when improved UWB/GPS/IMU/camera pose information becomes available.
+- **ALIGN-PROC-10**: The module SHALL update chunk or session transform metadata through the accumulated map manifest or the `update_session_transform` operation defined in 03-interface-specification.md Section 3.5A after initial insertion when improved UWB/GPS/IMU/camera pose information becomes available.
 - **ALIGN-PROC-11**: The module SHALL NOT create or append raw reconstruction chunks to the accumulated map manifest; those operations are owned by the reconstruction ground-side path.
 
 ## 6. Output Requirements
@@ -110,7 +114,7 @@ Alignment status values:
 
 | Status | Meaning |
 | --- | --- |
-| `ALIGNED` | A complete Reconstruction-to-World transform is available, including scale, linear transform, translation, timestamp basis, and valid calibration status. |
+| `ALIGNED` | A complete Reconstruction-to-World or Session-to-World transform is available, including scale when required, linear transform, translation, timestamp basis, and valid calibration status. |
 | `PARTIAL_ALIGNMENT` | Some alignment information is available but one or more required metric-map components remain incomplete or low-confidence. Example: orientation available without reliable metric scale, or position available with stale/low-confidence timestamp basis. |
 | `UNALIGNED` | No valid Reconstruction-to-World transform is available. The chunk may be displayed diagnostically only. |
 

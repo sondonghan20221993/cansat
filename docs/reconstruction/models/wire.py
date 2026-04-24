@@ -4,7 +4,15 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Any
 
-from reconstruction.models.job import ImageDescriptor, JobStatus, ReconstructionRequest, ReconstructionResponse
+from reconstruction.models.job import (
+    ImageDescriptor,
+    JobStatus,
+    ReconstructionRequest,
+    ReconstructionResponse,
+    ReconstructionSession,
+    SessionOperationResponse,
+    SessionTransformUpdate,
+)
 
 
 def _parse_cfs_time(value: Any) -> datetime:
@@ -91,4 +99,51 @@ def response_from_dict(payload: dict[str, Any]) -> ReconstructionResponse:
         processing_duration_s=payload.get("processing_duration_s"),
         completed_at=completed_at,
         extra=payload.get("extra", {}),
+    )
+
+
+def image_descriptor_from_dict(payload: dict[str, Any]) -> ImageDescriptor:
+    return ImageDescriptor(
+        image_id=payload["image_id"],
+        timestamp=_parse_cfs_time(payload.get("timestamp")),
+        source_path=payload["source_path"],
+        metadata=payload.get("metadata", {}),
+    )
+
+
+def session_response_to_dict(response: SessionOperationResponse) -> dict[str, Any]:
+    return _to_wire_value(asdict(response))
+
+
+def session_response_from_dict(payload: dict[str, Any]) -> SessionOperationResponse:
+    last_updated = payload.get("last_updated")
+    if isinstance(last_updated, str):
+        try:
+            last_updated = datetime.fromisoformat(last_updated)
+        except ValueError:
+            last_updated = None
+    return SessionOperationResponse(
+        session_id=payload["session_id"],
+        status=payload["status"],
+        frame_count=payload.get("frame_count"),
+        keyframe_count=payload.get("keyframe_count"),
+        rendered_point_count=payload.get("rendered_point_count"),
+        pose_stream_ref=payload.get("pose_stream_ref"),
+        map_state_ref=payload.get("map_state_ref"),
+        current_frame_ref=payload.get("current_frame_ref"),
+        alignment_status=payload.get("alignment_status"),
+        world_transform=payload.get("world_transform"),
+        tracking_state=payload.get("tracking_state"),
+        last_updated=last_updated,
+        artifact_ref=payload.get("artifact_ref"),
+        output_format=payload.get("output_format"),
+        error_code=payload.get("error_code"),
+    )
+
+
+def session_transform_update_from_dict(payload: dict[str, Any]) -> SessionTransformUpdate:
+    return SessionTransformUpdate(
+        alignment_status=str(payload["alignment_status"]),
+        world_transform=payload.get("world_transform"),
+        updated_by=payload.get("updated_by"),
     )

@@ -4,6 +4,9 @@ import os
 import sys
 import tempfile
 import unittest
+import json
+import threading
+from unittest.mock import patch
 
 DOCS_DIR = os.path.dirname(os.path.abspath(__file__))
 if DOCS_DIR not in sys.path:
@@ -15,10 +18,20 @@ from reconstruction.artifact_loader import load_reconstruction_artifact
 from reconstruction.client.server_client import ServerClient
 from reconstruction.core.orchestrator import ReconstructionOrchestrator
 from reconstruction.exporters.glb_exporter import GlbExporter
-from reconstruction.models.job import ImageDescriptor, JobStatus, ReconstructionRequest
-from reconstruction.models.wire import request_from_dict, request_to_dict, response_from_dict, response_to_dict
+from reconstruction.models.job import ImageDescriptor, JobStatus, ReconstructionRequest, SessionTransformUpdate
+from reconstruction.models.wire import (
+    request_from_dict,
+    request_to_dict,
+    response_from_dict,
+    response_to_dict,
+    session_response_from_dict,
+    session_response_to_dict,
+)
+from reconstruction.client.session_http_client import SessionHttpClient
 from reconstruction.server.service import ReconstructionService
+from reconstruction.server.http_server import make_server
 from reconstruction.validation.image_validator import ImageValidator
+from reconstruction.map_accumulator_cli import build_session_state
 
 
 class ReconstructionSkeletonTest(unittest.TestCase):
@@ -160,6 +173,122 @@ class ReconstructionSkeletonTest(unittest.TestCase):
 
         self.assertEqual(decoded_response.job_id, request.job_id)
         self.assertEqual(decoded_response.status, JobStatus.PENDING)
+
+    def test_session_lifecycle_contract(self) -> None:
+        service = ReconstructionService(Dust3rBackend(), GlbExporter())
+        started = service.start_session("seq-1", {"output_policy": "session_state_only"})
+        self.assertEqual(started.status, "active")
+
+        appended = service.append_frames(started.session_id, [self._make_image("server/path/a.png", "img-a")])
+        self.assertEqual(appended.status, "accepted")
+        self.assertEqual(appended.frame_count, 1)
+
+        state = service.get_session_state(started.session_id)
+        self.assertEqual(state.frame_count, 1)
+        self.assertEqual(state.keyframe_count, 1)
+        self.assertEqual(state.alignment_status, "UNALIGNED")
+        self.assertEqual(state.tracking_state, "initializing")
+
+        updated = service.update_session_transform(
+            started.session_id,
+            SessionTransformUpdate(
+                alignment_status="ALIGNED",
+                world_transform={"scale": 1.0, "linear": [[1, 0, 0], [0, 1, 0], [0, 0, 1]], "translate": [0, 0, 0]},
+            ),
+        )
+        self.assertEqual(updated.status, "updated")
+        self.assertEqual(updated.alignment_status, "ALIGNED")
+
+        ended = service.end_session(started.session_id, "finalize")
+        self.assertEqual(ended.status, "completed")
+
+        closed_append = service.append_frames(started.session_id, [self._make_image("server/path/b.png", "img-b")])
+        self.assertEqual(closed_append.status, "session_closed")
+
+    def test_session_wire_roundtrip(self) -> None:
+        payload = {
+            "session_id": "session-1",
+            "status": "active",
+            "frame_count": 3,
+            "keyframe_count": 1,
+            "rendered_point_count": 42,
+            "alignment_status": "UNALIGNED",
+            "tracking_state": "tracking",
+        }
+        decoded = session_response_from_dict(session_response_to_dict(session_response_from_dict(payload)))
+        self.assertEqual(decoded.session_id, "session-1")
+        self.assertEqual(decoded.status, "active")
+        self.assertEqual(decoded.frame_count, 3)
+        self.assertEqual(decoded.keyframe_count, 1)
+        self.assertEqual(decoded.rendered_point_count, 42)
+        self.assertEqual(decoded.tracking_state, "tracking")
+
+    def test_build_session_state_shapes_session_for_live_viewer(self) -> None:
+        service = ReconstructionService(Dust3rBackend(), GlbExporter())
+        started = service.start_session("seq-2", {"output_policy": "session_state_only"})
+        service.append_frames(
+            started.session_id,
+            [
+                self._make_image("server/path/a.png", "img-a"),
+                self._make_image("server/path/b.png", "img-b"),
+                self._make_image("server/path/c.png", "img-c"),
+            ],
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state_path = os.path.join(tmpdir, "session-state.json")
+            with open(state_path, "w", encoding="utf-8") as fp:
+                fp.write(json.dumps(session_response_to_dict(service.get_session_state(started.session_id))))
+            payload = build_session_state(f"file:///{state_path.replace(os.sep, '/')}", started.session_id, 100)
+
+        self.assertEqual(payload["session_id"], started.session_id)
+        self.assertEqual(payload["frame_count"], 3)
+        self.assertEqual(len(payload["pose_stream_ref"]["poses"]), 3)
+        self.assertGreater(len(payload["map_points"]), 0)
+
+    def test_session_http_client_happy_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            server = make_server("127.0.0.1", 0, "feature_sfm", tmpdir)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            endpoint = f"http://127.0.0.1:{server.server_address[1]}"
+            client = SessionHttpClient(endpoint=endpoint, request_timeout_s=5.0)
+            try:
+                started = client.start_session("seq-http", {"output_policy": "session_plus_export", "output_format": "ply"})
+                self.assertEqual(started["status"], "active")
+
+                appended = client.append_frames(started["session_id"], [
+                    self._make_image("/server/a.png", "img-a"),
+                    self._make_image("/server/b.png", "img-b"),
+                ])
+                self.assertEqual(appended["status"], "accepted")
+                self.assertEqual(appended["frame_count"], 2)
+
+                state = client.get_session_state(started["session_id"])
+                self.assertEqual(state["frame_count"], 2)
+                self.assertEqual(state["tracking_state"], "tracking")
+
+                exported = client.export_session_artifact(started["session_id"], "ply")
+                self.assertEqual(exported["status"], "exported")
+                artifact_path = client.download_artifact(started["session_id"], tmpdir)
+                self.assertTrue(os.path.exists(str(artifact_path)))
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+
+    def test_mast3r_slam_session_backend_branch_is_selected(self) -> None:
+        service = ReconstructionService(Dust3rBackend(), GlbExporter())
+        started = service.start_session("seq-mast3r", {"backend_name": "mast3r_slam", "output_policy": "session_state_only"})
+
+        self.assertIn(started.session_id, getattr(service, "_session_backends"))
+
+        with patch("reconstruction.server.service.Mast3rSlamSessionBackend.refresh_session") as refresh_mock:
+            service.append_frames(
+                started.session_id,
+                [self._make_image("/server/frame-a.png", "img-a")],
+            )
+            refresh_mock.assert_called_once()
 
 
 if __name__ == "__main__":

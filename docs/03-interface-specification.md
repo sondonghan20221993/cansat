@@ -239,7 +239,170 @@ Map update operation:
 | `status` | string | Yes | `updated`, `not_found`, or `failed` |
 | `error_code` | string/null | No | Failure reason |
 
+### 3.5A Sequence / Session Map State (Prototype Direction)
+
+For sequence-based SLAM backends, the preferred primary output is an evolving
+session map state rather than a set of independently aligned artifact chunks.
+This section defines the additional contract that may coexist with Section 3.5.
+Unless otherwise specified below, `ordered frames[]` in this section SHALL reuse
+the same image descriptor structure as Section 3.4 `images[]`:
+`image_id`, `timestamp`, `source_path`, and optional extension fields in `extra`.
+`image_sequence_id` is a logical ordered-frame set identifier supplied by the
+ground-side path. `session_config` is an object containing backend selection,
+output/export policy, and any sequence-mode runtime configuration defined by
+the implementation.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `session_id` | string | Yes | Long-lived sequence processing session identifier |
+| `status` | string | Yes | `active`, `completed`, `failed`, or `exported` |
+| `frame_count` | uint32 | Yes | Number of accepted frames in the session |
+| `keyframe_count` | uint32 | No | Number of keyframes retained by the backend when that concept is available |
+| `rendered_point_count` | uint32 | No | Number of points currently exposed for visualization or diagnostic export when available |
+| `pose_stream_ref` | string or object | Yes | Reference to session camera trajectory or pose stream. For the current prototype, the backend-native `.txt` trajectory file SHALL be treated as the authoritative pose-stream artifact, and any normalized pose list is informational only. |
+| `map_state_ref` | string or object | Yes | Reference to current dense/sparse map state. For the current prototype, the backend-native `.ply` snapshot file SHALL be treated as the authoritative map-state artifact. |
+| `current_frame_ref` | string/null | No | Most recent accepted frame path or URI when available |
+| `exported_artifact_ref` | string/null | No | Optional exported artifact for offline inspection |
+| `alignment_status` | string | Yes | World/Map alignment status for the session map. Status values SHALL follow the definitions in 06-pose-frame-alignment-requirements.md ALIGN-OUT-05. |
+| `world_transform` | object/null | Conditional | Session-to-World transform when available |
+| `tracking_state` | string | No | Session runtime tracking state such as `initializing`, `tracking`, `relocalizing`, `completed`, or implementation-defined equivalent |
+| `last_updated` | cFS_TIME | No | Timestamp of the latest session-state update |
+
+Session lifecycle rules:
+
+- `active` sessions MAY accept additional `append_frames` requests.
+- `completed`, `failed`, and `exported` sessions SHALL reject additional `append_frames` requests unless an explicit reopen policy is defined by a future revision.
+- `end_session` with finalize semantics SHALL transition the session to `completed`.
+- `end_session` with discard semantics SHALL transition the session to `failed` or implementation-defined terminal discard state and SHALL make the session unavailable for further frame append.
+
+Session operations:
+
+| Operation | Required Inputs | Expected Behavior |
+|---|---|---|
+| `start_session` | image_sequence_id or session config | Create a long-lived SLAM/reconstruction session |
+| `append_frames` | session_id, ordered frames[] | Add ordered frames to an existing session |
+| `get_session_state` | session_id | Return latest pose/map state |
+| `update_session_transform` | session_id, alignment_status, world_transform | Update session-to-World alignment metadata for an existing session |
+| `export_session_artifact` | session_id, output_format | Export optional diagnostic artifact without redefining the session map as independent chunks |
+| `end_session` | session_id | Finalize or discard the session |
+
+Relationship to Section 3.5:
+
+- Section 3.5 remains the contract for independent artifact chunks and persistent diagnostic artifact manifests.
+- Section 3.5A is the preferred primary contract for continuous SLAM/session outputs.
+- `export_session_artifact` MAY produce an artifact that is later inserted into the Section 3.5 manifest through `append_chunk` for offline inspection, archival, or mixed-mode rendering.
+- Same-session SLAM updates SHALL NOT require repeated `append_chunk` operations for every incremental map update. Those updates SHALL remain within the session-state path until an explicit export or snapshot policy is invoked.
+
+`start_session` request:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `image_sequence_id` | string | Conditional | Required when starting a session from a named sequence source |
+| `session_config` | object | Conditional | Required when start behavior depends on runtime configuration |
+| `session_config.backend_name` | string | No | Requested sequence backend, e.g. MASt3R-SLAM-family |
+| `session_config.output_policy` | string | No | `session_state_only`, `session_plus_export`, or implementation-defined equivalent. `session_plus_export` means the implementation SHALL export a diagnostic artifact automatically when the session is finalized successfully, with semantics equivalent to `export_session_artifact`. |
+| `session_config.extra` | object | No | Forward-compatible runtime configuration |
+
+`start_session` response:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `session_id` | string | Yes | Created session identifier |
+| `status` | string | Yes | `active` or `failed` |
+| `error_code` | string/null | No | Failure reason when session start is rejected |
+
+`append_frames` request:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `session_id` | string | Yes | Existing session identifier |
+| `ordered_frames[]` | list | Yes | Ordered frame descriptors reusing the Section 3.4 image descriptor structure |
+
+`append_frames` response:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `session_id` | string | Yes | Target session identifier |
+| `status` | string | Yes | `accepted`, `session_not_found`, `session_closed`, or `failed` |
+| `frame_count` | uint32 | No | Updated accepted frame count when available |
+| `error_code` | string/null | No | Failure reason |
+
+`get_session_state` response:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `session_id` | string | Yes | Session identifier |
+| `status` | string | Yes | Current session status |
+| `frame_count` | uint32 | Yes | Number of accepted frames |
+| `keyframe_count` | uint32 | No | Number of retained keyframes when available |
+| `rendered_point_count` | uint32 | No | Current rendered/diagnostic point count when available |
+| `pose_stream_ref` | string or object | Yes | Latest pose stream reference |
+| `map_state_ref` | string or object | Yes | Latest map state reference |
+| `current_frame_ref` | string/null | No | Most recent accepted frame path or URI when available |
+| `alignment_status` | string | Yes | Alignment status using ALIGN-OUT-05 values |
+| `world_transform` | object/null | Conditional | Session-to-World transform when available |
+| `tracking_state` | string | No | Runtime tracking state exposed for monitoring and live visualization |
+| `last_updated` | cFS_TIME | No | Timestamp of the latest session-state update |
+| `error_code` | string/null | No | Failure reason |
+
+`update_session_transform` request:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `session_id` | string | Yes | Existing session identifier |
+| `alignment_status` | string | Yes | `ALIGNED`, `PARTIAL_ALIGNMENT`, or `UNALIGNED` |
+| `world_transform` | object/null | Conditional | Required for `ALIGNED` or `PARTIAL_ALIGNMENT`; null for `UNALIGNED` |
+| `updated_by` | string | No | Producer module, e.g. `pose_frame_alignment` |
+
+`update_session_transform` response:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `session_id` | string | Yes | Updated session identifier |
+| `status` | string | Yes | `updated`, `not_found`, or `failed` |
+| `error_code` | string/null | No | Failure reason |
+
+`export_session_artifact` request:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `session_id` | string | Yes | Existing session identifier |
+| `output_format` | string | Yes | Requested export format token |
+
+`export_session_artifact` response:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `session_id` | string | Yes | Session identifier |
+| `status` | string | Yes | `exported`, `not_found`, or `failed` |
+| `artifact_ref` | string/null | No | Exported artifact reference when successful |
+| `output_format` | string/null | No | Export format token |
+| `error_code` | string/null | No | Failure reason |
+
+`end_session` request:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `session_id` | string | Yes | Existing session identifier |
+| `mode` | string | Yes | `finalize` or `discard` |
+
+`end_session` response:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `session_id` | string | Yes | Session identifier |
+| `status` | string | Yes | `completed`, `discarded`, `not_found`, or `failed` |
+| `error_code` | string/null | No | Failure reason |
+
 ---
+
+Prototype session-state resource policy:
+
+- `pose_stream_ref` SHOULD preserve the backend-native trajectory file path or URI as the authoritative reference.
+- When `pose_stream_ref` is represented as an object, the object SHOULD include at minimum `backend`, `path`, and a viewer-friendly pose summary.
+- `map_state_ref` SHOULD preserve the backend-native map snapshot file path or URI as the authoritative reference.
+- When `map_state_ref` is represented as an object, the object SHOULD include at minimum `backend`, `path`, `frame_count`, and `point_count`.
+- Derived pose arrays or point summaries MAY be included for live visualization, but they SHALL NOT replace the file reference unless a future revision explicitly freezes a different resource contract.
 
 ## 4. Coordinate System Rules
 
@@ -326,3 +489,4 @@ Position_Result의 timestamp는 Distance_Set 내 마지막 거리값 수신 시�
 - OI-IFC-04: message_id 및 source 필드의 열거형 값 정의 필요
 - OI-IFC-05: Reconstruction fixed-frame visualization payload의 필수/선택 필드 동결 필요 (Section 3.3)
 - OI-IFC-06: Accumulated map manifest schema and map update operation payloads need final freeze after prototype validation (Section 3.5)
+- OI-IFC-07: Sequence / Session Map State contract (Section 3.5A) needs final freeze after MASt3R-SLAM prototype validation, including session lifecycle rules, operation request/response schemas, and the relationship between session export and Section 3.5 archive path.

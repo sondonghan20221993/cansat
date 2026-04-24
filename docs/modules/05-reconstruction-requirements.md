@@ -4,10 +4,13 @@
 
 This document defines the requirements for the image-based 3D reconstruction module.
 
-The module SHALL use a DUSt3R-family pipeline as the primary reconstruction approach.
-It SHALL accept image inputs collected from the drone, execute reconstruction on a
-remote GPU server, and return 3D reconstruction outputs and quality metadata for
-downstream integration.
+The module SHALL use a DUSt3R-family or MASt3R-family pipeline as the primary
+reconstruction approach. The preferred long-term architecture is a
+sequence-aware pose-and-map pipeline whenever continuous image sequences are
+available. It SHALL accept image inputs collected from the drone, execute
+reconstruction or SLAM processing on a remote GPU server, and return
+reconstruction outputs, pose/map state, and quality metadata for downstream
+integration.
 
 At the current system planning stage, GLB is the most likely primary external output
 format. Both the reconstruction model and the output format may change in future
@@ -27,10 +30,10 @@ system documents and the interface specification (03-interface-specification.md)
 - Image and metadata packaging for remote job submission
 - Remote job submission to the reconstruction server
 - DUSt3R-family inference and reconstruction processing on the remote GPU server
-- 3D result generation and quality evaluation
+- 3D map state generation and quality evaluation
 - Result packaging and return to the ground-side system
 - Ground-side fixed-frame visualization metadata generation for validation UI
-- Accumulated map input/output contract for appending multiple reconstruction chunks
+- Accumulated map input/output contract for appending multiple reconstruction chunks or updating a continuous session map
 - Ground-side image inbox monitoring and buffer-based automatic job dispatch
 - Processed image file lifecycle management (inbox → processed separation)
 - Live-updating accumulated map viewer (server-push or polling, no manual reload)
@@ -64,6 +67,7 @@ system documents and the interface specification (03-interface-specification.md)
 
 - **REC-IN-09**: The ground-side computer SHALL receive input images and associated metadata before submitting a reconstruction request.
 - **REC-IN-10**: The ground-side computer SHALL package reconstruction inputs and forward them to the remote reconstruction server.
+- **REC-IN-10A**: When continuous image sequences are available, the ground-side computer SHALL preserve frame order so that sequence-based tracking or SLAM backends can consume temporally ordered inputs.
 
 ### 3.4 Inbox-Based Automatic Image Ingestion
 
@@ -86,31 +90,36 @@ system documents and the interface specification (03-interface-specification.md)
 
 ### 4.2 Reconstruction Processing
 
-- **REC-PROC-04**: The reconstruction module SHALL use a DUSt3R-family method as the primary reconstruction pipeline.
-- **REC-PROC-05**: The reconstruction module SHALL estimate scene structure from image inputs using the selected DUSt3R-family model.
+- **REC-PROC-04**: The reconstruction module SHALL use a DUSt3R-family or MASt3R-family method as the primary reconstruction pipeline.
+- **REC-PROC-05**: The reconstruction module SHALL estimate scene structure and camera pose from image inputs using the selected reconstruction or SLAM backend.
 - **REC-PROC-06**: The reconstruction module SHALL be modularized so that the selected reconstruction model can be replaced, upgraded, or reconfigured without changing the module boundary contract.
 - **REC-PROC-07**: When optional auxiliary pose or localization input defined in REC-IN-06 is provided, the reconstruction module SHALL use it only for auxiliary metadata packaging, traceability, or backend hints and SHALL NOT treat it as a required input or perform primary sensor fusion.
 - **REC-PROC-08**: The reconstruction module SHALL continue to support image-only reconstruction when no auxiliary pose input is available.
+- **REC-PROC-08A**: When operating in continuous-sequence mode, the reconstruction module SHALL maintain per-session camera trajectory and map state until the session is explicitly completed, exported, or discarded.
 
 ### 4.3 Remote Execution
 
 - **REC-PROC-09**: The ground-side computer SHALL submit reconstruction jobs to the remote GPU server.
-- **REC-PROC-10**: The remote GPU server SHALL execute DUSt3R-family inference on an NVIDIA RTX A6000-class GPU environment.
+- **REC-PROC-10**: The remote GPU server SHALL execute DUSt3R-family or MASt3R-family reconstruction / SLAM inference on an NVIDIA RTX A6000-class GPU environment.
 - **REC-PROC-11**: The remote GPU server SHALL return reconstruction outputs and execution status to the ground-side computer after processing.
 - **REC-PROC-12**: The reconstruction module SHALL preserve job identity between request and response so that returned outputs can be matched to the originating image set.
 - **REC-PROC-13**: The reconstruction module SHALL record reconstruction failure status when remote execution fails, times out, or returns invalid outputs.
 - **REC-PROC-13A**: The prototype remote execution path SHALL support the HTTP polling contract defined in 03-interface-specification.md Section 3.4 until the final transport is frozen.
 - **REC-PROC-13B**: The ground-side client SHALL download completed reconstruction artifacts automatically after successful remote execution and SHALL pass the downloaded artifact to the fixed-frame visualization or downstream integration path.
+- **REC-PROC-13C**: For sequence-based SLAM backends, the remote execution path SHALL support a long-lived processing session or equivalent session identifier so that multiple ordered frames can contribute to a single evolving map state. Session state transitions and operation responses SHALL follow 03-interface-specification.md Section 3.5A.
+- **REC-PROC-13D**: When the selected backend is a sequence-based SLAM backend such as a MASt3R-SLAM-family implementation, the reconstruction module SHALL expose backend runtime outputs through the session-state contract rather than requiring immediate conversion to independent reconstruction chunks.
+- **REC-PROC-13E**: The reconstruction module SHALL preserve a backend adapter boundary between the session-state contract and the selected sequence backend so that backend-specific runtime files, logs, and intermediate outputs can be translated into the common session-state fields without changing the external API. For the current prototype, backend-native trajectory files SHALL be preserved as the authoritative `pose_stream_ref` resource and backend-native map snapshots SHALL be preserved as the authoritative `map_state_ref` resource.
 
 ### 4.4 Result Packaging
 
-- **REC-PROC-14**: The reconstruction module SHALL package the 3D reconstruction output together with quality metadata and processing status.
+- **REC-PROC-14**: The reconstruction module SHALL package reconstruction outputs together with quality metadata and processing status.
 - **REC-PROC-15**: The reconstruction module SHALL distinguish successful, degraded, and failed reconstruction outcomes. *(Criteria: see OI-REC-05)*
 - **REC-PROC-16**: The reconstruction module SHALL make the returned result available to downstream alignment or integration modules through the defined interface.
+- **REC-PROC-16A**: When a backend provides camera trajectory or globally consistent map state directly, the module SHALL treat those outputs as the primary alignment source rather than requiring downstream alignment of independently reconstructed artifacts from the same session.
 
 ### 4.5 Accumulated Map Handling
 
-- **REC-PROC-17**: The ground-side reconstruction path SHALL own creation and append operations for the persistent accumulated map manifest.
+- **REC-PROC-17**: The ground-side reconstruction path SHALL own creation and append operations for the persistent accumulated map manifest and SHALL also own creation and update of the ground-side session map record when the selected backend uses the sequence/session contract.
 - **REC-PROC-18**: Each map chunk SHALL preserve its originating reconstruction `job_id`, `image_set_id`, local artifact reference, output format, timestamp, quality metadata, and frame/alignment metadata.
 - **REC-PROC-19**: The accumulated map SHALL NOT assume that independent reconstruction chunks already share a metric World / Map frame unless a valid Reconstruction-to-World transform is attached.
 - **REC-PROC-20**: When a chunk does not have a valid World-frame alignment transform, the accumulated map SHALL store it as `UNALIGNED` or `PARTIAL_ALIGNMENT` rather than silently merging it as a final map.
@@ -118,6 +127,7 @@ system documents and the interface specification (03-interface-specification.md)
 - **REC-PROC-22**: The accumulated map manifest SHALL be persisted as a ground-side file so that map state can be recovered after process restart.
 - **REC-PROC-23**: The accumulated map append operation SHALL reject duplicate `job_id` entries by default unless an explicit replacement policy is configured.
 - **REC-PROC-24**: The accumulated map SHALL support marking a chunk as invalidated without deleting the raw artifact.
+- **REC-PROC-24A**: When a backend produces a session-level map state instead of independent chunk artifacts, the accumulated map path SHALL support incremental update of that session state without requiring post hoc alignment between separate 3D artifacts from the same session. Session-state ownership remains with the ground-side reconstruction path defined in REC-PROC-17.
 
 ### 4.6 Processed Image Lifecycle
 
@@ -131,10 +141,11 @@ system documents and the interface specification (03-interface-specification.md)
 
 ### 5.1 Reconstruction Output
 
-- **REC-OUT-01**: The reconstruction module SHALL output a 3D reconstruction result in a system-defined representation. *(Current primary candidate: GLB; see OI-REC-03)*
+- **REC-OUT-01**: The reconstruction module SHALL output a reconstruction result in a system-defined representation. The representation SHALL support both artifact-oriented outputs and sequence/session map-state outputs. *(Artifact primary candidates remain GLB/PLY; see OI-REC-03)*
 - **REC-OUT-02**: The output SHALL include a reconstruction job identifier and a processing timestamp.
 - **REC-OUT-03**: The output SHALL include the identifier of the input image set used to generate the reconstruction.
 - **REC-OUT-04**: The reconstruction module SHALL be modularized so that the external output format can be changed in future revisions without requiring redesign of the full reconstruction module.
+- **REC-OUT-04A**: When the selected backend operates in continuous-sequence mode, the output SHALL include a session identifier and camera trajectory or equivalent pose stream reference.
 
 ### 5.2 Quality Metadata
 
@@ -153,6 +164,8 @@ system documents and the interface specification (03-interface-specification.md)
 - **REC-OUT-11**: The reconstruction output SHALL expose camera trajectory metadata as defined in 03-interface-specification.md Section 3.3.
 - **REC-OUT-12**: The reconstruction output SHALL expose fixed-frame visualization metadata as defined in 03-interface-specification.md Section 3.3.
 - **REC-OUT-13**: The ground-side validation UI SHALL use the image linkage fields defined in 03-interface-specification.md Section 3.3.
+- **REC-OUT-13A**: For sequence-based backends, the validation UI SHALL be able to consume incremental camera trajectory and map-state updates without requiring export of a new independent artifact for each short frame batch.
+- **REC-OUT-13B**: For sequence-based backends, the session-state output SHALL include the latest accepted frame reference, frame count, and runtime tracking state when those values are available from the backend adapter.
 
 ### 5.5 Accumulated Map Output
 
@@ -168,6 +181,8 @@ system documents and the interface specification (03-interface-specification.md)
 - **REC-OUT-20**: The viewer SHALL use a server-push or browser-polling mechanism to detect manifest changes. The update interval for polling-based implementations SHALL be configurable and SHALL default to no more than 5 seconds.
 - **REC-OUT-21**: The viewer SHALL display the current chunk count, rendered point count, and last-updated timestamp in the UI panel so the user can confirm that live updates are being received.
 - **REC-OUT-22**: A viewer update SHALL NOT require a full page reload. New chunk data SHALL be merged into the existing 3D scene incrementally.
+- **REC-OUT-23**: For session-based backends, the ground-side live viewer SHALL support a session-state mode that displays session identifier, frame count, keyframe count when available, rendered point count when available, tracking state, alignment status, and last-updated timestamp.
+- **REC-OUT-24**: The session-state live viewer SHALL be able to render camera trajectory and current map-state visualization from the session-state contract without requiring that the session first be exported into the accumulated map manifest.
 
 ---
 
@@ -208,7 +223,7 @@ formally defined in 03-interface-specification.md:
 
 The reconstruction verification cases and traceability SHALL be owned by
 08-verification-plan.md. This module document only reserves the REC-VER-01
-through REC-VER-18 requirement identifiers.
+through REC-VER-19 requirement identifiers.
 
 Reserved verification identifiers:
 
@@ -223,15 +238,16 @@ Reserved verification identifiers:
 | REC-VER-07 | Output format replacement |
 | REC-VER-08 | Fixed-frame visualization consistency |
 | REC-VER-09 | Camera trajectory / image linkage |
-| REC-VER-10 | Accumulated map append |
+| REC-VER-10 | Accumulated map append or session-map update |
 | REC-VER-11 | Accumulated map rendering |
-| REC-VER-12 | Raw artifact preservation |
-| REC-VER-13 | Per-chunk alignment update and unaligned chunk handling |
+| REC-VER-12 | Raw artifact preservation or non-destructive session export |
+| REC-VER-13 | Per-chunk alignment update and unaligned chunk handling, excluding same-session SLAM map updates |
 | REC-VER-14 | Inbox monitoring: automatic image detection and buffer accumulation |
 | REC-VER-15 | Inbox monitoring: automatic job dispatch when buffer reaches chunk size |
 | REC-VER-16 | Processed image lifecycle: inbox/processed separation and no re-read |
 | REC-VER-17 | Live viewer: automatic update without page reload when new chunk is appended |
 | REC-VER-18 | Live viewer: chunk count, point count, and last-updated timestamp displayed |
+| REC-VER-19 | Session-state live viewer: status, trajectory, and map-state update |
 
 ---
 
@@ -251,3 +267,4 @@ Reserved verification identifiers:
 | OI-REC-10  | Default policy: UNALIGNED chunks may be displayed diagnostically but SHALL NOT be treated as metric map contributions. PARTIAL_ALIGNMENT criteria remain to be finalized. | TBD | Partially resolved |
 | OI-REC-11  | Inbox monitoring poll interval and filesystem watch mechanism (inotify, polling, or OS-native) need to be finalized for the target deployment platform. | TBD | Open |
 | OI-REC-12  | Live viewer update mechanism (SSE, WebSocket, or browser polling) and update interval need to be finalized. Current prototype assumption is browser polling at ≤5 s interval. | TBD | Open |
+| OI-REC-13  | Prototype session-state resource policy: raw backend-native trajectory files are preserved as the authoritative `pose_stream_ref` resource and backend-native map snapshots are preserved as the authoritative `map_state_ref` resource. Any normalized summary data is viewer-only and does not replace the file reference. | TBD | Resolved for prototype |
