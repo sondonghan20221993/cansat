@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 import json
+import struct
 import threading
 from unittest.mock import patch
 
@@ -286,6 +287,36 @@ class ReconstructionSkeletonTest(unittest.TestCase):
 
         self.assertEqual(len(state["map_points"]), 2)
         self.assertEqual(state["map_points"][1], [1.0, 2.0, 3.0])
+
+    def test_artifact_loader_reads_binary_little_endian_ply(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ply_path = os.path.join(tmpdir, "sample_binary.ply")
+            header = (
+                "ply\n"
+                "format binary_little_endian 1.0\n"
+                "element vertex 2\n"
+                "property float x\n"
+                "property float y\n"
+                "property float z\n"
+                "property uchar red\n"
+                "property uchar green\n"
+                "property uchar blue\n"
+                "end_header\n"
+            ).encode("ascii")
+            vertex_blob = (
+                struct.pack("<fffBBB", 0.0, 0.0, 0.0, 255, 0, 0)
+                + struct.pack("<fffBBB", 1.0, 2.0, 3.0, 0, 255, 0)
+            )
+            with open(ply_path, "wb") as fp:
+                fp.write(header)
+                fp.write(vertex_blob)
+
+            artifact = load_reconstruction_artifact(ply_path)
+
+        self.assertEqual(artifact.output_format, "ply")
+        self.assertEqual(len(artifact.points), 2)
+        self.assertEqual(artifact.points[1].tolist(), [1.0, 2.0, 3.0])
+        self.assertEqual(artifact.colors[1].tolist(), [0, 255, 0])
 
     def test_session_http_client_happy_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

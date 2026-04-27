@@ -324,7 +324,7 @@ def _build_html(
         const uwbY = uwbPoints.map(c => c.position[1]);
         const uwbZ = uwbPoints.map(c => c.position[2]);
         const uwbText = uwbPoints.map(c => c.label);
-        const uwbTrace = {
+        const uwbTrace = {{
             type: 'scatter3d',
             mode: 'markers+text',
             x: uwbX,
@@ -332,10 +332,10 @@ def _build_html(
             z: uwbZ,
             text: uwbText,
             textposition: 'top center',
-            hovertemplate: '%{text}<extra></extra>',
-            marker: { size: 8, color: '#ef4444', symbol: 'diamond' },
+            hovertemplate: '%{{text}}<extra></extra>',
+            marker: {{ size: 8, color: '#ef4444', symbol: 'diamond' }},
             name: 'uwb-points'
-        };
+        }};
 
     const axisX = {{
       type: 'scatter3d', mode: 'lines',
