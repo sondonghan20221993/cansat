@@ -24,12 +24,30 @@ Error_Code 체계를 준수 SHALL.
 | `frame_id`   | string   | No       | 좌표계 또는 세션 프레임 식별자                               |
 | `job_id`     | string   | No       | Reconstruction 작업과 연관된 경우 해당 작업 식별자           |
 
+Message-format rules:
+
 Correlation field rules:
 
 - `seq` SHALL be monotonically increasing within a single source module across a session. Consumers MAY use `seq` to detect gaps or reordering.
 - `image_id`, `frame_id`, and `job_id` SHALL be populated in any message that describes an event associated with an image capture, coordinate frame, or reconstruction job respectively.
 - When a LoRa status message and an image/video metadata message describe the same vehicle event, they SHALL carry the same `image_id`, `job_id`, or `seq` value to allow ground-side correlation.
 - Ground-side consumers SHALL use the vehicle-generated `timestamp` field — not the ground reception time — as the authoritative event time for cross-link correlation.
+
+### 3.2D Communication Link Role Contract
+
+To preserve communication-role separation on the cFS boundary, each message SHALL
+declare one of the following logical link roles:
+
+| Link Role Token | Description | Allowed Traffic Class |
+|---|---|---|
+| `CONTROL_HEALTH_LINK` | LoRa control/health path | heartbeat, status, housekeeping, fault/event summaries, uplink commands |
+| `PAYLOAD_LINK` | Image/video payload path | image frames, video streams, reconstruction artifact transfers |
+
+Role rules:
+
+- `CONTROL_HEALTH_LINK` traffic SHALL NOT be routed on `PAYLOAD_LINK` except under an explicitly documented fallback policy.
+- `PAYLOAD_LINK` traffic SHALL NOT be routed on `CONTROL_HEALTH_LINK` except under an explicitly documented fallback policy.
+- When bridged into module-specific naming, `CONTROL_HEALTH_LINK` maps to `LORA` and `PAYLOAD_LINK` maps to `IMG_VID`.
 
 ---
 

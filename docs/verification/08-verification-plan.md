@@ -120,6 +120,9 @@ Additional reconstruction verification cases:
 | TC-CFS-12 | Telemetry baseline heartbeat period | Telemetry monitor producer emits valid updates every 500 ms nominally | Link remains `ALIVE` and no degraded/lost transition is emitted under nominal reception | CFS-TMR-05, CFS-TMR-06 |
 | TC-CFS-13 | Telemetry runtime config staging | Runtime request changes telemetry timing thresholds to valid values | New configuration is staged, validated, and applied only at the documented safe application point | CFS-CFG-10, CFS-CFG-11, CFS-CFG-13, CFS-CFG-14 |
 | TC-CFS-14 | Invalid telemetry runtime config reject | Runtime request sets invalid telemetry timing values such as lost timeout <= degraded timeout | Active configuration remains unchanged and the rejection is reported through event and housekeeping telemetry | CFS-CFG-11, CFS-CFG-12, CFS-CFG-14 |
+| TC-CFS-23 | Communication-role separation rules | LoRa and image/video traffic are generated concurrently | Control/health traffic remains on `CONTROL_HEALTH_LINK` and payload traffic remains on `PAYLOAD_LINK` with no unintended cross-routing | CFS-LNK-01, CFS-LNK-03, CFS-LNK-05 |
+| TC-CFS-24 | Timestamp origin rules | Vehicle-originated messages traverse bridge/relay path before ground reception | Ground-observed packets preserve vehicle-generated `timestamp` values without relay overwrite | CFS-SB-03, CFS-LNK-04 |
+| TC-CFS-25 | Correlation identifier rules | A shared capture event produces LoRa status/event and image metadata messages | `image_id`, `job_id`, and `seq` correlation identifiers are preserved and match across linked messages | CFS-LNK-04 |
 
 ---
 
