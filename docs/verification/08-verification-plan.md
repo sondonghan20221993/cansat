@@ -120,11 +120,17 @@ Additional reconstruction verification cases:
 | TC-CFS-12 | Telemetry baseline heartbeat period | Telemetry monitor producer emits valid updates every 500 ms nominally | Link remains `ALIVE` and no degraded/lost transition is emitted under nominal reception | CFS-TMR-05, CFS-TMR-06 |
 | TC-CFS-13 | Telemetry runtime config staging | Runtime request changes telemetry timing thresholds to valid values | New configuration is staged, validated, and applied only at the documented safe application point | CFS-CFG-10, CFS-CFG-11, CFS-CFG-13, CFS-CFG-14 |
 | TC-CFS-14 | Invalid telemetry runtime config reject | Runtime request sets invalid telemetry timing values such as lost timeout <= degraded timeout | Active configuration remains unchanged and the rejection is reported through event and housekeeping telemetry | CFS-CFG-11, CFS-CFG-12, CFS-CFG-14 |
+<<<<<<< HEAD
 | TC-CFS-15 | MAVLink Bridge nominal parse and publish | FC sends `LOCAL_POSITION_NED`, `ATTITUDE`, and `GPS_RAW_INT` over serial | `FC_LOCAL_POS_MID (0x1905)`, `FC_ATTITUDE_MID (0x1906)`, and `FC_GPS_RAW_MID (0x1907)` are published on SB with correct field values and vehicle-generated `cFS_TIME` timestamp | CFS-APP-09, CFS-SB-13, CFS-SB-14, CFS-SB-15 |
 | TC-CFS-16 | MAVLink Bridge raw frame not on SB | FC sends a valid MAVLink frame | No raw MAVLink byte frame appears on the cFS Software Bus; only typed SB messages are published | CFS-APP-10 |
 | TC-CFS-17 | MAVLink Bridge optional message handling | FC sends `ODOMETRY` and `EKF_STATUS_REPORT` | `FC_ODOMETRY_MID (0x1908)` and `FC_EKF_STATUS_MID (0x1909)` are published when received; their absence does not trigger a parse error | CFS-SB-16 |
 | TC-CFS-18 | MAVLink Bridge status transitions | MAVLink messages stop arriving, then resume | `MAVLINK_BRIDGE_STATUS_MID` transitions from `ALIVE` to `DEGRADED` to `LOST` and back to `ALIVE` at configured thresholds; transitions are logged at correct severity levels | CFS-SB-17, CFS-LOG-08, CFS-LOG-10 |
 | TC-CFS-19 | MAVLink Bridge disabled isolation | `mavlink_bridge_app` is disabled in configuration | IMU, GPS, UWB, telemetry, image metadata, reconstruction, and non-MAVLink alignment flows enter nominal operation without `FC_*_MID` messages | CFS-SB-18 |
+=======
+| TC-CFS-23 | Communication-role separation rules | LoRa and image/video traffic are generated concurrently | Control/health traffic remains on `CONTROL_HEALTH_LINK` and payload traffic remains on `PAYLOAD_LINK` with no unintended cross-routing | CFS-LNK-01, CFS-LNK-03, CFS-LNK-05 |
+| TC-CFS-24 | Timestamp origin rules | Vehicle-originated messages traverse bridge/relay path before ground reception | Ground-observed packets preserve vehicle-generated `timestamp` values without relay overwrite | CFS-SB-03, CFS-LNK-04 |
+| TC-CFS-25 | Correlation identifier rules | A shared capture event produces LoRa status/event and image metadata messages | `image_id`, `job_id`, and `seq` correlation identifiers are preserved and match across linked messages | CFS-LNK-04 |
+>>>>>>> f982fcb9298d7900b88a123c4bf5e794343e9190
 
 ---
 
