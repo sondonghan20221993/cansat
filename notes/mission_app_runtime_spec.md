@@ -84,6 +84,11 @@ topology is defined, recovery for those apps shall be limited to data validity
 handling, local parser or transport recovery, telemetry reporting, and degraded
 operation.
 
+UWB ranging hardware is not part of the current mission scope. `uwb_app` and
+`UWB_POS_MID` are removed from the baseline app set. If UWB is added in a
+future mission revision, a separate topology and recovery policy shall be defined
+at that time.
+
 ## 4. Application Responsibility Model
 
 Each application shall own one clear responsibility and publish its state through
@@ -372,6 +377,7 @@ Example hardware responses:
   operate without GPS.
 - `img_app`: detect frame timeout or corrupt image; publish invalid image
   metadata and prevent `recon_app` from using the frame.
+
 ## 11. Recovery Limit and Escalation Policy
 
 cFS does not define fixed retry, restart, or reboot timing values. Recovery
@@ -764,3 +770,192 @@ reconstruction, alignment, map, system health, and uplink message flows.
 - Define hardware connection topology for `img_app` and future mission payload
   devices: Raspberry Pi direct, FC-bridged, or other. Update recovery policy
   according to the confirmed topology.
+
+## 18. `uplink_app` Specification
+
+### 18.1 Purpose and Scope
+
+`uplink_app` receives commands from the ground segment or operator, validates
+each uplink packet, and routes authorized runtime configuration changes and
+recovery commands to the appropriate mission apps through the Software Bus.
+
+`uplink_app` is the sole authorized entry point for ground-originated commands
+into the cFS mission app layer. No other app shall accept raw ground commands
+directly.
+
+`uplink_app` shall not issue commands that affect flight-controller state,
+including flight mode changes, arm/disarm, mission changes, motor or actuator
+control, or any FC-level parameter change. These are prohibited by the baseline
+platform boundary policy defined in Section 3.
+
+### 18.2 Authorized Command Classes
+
+`uplink_app` shall accept and route commands in the following classes only:
+
+| Command Class | Examples | Notes |
+| --- | --- | --- |
+| Runtime configuration | Receive period change, message enable/disable, publish rate change, timeout threshold change, diagnostic/log level change | Routed through pending config buffer; validated before activation |
+| Recovery command | Parser reset, serial reconnect, counter reset, app restart request | Routed to target app or recovery authority; subject to authorization policy |
+| Mode command | Recovery mode entry, recovery mode exit | Allowed only within authorized cFS state and operator permission level |
+| Diagnostic command | Diagnostic capture enable/disable, log level change | Immediate or one-shot; does not require pending buffer |
+| Counter management | Persistent counter reset | Requires explicit command authorization per Section 11.4.2 |
+
+Commands outside these classes shall be rejected and reported through
+`UPLINK_STATUS_MID` with a fault code.
+
+### 18.3 Prohibited Command Classes
+
+`uplink_app` shall reject and report any command in the following classes:
+
+- Flight controller reboot or reset.
+- Flight-control firmware reset.
+- Motor or actuator command.
+- Arming or disarming command.
+- Sensor power-cycle through the FC.
+- Flight mode or flight-control parameter change.
+- Any command that bypasses the pending configuration validation model.
+
+### 18.4 Uplink Packet Validation
+
+Every received uplink packet shall be validated before routing. Validation shall
+check:
+
+- Packet length and format.
+- Command code and target app identifier.
+- Packet version and compatibility.
+- CRC or checksum integrity.
+- Sequence number for duplicate and replay detection.
+- Authorization level required for the command class.
+- Current cFS state compatibility (some commands are blocked in `CFS_RECOVERY`
+  or minimum-reporting startup).
+
+A packet that fails any validation check shall be discarded. The rejection shall
+be reported through `UPLINK_STATUS_MID` with the applicable fault code. The
+active configuration and system state shall not be modified by a rejected packet.
+
+### 18.5 Configuration Command Handling
+
+Runtime configuration commands shall follow the active/pending model defined in
+Section 13.
+
+Processing steps:
+
+1. Receive and validate uplink packet.
+2. Write validated configuration payload to `pending_config` buffer of the
+   target app, or to `uplink_app`-local pending buffer if the command targets
+   `uplink_app` itself.
+3. Validate range, version, checksum or CRC, and current mode compatibility.
+4. If validation passes, activate by swapping pending to active at the next
+   allowed activation boundary for the target app.
+5. If validation fails, discard pending config, retain active config, and report
+   rejection through `UPLINK_STATUS_MID`.
+6. If activation causes a runtime fault, roll back to `previous_config` and
+   report the rollback through `UPLINK_STATUS_MID`.
+
+Activation boundaries per target app are defined in Section 13.
+
+### 18.6 Recovery Command Handling
+
+Recovery commands shall be routed to the target app or to `cfs_core_app` as the
+recovery authority. `uplink_app` shall not execute recovery actions directly
+unless the action is local to `uplink_app` itself (for example, parser reset or
+serial reconnect of the uplink transport).
+
+Recovery command routing:
+
+| Recovery Command | Routing Target | Authorization Required |
+| --- | --- | --- |
+| Parser reset | Target app or bridge component | Operator command |
+| Serial reconnect | Bridge component or transport layer | Operator command |
+| Counter reset | `cfs_core_app` or target app | Explicit command authorization |
+| App restart request | `cfs_core_app` | Operator command with mode check |
+| Recovery mode entry | `cfs_core_app` | Operator command with mode check |
+| Recovery mode exit | `cfs_core_app` | Operator command with mode check |
+
+Recovery mode entry and exit commands shall be accepted only when the current
+cFS state and operator authorization level permit the transition. `uplink_app`
+shall check the current cFS state before forwarding a mode command and shall
+reject the command if the transition is not allowed.
+
+### 18.7 `UPLINK_STATUS_MID` Payload
+
+`uplink_app` shall publish `UPLINK_STATUS_MID` at a defined housekeeping rate.
+
+Minimum fields:
+
+- Timestamp and time validity.
+- Sequence counter.
+- Valid flag and health state.
+- Last received command code.
+- Last received command sequence number.
+- Last command result: accepted, rejected, routed, or failed.
+- Last rejection fault code.
+- Accepted command count.
+- Rejected command count.
+- Routing failure count.
+- Active transport ID.
+- Uplink link state: `NOMINAL`, `DEGRADED`, `LOST`, or `FAILED`.
+- Last valid uplink receive time.
+- Pending config state: idle, pending, validating, or rejected.
+- Last config activation result.
+- Last rollback reason, if applicable.
+
+### 18.8 Uplink Transport Boundary
+
+`uplink_app` is responsible for receiving uplink packets from the authorized
+transport input. The transport may be LoRa serial, a ground-station radio link,
+or another approved channel.
+
+`uplink_app` transport responsibilities:
+
+- Open and maintain the uplink transport endpoint.
+- Parse and frame-validate incoming packets.
+- Detect transport-level faults: timeout, disconnect, parse error.
+- Attempt transport-level reconnection after fault.
+- Report transport health through `UPLINK_STATUS_MID`.
+
+`uplink_app` shall not classify final link state for the downlink telemetry path.
+Downlink telemetry health remains the responsibility of `telemetry_app`.
+
+### 18.9 Fault and Recovery Behavior
+
+| Fault Condition | `uplink_app` Behavior |
+| --- | --- |
+| Invalid uplink packet | Discard packet; increment rejected count; report fault code |
+| Duplicate or replayed packet | Discard packet; increment rejected count |
+| Transport timeout or disconnect | Attempt reconnect; publish `UPLINK_STATUS_MID` with degraded or lost state |
+| Routing failure to target app | Report routing failure; do not retry automatically |
+| Config validation failure | Retain active config; report rejection |
+| Config activation fault | Roll back to previous config; report rollback |
+| Unauthorized command class | Reject and report; do not forward |
+
+`uplink_app` shall not request Pi/cFS host reset for isolated uplink packet
+errors or transport timeouts. Escalation to `cfs_core_app` shall follow the
+staged recovery policy in Section 11.
+
+Recovery limits for `uplink_app`:
+
+| Fault Condition | First Recovery | Retry Interval | Max Retry Count | Escalation |
+| --- | --- | --- | --- | --- |
+| Transport timeout or disconnect | Reopen transport endpoint | 5 s | 3 | Mark uplink `LOST`; request recovery authority evaluation |
+| Repeated routing failure | Report to `cfs_core_app` | Per fault event | 3 | Enter `CFS_DEGRADED` if routing path is unavailable |
+
+### 18.10 Per-State Operation Policy
+
+| cFS State | `uplink_app` Behavior |
+| --- | --- |
+| `CFS_NOMINAL` | Accept and route all authorized command classes |
+| `CFS_DEGRADED` | Accept and route commands; reject commands that require nominal state |
+| `CFS_RECOVERY` | Accept diagnostic and status commands only; block configuration and mode commands |
+| Minimum-reporting startup | Accept counter reset and diagnostic commands only; block all other command classes |
+
+### 18.11 Open Items for `uplink_app`
+
+- Final `UPLINK_CMD_MID` numeric assignment.
+- Final `UPLINK_STATUS_MID` numeric assignment and publication rate.
+- Uplink transport type and physical interface definition.
+- Per-command authorization level table.
+- Sequence number window size and replay detection policy.
+- Exact command routing table: command code to target app MID mapping.
+- Per-state allowed command class table, finalized after command safety spec.
+- Uplink packet format and version policy.
