@@ -64,7 +64,7 @@ Baseline allowed cFS-side recovery actions:
 - Resubscribe, restart, or re-request FC telemetry streams.
 - Mark a data source invalid, degraded, lost, or failed.
 - Publish fault and recovery status to telemetry.
-- Continue operation using alternate data sources when allowed.
+- Continue degraded operation using only the remaining valid onboard data sources.
 
 Baseline prohibited cFS-side recovery actions:
 
@@ -360,9 +360,8 @@ Hardware-related fault handling shall follow staged recovery:
 | 2 | Timeout or stale data | Publish invalid or lost state and last-good age |
 | 3 | Soft recovery | Reinitialize local parser, reopen Pi communication endpoint, or resubscribe |
 | 4 | Hard recovery request | Request communication-path recovery through recovery authority |
-| 5 | Failover | Use backup sensor or alternate source, if available |
-| 6 | Degraded cFS operation | Continue cFS telemetry reporting with reduced or invalid data sources |
-| 7 | Minimum reporting | Keep only required cFS telemetry/fault reporting active when recovery cannot restore normal operation |
+| 5 | Degraded cFS operation | Continue cFS telemetry reporting with reduced or invalid data sources |
+| 6 | Minimum reporting | Keep only required cFS telemetry/fault reporting active when recovery cannot restore normal operation |
 
 Example hardware responses:
 
@@ -588,8 +587,7 @@ Candidate persistent values:
 | App health | App state, restart count, last fault code |
 | Hardware health | Sensor health state, last hardware fault code, recovery attempt count |
 | Mission state | Mission phase, active cFS state, degraded/recovery/minimum-reporting entry |
-| Navigation | Last valid GPS fix, last valid pose, last valid timestamp |
-| Mapping | Map checkpoint ID, map version, last committed update |
+| Navigation | Last valid GPS fix, last valid EKF state, last valid timestamp |
 | Telemetry | Last link state, last good contact time, active transport ID |
 | Config | Operator-modified config version and validated table version |
 | Recovery | Pending recovery action, last recovery result |
@@ -652,8 +650,7 @@ This model is recommended for:
 
 - Latest IMU sample.
 - Latest GPS fix.
-- Latest fused pose.
-- Map update references.
+- Latest EKF state.
 - Critical health/recovery policy snapshots.
 
 ## 15. cFS State and Command Safety
