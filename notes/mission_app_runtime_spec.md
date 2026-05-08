@@ -37,6 +37,8 @@ repository. This spec is the target contract for subsequent implementation.
 The mission sensors and flight-control hardware are physically connected to the
 MicoAir H743 V2 flight controller board. The Raspberry Pi acts as the cFS host
 and communication bridge between the flight controller and the ground segment.
+The baseline FC-to-Raspberry Pi telemetry path is a UART link carrying MAVLink
+messages.
 
 Baseline platform responsibility:
 
@@ -97,10 +99,10 @@ state.
 
 | App | Responsibility | Publish MID | Subscribe MID |
 | --- | --- | --- | --- |
-| `mavlink_bridge_app` | Receive FC-provided MAVLink telemetry, extract mission state fields, and publish mission state MIDs | `IMU_STATE_MID`, `GPS_STATE_MID`, `EKF_STATE_MID`, `BRIDGE_STATUS_MID` | Approved FC transport input |
+| `mavlink_bridge_app` | Receive FC-provided MAVLink telemetry, extract mission state fields, and publish mission state MIDs | `IMU_STATE_MID`, `GPS_STATE_MID`, `EKF_STATE_MID`, `BRIDGE_STATUS_MID` | UART-based MAVLink input from the FC |
 | `img_app` | Capture image and publish image metadata | `IMAGE_META_MID` | TBD |
 | `cfs_core_app` | Validate received mission state, manage health and recovery policy, and publish system health | `SYSTEM_HEALTH_MID` | `IMU_STATE_MID`, `GPS_STATE_MID`, `EKF_STATE_MID`, `BRIDGE_STATUS_MID`, app health/status MIDs |
-| `downlink_app` | Collect approved mission state and telemetry from the Software Bus and transmit downlink packets to the ground segment | `DOWNLINK_STATUS_MID` | `IMU_STATE_MID`, `GPS_STATE_MID`, `EKF_STATE_MID`, `SYSTEM_HEALTH_MID`, approved telemetry MIDs |
+| `downlink_app` | Collect approved mission state and telemetry MIDs from the Software Bus, compose downlink packets, and transmit to the ground segment. Does not parse MAVLink directly or evaluate state validity. | `DOWNLINK_STATUS_MID` | `IMU_STATE_MID`, `GPS_STATE_MID`, `EKF_STATE_MID`, `SYSTEM_HEALTH_MID`, approved telemetry MIDs |
 | `uplink_app` | Receive ground commands, validate uplink packets, and route authorized runtime configuration or recovery commands to mission apps | `UPLINK_STATUS_MID` | `UPLINK_CMD_MID` or approved transport input |
 
 ## 5. MID Contract Rules
