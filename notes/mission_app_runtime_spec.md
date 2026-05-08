@@ -4,7 +4,7 @@
 
 This document defines the first-pass mission application runtime specification for
 the cFS-based system. It is intended to guide implementation after the minimum
-`telemetry_app` bring-up.
+MAVLink bridge and telemetry downlink bring-up.
 
 The main goals are:
 
@@ -19,15 +19,15 @@ be reconciled with implementation as each app is added.
 
 ## 2. Scope and Current State
 
-The current repository contains a minimum runnable `telemetry_app` derived from
-the cFS sample app pattern. It currently demonstrates:
+The current repository contains a minimum runnable cFS application baseline
+derived from the cFS sample app pattern. It currently demonstrates:
 
 - cFS app load and startup.
 - Software Bus pipe creation and subscription.
 - Housekeeping and command handling.
-- Monitor input handling through `TELEMETRY_APP_MONITOR_MID`.
-- Link state reporting through `TELEMETRY_STATUS_MID`.
-- `ALIVE`, `DEGRADED`, `LOST`, and recovery state transitions.
+- Basic message routing and state publication patterns needed by mission apps.
+- Recovery-oriented state handling patterns such as `NOMINAL`, `DEGRADED`,
+  `LOST`, and restart or recovery transitions.
 
 The broader mission app set described below is not yet fully implemented in this
 repository. This spec is the target contract for subsequent implementation.
@@ -97,14 +97,10 @@ state.
 
 | App | Responsibility | Publish MID | Subscribe MID |
 | --- | --- | --- | --- |
-| `imu_app` | Receive FC-provided IMU/inertial state and publish mission IMU state | `IMU_STATE_MID` | TBD |
-| `gps_app` | Receive FC-provided GPS/GNSS state and publish mission navigation fix | `GPS_STATE_MID` | TBD |
-| `telemetry_app` | Monitor communication or telemetry input health | `TELEMETRY_STATUS_MID` | `TELEMETRY_MONITOR_MID` or external monitor input |
+| `mavlink_bridge_app` | Receive FC-provided MAVLink telemetry, extract mission state fields, and publish mission state MIDs | `IMU_STATE_MID`, `GPS_STATE_MID`, `EKF_STATE_MID`, `BRIDGE_STATUS_MID` | Approved FC transport input |
 | `img_app` | Capture image and publish image metadata | `IMAGE_META_MID` | TBD |
-| `recon_app` | Run 3D reconstruction and publish reconstruction status/result references | `RECON_STATUS_MID`, `RECON_RESULT_REF_MID` | `IMAGE_META_MID`, `RECON_REQUEST_MID` |
-| `align_app` | Align GPS, IMU, and reconstruction outputs | `ALIGN_STATE_MID` | `IMU_STATE_MID`, `GPS_STATE_MID`, `RECON_RESULT_REF_MID` |
-| `map_app` | Manage accumulated map and map updates | `MAP_UPDATE_MID` | `ALIGN_STATE_MID`, `RECON_RESULT_REF_MID` |
-| `cfs_core_app` | Monitor system health and recovery policy | `SYSTEM_HEALTH_MID` | App health/status MIDs |
+| `cfs_core_app` | Validate received mission state, manage health and recovery policy, and publish system health | `SYSTEM_HEALTH_MID` | `IMU_STATE_MID`, `GPS_STATE_MID`, `EKF_STATE_MID`, `BRIDGE_STATUS_MID`, app health/status MIDs |
+| `downlink_app` | Collect approved mission state and telemetry from the Software Bus and transmit downlink packets to the ground segment | `DOWNLINK_STATUS_MID` | `IMU_STATE_MID`, `GPS_STATE_MID`, `EKF_STATE_MID`, `SYSTEM_HEALTH_MID`, approved telemetry MIDs |
 | `uplink_app` | Receive ground commands, validate uplink packets, and route authorized runtime configuration or recovery commands to mission apps | `UPLINK_STATUS_MID` | `UPLINK_CMD_MID` or approved transport input |
 
 ## 5. MID Contract Rules
@@ -123,10 +119,10 @@ Each state or telemetry payload should include, unless explicitly exempted:
 - `SourceId`: Sensor, transport, or app instance identifier.
 - `AgeMs`: Age of last known good value, where applicable.
 
-The timestamp basis shall be defined before sensor fusion implementation. The
-candidate bases are cFS mission elapsed time, GPS time, Unix time, or a monotonic
-platform clock. `align_app` shall not fuse inputs whose time basis or time
-validity is unknown.
+The timestamp basis shall be defined before state correlation and health-policy
+implementation. The candidate bases are cFS mission elapsed time, GPS time, Unix
+time, or a monotonic platform clock. `cfs_core_app` shall not combine or compare
+inputs whose time basis or time validity is unknown.
 
 ### 5.1 MID Contract Table Template
 
@@ -156,7 +152,7 @@ tracked in Section 16.
 A payload time basis shall be considered known only when the producer declares
 the timestamp source, timestamp unit, and `TimeValid=true`.
 
-`align_app` shall reject any individual fusion input when:
+`cfs_core_app` shall reject or downgrade any individual input when:
 
 - `TimeValid=false` for that input.
 - Timestamp source is unknown.
@@ -167,17 +163,16 @@ the timestamp source, timestamp unit, and `TimeValid=true`.
 - Required inputs use incompatible time bases without a defined conversion rule.
 
 Rejecting an input with `TimeValid=false` does not automatically invalidate the
-fused output. The fused output may remain valid if the remaining inputs satisfy
-the active mode and source-mask policy. If the remaining inputs are insufficient
-for the current mode, `align_app` shall publish a degraded or invalid fused
-state.
+overall system output. Published state may remain usable if the remaining inputs
+satisfy the active mission policy. If the remaining inputs are insufficient for
+the current mode, `cfs_core_app` shall publish degraded or invalid system state.
 
 A monotonic platform clock may be used for relative timing if the mission only
 requires local ordering and age checks. GPS time or another absolute time basis
 shall be required only when absolute timing is needed by the mission policy.
 
 The final time basis selection and validity rules shall be defined before
-`align_app` implementation begins and are tracked in Section 16.
+`cfs_core_app` validation policy is finalized and are tracked in Section 16.
 
 ## 6. Minimum Payload Candidates
 
@@ -207,71 +202,73 @@ Minimum fields:
 - Accuracy or HDOP/VDOP.
 - Fault code.
 
-### 6.3 `TELEMETRY_STATUS_MID`
+### 6.3 `EKF_STATE_MID`
 
 Minimum fields:
 
-- Link state.
+- Timestamp and time validity.
+- Sequence counter.
+- Valid flag and health state.
+- Local position X/Y/Z, where available from the FC.
+- Local velocity X/Y/Z, where available from the FC.
+- EKF status flags or equivalent FC estimator state.
+- Fault code.
+
+### 6.4 `BRIDGE_STATUS_MID`
+
+Minimum fields:
+
+- Timestamp and time validity.
+- Sequence counter.
+- Valid flag and health state.
 - Active transport ID.
 - Last valid update age.
-- Degraded transition count.
-- Lost transition count.
+- Parser error count.
+- Stream timeout count.
 - Recovery count.
 - Fault code.
 
-The meaning of `TELEMETRY_STATUS_MID` shall be kept narrow: it represents
-telemetry or communication health, not the full system health state.
+The meaning of `BRIDGE_STATUS_MID` shall be kept narrow: it represents FC-to-Pi
+bridge and communication health, not the full system health state.
 
-### 6.4 `ALIGN_STATE_MID`
-
-Minimum fields:
-
-- Timestamp and time validity.
-- Sequence counter.
-- Valid flag and health state.
-- Fused pose or position.
-- Attitude, if produced by alignment.
-- Source mask showing whether IMU, GPS, and reconstruction were used.
-- Quality or covariance.
-- Fault code.
-
-### 6.5 `MAP_UPDATE_MID`
-
-Minimum fields:
-
-- Timestamp.
-- Map version.
-- Checkpoint or update reference.
-- Valid flag and health state.
-- Update result code.
-- Fault code.
-
-### 6.6 `RECON_RESULT_REF_MID`
-
-`RECON_RESULT_REF_MID` shall carry a reference to a reconstruction result, not
-raw reconstruction data. Large reconstruction outputs shall not be transported
-directly through Software Bus messages.
-
-The payload shall identify where the result can be found and whether it is safe
-for consumers to use.
+### 6.5 `SYSTEM_HEALTH_MID`
 
 Minimum fields:
 
 - Timestamp and time validity.
 - Sequence counter.
 - Valid flag and health state.
-- Result ID.
-- Result type.
-- Result storage backend.
-- Result reference, such as file path, checkpoint ID, shared-memory key, or
-  ring-buffer index.
-- Result size.
-- Result version.
-- Producer job ID.
+- Active cFS state.
+- Per-input summary: IMU, GPS, EKF, bridge, and downlink health.
+- Recovery mode or escalation stage.
+- Last recovery action.
 - Fault code.
 
-The final large-result transfer mechanism shall be defined before implementing
-`recon_app` and `map_app` and is tracked in Section 16.
+### 6.6 `DOWNLINK_STATUS_MID`
+
+Minimum fields:
+
+- Timestamp and time validity.
+- Sequence counter.
+- Valid flag and health state.
+- Active transport ID.
+- Last transmit time.
+- Transmit count.
+- Transmit error count.
+- Last transmit fault code.
+- Fault code.
+
+### 6.7 `IMAGE_META_MID`
+
+Minimum fields:
+
+- Timestamp and time validity.
+- Sequence counter.
+- Valid flag and health state.
+- Image ID.
+- Capture result code.
+- Storage or transfer reference.
+- Fault code.
 
 ## 7. Runtime-Changeable Parameters
 
@@ -369,14 +366,11 @@ Hardware-related fault handling shall follow staged recovery:
 
 Example hardware responses:
 
-- `imu_app`: detect missing FC-provided IMU stream, saturated values, or sample
-  rate drop; publish degraded/lost and request communication-path recovery after
-  retry threshold.
-- `gps_app`: detect no fix, timestamp jump, low satellite count, or missing
-  FC-provided GPS stream; publish no-fix/degraded and allow `align_app` to
-  operate without GPS.
+- `mavlink_bridge_app`: detect FC transport timeout, parser error burst, or
+  invalid MAVLink frame sequence; publish degraded or lost `BRIDGE_STATUS_MID`
+  and request communication-path recovery after retry threshold.
 - `img_app`: detect frame timeout or corrupt image; publish invalid image
-  metadata and prevent `recon_app` from using the frame.
+  metadata and block image-dependent mission processing.
 
 ## 11. Recovery Limit and Escalation Policy
 
@@ -414,19 +408,11 @@ standards and shall be revised after hardware testing.
 
 | Target | Fault Condition | First Recovery | Retry Interval | Max Retry Count | Escalation |
 | --- | --- | --- | --- | --- | --- |
-| `imu_app` | Missing FC-provided IMU stream, stale sample, invalid sample rate | Reinitialize local parser or re-request IMU stream | 10 s | 3 | Mark IMU `FAILED`; continue without direct FC reset or sensor power-cycle |
-| `gps_app` | Missing FC-provided GPS stream, no fix, stale GPS state | Reinitialize local parser or re-request GPS stream | 30 s | 5 | Mark GPS `FAILED`; continue navigation without GPS if allowed |
-| `img_app` | Frame timeout, corrupt frame, capture failure | Restart capture pipeline | 10 s | 3 | Mark camera `FAILED`; block image-dependent reconstruction |
-| `recon_app` | Reconstruction job failure, timeout, invalid output | Abort current job and restart next requested job | Per job boundary | 2 | Mark reconstruction `FAILED`; preserve last valid result reference |
-| `telemetry_app` | Monitor input timeout, link lost | Restart Pi-side transport or monitor input path | 5 s | 3 | Mark link `LOST`; request recovery authority evaluation |
-| `align_app` | Required input unavailable or time basis invalid | Reject current fusion frame | Next alignment frame | N/A | Publish invalid/degraded fused state |
-| `map_app` | Map update commit failure or checkpoint failure | Retry commit from last valid pending update | 30 s | 3 | Roll back to last valid checkpoint; if rollback target is also invalid or corrupt, mark map `FAILED` and continue with last known valid map or enter degraded mode |
+| `img_app` | Frame timeout, corrupt frame, capture failure | Restart capture pipeline | 10 s | 3 | Mark camera `FAILED`; block image-dependent mission processing |
+| `mavlink_bridge_app` | FC transport timeout, parser error burst, invalid MAVLink frame sequence | Reinitialize local parser or re-request FC stream | 5 s | 3 | Mark bridge `FAILED`; request recovery authority evaluation |
+| `downlink_app` | Downlink transport timeout, transmit failure burst, packet formatting fault | Reopen transport endpoint and retry transmit path | 5 s | 3 | Mark downlink `FAILED`; continue local cFS operation without ground delivery if allowed |
 | `cfs_core_app` | Repeated app failure or system fault | Restart failed app if allowed | 60 s | 3 per app | Enter `CFS_RECOVERY` or minimum reporting |
 | Raspberry Pi/cFS host | System-level unrecoverable cFS host fault | Pi/cFS process or host reset | N/A | 1 per 1800 s recovery window | Minimum-reporting startup if fault repeats |
-
-For frame-based consumers such as `align_app`, retry count is N/A because the
-app rejects the current frame and evaluates the next frame independently. Each
-frame is processed on its own merits; there is no per-frame retry loop.
 
 The retry interval is counted from the completion or failure detection time of
 the previous recovery attempt.
@@ -440,8 +426,6 @@ Recommended first-pass stable periods:
 | --- | --- |
 | Sensor app | 300 s |
 | Telemetry link | 300 s |
-| Reconstruction job path | 1 successful job |
-| Map checkpoint path | 1 successful checkpoint |
 | System-level recovery | 1800 s |
 
 ### 11.2 Escalation Rule
@@ -455,11 +439,10 @@ Default escalation order:
 3. Retry local operation.
 4. Reinitialize local driver, pipe, file handle, or transport.
 5. Request Pi-side communication-path recovery through the recovery authority.
-6. Fail over to backup device or alternate data source, if available.
-7. Continue in `CFS_DEGRADED`.
-8. Enter `CFS_RECOVERY`.
-9. Enter minimum-reporting operation.
-10. Request Raspberry Pi/cFS host reset only for system-level or unrecoverable repeated faults.
+6. Continue in `CFS_DEGRADED`.
+7. Enter `CFS_RECOVERY`.
+8. Enter minimum-reporting operation.
+9. Request Raspberry Pi/cFS host reset only for system-level or unrecoverable repeated faults.
 
 Apps shall not skip directly from local fault detection to Pi/cFS host reset
 unless explicitly allowed by mission safety policy. Apps shall not request flight
@@ -502,9 +485,8 @@ Watchdog reset may be allowed for:
 Each critical app shall publish or update a heartbeat at a defined interval.
 The recovery authority shall monitor heartbeat age and health state.
 
-Long-running apps shall separate heartbeat liveness from job completion. For
-example, `recon_app` may run a long reconstruction job, but it shall continue to
-publish heartbeat state while the job is in progress.
+Long-running apps shall separate heartbeat liveness from job completion when
+their internal processing spans multiple cycles or I/O boundaries.
 
 | Component | Heartbeat Timeout | First Action | Escalation |
 | --- | --- | --- | --- |
@@ -520,7 +502,7 @@ timeout of 15 s.
 
 The watchdog service interval shall be shorter than the watchdog timeout.
 The watchdog timeout shall be long enough to avoid reset during expected peak
-processing, file I/O, or reconstruction job boundaries.
+processing or file I/O boundaries.
 
 Recommended first-pass values:
 
@@ -648,12 +630,9 @@ Activation boundaries shall be app-specific:
 
 | App | Activation Boundary |
 | --- | --- |
-| `imu_app` | Next sample cycle or device reconfiguration boundary |
-| `gps_app` | Next fix processing boundary |
-| `telemetry_app` | Next monitor evaluation cycle |
-| `recon_app` | After current reconstruction job completes |
-| `align_app` | Next alignment frame boundary |
-| `map_app` | Checkpoint or map commit boundary |
+| `mavlink_bridge_app` | Next parser or FC stream processing boundary |
+| `img_app` | Next capture cycle or safe capture boundary |
+| `downlink_app` | Next transmit scheduling boundary |
 | `cfs_core_app` | Operator-approved activation or safe system boundary |
 
 ## 14. Double-Buffered Runtime Data Model
@@ -674,7 +653,6 @@ This model is recommended for:
 - Latest IMU sample.
 - Latest GPS fix.
 - Latest fused pose.
-- Reconstruction result references.
 - Map update references.
 - Critical health/recovery policy snapshots.
 
@@ -729,9 +707,9 @@ Each app shall support or be testable through:
 - App restart and soft boot recovery.
 - Persistent state CRC/checksum failure.
 
-The existing `telemetry_app` E2E sender only validates monitor input and link
-state behavior. Additional test tools are required for IMU, GPS, image,
-reconstruction, alignment, map, system health, and uplink message flows.
+The existing baseline E2E sender only validates a subset of monitor and link
+state behavior. Additional test tools are required for MAVLink bridge, IMU,
+GPS, EKF, image, downlink, system health, and uplink message flows.
 
 ## 17. Open Items
 
@@ -746,21 +724,15 @@ reconstruction, alignment, map, system health, and uplink message flows.
 - Exact command authorization and table validation rules.
 - Final `uplink_app` command routing contract, including authorized command
   classes, per-target command MID mapping, and `UPLINK_STATUS_MID` payload.
-- Mapping between current `telemetry_app` implementation and final
-  `TELEMETRY_STATUS_MID` definition.
 - Complete MID contract table per app, including owner, producer, consumers,
   command MID, publication rate, payload layout, validity rules, and fault
   behavior.
 - Define command MID per app and command routing policy.
-- Define time basis and time validity rules for fusion inputs, including the
-  minimum condition for a time basis to be considered known by `align_app`.
-- Define `RECON_RESULT_REF_MID` payload and large-result transfer policy,
-  including the storage backend and reference mechanism.
+- Define time basis and time validity rules for mission inputs, including the
+  minimum condition for a time basis to be considered known by `cfs_core_app`.
 - Define per-state app operation policy, including which apps run, suspend, or
   publish invalid output in `CFS_NOMINAL`, `CFS_DEGRADED`, `CFS_RECOVERY`, and
   minimum-reporting startup. `SHUTDOWN` shall remain an ordered procedure.
-- Define map rollback failure behavior when the last valid checkpoint is missing,
-  corrupt, or incompatible.
 - Define app-level correctness properties for sequence handling, timeout
   handling, recovery behavior, config activation, rollback, and reboot-loop
   prevention.
@@ -915,7 +887,8 @@ or another approved channel.
 - Report transport health through `UPLINK_STATUS_MID`.
 
 `uplink_app` shall not classify final link state for the downlink telemetry path.
-Downlink telemetry health remains the responsibility of `telemetry_app`.
+Downlink telemetry health remains the responsibility of `downlink_app` and
+`cfs_core_app`.
 
 ### 18.9 Fault and Recovery Behavior
 
