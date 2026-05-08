@@ -78,11 +78,11 @@ Baseline prohibited cFS-side recovery actions:
 Any exception to this baseline shall require a separate mission safety policy and
 explicit command authorization.
 
-The hardware connection topology for `img_app`, `uwb_app`, and any future
-mission payload device shall be documented before enabling device-specific
-recovery. Until the topology is defined, recovery for those apps shall be limited
-to data validity handling, local parser or transport recovery, telemetry
-reporting, and degraded operation.
+The hardware connection topology for `img_app` and any future mission payload
+device shall be documented before enabling device-specific recovery. Until the
+topology is defined, recovery for those apps shall be limited to data validity
+handling, local parser or transport recovery, telemetry reporting, and degraded
+operation.
 
 ## 4. Application Responsibility Model
 
@@ -96,11 +96,11 @@ state.
 | `gps_app` | Receive FC-provided GPS/GNSS state and publish mission navigation fix | `GPS_STATE_MID` | TBD |
 | `telemetry_app` | Monitor communication or telemetry input health | `TELEMETRY_STATUS_MID` | `TELEMETRY_MONITOR_MID` or external monitor input |
 | `img_app` | Capture image and publish image metadata | `IMAGE_META_MID` | TBD |
-| `uwb_app` | Estimate UWB position | `UWB_POS_MID` | TBD |
 | `recon_app` | Run 3D reconstruction and publish reconstruction status/result references | `RECON_STATUS_MID`, `RECON_RESULT_REF_MID` | `IMAGE_META_MID`, `RECON_REQUEST_MID` |
-| `align_app` | Align GPS, IMU, UWB, and reconstruction outputs | `ALIGN_STATE_MID` | `IMU_STATE_MID`, `GPS_STATE_MID`, `UWB_POS_MID`, `RECON_RESULT_REF_MID` |
+| `align_app` | Align GPS, IMU, and reconstruction outputs | `ALIGN_STATE_MID` | `IMU_STATE_MID`, `GPS_STATE_MID`, `RECON_RESULT_REF_MID` |
 | `map_app` | Manage accumulated map and map updates | `MAP_UPDATE_MID` | `ALIGN_STATE_MID`, `RECON_RESULT_REF_MID` |
 | `cfs_core_app` | Monitor system health and recovery policy | `SYSTEM_HEALTH_MID` | App health/status MIDs |
+| `uplink_app` | Receive ground commands, validate uplink packets, and route authorized runtime configuration or recovery commands to mission apps | `UPLINK_STATUS_MID` | `UPLINK_CMD_MID` or approved transport input |
 
 ## 5. MID Contract Rules
 
@@ -226,7 +226,7 @@ Minimum fields:
 - Valid flag and health state.
 - Fused pose or position.
 - Attitude, if produced by alignment.
-- Source mask showing whether IMU, GPS, UWB, and reconstruction were used.
+- Source mask showing whether IMU, GPS, and reconstruction were used.
 - Quality or covariance.
 - Fault code.
 
@@ -372,9 +372,6 @@ Example hardware responses:
   operate without GPS.
 - `img_app`: detect frame timeout or corrupt image; publish invalid image
   metadata and prevent `recon_app` from using the frame.
-- `uwb_app`: detect insufficient anchors or outlier ranges; publish degraded
-  quality and allow `align_app` fallback.
-
 ## 11. Recovery Limit and Escalation Policy
 
 cFS does not define fixed retry, restart, or reboot timing values. Recovery
@@ -413,7 +410,6 @@ standards and shall be revised after hardware testing.
 | --- | --- | --- | --- | --- | --- |
 | `imu_app` | Missing FC-provided IMU stream, stale sample, invalid sample rate | Reinitialize local parser or re-request IMU stream | 10 s | 3 | Mark IMU `FAILED`; continue without direct FC reset or sensor power-cycle |
 | `gps_app` | Missing FC-provided GPS stream, no fix, stale GPS state | Reinitialize local parser or re-request GPS stream | 30 s | 5 | Mark GPS `FAILED`; continue navigation without GPS if allowed |
-| `uwb_app` | Insufficient anchors, invalid range set, stale range data | Clear range window and restart ranging cycle | 5 s | 5 | Mark UWB `DEGRADED` or `FAILED`; allow `align_app` fallback |
 | `img_app` | Frame timeout, corrupt frame, capture failure | Restart capture pipeline | 10 s | 3 | Mark camera `FAILED`; block image-dependent reconstruction |
 | `recon_app` | Reconstruction job failure, timeout, invalid output | Abort current job and restart next requested job | Per job boundary | 2 | Mark reconstruction `FAILED`; preserve last valid result reference |
 | `telemetry_app` | Monitor input timeout, link lost | Restart Pi-side transport or monitor input path | 5 s | 3 | Mark link `LOST`; request recovery authority evaluation |
@@ -728,8 +724,8 @@ Each app shall support or be testable through:
 - Persistent state CRC/checksum failure.
 
 The existing `telemetry_app` E2E sender only validates monitor input and link
-state behavior. Additional test tools are required for IMU, GPS, UWB, image,
-reconstruction, alignment, map, and system health message flows.
+state behavior. Additional test tools are required for IMU, GPS, image,
+reconstruction, alignment, map, system health, and uplink message flows.
 
 ## 17. Open Items
 
@@ -742,6 +738,8 @@ reconstruction, alignment, map, and system health message flows.
 - Recovery authority implementation: `cfs_core_app`, health/safety app, or
   existing cFS app integration.
 - Exact command authorization and table validation rules.
+- Final `uplink_app` command routing contract, including authorized command
+  classes, per-target command MID mapping, and `UPLINK_STATUS_MID` payload.
 - Mapping between current `telemetry_app` implementation and final
   `TELEMETRY_STATUS_MID` definition.
 - Complete MID contract table per app, including owner, producer, consumers,
@@ -763,6 +761,6 @@ reconstruction, alignment, map, and system health message flows.
 - Final numeric recovery constants for retry intervals, retry limits, heartbeat
   periods, watchdog timeout, and reboot loop windows, to be confirmed after
   hardware testing.
-- Define hardware connection topology for `img_app`, `uwb_app`, and future
-  mission payload devices: Raspberry Pi direct, FC-bridged, or other. Update
-  recovery policy according to the confirmed topology.
+- Define hardware connection topology for `img_app` and future mission payload
+  devices: Raspberry Pi direct, FC-bridged, or other. Update recovery policy
+  according to the confirmed topology.
