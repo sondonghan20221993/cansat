@@ -1,144 +1,128 @@
-# 06. Pose / Frame Alignment Requirements
+# 06. Pose / Frame Alignment 요구사항
 
-## 1. Purpose
+## 1. 목적
 
-Define requirements for aligning UWB, GPS, IMU, camera, reconstruction, and map coordinate frames.
+이 문서는 GPS, IMU, camera, reconstruction, map 좌표계를 정렬하기 위한 요구사항을 정의한다.
 
-The Pose / Frame Alignment module is responsible for converting sensor-specific
-coordinate outputs into the system common World / Map frame. Image-based 3D
-reconstruction outputs are treated as relative reconstruction-frame geometry
-until aligned using available sensor pose information. When a sequence-based
-SLAM backend already provides internally consistent session poses and map state,
-the alignment module SHALL align that session as a whole to the World / Map
-frame rather than prioritizing post hoc registration of independent 3D artifacts
-from the same session.
+Pose / Frame Alignment module은 센서별 좌표 출력을 시스템 공통 World / Map frame으로 변환하는 책임을 가진다. 이미지 기반 3D reconstruction 출력은 사용 가능한 센서 pose 정보로 정렬되기 전까지 상대 reconstruction frame geometry로 취급한다. sequence 기반 SLAM backend가 이미 내부적으로 일관된 session pose와 map state를 제공하는 경우, alignment module은 동일 session에서 생성된 독립 3D artifact를 사후 정합하는 것보다 해당 session 전체를 World / Map frame으로 정렬해야 한다.
 
-## 2. Coordinate Frames
+## 2. 좌표계
 
-### 2.1 UWB Coordinate Frame
+### 2.1 GPS 좌표계
 
-- Origin: TBD — see OI-ALIGN-01 and 04-uwb-requirements.md coordinate definition.
-- Axis convention: TBD — see OI-ALIGN-01.
-- Unit: cm at UWB Position_Result interface unless converted to the World / Map frame unit.
+- 원점: local tangent frame으로 변환되기 전까지 WGS84 geodetic reference
+- 축 규칙: source에서는 latitude / longitude / altitude, local 변환 후에는 ENU 또는 NED
+- 단위: 변환 전 latitude/longitude는 degree, altitude는 meter, 변환 후에는 meter
 
-### 2.2 GPS Coordinate Frame
+### 2.2 IMU / Body 좌표계
 
-- Origin: WGS84 geodetic reference unless converted to a local tangent frame
-- Axis convention: latitude / longitude / altitude at source; ENU or NED after local conversion
-- Unit: degrees for latitude/longitude, meters for altitude before conversion; meters after conversion
+- 원점: IMU sensor 원점 또는 vehicle body 기준점
+- 축 규칙: 하드웨어 장착 방향에 따라 TBD, body-frame axis로 문서화해야 함
+- 단위: 자세는 radian 또는 degree, 가속도는 m/s^2, 각속도는 rad/s 또는 deg/s
 
-### 2.3 IMU / Body Coordinate Frame
+### 2.3 Camera 좌표계
 
-- Origin: IMU sensor origin or vehicle body reference point
-- Axis convention: TBD by hardware mounting; SHALL be documented as body-frame axes
-- Unit: radians or degrees for attitude; m/s^2 for acceleration; rad/s or deg/s for angular rate
+- 원점: calibration으로 재정의하지 않는 한 camera optical center
+- 축 규칙: TBD — 현재 prototype 가정은 OpenCV camera frame이며 `OI-ALIGN-04` 참조
+- 단위: metric alignment 이전까지는 backend 의존 상대 단위
 
-### 2.4 Camera Coordinate Frame
+### 2.4 Reconstruction 좌표계
 
-- Origin: Camera optical center unless overridden by calibration.
-- Axis convention: TBD — OpenCV camera frame is the current prototype assumption; see OI-ALIGN-04.
-- Unit: backend-dependent relative units before metric alignment.
+- 원점: model 의존 reconstruction origin
+- 축 규칙: model/backend 의존, 알려진 경우 metadata로 보고해야 함
+- 단위: 센서 alignment를 통해 metric scale을 복구하기 전까지는 relative scale
 
-### 2.5 Reconstruction Coordinate Frame
+### 2.5 World / Map 좌표계
 
-- Origin: model-dependent reconstruction origin
-- Axis convention: model/backend dependent; SHALL be reported as metadata when known
-- Unit: relative scale unless metric scale is recovered from sensor alignment
+- 원점: TBD — 임무/map origin은 `OI-ALIGN-01`에서 최종 확정
+- 축 규칙: TBD — 현재 display-frame 후보는 ENU이며 최종 ENU/NED 정책은 `OI-ALIGN-01`에서 결정
+- 단위: TBD — 시스템 전반의 cm 정책을 유지하지 않는 한 meter 사용 예상
 
-### 2.6 World / Map Coordinate Frame
+## 3. 정렬 방법
 
-- Origin: TBD — mission/map origin to be finalized by OI-ALIGN-01.
-- Axis convention: TBD — ENU is the current display-frame candidate; final ENU/NED policy is OI-ALIGN-01.
-- Unit: TBD — expected metric unit is meters unless system-level cm policy is retained.
+좌표계 정렬 방식은 다음 접근을 지원해야 한다.
 
-## 3. Alignment Method
+- static transform
+- dynamic calibration
+- hybrid alignment
 
-Describe the coordinate alignment approach.
-
-- Static transform
-- Dynamic calibration
-- Hybrid alignment
-
-The module SHALL support the following transformation chain:
+모듈은 다음 transform chain을 지원해야 한다.
 
 ```text
-UWB frame            -> World / Map frame
 GPS local frame      -> World / Map frame
 IMU / Body frame     -> World / Map frame
 Camera frame         -> Body or World / Map frame
 Reconstruction frame -> World / Map frame
 ```
 
-For reconstruction output, the module SHALL estimate or apply:
+Reconstruction 출력에 대해서는 다음 항목을 추정하거나 적용해야 한다.
 
-- scale from relative reconstruction units to metric units when available
-- rotation from reconstruction axes to World / Map axes
-- translation from reconstruction origin to World / Map origin
-- optional camera-to-body or camera-to-tag extrinsic offset
+- 가능한 경우 relative reconstruction unit을 metric unit으로 변환하기 위한 scale
+- reconstruction axis를 World / Map axis로 맞추기 위한 rotation
+- reconstruction origin을 World / Map origin으로 맞추기 위한 translation
+- 선택적인 camera-to-body 또는 camera-to-tag extrinsic offset
 
-## 4. Offset and Calibration Parameters
+## 4. Offset 및 Calibration 파라미터
 
-| Parameter | Description | Source | Update Rule |
+| 파라미터 | 설명 | 출처 | 갱신 규칙 |
 | --- | --- | --- | --- |
-| UWB to World transform | Converts UWB coordinates into the system common frame | Anchor survey / calibration | Static unless anchors move |
-| GPS to local transform | Converts WGS84 GPS into local ENU/NED frame | Mission origin / map config | Static per mission |
-| IMU to Body transform | Corrects IMU mounting orientation | Hardware calibration | Static unless remounted |
-| Camera to Body/Tag transform | Camera extrinsic offset from vehicle body or UWB Tag | Calibration | Static unless camera/tag moves |
-| Reconstruction to World transform | Aligns relative reconstruction geometry to common frame | Sensor pose alignment | Updated per reconstruction job or image set |
-| Scale factor | Converts reconstruction relative scale to metric scale | UWB/GPS/camera pose constraints | Updated per reconstruction job or image set |
+| GPS to local transform | WGS84 GPS를 local ENU/NED frame으로 변환 | Mission origin / map config | 임무 단위로 고정 |
+| IMU to Body transform | IMU 장착 방향 보정 | Hardware calibration | 재장착 전까지 고정 |
+| Camera to Body transform | Vehicle body 기준 camera extrinsic offset | Calibration | Camera 이동 전까지 고정 |
+| Reconstruction to World transform | Relative reconstruction geometry를 공통 frame에 정렬 | Sensor pose alignment | Reconstruction job 또는 image set별 갱신 |
+| Scale factor | Reconstruction relative scale을 metric scale로 변환 | GPS/camera pose constraint | Reconstruction job 또는 image set별 갱신 |
 
-## 5. Processing Requirements
+## 5. 처리 요구사항
 
-- **ALIGN-PROC-01**: The module SHALL transform UWB, GPS, IMU, camera, and reconstruction outputs into the system World / Map frame when the required transform data is available.
-- **ALIGN-PROC-02**: The module SHALL preserve timestamp alignment across source data and SHALL report when alignment uses interpolated, nearest-neighbor, or stale sensor data.
-- **ALIGN-PROC-03**: The module SHALL report calibration validity for each transform used in a fused or aligned output.
-- **ALIGN-PROC-04**: The module SHALL treat reconstruction output as relative geometry until a Reconstruction-to-World transform is available.
-- **ALIGN-PROC-05**: The module SHALL NOT modify the raw reconstruction artifact; it SHALL output aligned metadata or an aligned derivative artifact/reference.
-- **ALIGN-PROC-06**: When GPS and UWB are both available, the module SHALL preserve both source measurements and record which source was used as the primary position reference for each aligned output.
-- **ALIGN-PROC-07**: IMU attitude SHALL be usable as an auxiliary orientation constraint for camera pose or reconstruction alignment, but missing IMU data SHALL NOT automatically invalidate reconstruction output.
-- **ALIGN-PROC-08**: For accumulated maps, the module SHALL calculate or apply a separate Reconstruction-to-World transform for each reconstruction chunk, or a single session-to-World transform for each internally consistent SLAM session.
-- **ALIGN-PROC-09**: The module SHALL preserve per-chunk alignment status so that aligned, partially aligned, and unaligned chunks can coexist in the accumulated map manifest.
-- **ALIGN-PROC-10**: The module SHALL update chunk or session transform metadata through the accumulated map manifest or the `update_session_transform` operation defined in 03-interface-specification.md Section 3.5A after initial insertion when improved UWB/GPS/IMU/camera pose information becomes available.
-- **ALIGN-PROC-11**: The module SHALL NOT create or append raw reconstruction chunks to the accumulated map manifest; those operations are owned by the reconstruction ground-side path.
+- **ALIGN-PROC-01**: 필요한 transform 데이터가 준비된 경우, 모듈은 GPS, IMU, camera, reconstruction 출력을 시스템 World / Map frame으로 변환해야 한다.
+- **ALIGN-PROC-02**: 모듈은 source 데이터 간 timestamp 정렬을 유지해야 하며, interpolation, nearest-neighbor, stale sensor data 중 어떤 방식을 사용했는지 보고해야 한다.
+- **ALIGN-PROC-03**: 모듈은 fused 또는 aligned output에 사용된 각 transform의 calibration validity를 보고해야 한다.
+- **ALIGN-PROC-04**: Reconstruction-to-World transform이 준비되기 전까지 reconstruction 출력은 relative geometry로 취급해야 한다.
+- **ALIGN-PROC-05**: 모듈은 raw reconstruction artifact를 수정해서는 안 되며, aligned metadata 또는 aligned derivative artifact/reference를 출력해야 한다.
+- **ALIGN-PROC-06**: GPS와 camera pose 등 둘 이상의 위치 기준 source가 동시에 사용 가능한 경우, 모듈은 사용된 측정값을 보존하고 각 aligned output마다 어떤 source가 primary position reference로 사용되었는지 기록해야 한다.
+- **ALIGN-PROC-07**: IMU 자세는 camera pose 또는 reconstruction alignment를 위한 보조 orientation constraint로 사용할 수 있어야 하지만, IMU 데이터가 없다고 reconstruction output을 자동으로 무효화해서는 안 된다.
+- **ALIGN-PROC-08**: accumulated map에 대해서는 reconstruction chunk별 별도 Reconstruction-to-World transform, 또는 내부적으로 일관된 SLAM session별 단일 session-to-World transform을 계산하거나 적용해야 한다.
+- **ALIGN-PROC-09**: 모듈은 per-chunk alignment status를 보존해야 하며, accumulated map manifest 안에 aligned, partially aligned, unaligned chunk가 공존할 수 있어야 한다.
+- **ALIGN-PROC-10**: 더 나은 GPS/IMU/camera pose 정보가 확보된 뒤에는, accumulated map manifest 또는 `03-interface-specification.md` Section 3.5A에 정의된 `update_session_transform` operation을 통해 chunk 또는 session transform metadata를 초기 삽입 이후에도 갱신해야 한다.
+- **ALIGN-PROC-11**: 모듈은 raw reconstruction chunk를 accumulated map manifest에 생성하거나 append해서는 안 된다. 해당 동작은 reconstruction ground-side path가 담당한다.
 
-## 6. Output Requirements
+## 6. 출력 요구사항
 
-- **ALIGN-OUT-01**: The module SHALL output unified pose or transform metadata in the World / Map frame when alignment is available.
-- **ALIGN-OUT-02**: The module SHALL include alignment metadata containing source frame, target frame, transform matrix, scale, and timestamp basis.
-- **ALIGN-OUT-03**: The module SHALL report calibration status for UWB-to-World, GPS-to-local, IMU-to-Body, Camera-to-Body/Tag, and Reconstruction-to-World transforms.
-- **ALIGN-OUT-04**: The module SHALL include source selection metadata indicating whether UWB, GPS, IMU, camera pose, or reconstruction constraints were used.
-- **ALIGN-OUT-05**: The module SHALL include alignment status in each output using `ALIGNED`, `PARTIAL_ALIGNMENT`, or `UNALIGNED`.
-- **ALIGN-OUT-06**: For accumulated map outputs, the module SHALL emit per-chunk transform metadata when `alignment_status` is `ALIGNED` or `PARTIAL_ALIGNMENT`; `UNALIGNED` chunks SHALL carry `transform = null`.
+- **ALIGN-OUT-01**: alignment가 가능한 경우, 모듈은 World / Map frame 기준의 통합 pose 또는 transform metadata를 출력해야 한다.
+- **ALIGN-OUT-02**: 출력에는 source frame, target frame, transform matrix, scale, timestamp basis를 포함한 alignment metadata가 포함되어야 한다.
+- **ALIGN-OUT-03**: GPS-to-local, IMU-to-Body, Camera-to-Body, Reconstruction-to-World transform의 calibration status를 보고해야 한다.
+- **ALIGN-OUT-04**: 출력에는 GPS, IMU, camera pose, reconstruction constraint 중 무엇이 사용되었는지 나타내는 source selection metadata가 포함되어야 한다.
+- **ALIGN-OUT-05**: 모든 출력은 `ALIGNED`, `PARTIAL_ALIGNMENT`, `UNALIGNED` 중 하나의 alignment status를 포함해야 한다.
+- **ALIGN-OUT-06**: accumulated map 출력에서 `alignment_status`가 `ALIGNED` 또는 `PARTIAL_ALIGNMENT`인 경우 per-chunk transform metadata를 출력해야 하며, `UNALIGNED` chunk는 `transform = null`을 가져야 한다.
 
-Alignment status values:
+Alignment status 값은 다음과 같다.
 
-| Status | Meaning |
+| 상태 | 의미 |
 | --- | --- |
-| `ALIGNED` | A complete Reconstruction-to-World or Session-to-World transform is available, including scale when required, linear transform, translation, timestamp basis, and valid calibration status. |
-| `PARTIAL_ALIGNMENT` | Some alignment information is available but one or more required metric-map components remain incomplete or low-confidence. Example: orientation available without reliable metric scale, or position available with stale/low-confidence timestamp basis. |
-| `UNALIGNED` | No valid Reconstruction-to-World transform is available. The chunk may be displayed diagnostically only. |
+| `ALIGNED` | 완전한 Reconstruction-to-World 또는 Session-to-World transform이 존재하며, 필요한 경우 scale, 선형 transform, translation, timestamp basis, 유효한 calibration status를 모두 포함한다. |
+| `PARTIAL_ALIGNMENT` | 일부 alignment 정보는 있으나 metric map에 필요한 구성 요소 중 하나 이상이 불완전하거나 신뢰도가 낮다. 예: 신뢰할 수 있는 metric scale 없이 orientation만 있는 경우, 또는 stale/low-confidence timestamp basis를 가진 position만 있는 경우. |
+| `UNALIGNED` | 유효한 Reconstruction-to-World transform이 없다. 진단용 시각화 목적으로만 표시할 수 있다. |
 
-## 7. Error Handling Requirements
+## 7. 오류 처리 요구사항
 
-- **ALIGN-ERR-01**: Missing required transform data SHALL produce one of the alignment status values defined in ALIGN-OUT-05 rather than silently emitting a World-frame result.
-- **ALIGN-ERR-02**: Calibration mismatch SHALL be reported with a traceable error/status code and SHALL include the affected transform name.
-- **ALIGN-ERR-03**: Frame inconsistency SHALL prevent publication of a fused World-frame output unless an explicit fallback policy is configured.
-- **ALIGN-ERR-04**: Missing GPS, UWB, or IMU data SHALL be handled independently so that one unavailable sensor does not invalidate all other alignment outputs.
-- **ALIGN-ERR-05**: Consistent with ALIGN-PROC-04, a chunk with missing or invalid Reconstruction-to-World transform SHALL remain available as an unaligned visualization chunk but SHALL NOT be treated as a metric map contribution.
-- **ALIGN-ERR-06**: Disabled or removed UWB SHALL be represented as an unavailable source and SHALL NOT prevent GPS/IMU/camera/reconstruction-only alignment outputs when those outputs are otherwise valid.
+- **ALIGN-ERR-01**: 필요한 transform 데이터가 없으면 World-frame 결과를 조용히 내보내지 말고, `ALIGN-OUT-05`에 정의된 alignment status 중 하나를 생성해야 한다.
+- **ALIGN-ERR-02**: Calibration mismatch는 추적 가능한 error/status code와 함께 보고해야 하며, 영향을 받은 transform 이름을 포함해야 한다.
+- **ALIGN-ERR-03**: 명시적인 fallback policy가 구성되지 않은 한, frame inconsistency는 fused World-frame output의 publish를 막아야 한다.
+- **ALIGN-ERR-04**: GPS와 IMU 데이터 누락은 서로 독립적으로 처리해야 하며, 하나의 센서 unavailable이 다른 모든 alignment output을 무효화해서는 안 된다.
+- **ALIGN-ERR-05**: `ALIGN-PROC-04`와 일관되게, Reconstruction-to-World transform이 없거나 무효한 chunk는 unaligned visualization chunk로는 남아 있을 수 있지만 metric map contribution으로 취급해서는 안 된다.
 
-## 8. Test Requirements
+## 8. 시험 요구사항
 
-- **ALIGN-VER-01**: The verification plan SHALL include unit tests for transform calculation.
-- **ALIGN-VER-02**: The verification plan SHALL include integration tests for UWB + GPS + IMU + reconstruction alignment metadata.
-- **ALIGN-VER-03**: The verification plan SHALL include validation against known reference poses.
-- **ALIGN-VER-04**: The verification plan SHALL include tests for missing sensor fallback behavior.
+- **ALIGN-VER-01**: 검증 계획에는 transform calculation unit test가 포함되어야 한다.
+- **ALIGN-VER-02**: 검증 계획에는 GPS + IMU + reconstruction alignment metadata에 대한 integration test가 포함되어야 한다.
+- **ALIGN-VER-03**: 검증 계획에는 known reference pose와의 비교 검증이 포함되어야 한다.
+- **ALIGN-VER-04**: 검증 계획에는 센서 누락 시 fallback 동작 시험이 포함되어야 한다.
 
-## 9. Open Items
+## 9. 미정 항목
 
-- OI-ALIGN-01: World / Map frame convention shall be finalized: ENU vs NED, origin, and units.
-- OI-ALIGN-02: GPS conversion policy shall be finalized: WGS84 to local tangent frame method and mission origin.
-- OI-ALIGN-03: IMU body-frame axis convention and mounting calibration shall be finalized.
-- OI-ALIGN-04: Camera-to-Body/Tag extrinsic calibration procedure shall be finalized.
-- OI-ALIGN-05: Reconstruction-to-World scale/rotation/translation estimation method shall be finalized.
-- OI-ALIGN-06: Per-chunk transform update interface is defined by the accumulated map manifest contract. Detailed re-alignment trigger policy remains to be finalized.
+- `OI-ALIGN-01`: World / Map frame 규칙을 확정해야 한다. ENU/NED, 원점, 단위를 모두 포함한다.
+- `OI-ALIGN-02`: GPS 변환 정책을 확정해야 한다. WGS84에서 local tangent frame으로의 변환 방식과 mission origin을 포함한다.
+- `OI-ALIGN-03`: IMU body-frame axis 규칙과 장착 calibration을 확정해야 한다.
+- `OI-ALIGN-04`: Camera-to-Body/Tag extrinsic calibration 절차를 확정해야 한다.
+- `OI-ALIGN-05`: Reconstruction-to-World scale/rotation/translation 추정 방식을 확정해야 한다.
+- `OI-ALIGN-06`: Per-chunk transform update interface는 accumulated map manifest 계약으로 정의되며, 상세 re-alignment trigger policy는 추후 확정한다.

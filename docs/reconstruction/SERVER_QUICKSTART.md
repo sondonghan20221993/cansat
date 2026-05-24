@@ -1,16 +1,14 @@
-# Reconstruction Server Quickstart
+# Reconstruction Server 빠른 시작 가이드
 
-This quickstart is for the current real-image prototype pipeline.
+이 문서는 현재 real-image prototype pipeline을 빠르게 실행하기 위한 가이드이다.
 
-Current runnable backend:
+현재 실행 가능한 backend:
 
 - `feature_sfm`
 
-Future backend boundary already present:
+향후 확장을 위한 backend 경계는 이미 포함되어 있다.
 
-- `dust3r`
-
-## 1. Create a virtual environment
+## 1. 가상환경 생성
 
 ```bash
 cd /path/to/cansat_2/docs
@@ -20,7 +18,7 @@ python -m pip install --upgrade pip
 python -m pip install -r reconstruction/requirements-prototype.txt
 ```
 
-## 2. Run the prototype pipeline
+## 2. prototype pipeline 실행
 
 ```bash
 python -m reconstruction.prototype_cli \
@@ -30,25 +28,24 @@ python -m reconstruction.prototype_cli \
   /absolute/path/to/image2.png
 ```
 
-## 3. Expected output
+## 3. 예상 출력
 
-The command prints a JSON result including:
+명령 실행 결과로 다음 항목을 포함한 JSON 결과가 출력된다.
 
 - `status`
 - `output_ref`
 - `output_format`
 - `quality`
 
-If successful, `output_ref` points to a generated GLB file under:
+성공 시 `output_ref`는 아래 경로에 생성된 GLB 파일을 가리킨다.
 
 ```text
 artifacts/reconstruction/
 ```
 
-## 3A. Test with fixed coordinate frame in UI
+## 3A. UI에서 고정 좌표계로 시험
 
-You can also render reconstructed points in a browser UI while fixing the
-coordinate frame transform.
+재구성된 점들을 브라우저 UI에서 렌더링하면서 좌표계 transform을 고정할 수도 있다.
 
 ```bash
 python -m reconstruction.prototype_ui_cli \
@@ -62,29 +59,28 @@ python -m reconstruction.prototype_ui_cli \
   /absolute/path/to/image2.png
 ```
 
-Notes:
+참고:
 
-- `--frame enu` applies a fixed OpenCV-to-ENU-like axis mapping.
-- Additional fixed transform can be applied with `--yaw-deg`, `--pitch-deg`,
-  `--roll-deg`, and `--tx/--ty/--tz`.
-- Generated HTML is saved under `artifacts/reconstruction/ui/`.
+- `--frame enu`는 고정된 OpenCV-to-ENU 유사 축 변환을 적용한다.
+- 추가 고정 transform은 `--yaw-deg`, `--pitch-deg`, `--roll-deg`, `--tx/--ty/--tz`로 적용할 수 있다.
+- 생성된 HTML은 `artifacts/reconstruction/ui/` 아래에 저장된다.
 
-## 4. Notes
+## 4. 참고 사항
 
-- The current `feature_sfm` backend uses real images and OpenCV feature matching.
-- The current `dust3r` backend is still a placeholder boundary and will return `BACKEND_NOT_IMPLEMENTED`.
-- Use at least two images with overlapping scene content.
-- This is a prototype pipeline, not a final-quality reconstruction pipeline.
+- 현재 `feature_sfm` backend는 real image와 OpenCV feature matching을 사용한다.
+- 현재 미구현 backend 경계는 placeholder만 제공하며 `BACKEND_NOT_IMPLEMENTED`를 반환한다.
+- 장면이 겹치는 이미지 두 장 이상을 사용해야 한다.
+- 이 pipeline은 prototype이며, 최종 품질의 reconstruction pipeline은 아니다.
 
-## 5. Prototype HTTP polling flow
+## 5. Prototype HTTP polling 흐름
 
-The current remote-execution prototype uses HTTP polling:
+현재 remote-execution prototype은 HTTP polling을 사용한다.
 
 ```text
 ground client -> POST /jobs -> GET /jobs/{job_id} until complete -> GET /jobs/{job_id}/artifact
 ```
 
-Start the server on the A6000 machine:
+A6000 장비에서 서버를 실행한다.
 
 ```bash
 cd /path/to/cansat_2/docs
@@ -94,7 +90,7 @@ python -m reconstruction.server.http_server \
   --backend feature_sfm
 ```
 
-Submit a job from the ground-side/client machine:
+지상국 또는 client 장비에서 작업을 제출한다.
 
 ```bash
 cd /path/to/cansat_2/docs
@@ -108,11 +104,11 @@ python -m reconstruction.prototype_remote_cli \
   /absolute/path/on/server/image2.png
 ```
 
-Important prototype limitation:
+중요한 prototype 제한사항:
 
-- Image paths are interpreted on the server side. This matches the current A6000 workflow where images already exist on the server.
-- The server executes jobs synchronously internally in this prototype. Use `--request-timeout-s` long enough for DUSt3R jobs, or replace the server internals with asynchronous background execution later.
-- The downloaded artifact can also be visualized directly:
+- 이미지 경로는 서버 기준으로 해석된다. 이는 현재 이미지가 이미 서버에 존재하는 A6000 workflow와 일치한다.
+- 이 prototype에서 서버는 내부적으로 작업을 동기식으로 실행한다. 장시간 실행되는 reconstruction 작업에는 `--request-timeout-s`를 충분히 길게 설정하거나, 이후 비동기 background execution으로 교체해야 한다.
+- 다운로드된 artifact는 아래 명령으로 바로 시각화할 수도 있다.
 
 ```bash
 python -m reconstruction.prototype_ui_cli \

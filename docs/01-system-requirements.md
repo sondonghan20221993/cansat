@@ -1,114 +1,111 @@
-# 01. System Requirements
+# 01. 시스템 요구사항
 
-## 1. Purpose
+## 1. 목적
 
-Describe the overall objective of the system.
+이 문서는 시스템의 전체 목표를 정의한다.
 
-- Why the system exists
-- What mission or operational problem it solves
-- Expected end users or operators
+- 시스템이 존재하는 이유
+- 해결하려는 임무 또는 운용 문제
+- 예상 사용자 및 운용자
 
-## 2. Scope
+## 2. 범위
 
-Define what is included and excluded.
+이 문서는 포함 범위와 제외 범위를 정의한다.
 
-- In-scope functions
-- Out-of-scope functions
-- Assumptions and constraints
+- 포함 기능
+- 제외 기능
+- 가정 및 제약조건
 
-## 3. System Components
+## 3. 시스템 구성요소
 
-List the top-level components.
+상위 수준 구성요소는 다음과 같다.
 
-| Component | Description | Inputs | Outputs |
+| 구성요소 | 설명 | 입력 | 출력 |
 | --- | --- | --- | --- |
-| UWB Module | Estimates drone/tag position from UWB Anchor distance measurements | Anchor distance messages, Anchor coordinates, timer events | Position_Result, UWB logs/status |
-| GPS Interface | Receives global position measurements when available | GPS receiver data | GPS position/time metadata |
-| IMU Interface | Receives vehicle attitude, angular rate, and acceleration data | IMU sensor data | IMU/body-frame motion metadata |
-| MAVLink Bridge Module | Receives MAVLink byte stream from the Flight Controller, parses and converts selected MAVLink messages into cFS SB messages for downstream consumers | MAVLink byte stream (serial/UART), FC MAVLink messages | Parsed FC state SB messages (position, attitude, velocity, EKF status), bridge health/status |
-| Reconstruction Module | Produces image-based 3D reconstruction outputs from drone image sets | Image set metadata, image references, optional auxiliary pose/localization | Reconstruction result reference, quality metadata, camera trajectory metadata |
-| Pose / Alignment Module | Aligns UWB, GPS, IMU, camera, MAVLink FC state, and reconstruction frames into the common World / Map frame | Source poses, transforms, calibration parameters, reconstruction metadata | Aligned pose/transform metadata, calibration status, source selection metadata |
-| cFS Integration Layer | Provides runtime integration through cFS app lifecycle, Software Bus messages, timers, configuration, and events | Module messages, timer events, configuration tables, health/status events | Published SB messages, scheduled callbacks, event logs, diagnostic telemetry |
+| GPS Interface | 사용 가능한 경우 전역 위치 측정값을 수신한다 | GPS 수신기 데이터 | GPS 위치/시간 메타데이터 |
+| IMU Interface | 기체 자세, 각속도, 가속도 데이터를 수신한다 | IMU 센서 데이터 | IMU/body-frame motion 메타데이터 |
+| MAVLink Bridge Module | Flight Controller에서 전달되는 MAVLink 바이트 스트림을 수신하고, 선택된 MAVLink 메시지를 파싱하여 하위 소비자를 위한 cFS SB 메시지로 변환한다 | MAVLink 바이트 스트림(serial/UART), FC MAVLink 메시지 | 파싱된 FC 상태 SB 메시지(위치, 자세, 속도, EKF 상태), bridge health/status |
+| Reconstruction Module | 드론 이미지 세트를 기반으로 이미지 기반 3차원 복원 결과를 생성한다 | image set 메타데이터, 이미지 참조, 선택적 보조 pose/localization | reconstruction 결과 참조, 품질 메타데이터, camera trajectory 메타데이터 |
+| Pose / Alignment Module | GPS, IMU, camera, MAVLink FC state, reconstruction 좌표계를 공통 World / Map frame으로 정렬한다 | source pose, transform, calibration parameter, reconstruction 메타데이터 | 정렬된 pose/transform 메타데이터, calibration status, source selection 메타데이터 |
+| cFS Integration Layer | cFS app lifecycle, Software Bus 메시지, timer, configuration, event를 통해 runtime integration을 제공한다 | 모듈 메시지, timer event, configuration table, health/status event | publish된 SB 메시지, scheduled callback, event log, diagnostic telemetry |
 
-## 4. End-to-End Data Flow
+## 4. End-to-End 데이터 흐름
 
-Describe how data flows through the full system.
+전체 시스템에서 데이터가 흐르는 방식은 다음과 같다.
 
-1. Sensor and source data are acquired. The MAVLink Bridge Module receives the FC MAVLink byte stream and parses it into cFS SB messages independently of other sensor paths.
-2. UWB, GPS, IMU, MAVLink FC state, camera, and image-source metadata are timestamped and packaged.
-3. Positioning and reconstruction processing are executed.
-4. Coordinate alignment is applied into the system World / Map frame.
-5. Results are packaged and delivered through the integration layer.
+1. 센서 및 source 데이터가 수집된다. MAVLink Bridge Module은 FC MAVLink 바이트 스트림을 수신하여 다른 센서 경로와 독립적으로 cFS SB 메시지로 파싱한다.
+2. GPS, IMU, MAVLink FC state, camera, image-source 메타데이터에 timestamp를 부여하고 패키징한다.
+3. 위치 추정 및 reconstruction 처리를 수행한다.
+4. 좌표계 정렬을 통해 시스템 World / Map frame으로 변환한다.
+5. 결과를 integration layer를 통해 패키징하고 전달한다.
 
-## 5. Common Rules
+## 5. 공통 규칙
 
-Define system-wide conventions.
+시스템 전반에 적용되는 규칙은 다음과 같다.
 
-- **Naming rules**: Module-owned messages, artifacts, and manifest fields SHALL use stable snake_case field names and documented IDs.
-- **Data ownership rules**: Each module SHALL own creation of its primary output. Other modules MAY update only the metadata fields explicitly exposed through an interface contract. Raw reconstruction artifacts SHALL NOT be modified by alignment or viewer modules.
-- **Logging rules**: Logs SHALL include timestamp, source module, severity, status/error code when available, and relevant payload or artifact references.
-- **Time synchronization rules**: cFS_TIME is the system reference timestamp unless a prototype interface explicitly documents a temporary serialization format.
-- **Fault handling principles**: Missing or degraded sensor data SHALL be reported explicitly and SHALL NOT silently produce nominal fused outputs.
-- **Version compatibility rules**: Interface changes SHALL preserve backward-compatible optional fields where possible and SHALL update 03-interface-specification.md before implementation.
-- **Module optionality rules**: Sensor/source modules, including UWB, GPS, IMU, MAVLink Bridge, camera, and reconstruction, SHALL be independently enableable/disableable through configuration when the mission mode permits. Disabled modules SHALL produce explicit unavailable/degraded status rather than blocking unrelated modules.
-- **Communication link separation rules**: The system SHALL maintain two distinct communication link roles — a LoRa telemetry link and an image/video link — each with independent health state tracking. The LoRa link carries heartbeat, housekeeping, status, fault/event, and command traffic. The image/video link carries image, video, large payload, and reconstruction artifact traffic. Neither link's health state SHALL be inferred from the other.
-- **Timestamp origin rules**: All downlink and uplink messages SHALL carry a vehicle-generated cFS_TIME timestamp as the authoritative event time. Ground-side reception time MAY be recorded separately but SHALL NOT replace the vehicle-generated timestamp for event correlation. Image and video metadata SHALL use the same cFS_TIME basis as all other system messages.
-- **Correlation identifier rules**: Messages that describe the same vehicle event SHALL share a common set of correlation fields — `image_id`, `frame_id`, `job_id`, and `seq` — as defined in 03-interface-specification.md. Ground-side consumers SHALL use these fields to associate LoRa status data with image/video data from the same event.
+- **명명 규칙**: 모듈이 소유하는 메시지, artifact, manifest field는 안정적인 snake_case field name과 문서화된 ID를 사용해야 한다.
+- **데이터 소유 규칙**: 각 모듈은 자신의 1차 출력 생성에 대한 책임을 가진다. 다른 모듈은 인터페이스 계약으로 명시된 metadata field만 갱신할 수 있다. raw reconstruction artifact는 alignment 또는 viewer 모듈이 수정해서는 안 된다.
+- **로그 규칙**: log에는 timestamp, source module, severity, 사용 가능한 경우 status/error code, 관련 payload 또는 artifact reference를 포함해야 한다.
+- **시간 동기화 규칙**: prototype interface에서 임시 직렬화 형식을 명시적으로 문서화하지 않는 한 `cFS_TIME`을 시스템 기준 timestamp로 사용한다.
+- **결함 처리 원칙**: 누락되거나 성능이 저하된 센서 데이터는 명시적으로 보고해야 하며, 정상적인 fused output을 조용히 생성해서는 안 된다.
+- **버전 호환 규칙**: 인터페이스 변경 시 가능한 경우 하위 호환 가능한 optional field를 유지해야 하며, 구현 전에 `03-interface-specification.md`를 먼저 갱신해야 한다.
+- **모듈 선택 규칙**: GPS, IMU, MAVLink Bridge, camera, reconstruction을 포함한 센서/source 모듈은 임무 모드가 허용하는 경우 configuration으로 각각 enable/disable 가능해야 한다. 비활성화된 모듈은 관련 없는 모듈을 막지 말고 명시적인 unavailable/degraded status를 생성해야 한다.
+- **통신 링크 분리 규칙**: 시스템은 LoRa telemetry link와 image/video link라는 두 개의 독립된 통신 링크 역할을 유지해야 하며, 각각의 health state를 독립적으로 추적해야 한다. LoRa link는 heartbeat, HK, status, fault/event, command traffic을 담당한다. image/video link는 image, video, large payload, reconstruction artifact traffic을 담당한다. 한 링크의 health state를 다른 링크의 상태로 추론해서는 안 된다.
+- **Timestamp 기준 규칙**: 모든 downlink 및 uplink 메시지는 차량 측에서 생성한 `cFS_TIME` timestamp를 권위 있는 event time으로 포함해야 한다. 지상국 수신 시각은 별도로 기록할 수 있지만, event correlation을 위한 기준 시각을 대체해서는 안 된다. image 및 video metadata 역시 다른 시스템 메시지와 동일한 `cFS_TIME` 기준을 사용해야 한다.
+- **상관 식별자 규칙**: 동일한 차량 이벤트를 설명하는 메시지는 `03-interface-specification.md`에 정의된 `frame_id`, `job_id`, `seq` correlation field를 사용해야 한다. 지상국 소비자는 이 field를 이용해 동일 이벤트의 LoRa status 데이터와 image/video 데이터를 연결해야 한다.
 
-## 6. System-Level Requirements
+## 6. 시스템 수준 요구사항
 
-### 6.1 Functional Requirements
+### 6.1 기능 요구사항
 
-- The system shall provide a modular pipeline for collecting sensor/source data, producing reconstruction outputs, and aligning results into the common World / Map frame.
-- The system shall support UWB, GPS, IMU, MAVLink FC state, camera, and reconstruction data as independent sensor/source inputs.
-- The system shall preserve source-specific measurements before converting them into a common World / Map coordinate frame.
-- The system shall allow reconstruction outputs to remain in a relative reconstruction frame until alignment metadata is available.
-- The system shall support degraded operation when the UWB module is disabled, unavailable, or physically removed, provided that downstream modules can operate with GPS, IMU, MAVLink FC state, camera, reconstruction, or other configured sources.
-- The MAVLink Bridge Module shall parse and convert Flight Controller MAVLink messages into cFS SB messages. It SHALL NOT pass raw MAVLink frames directly onto the cFS Software Bus.
-- The MAVLink Bridge Module shall be independently enableable/disableable. When disabled, its absence SHALL NOT prevent other sensor or alignment modules from entering nominal operation.
-- The system shall maintain separate health and state tracking for the LoRa telemetry link and the image/video link. Each link SHALL have an independently reported link state using the `ALIVE`, `DEGRADED`, and `LOST` classification defined in 03-interface-specification.md.
-- The system shall assign a vehicle-generated cFS_TIME timestamp to every downlink and uplink message at the point of creation on the vehicle. Ground-side consumers SHALL use this vehicle-generated timestamp as the authoritative event time for cross-link correlation.
-- The system shall include `image_id`, `frame_id`, `job_id`, and `seq` correlation fields in messages that describe the same vehicle event, enabling ground-side consumers to associate LoRa status data with image/video data from the same event.
+- 시스템은 센서/source 데이터 수집, reconstruction 출력 생성, 공통 World / Map frame 정렬을 위한 모듈식 파이프라인을 제공해야 한다.
+- 시스템은 GPS, IMU, MAVLink FC state, camera, reconstruction 데이터를 독립적인 센서/source 입력으로 지원해야 한다.
+- 시스템은 source별 측정값을 공통 World / Map 좌표계로 변환하기 전에 원래 형태로 보존해야 한다.
+- 시스템은 alignment metadata가 준비되기 전까지 reconstruction 출력을 상대 reconstruction frame으로 유지할 수 있어야 한다.
+- MAVLink Bridge Module은 Flight Controller MAVLink 메시지를 파싱하고 cFS SB 메시지로 변환해야 한다. raw MAVLink frame을 cFS Software Bus에 직접 전달해서는 안 된다.
+- MAVLink Bridge Module은 독립적으로 enable/disable 가능해야 한다. 비활성화된 경우에도 다른 센서 또는 alignment 모듈의 정상 동작을 방해해서는 안 된다.
+- 시스템은 LoRa telemetry link와 image/video link에 대해 별도의 health 및 state tracking을 유지해야 한다. 각 링크는 `03-interface-specification.md`에 정의된 `ALIVE`, `DEGRADED`, `LOST` 분류를 사용해 독립적인 link state를 보고해야 한다.
+- 시스템은 모든 downlink 및 uplink 메시지 생성 시점에 차량 측 `cFS_TIME` timestamp를 부여해야 한다. 지상국 소비자는 이 차량 생성 timestamp를 cross-link correlation을 위한 기준 event time으로 사용해야 한다.
+- 동일한 차량 이벤트를 설명하는 메시지에는 `frame_id`, `job_id`, `seq` correlation field를 포함해야 하며, 지상국 소비자가 LoRa status 데이터와 image/video 데이터를 연결할 수 있어야 한다.
 
-### 6.2 Performance Requirements
+### 6.2 성능 요구사항
 
-- The UWB positioning path shall target 15 Hz nominal output as defined by the cFS Output_Cycle_Timer.
-- Reconstruction runtime and throughput targets shall be measured per image set and finalized after prototype DUSt3R-family benchmarking.
-- System-level maximum latency and accuracy thresholds remain open under OI-SYS-01.
+- reconstruction runtime과 throughput 목표는 image set 단위로 측정해야 하며, prototype reconstruction backend benchmarking 이후 최종 확정한다.
+- 시스템 수준 최대 지연 시간과 정확도 임계값은 `OI-SYS-01`에서 추후 확정한다.
 
-### 6.3 Reliability Requirements
+### 6.3 신뢰성 요구사항
 
-- The system shall isolate disabled or failed source modules so that unrelated enabled modules can continue operating when mission mode permits.
-- The system shall expose degraded/unavailable status for missing UWB, GPS, IMU, MAVLink FC state, camera, reconstruction, or alignment data rather than silently publishing nominal fused outputs.
-- A MAVLink Bridge parse failure or serial connection loss SHALL be reported as a degraded or unavailable status and SHALL NOT silently suppress downstream FC state consumers.
-- Availability target and recovery timing remain open under OI-SYS-01 and OI-SYS-02.
+- 임무 모드가 허용하는 경우, 비활성화되거나 실패한 source 모듈을 격리하여 관련 없는 활성화 모듈이 계속 동작할 수 있어야 한다.
+- 시스템은 누락된 GPS, IMU, MAVLink FC state, camera, reconstruction, alignment 데이터에 대해 명시적인 degraded/unavailable status를 제공해야 하며, nominal fused output을 조용히 publish해서는 안 된다.
+- MAVLink Bridge parse failure 또는 serial connection loss는 degraded 또는 unavailable status로 보고해야 하며, downstream FC state consumer를 조용히 차단해서는 안 된다.
+- availability target과 recovery timing은 `OI-SYS-01`, `OI-SYS-02`에서 추후 확정한다.
 
-### 6.4 Runtime Configuration and Recovery Requirements
+### 6.4 Runtime Configuration 및 복구 요구사항
 
-- Timing-related telemetry parameters SHALL support staged runtime update through a pending configuration buffer before activation.
-- Runtime updates SHALL be validated before replacing the active configuration.
-- Invalid runtime configuration values SHALL NOT overwrite the active configuration and SHALL be reported through event and housekeeping telemetry.
-- Active runtime configuration SHALL only be replaced at a documented safe application point.
-- The system SHALL distinguish at minimum the following reset/restart classes: app restart, cFS host soft reset, and host hard reset or power cycle.
-- A host hard reset or power cycle SHALL restore only validated persistent state together with a safe default configuration.
-- A cFS host soft reset SHALL restore persistent runtime configuration, cFS state, last known health state, and permitted checkpoints.
-- Repeated recovery failure within a configured reboot-loop detection window SHALL force entry into a minimum-reporting startup mode.
-- Nonessential sensor or source failures SHALL permit degraded startup and degraded nominal operation when mission mode allows continued reporting.
-- Essential telemetry, command, or health-management path failures SHALL trigger recovery handling before nominal mission continuation.
+- timing 관련 telemetry parameter는 activation 전에 pending configuration buffer를 통한 단계적 runtime update를 지원해야 한다.
+- runtime update는 active configuration을 교체하기 전에 검증되어야 한다.
+- 잘못된 runtime configuration 값은 active configuration을 덮어써서는 안 되며, event와 HK telemetry를 통해 보고해야 한다.
+- active runtime configuration은 문서화된 safe application point에서만 교체되어야 한다.
+- 시스템은 최소한 다음 reset/restart class를 구분해야 한다: app restart, cFS host soft reset, host hard reset 또는 power cycle.
+- host hard reset 또는 power cycle 시에는 검증된 persistent state와 안전한 default configuration만 복원해야 한다.
+- cFS host soft reset 시에는 persistent runtime configuration, cFS state, last known health state, 허용된 checkpoint를 복원해야 한다.
+- 구성된 reboot-loop detection window 내에서 반복적인 복구 실패가 발생하면 minimum-reporting startup mode에 강제로 진입해야 한다.
+- 필수적이지 않은 센서 또는 source failure는 임무 모드가 허용하는 경우 degraded startup 및 degraded nominal operation을 허용해야 한다.
+- 필수 telemetry, command, 또는 health-management 경로의 failure는 nominal mission continuation 전에 recovery handling을 유발해야 한다.
 
-### 6.5 Operational Requirements
+### 6.5 운용 요구사항
 
-- The system shall support a ground-side cFS-managed execution environment with a remote GPU reconstruction server for DUSt3R-family processing.
-- UWB, GPS, IMU, MAVLink Bridge serial device, camera, reconstruction endpoint, output format, module enable flags, and alignment transform parameters shall be configurable at startup.
-- Exact deployment split and hardware dependency list remain open under OI-SYS-02.
+- 시스템은 image-based reconstruction 또는 sequence-based SLAM 처리를 위한 원격 GPU reconstruction server와, 지상국 측 cFS-managed execution environment를 지원해야 한다.
+- GPS, IMU, MAVLink Bridge serial device, camera, reconstruction endpoint, output format, module enable flag, alignment transform parameter는 startup 시 configuration 가능해야 한다.
+- 정확한 배치 분할과 hardware dependency 목록은 `OI-SYS-02`에서 추후 확정한다.
 
-### 6.6 Safety and Security Requirements
+### 6.6 안전 및 보안 요구사항
 
-- Remote reconstruction access shall be restricted to configured endpoints or tunnels during prototype operation.
-- Large artifacts shall be referenced by path/URI and shall not be silently embedded into cFS Software Bus messages.
-- Final access control, data protection, and fail-safe policy remain open under OI-SYS-02.
+- prototype 운용 중 원격 reconstruction 접근은 구성된 endpoint 또는 tunnel로 제한해야 한다.
+- large artifact는 path/URI reference로 다루어야 하며, cFS Software Bus 메시지에 조용히 내장해서는 안 된다.
+- 최종 access control, data protection, fail-safe policy는 `OI-SYS-02`에서 추후 확정한다.
 
-## 7. Open Items
+## 7. 미정 항목
 
-- OI-SYS-01: System-level latency, update-rate, and accuracy targets need to be finalized.
-- OI-SYS-02: Deployment environment, hardware dependencies, and security policy need to be finalized.
+- `OI-SYS-01`: 시스템 수준 latency, update-rate, accuracy target을 확정해야 한다.
+- `OI-SYS-02`: 배치 환경, hardware dependency, security policy를 확정해야 한다.

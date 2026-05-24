@@ -1,165 +1,160 @@
-# 05. Reconstruction Requirements
+# 05. Reconstruction 요구사항
 
-## 1. Purpose
+## 1. 목적
 
-This document defines the requirements for the image-based 3D reconstruction module.
+이 문서는 이미지 기반 3D reconstruction 모듈의 요구사항을 정의한다.
 
-The module SHALL use a DUSt3R-family or MASt3R-family pipeline as the primary
-reconstruction approach. The preferred long-term architecture is a
-sequence-aware pose-and-map pipeline whenever continuous image sequences are
-available. It SHALL accept image inputs collected from the drone, execute
-reconstruction or SLAM processing on a remote GPU server, and return
-reconstruction outputs, pose/map state, and quality metadata for downstream
-integration.
+이 모듈은 선택된 image-based reconstruction 또는 sequence-based
+SLAM 파이프라인을 주된 reconstruction 방식으로 사용해야 한다. 장기적으로는
+연속 이미지 시퀀스를 사용할 수 있을 때 sequence-aware pose-and-map 파이프라인을
+우선 구조로 삼는다. 모듈은 드론에서 수집한 image 입력을 받아 원격 GPU server에서
+reconstruction 또는 SLAM 처리를 수행하고, downstream integration을 위해
+reconstruction 출력, pose/map 상태, 품질 메타데이터를 반환해야 한다.
 
-At the current system planning stage, GLB is the most likely primary external output
-format. Both the reconstruction model and the output format may change in future
-revisions; therefore the module SHALL be structured to support replacement without
-breaking the module boundary contract.
+현재 시스템 기획 단계에서는 GLB가 가장 유력한 주 외부 출력 형식이다.
+다만 reconstruction model과 출력 형식은 향후 개정에서 바뀔 수 있으므로,
+모듈 경계 계약을 깨지 않고 교체할 수 있도록 구조화해야 한다.
 
-Coordinate systems, timestamps, and shared interface rules SHALL follow the top-level
-system documents and the interface specification (03-interface-specification.md).
+좌표계, timestamp, 공통 인터페이스 규칙은 상위 시스템 문서와 인터페이스 명세(`03-interface-specification.md`)를 따라야 한다.
 
 ---
 
-## 2. Functional Scope
+## 2. 기능 범위
 
-### 2.1 In Scope
+### 2.1 포함 범위
 
-- Image input validation and metadata consistency checking
-- Image and metadata packaging for remote job submission
-- Remote job submission to the reconstruction server
-- DUSt3R-family inference and reconstruction processing on the remote GPU server
-- 3D map state generation and quality evaluation
-- Result packaging and return to the ground-side system
-- Ground-side fixed-frame visualization metadata generation for validation UI
-- Accumulated map input/output contract for appending multiple reconstruction chunks or updating a continuous session map
-- Ground-side image inbox monitoring and buffer-based automatic job dispatch
-- Processed image file lifecycle management (inbox → processed separation)
-- Live-updating accumulated map viewer (server-push or polling, no manual reload)
+- Image 입력 검증 및 메타데이터 일관성 확인
+- 원격 job 제출을 위한 image 및 메타데이터 패키징
+- reconstruction server로의 원격 job 제출
+- 선택된 reconstruction / SLAM backend의 원격 GPU 처리
+- 3차원 map state 생성 및 품질 평가
+- 결과 패키징 및 지상국 시스템으로의 반환
+- 검증 UI를 위한 지상국 fixed-frame visualization 메타데이터 생성
+- 여러 reconstruction chunk를 누적 추가하거나 연속 session map을 갱신하기 위한 accumulated map 입출력 계약
+- 지상국 image inbox 감시 및 buffer 기반 자동 job dispatch
+- 처리된 image 파일 수명주기 관리(inbox → processed 분리)
+- live-updating accumulated map viewer(server-push 또는 polling, 수동 새로고침 없음)
 
-### 2.2 Out of Scope
+### 2.2 제외 범위
 
-- UWB-based position estimation (see 04-uwb-requirements.md)
-- cFS application lifecycle control (see 07-cfs-integration-requirements.md)
-- System-level coordinate frame alignment policy (see 06-pose-frame-alignment-requirements.md)
-- Low-level camera device driver implementation
+- cFS application lifecycle control(see `07-cfs-integration-requirements.md`)
+- 시스템 수준 좌표계 정렬 정책(see `06-pose-frame-alignment-requirements.md`)
 
 ---
 
-## 3. Input Requirements
+## 3. 입력 요구사항
 
-### 3.1 Required Image Inputs
+### 3.1 필수 이미지 입력
 
-- **REC-IN-01**: The reconstruction module SHALL accept a set of input images captured by the drone.
-- **REC-IN-02**: Each input image SHALL carry a unique identifier and an acquisition timestamp.
-- **REC-IN-03**: The reconstruction module SHALL reject corrupted or undecodable images before job submission.
-- **REC-IN-04**: The reconstruction module SHALL require at least the system-defined minimum image count before starting reconstruction. *(Minimum count: see OI-REC-01)*
+- **REC-IN-01**: reconstruction 모듈은 드론에서 획득한 입력 이미지 집합을 수용해야 한다.
+- **REC-IN-02**: 각 입력 이미지는 고유 식별자와 획득 timestamp를 가져야 한다.
+- **REC-IN-03**: reconstruction 모듈은 job submission 이전에 손상되었거나 decode할 수 없는 이미지를 거부해야 한다.
+- **REC-IN-04**: reconstruction 시작 전에 시스템이 정의한 최소 이미지 개수 이상이 확보되어야 한다. *(최소 개수는 `OI-REC-01` 참조)*
 
-### 3.2 Optional Auxiliary Inputs
+### 3.2 선택적 보조 입력
 
-- **REC-IN-05**: The reconstruction module SHALL accept camera intrinsic parameters as an optional input when available.
-- **REC-IN-06**: The reconstruction module SHALL accept external camera pose, UWB position, or other localization data only as optional auxiliary metadata for job packaging and traceability. Primary sensor fusion and World / Map frame alignment SHALL be owned by the Pose / Frame Alignment module.
-- **REC-IN-07**: Optional auxiliary inputs SHALL NOT be a mandatory precondition for starting reconstruction.
-- **REC-IN-08**: The reconstruction module SHALL be capable of producing a reconstruction result using image inputs alone, without any auxiliary input.
+- **REC-IN-05**: reconstruction 모듈은 사용 가능한 경우 camera intrinsic parameter를 선택적 입력으로 수용해야 한다.
+- **REC-IN-06**: reconstruction 모듈은 external camera pose, GPS/IMU 기반 위치 정보, 기타 localization 데이터를 job packaging 및 traceability를 위한 선택적 보조 metadata로만 수용해야 한다. 주 센서 융합 및 World / Map frame alignment는 Pose / Frame Alignment module이 담당해야 한다.
+- **REC-IN-07**: 선택적 보조 입력은 reconstruction 시작의 필수 전제조건이 되어서는 안 된다.
+- **REC-IN-08**: reconstruction 모듈은 어떤 보조 입력도 없이 이미지 입력만으로 reconstruction 결과를 생성할 수 있어야 한다.
 
-### 3.3 Ground-Side Input Handling
+### 3.3 지상국 입력 처리
 
-- **REC-IN-09**: The ground-side computer SHALL receive input images and associated metadata before submitting a reconstruction request.
-- **REC-IN-10**: The ground-side computer SHALL package reconstruction inputs and forward them to the remote reconstruction server.
-- **REC-IN-10A**: When continuous image sequences are available, the ground-side computer SHALL preserve frame order so that sequence-based tracking or SLAM backends can consume temporally ordered inputs.
+- **REC-IN-09**: 지상국 컴퓨터는 reconstruction request를 제출하기 전에 입력 이미지와 관련 metadata를 수신해야 한다.
+- **REC-IN-10**: 지상국 컴퓨터는 reconstruction 입력을 패키징하여 원격 reconstruction server로 전달해야 한다.
+- **REC-IN-10A**: 연속 이미지 시퀀스를 사용할 수 있는 경우, 지상국 컴퓨터는 frame 순서를 보존해야 하며, sequence 기반 tracking 또는 SLAM backend가 시간 순서 입력을 사용할 수 있어야 한다.
 
-### 3.4 Inbox-Based Automatic Image Ingestion
+### 3.4 Inbox 기반 자동 이미지 수집
 
-- **REC-IN-11**: The ground-side system SHALL support a designated inbox directory from which new image files are automatically detected and staged for reconstruction without requiring manual per-image invocation.
-- **REC-IN-12**: The ground-side system SHALL maintain an in-memory or on-disk image buffer. Images detected in the inbox SHALL be added to the buffer in arrival order.
-- **REC-IN-13**: When the buffer reaches the configured chunk size, the ground-side system SHALL automatically dispatch a reconstruction job using the buffered images and clear those images from the buffer.
-- **REC-IN-14**: The ground-side system SHALL move each image file from the inbox directory to a separate processed directory after the image has been included in a dispatched reconstruction job. Images that have not yet been dispatched SHALL remain in the inbox or buffer and SHALL NOT be mixed with already-processed images.
-- **REC-IN-15**: The inbox monitoring loop SHALL be continuously running and SHALL NOT require a process restart to pick up new images.
-- **REC-IN-16**: If an image file in the inbox is unreadable or fails validation, the ground-side system SHALL move it to a rejected subdirectory and SHALL log the failure without stopping the monitoring loop.
-
----
-
-## 4. Reconstruction Pipeline Requirements
-
-### 4.1 Input Preparation
-
-- **REC-PROC-01**: The reconstruction module SHALL validate image completeness and metadata consistency before launching reconstruction.
-- **REC-PROC-02**: The reconstruction module SHALL record the number of input images, image resolution, and metadata availability at job start.
-- **REC-PROC-03**: The reconstruction module SHALL support preprocessing steps required by the selected DUSt3R-family pipeline.
-
-### 4.2 Reconstruction Processing
-
-- **REC-PROC-04**: The reconstruction module SHALL use a DUSt3R-family or MASt3R-family method as the primary reconstruction pipeline.
-- **REC-PROC-05**: The reconstruction module SHALL estimate scene structure and camera pose from image inputs using the selected reconstruction or SLAM backend.
-- **REC-PROC-06**: The reconstruction module SHALL be modularized so that the selected reconstruction model can be replaced, upgraded, or reconfigured without changing the module boundary contract.
-- **REC-PROC-07**: When optional auxiliary pose or localization input defined in REC-IN-06 is provided, the reconstruction module SHALL use it only for auxiliary metadata packaging, traceability, or backend hints and SHALL NOT treat it as a required input or perform primary sensor fusion.
-- **REC-PROC-08**: The reconstruction module SHALL continue to support image-only reconstruction when no auxiliary pose input is available.
-- **REC-PROC-08A**: When operating in continuous-sequence mode, the reconstruction module SHALL maintain per-session camera trajectory and map state until the session is explicitly completed, exported, or discarded.
-
-### 4.3 Remote Execution
-
-- **REC-PROC-09**: The ground-side computer SHALL submit reconstruction jobs to the remote GPU server.
-- **REC-PROC-10**: The remote GPU server SHALL execute DUSt3R-family or MASt3R-family reconstruction / SLAM inference on an NVIDIA RTX A6000-class GPU environment.
-- **REC-PROC-11**: The remote GPU server SHALL return reconstruction outputs and execution status to the ground-side computer after processing.
-- **REC-PROC-12**: The reconstruction module SHALL preserve job identity between request and response so that returned outputs can be matched to the originating image set.
-- **REC-PROC-13**: The reconstruction module SHALL record reconstruction failure status when remote execution fails, times out, or returns invalid outputs.
-- **REC-PROC-13A**: The prototype remote execution path SHALL support the HTTP polling contract defined in 03-interface-specification.md Section 3.4 until the final transport is frozen.
-- **REC-PROC-13B**: The ground-side client SHALL download completed reconstruction artifacts automatically after successful remote execution and SHALL pass the downloaded artifact to the fixed-frame visualization or downstream integration path.
-- **REC-PROC-13C**: For sequence-based SLAM backends, the remote execution path SHALL support a long-lived processing session or equivalent session identifier so that multiple ordered frames can contribute to a single evolving map state. Session state transitions and operation responses SHALL follow 03-interface-specification.md Section 3.5A.
-- **REC-PROC-13D**: When the selected backend is a sequence-based SLAM backend such as a MASt3R-SLAM-family implementation, the reconstruction module SHALL expose backend runtime outputs through the session-state contract rather than requiring immediate conversion to independent reconstruction chunks.
-- **REC-PROC-13E**: The reconstruction module SHALL preserve a backend adapter boundary between the session-state contract and the selected sequence backend so that backend-specific runtime files, logs, and intermediate outputs can be translated into the common session-state fields without changing the external API. For the current prototype, backend-native trajectory files SHALL be preserved as the authoritative `pose_stream_ref` resource and backend-native map snapshots SHALL be preserved as the authoritative `map_state_ref` resource.
-
-### 4.4 Result Packaging
-
-- **REC-PROC-14**: The reconstruction module SHALL package reconstruction outputs together with quality metadata and processing status.
-- **REC-PROC-15**: The reconstruction module SHALL distinguish successful, degraded, and failed reconstruction outcomes. *(Criteria: see OI-REC-05)*
-- **REC-PROC-16**: The reconstruction module SHALL make the returned result available to downstream alignment or integration modules through the defined interface.
-- **REC-PROC-16A**: When a backend provides camera trajectory or globally consistent map state directly, the module SHALL treat those outputs as the primary alignment source rather than requiring downstream alignment of independently reconstructed artifacts from the same session.
-
-### 4.5 Accumulated Map Handling
-
-- **REC-PROC-17**: The ground-side reconstruction path SHALL own creation and append operations for the persistent accumulated map manifest and SHALL also own creation and update of the ground-side session map record when the selected backend uses the sequence/session contract.
-- **REC-PROC-18**: Each map chunk SHALL preserve its originating reconstruction `job_id`, `image_set_id`, local artifact reference, output format, timestamp, quality metadata, and frame/alignment metadata.
-- **REC-PROC-19**: The accumulated map SHALL NOT assume that independent reconstruction chunks already share a metric World / Map frame unless a valid Reconstruction-to-World transform is attached.
-- **REC-PROC-20**: When a chunk does not have a valid World-frame alignment transform, the accumulated map SHALL store it as `UNALIGNED` or `PARTIAL_ALIGNMENT` rather than silently merging it as a final map.
-- **REC-PROC-21**: The accumulated map update path SHALL allow the Pose / Frame Alignment module to update or replace chunk transform metadata through the manifest update interface without modifying the raw reconstruction artifact.
-- **REC-PROC-22**: The accumulated map manifest SHALL be persisted as a ground-side file so that map state can be recovered after process restart.
-- **REC-PROC-23**: The accumulated map append operation SHALL reject duplicate `job_id` entries by default unless an explicit replacement policy is configured.
-- **REC-PROC-24**: The accumulated map SHALL support marking a chunk as invalidated without deleting the raw artifact.
-- **REC-PROC-24A**: When a backend produces a session-level map state instead of independent chunk artifacts, the accumulated map path SHALL support incremental update of that session state without requiring post hoc alignment between separate 3D artifacts from the same session. Session-state ownership remains with the ground-side reconstruction path defined in REC-PROC-17.
-
-### 4.6 Processed Image Lifecycle
-
-- **REC-PROC-25**: The ground-side system SHALL maintain a strict separation between unprocessed images (inbox) and processed images (processed directory) at all times. An image file SHALL exist in exactly one of these locations at any given time.
-- **REC-PROC-26**: Image files SHALL be moved atomically or via a rename operation from inbox to processed directory after the reconstruction job that includes them has been successfully dispatched. A copy-then-delete strategy is acceptable only if the delete step is guaranteed before the next monitoring cycle reads the inbox.
-- **REC-PROC-27**: The ground-side system SHALL NOT re-read or re-buffer an image that has already been moved to the processed directory.
+- **REC-IN-11**: 지상국 시스템은 지정된 inbox directory를 지원해야 하며, 새 이미지 파일을 자동으로 감지하여 per-image 수동 실행 없이 reconstruction 대상으로 적재해야 한다.
+- **REC-IN-12**: 지상국 시스템은 메모리 또는 디스크 기반 이미지 buffer를 유지해야 한다. inbox에서 감지된 이미지는 도착 순서대로 buffer에 추가되어야 한다.
+- **REC-IN-13**: buffer가 구성된 chunk size에 도달하면, 지상국 시스템은 buffered image를 사용해 reconstruction job을 자동 dispatch하고 해당 이미지를 buffer에서 제거해야 한다.
+- **REC-IN-14**: 지상국 시스템은 dispatch된 reconstruction job에 포함된 각 이미지 파일을 inbox directory에서 별도 processed directory로 이동해야 한다. 아직 dispatch되지 않은 이미지는 inbox 또는 buffer에 남아 있어야 하며, 이미 처리된 이미지와 섞여서는 안 된다.
+- **REC-IN-15**: inbox monitoring loop는 지속적으로 실행되어야 하며, 새 이미지를 수집하기 위해 process restart가 필요해서는 안 된다.
+- **REC-IN-16**: inbox의 이미지 파일을 읽을 수 없거나 validation에 실패하면, 지상국 시스템은 해당 파일을 rejected 하위 directory로 이동하고 monitoring loop를 멈추지 않은 채 오류를 기록해야 한다.
 
 ---
 
-## 5. Output Requirements
+## 4. Reconstruction Pipeline 요구사항
 
-### 5.1 Reconstruction Output
+### 4.1 입력 준비
 
-- **REC-OUT-01**: The reconstruction module SHALL output a reconstruction result in a system-defined representation. The representation SHALL support both artifact-oriented outputs and sequence/session map-state outputs. *(Artifact primary candidates remain GLB/PLY; see OI-REC-03)*
-- **REC-OUT-02**: The output SHALL include a reconstruction job identifier and a processing timestamp.
-- **REC-OUT-03**: The output SHALL include the identifier of the input image set used to generate the reconstruction.
-- **REC-OUT-04**: The reconstruction module SHALL be modularized so that the external output format can be changed in future revisions without requiring redesign of the full reconstruction module.
-- **REC-OUT-04A**: When the selected backend operates in continuous-sequence mode, the output SHALL include a session identifier and camera trajectory or equivalent pose stream reference.
+- **REC-PROC-01**: reconstruction 모듈은 reconstruction 실행 전에 image 완전성과 메타데이터 일관성을 검증해야 한다.
+- **REC-PROC-02**: reconstruction 모듈은 job 시작 시 입력 이미지 수, 이미지 해상도, 메타데이터 가용 여부를 기록해야 한다.
+- **REC-PROC-03**: reconstruction 모듈은 선택된 reconstruction backend가 요구하는 전처리 단계를 지원해야 한다.
 
-### 5.2 Quality Metadata
+### 4.2 Reconstruction 처리
 
-- **REC-OUT-05**: The reconstruction module SHALL include quality metadata in each output.
-- **REC-OUT-06**: Quality metadata SHALL include, at minimum: the number of input images used, processing status, and one or more reconstruction quality indicators. *(Exact indicators: see OI-REC-04)*
-- **REC-OUT-07**: The reconstruction module SHALL support quality evaluation against system-defined thresholds. *(Threshold values: see OI-REC-04)*
+- **REC-PROC-04**: reconstruction 모듈은 선택된 image-based reconstruction 또는 sequence-based SLAM 방법을 주된 reconstruction pipeline으로 사용해야 한다.
+- **REC-PROC-05**: reconstruction 모듈은 선택된 reconstruction 또는 SLAM backend를 사용하여 image 입력으로부터 장면 구조와 camera pose를 추정해야 한다.
+- **REC-PROC-06**: reconstruction 모듈은 선택된 reconstruction model을 교체, 업그레이드, 재구성하더라도 모듈 경계 계약이 바뀌지 않도록 모듈화되어야 한다.
+- **REC-PROC-07**: `REC-IN-06`에 정의된 선택적 auxiliary pose 또는 localization 입력이 제공되더라도, reconstruction 모듈은 이를 보조 메타데이터 패키징, traceability, backend hint 용도로만 사용해야 하며 필수 입력이나 주된 sensor fusion 입력으로 취급해서는 안 된다.
+- **REC-PROC-08**: reconstruction 모듈은 auxiliary pose 입력이 없어도 image-only reconstruction을 계속 지원해야 한다.
+- **REC-PROC-08A**: 연속 시퀀스 모드로 동작할 때 reconstruction 모듈은 session이 명시적으로 완료, export, 폐기될 때까지 session별 camera trajectory와 map state를 유지해야 한다.
 
-### 5.3 Failure and Degraded Output
+### 4.3 원격 실행
 
-- **REC-OUT-08**: When reconstruction fails, the module SHALL return a failure result structure that downstream modules can detect consistently.
-- **REC-OUT-09**: When only partial or low-confidence reconstruction is available, the module SHALL mark the result as degraded.
-- **REC-OUT-10**: All failure and degraded outputs SHALL carry an error or status code that is traceable through logs or status fields.
+- **REC-PROC-09**: 지상국 컴퓨터는 reconstruction job을 원격 GPU server로 제출해야 한다.
+- **REC-PROC-10**: 원격 GPU server는 선택된 reconstruction / SLAM inference workload를 NVIDIA RTX A6000급 GPU 환경에서 실행해야 한다.
+- **REC-PROC-11**: 원격 GPU server는 처리 후 reconstruction 출력과 실행 상태를 지상국 컴퓨터로 반환해야 한다.
+- **REC-PROC-12**: reconstruction 모듈은 request와 response 사이에서 job identity를 보존하여 반환된 출력이 원래 image set과 매칭될 수 있도록 해야 한다.
+- **REC-PROC-13**: 원격 실행이 실패, timeout, invalid output 반환으로 끝난 경우 reconstruction 모듈은 reconstruction failure 상태를 기록해야 한다.
+- **REC-PROC-13A**: 최종 transport가 확정되기 전까지 prototype 원격 실행 경로는 `03-interface-specification.md` Section 3.4에 정의된 HTTP polling 계약을 지원해야 한다.
+- **REC-PROC-13B**: 지상국 client는 원격 실행 성공 후 완료된 reconstruction artifact를 자동으로 내려받아야 하며, 내려받은 artifact를 fixed-frame visualization 또는 downstream integration 경로로 넘겨야 한다.
+- **REC-PROC-13C**: sequence-based SLAM backend의 경우, 원격 실행 경로는 여러 개의 순차 frame이 하나의 진화하는 map state에 기여할 수 있도록 장수명 processing session 또는 동등한 session identifier를 지원해야 한다. Session state 전이와 operation response는 `03-interface-specification.md` Section 3.5A를 따라야 한다.
+- **REC-PROC-13D**: 선택된 backend가 sequence-based SLAM backend인 경우, reconstruction 모듈은 backend runtime 출력을 즉시 독립적인 reconstruction chunk로 변환하도록 강제하지 말고 session-state 계약을 통해 노출해야 한다.
+- **REC-PROC-13E**: reconstruction 모듈은 session-state 계약과 선택된 sequence backend 사이에 backend adapter 경계를 유지해야 한다. 이를 통해 외부 API를 바꾸지 않고도 backend별 runtime file, log, intermediate output을 공통 session-state field로 변환할 수 있어야 한다. 현재 prototype에서는 backend-native trajectory file을 권위 있는 `pose_stream_ref` 자원으로, backend-native map snapshot을 권위 있는 `map_state_ref` 자원으로 보존해야 한다.
 
-### 5.4 Fixed-Frame Visualization Output (Ground-Side Validation)
+### 4.4 결과 패키징
+
+- **REC-PROC-14**: reconstruction 모듈은 reconstruction 출력과 함께 quality metadata 및 processing status를 묶어 제공해야 한다.
+- **REC-PROC-15**: reconstruction 모듈은 successful, degraded, failed reconstruction outcome을 구분해야 한다. *(판정 기준: OI-REC-05 참조)*
+- **REC-PROC-16**: reconstruction 모듈은 반환 결과를 정의된 인터페이스를 통해 downstream alignment 또는 integration 모듈이 사용할 수 있게 해야 한다.
+- **REC-PROC-16A**: backend가 camera trajectory 또는 globally consistent map state를 직접 제공하는 경우, 모듈은 같은 session의 독립 artifact를 다시 downstream alignment하도록 요구하기보다 해당 출력을 주된 alignment source로 취급해야 한다.
+
+### 4.5 Accumulated Map 처리
+
+- **REC-PROC-17**: 지상국 reconstruction 경로는 영속적인 accumulated map manifest의 생성 및 append 작업을 담당해야 하며, 선택된 backend가 sequence/session 계약을 사용하는 경우 지상국 session map record의 생성과 갱신도 담당해야 한다.
+- **REC-PROC-18**: 각 map chunk는 원본 reconstruction `job_id`, `image_set_id`, local artifact reference, output format, timestamp, quality metadata, frame/alignment metadata를 보존해야 한다.
+- **REC-PROC-19**: 유효한 Reconstruction-to-World transform이 첨부되지 않은 한, accumulated map은 독립적인 reconstruction chunk가 이미 metric World / Map frame을 공유한다고 가정해서는 안 된다.
+- **REC-PROC-20**: chunk에 유효한 World-frame alignment transform이 없을 경우, accumulated map은 이를 최종 map으로 묵시적으로 병합하지 말고 `UNALIGNED` 또는 `PARTIAL_ALIGNMENT` 상태로 저장해야 한다.
+- **REC-PROC-21**: accumulated map update 경로는 raw reconstruction artifact를 수정하지 않고도 Pose / Frame Alignment 모듈이 manifest update 인터페이스를 통해 chunk transform metadata를 갱신하거나 교체할 수 있게 해야 한다.
+- **REC-PROC-22**: process restart 이후에도 map state를 복구할 수 있도록 accumulated map manifest는 지상국 파일 형태로 영속 저장되어야 한다.
+- **REC-PROC-23**: 명시적인 replacement policy가 설정되지 않는 한, accumulated map append 작업은 기본적으로 중복 `job_id` 항목을 거부해야 한다.
+- **REC-PROC-24**: accumulated map은 raw artifact를 삭제하지 않고도 chunk를 invalidated 상태로 표시할 수 있어야 한다.
+- **REC-PROC-24A**: backend가 독립적인 chunk artifact 대신 session-level map state를 생성하는 경우, accumulated map 경로는 같은 session의 별도 3D artifact 사이에 사후 alignment를 요구하지 않고도 해당 session state의 증분 갱신을 지원해야 한다. session-state ownership은 REC-PROC-17에 정의된 지상국 reconstruction 경로에 남는다.
+
+### 4.6 처리된 이미지 수명주기
+
+- **REC-PROC-25**: 지상국 시스템은 항상 미처리 이미지(inbox)와 처리된 이미지(processed directory)를 엄격히 분리해서 유지해야 한다. 각 이미지 파일은 어느 시점이든 정확히 한 위치에만 존재해야 한다.
+- **REC-PROC-26**: 이미지 파일은 해당 파일을 포함한 reconstruction job이 성공적으로 dispatch된 뒤 inbox에서 processed directory로 원자적으로 이동되거나 rename 연산으로 이동되어야 한다. copy-then-delete 전략은 다음 monitoring cycle이 inbox를 읽기 전에 delete 단계가 보장되는 경우에만 허용된다.
+- **REC-PROC-27**: 지상국 시스템은 이미 processed directory로 이동한 이미지를 다시 읽거나 다시 buffer에 넣어서는 안 된다.
+
+---
+
+## 5. 출력 요구사항
+
+### 5.1 Reconstruction 출력
+
+- **REC-OUT-01**: reconstruction 모듈은 시스템이 정의한 표현 형식으로 reconstruction result를 출력해야 한다. 이 표현은 artifact 지향 출력과 sequence/session map-state 출력을 모두 지원해야 한다. *(주요 artifact 후보는 GLB/PLY 유지, OI-REC-03 참조)*
+- **REC-OUT-02**: 출력에는 reconstruction job 식별자와 처리 timestamp가 포함되어야 한다.
+- **REC-OUT-03**: 출력에는 reconstruction을 생성하는 데 사용된 입력 image set의 식별자가 포함되어야 한다.
+- **REC-OUT-04**: reconstruction 모듈은 향후 개정에서 전체 모듈을 다시 설계하지 않고도 외부 output format을 변경할 수 있도록 모듈화되어야 한다.
+- **REC-OUT-04A**: 선택된 backend가 continuous-sequence mode로 동작하는 경우, 출력에는 session identifier와 camera trajectory 또는 동등한 pose stream reference가 포함되어야 한다.
+
+### 5.2 품질 Metadata
+
+- **REC-OUT-05**: reconstruction 모듈은 각 출력에 quality metadata를 포함해야 한다.
+- **REC-OUT-06**: quality metadata에는 최소한 사용한 입력 이미지 수, processing status, 하나 이상의 reconstruction quality indicator가 포함되어야 한다. *(정확한 indicator는 OI-REC-04 참조)*
+- **REC-OUT-07**: reconstruction 모듈은 시스템이 정의한 threshold에 대한 quality evaluation을 지원해야 한다. *(threshold 값은 OI-REC-04 참조)*
+
+### 5.3 Failure 및 Degraded 출력
+
+- **REC-OUT-08**: reconstruction이 실패한 경우, 모듈은 downstream 모듈이 일관되게 감지할 수 있는 failure result structure를 반환해야 한다.
+- **REC-OUT-09**: 부분적이거나 낮은 신뢰도의 reconstruction만 가능한 경우, 모듈은 결과를 degraded로 표시해야 한다.
+- **REC-OUT-10**: 모든 failure 및 degraded 출력은 log 또는 status field를 통해 추적 가능한 error 또는 status code를 포함해야 한다.
+
+### 5.4 고정 좌표계 시각화 출력 (지상국 검증)
 
 - **REC-OUT-11**: The reconstruction output SHALL expose camera trajectory metadata as defined in 03-interface-specification.md Section 3.3.
 - **REC-OUT-12**: The reconstruction output SHALL expose fixed-frame visualization metadata as defined in 03-interface-specification.md Section 3.3.
@@ -167,15 +162,15 @@ system documents and the interface specification (03-interface-specification.md)
 - **REC-OUT-13A**: For sequence-based backends, the validation UI SHALL be able to consume incremental camera trajectory and map-state updates without requiring export of a new independent artifact for each short frame batch.
 - **REC-OUT-13B**: For sequence-based backends, the session-state output SHALL include the latest accepted frame reference, frame count, and runtime tracking state when those values are available from the backend adapter.
 
-### 5.5 Accumulated Map Output
+### 5.5 Accumulated Map 출력
 
 - **REC-OUT-14**: The reconstruction module SHALL support an accumulated map manifest that references one or more reconstruction chunks.
 - **REC-OUT-15**: The accumulated map manifest SHALL include map identifier, chunk list, artifact references, per-chunk alignment status, per-chunk transform metadata, and quality metadata.
 - **REC-OUT-16**: The accumulated map viewer SHALL be able to render multiple chunks in a shared display frame while distinguishing unaligned chunks from aligned chunks.
-- **REC-OUT-17**: The accumulated map output SHALL preserve traceability from each displayed map chunk back to its source images and reconstruction job.
+- **REC-OUT-17**: The accumulated map output SHALL preserve traceability from each displayed map chunk back to its source artifact reference, source_path set when available, and reconstruction job.
 - **REC-OUT-18**: Unaligned chunks SHALL be rendered in their own reconstruction frame for diagnostic visualization and SHALL be visually marked as non-metric map contributions.
 
-### 5.6 Live Viewer Output
+### 5.6 Live Viewer 출력
 
 - **REC-OUT-19**: The ground-side accumulated map viewer SHALL update its displayed content automatically when a new reconstruction chunk is appended to the manifest, without requiring the user to close and reopen the viewer.
 - **REC-OUT-20**: The viewer SHALL use a server-push or browser-polling mechanism to detect manifest changes. The update interval for polling-based implementations SHALL be configurable and SHALL default to no more than 5 seconds.
@@ -186,7 +181,7 @@ system documents and the interface specification (03-interface-specification.md)
 
 ---
 
-## 6. Error Handling Requirements
+## 6. 오류 처리 요구사항
 
 - **REC-ERR-01**: The reconstruction module SHALL stop and reject processing when the minimum required image count is not satisfied.
 - **REC-ERR-02**: The reconstruction module SHALL report corrupted or unusable input images in logs or status metadata before job submission.
@@ -196,7 +191,7 @@ system documents and the interface specification (03-interface-specification.md)
 
 ---
 
-## 7. Performance Requirements
+## 7. 성능 요구사항
 
 - **REC-PERF-01**: The reconstruction pipeline SHALL be executable on a remote GPU server environment separate from the ground-side receiver.
 - **REC-PERF-02**: The reconstruction module SHALL support NVIDIA RTX A6000-class GPU execution as the baseline deployment target.
@@ -205,10 +200,9 @@ system documents and the interface specification (03-interface-specification.md)
 
 ---
 
-## 8. Items to Be Defined in Interface Specification
+## 8. 인터페이스 명세에서 정의해야 할 항목
 
-The following items are reconstruction module boundary contracts that SHALL be
-formally defined in 03-interface-specification.md:
+아래 항목은 reconstruction 모듈 경계 계약이며, `03-interface-specification.md`에서 정식으로 정의되어야 한다.
 
 - **REC-IFC-01**: The message structure for reconstruction job request (ground-side → server), including job ID, image payload reference, and optional auxiliary input fields.
 - **REC-IFC-02**: The message structure for reconstruction result return (server → ground-side), including job ID, output format reference, quality metadata, and status/error code.
@@ -219,13 +213,11 @@ formally defined in 03-interface-specification.md:
 
 ---
 
-## 9. Items to Be Defined in Verification Plan
+## 9. 검증 계획에서 정의해야 할 항목
 
-The reconstruction verification cases and traceability SHALL be owned by
-08-verification-plan.md. This module document only reserves the REC-VER-01
-through REC-VER-19 requirement identifiers.
+reconstruction 검증 사례와 traceability는 `08-verification-plan.md`가 담당한다. 이 모듈 문서는 `REC-VER-01`부터 `REC-VER-19`까지의 requirement identifier만 예약한다.
 
-Reserved verification identifiers:
+예약된 verification identifier:
 
 | ID | Verification intent |
 | --- | --- |
@@ -251,11 +243,11 @@ Reserved verification identifiers:
 
 ---
 
-## 10. Open Items
+## 10. 미정 항목
 
 | ID         | Description                                                                                  | Owner | Status |
 |------------|----------------------------------------------------------------------------------------------|-------|--------|
-| OI-REC-01  | Minimum image count for starting DUSt3R-family reconstruction needs to be finalized.         | TBD   | Open   |
+| OI-REC-01  | Minimum image count for starting the selected reconstruction backend needs to be finalized.   | TBD   | Open   |
 | OI-REC-02  | Camera intrinsic parameter provisioning method needs to be finalized.                        | TBD   | Open   |
 | OI-REC-03  | GLB is the current primary external output format candidate; the officially frozen output format needs to be confirmed and recorded in the interface specification. | TBD | Open |
 | OI-REC-04  | Reconstruction quality indicators and acceptance thresholds need to be finalized.            | TBD   | Open   |

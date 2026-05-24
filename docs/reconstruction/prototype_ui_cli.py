@@ -108,68 +108,6 @@ def _sample_points(points: np.ndarray, colors: np.ndarray, max_points: int) -> t
     return points[idx], colors[idx]
 
 
-def _load_uwb_points(uwb_json_path: str | None, uwb_points_cli: Sequence[Sequence[float]]) -> list[dict[str, Any]]:
-    points: list[dict[str, Any]] = []
-
-    if uwb_json_path:
-        with open(os.path.abspath(uwb_json_path), "r", encoding="utf-8") as fp:
-            payload = json.load(fp)
-        if isinstance(payload, dict):
-            payload = payload.get("uwb_points", [])
-        if not isinstance(payload, list):
-            raise ValueError("--uwb-json must contain a list or an object with 'uwb_points' list.")
-
-        for idx, item in enumerate(payload, start=1):
-            if isinstance(item, dict):
-                position = item.get("position")
-                if not isinstance(position, list) or len(position) != 3:
-                    raise ValueError(f"Invalid UWB point object at index {idx}: expected 'position' with 3 values.")
-                points.append({
-                    "label": str(item.get("label") or f"uwb-{idx}"),
-                    "position": [float(position[0]), float(position[1]), float(position[2])],
-                })
-            elif isinstance(item, list) and len(item) == 3:
-                points.append({
-                    "label": f"uwb-{idx}",
-                    "position": [float(item[0]), float(item[1]), float(item[2])],
-                })
-            else:
-                raise ValueError(f"Invalid UWB point entry at index {idx}: expected [x,y,z] or object.")
-
-    for idx, raw in enumerate(uwb_points_cli, start=1):
-        if len(raw) != 3:
-            raise ValueError("--uwb-point requires exactly 3 values: X Y Z")
-        points.append({
-            "label": f"uwb-cli-{idx}",
-            "position": [float(raw[0]), float(raw[1]), float(raw[2])],
-        })
-
-    return points
-
-
-def _transform_named_points(points: Sequence[dict[str, Any]], transform: FrameTransform) -> list[dict[str, Any]]:
-    if not points:
-        return []
-
-    base = _frame_matrix(transform.frame)
-    rot = _rotation_matrix(transform.yaw_deg, transform.pitch_deg, transform.roll_deg)
-    linear = transform.scale * (rot @ base)
-    translation = np.array(
-        [transform.translate_x, transform.translate_y, transform.translate_z],
-        dtype=np.float64,
-    )
-
-    out: list[dict[str, Any]] = []
-    for node in points:
-        pos = np.asarray(node.get("position", [0.0, 0.0, 0.0]), dtype=np.float64)
-        transformed = pos @ linear.T + translation
-        out.append({
-            "label": str(node.get("label", "uwb")),
-            "position": [float(transformed[0]), float(transformed[1]), float(transformed[2])],
-        })
-    return out
-
-
 def _transform_camera_trajectory(
     trajectory: Sequence[dict],
     transform: FrameTransform,
@@ -202,7 +140,6 @@ def _build_html(
     points: np.ndarray,
     colors: np.ndarray,
     camera_trajectory: Sequence[dict],
-    uwb_points: Sequence[dict],
     matrix: np.ndarray,
     transform: FrameTransform,
     quality: dict,
@@ -215,7 +152,6 @@ def _build_html(
     points_payload = points.tolist()
     colors_payload = colors.tolist()
     cameras_payload = list(camera_trajectory)
-    uwb_payload = list(uwb_points)
     matrix_payload = matrix.tolist()
     transform_payload = asdict(transform)
 
@@ -282,7 +218,6 @@ def _build_html(
     const points = {json.dumps(points_payload)};
     const colors = {json.dumps(colors_payload)};
     const cameras = {json.dumps(cameras_payload)};
-    const uwbPoints = {json.dumps(uwb_payload)};
     const transform = {json.dumps(transform_payload)};
     const linearMatrix = {json.dumps(matrix_payload)};
     const quality = {json.dumps(quality)};
@@ -320,23 +255,6 @@ def _build_html(
             name: 'camera-trajectory'
         }};
 
-        const uwbX = uwbPoints.map(c => c.position[0]);
-        const uwbY = uwbPoints.map(c => c.position[1]);
-        const uwbZ = uwbPoints.map(c => c.position[2]);
-        const uwbText = uwbPoints.map(c => c.label);
-        const uwbTrace = {{
-            type: 'scatter3d',
-            mode: 'markers+text',
-            x: uwbX,
-            y: uwbY,
-            z: uwbZ,
-            text: uwbText,
-            textposition: 'top center',
-            hovertemplate: '%{{text}}<extra></extra>',
-            marker: {{ size: 8, color: '#ef4444', symbol: 'diamond' }},
-            name: 'uwb-points'
-        }};
-
     const axisX = {{
       type: 'scatter3d', mode: 'lines',
       x: [0, axisLength], y: [0, 0], z: [0, 0],
@@ -367,7 +285,7 @@ def _build_html(
       }}
     }};
 
-    Plotly.newPlot('plot', [cloud, cameraTrace, uwbTrace, axisX, axisY, axisZ], layout, {{responsive: true}});
+    Plotly.newPlot('plot', [cloud, cameraTrace, axisX, axisY, axisZ], layout, {{responsive: true}});
 
     document.getElementById('transform').textContent = JSON.stringify(transform, null, 2);
     document.getElementById('matrix').textContent = JSON.stringify(linearMatrix, null, 2);
@@ -410,20 +328,6 @@ def main(argv: List[str] | None = None) -> int:
     parser.add_argument("--ty", type=float, default=0.0, help="Translation Y")
     parser.add_argument("--tz", type=float, default=0.0, help="Translation Z")
     parser.add_argument("--max-points", type=int, default=15000, help="Max displayed points in UI")
-    parser.add_argument(
-        "--uwb-point",
-        nargs=3,
-        action="append",
-        type=float,
-        default=[],
-        metavar=("X", "Y", "Z"),
-        help="UWB point in cm. Repeat option to add multiple points.",
-    )
-    parser.add_argument(
-        "--uwb-json",
-        default=None,
-        help="Optional JSON path containing UWB points: [[x,y,z], ...] or {'uwb_points':[...]}.",
-    )
     parser.add_argument("--output-html", default=None, help="Output HTML path")
     parser.add_argument("--open", action="store_true", help="Open generated HTML in default browser")
     args = parser.parse_args(argv)
@@ -488,8 +392,6 @@ def main(argv: List[str] | None = None) -> int:
     )
     transformed_points, linear = _apply_transform(points, transform)
     camera_trajectory = _transform_camera_trajectory(raw_result.get("camera_trajectory", []), transform)
-    uwb_points_raw = _load_uwb_points(args.uwb_json, args.uwb_point)
-    uwb_points = _transform_named_points(uwb_points_raw, transform)
 
     output_html = args.output_html
     if output_html is None:
@@ -502,7 +404,6 @@ def main(argv: List[str] | None = None) -> int:
         points=transformed_points,
         colors=colors,
         camera_trajectory=camera_trajectory,
-        uwb_points=uwb_points,
         matrix=linear,
         transform=transform,
         quality={
@@ -511,7 +412,6 @@ def main(argv: List[str] | None = None) -> int:
             "images_used": len(args.images),
             "point_count_displayed": int(len(transformed_points)),
             "camera_count": len(camera_trajectory),
-            "uwb_count": len(uwb_points),
             "match_count": raw_result.get("match_count"),
             "inlier_count": raw_result.get("inlier_count"),
             "successful_pairs": raw_result.get("successful_pairs"),
@@ -532,7 +432,6 @@ def main(argv: List[str] | None = None) -> int:
         "linear_matrix": linear.tolist(),
         "point_count_displayed": int(len(transformed_points)),
         "camera_count": len(camera_trajectory),
-        "uwb_count": len(uwb_points),
     }, indent=2))
 
     if args.open:

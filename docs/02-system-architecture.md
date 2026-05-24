@@ -1,124 +1,105 @@
-# 02. System Architecture
+# 02. 시스템 아키텍처
 
-## 1. Overview
+## 1. 개요
 
-Describe the overall architecture and design intent.
+이 문서는 전체 아키텍처와 설계 의도를 설명한다.
 
-The baseline cFS input path for the current system architecture uses the following SB
-messages:
+현재 시스템 아키텍처의 baseline cFS 입력 경로는 다음 SB 메시지를 사용한다.
 
-- `IMU_STATE_MID (0x1901)` from `imu_app`
-- `GPS_STATE_MID (0x1902)` from `gps_app`
-- `TELEMETRY_STATUS_MID (0x1903)` from `telemetry_app`
-- `IMAGE_META_MID (0x1904)` from `img_app`
+- `imu_app`가 publish하는 `IMU_STATE_MID (0x1901)`
+- `gps_app`가 publish하는 `GPS_STATE_MID (0x1902)`
+- `telemetry_app`가 publish하는 `TELEMETRY_STATUS_MID (0x1903)`
+- `mavlink_bridge_app`가 publish하는 `FC_LOCAL_POS_MID (0x1905)`, `FC_ATTITUDE_MID (0x1906)`, `FC_GPS_RAW_MID (0x1907)`, `FC_ODOMETRY_MID (0x1908)` (조건부), `FC_EKF_STATUS_MID (0x1909)` (조건부), `MAVLINK_BRIDGE_STATUS_MID (0x190A)`
 
-`IMAGE_META_MID` carries metadata and artifact references only. Raw image payload
-transport is outside the baseline SB path.
+## 2. 모듈 구성
 
-## 2. Module Composition
+주요 모듈과 관계는 다음과 같다.
 
-List the major modules and their relationships.
-
-| Module | Responsibility | Depends On |
+| 모듈 | 책임 | 의존 대상 |
 | --- | --- | --- |
-| UWB Module | Optional position estimation from anchor/tag data | Sensor input; may be disabled by mission configuration |
-| GPS Interface | Global position acquisition and local frame conversion support | GPS receiver |
-| IMU Interface | Attitude, angular rate, and acceleration acquisition | IMU sensor |
-| Telemetry Interface | Communication-link state assessment and publication | Mission transport path |
-| Image Interface | Image capture metadata publication | Camera capture path |
-| Reconstruction Module | 3D reconstruction from image/sensor input | Camera and sensor input |
-| Pose / Frame Alignment Module | Coordinate frame alignment and calibration | UWB, GPS, IMU, camera, and reconstruction outputs |
-| cFS Integration Layer | Runtime integration, messaging, configuration, logging | All functional modules |
+| GPS Interface | 전역 위치 획득 및 local frame 변환 지원 | GPS 수신기 |
+| IMU Interface | 자세, 각속도, 가속도 획득 | IMU 센서 |
+| MAVLink Bridge | FC MAVLink 바이트 스트림 수신, 파싱, cFS SB 메시지 변환 publish | Flight Controller (serial/UART) |
+| Telemetry Interface | 통신 링크 상태 평가 및 publish | 임무 transport 경로 |
+| Image / Video Path | 지상국 측 image/video 입력 전달 | camera capture 경로 |
+| Reconstruction Module | image/sensor 입력 기반 3D reconstruction | camera 및 sensor 입력 |
+| Pose / Frame Alignment Module | 좌표계 정렬 및 calibration | GPS, IMU, MAVLink FC state, camera, reconstruction 출력 |
+| cFS Integration Layer | runtime integration, messaging, configuration, logging | 모든 기능 모듈 |
 
-## 3. Module Responsibilities
+## 3. 모듈 책임
 
-### 3.1 UWB Module
+### 3.1 Reconstruction Module
 
-- Estimate distance and position
-- Validate ranging data
-- Provide structured outputs
-- Support clean disable/removal through configuration without blocking GPS, IMU, reconstruction, or alignment processing
+- 입력 이미지와 센서 데이터를 처리한다
+- 3D reconstruction 출력을 생성한다
+- 품질 검사를 적용한다
 
-### 3.2 Reconstruction Module
+### 3.2 GPS Interface
 
-- Process input images and sensor data
-- Generate 3D reconstruction outputs
-- Apply quality checks
+- GPS 위치 및 timestamp 데이터를 수신한다
+- raw WGS84 측정값을 보존한다
+- alignment module에 local-frame 변환 입력을 제공한다
 
-### 3.3 GPS Interface
+### 3.3 IMU Interface
 
-- Receive GPS position and timestamp data
-- Preserve raw WGS84 measurements
-- Provide local-frame conversion inputs to the alignment module
+- 기체 자세, 각속도, 가속도 데이터를 수신한다
+- IMU/body-frame 메타데이터를 보존한다
+- alignment module에 orientation constraint를 제공한다
 
-### 3.4 IMU Interface
+### 3.4 Telemetry Interface
 
-- Receive vehicle attitude, angular rate, and acceleration data
-- Preserve IMU/body-frame metadata
-- Provide orientation constraints to the alignment module
+- 활성 transport 경로에서 communication-link health를 평가한다
+- `TELEMETRY_STATUS_MID (0x1903)`를 publish한다
+- `ALIVE`, `DEGRADED`, `LOST` link-state 전이를 보고한다
 
-### 3.5 Telemetry Interface
+### 3.5 Image / Video Path
 
-- Assess communication-link health from the active transport path
-- Publish `TELEMETRY_STATUS_MID (0x1903)`
-- Report `ALIVE`, `DEGRADED`, and `LOST` link-state transitions
+- camera image 또는 video frame 입력을 지상국 측 reconstruction 경로로 전달한다
+- raw image payload는 baseline cFS SB 경로를 직접 통과하지 않는다
 
-### 3.6 Image Interface
+### 3.6 Pose / Frame Alignment Module
 
-- Detect completed image capture events
-- Publish `IMAGE_META_MID (0x1904)` at low rate
-- Carry image identifiers, timestamps, and artifact references only
+- frame transform을 관리한다
+- offset과 calibration을 적용한다
+- 통합된 좌표 출력값을 생성한다
+- GPS, IMU, camera, reconstruction 좌표계를 World / Map frame으로 정렬한다
 
-### 3.7 Pose / Frame Alignment Module
+### 3.7 cFS Integration Layer
 
-- Manage frame transforms
-- Apply offsets and calibration
-- Produce unified coordinate outputs
-- Align UWB, GPS, IMU, camera, and reconstruction frames into the World / Map frame
+- application lifecycle을 관리한다
+- 메시지를 publish/subscribe 한다
+- configuration, event, timer를 처리한다
 
-### 3.8 cFS Integration Layer
+## 4. 데이터 흐름
 
-- Manage application lifecycle
-- Publish and subscribe messages
-- Handle configuration, events, and timers
+모듈 간 정보 이동 방식은 다음과 같다.
 
-## 4. Data Flow
+1. `imu_app`, `gps_app`, `telemetry_app`가 baseline 필수 SB 입력 집합을 publish한다.
+2. Reconstruction Module은 지상국 image/video 경로를 통해 전달된 image 입력을 소비한다.
+3. Alignment 로직은 source 출력을 공통 World / Map frame으로 변환한다.
+4. cFS integration이 출력을 downstream consumer에 배포한다.
 
-Describe how information moves between modules.
+## 5. 모듈 간 연결 관계
 
-1. `imu_app`, `gps_app`, `telemetry_app`, and `img_app` publish the baseline required
-   SB input set.
-2. The Reconstruction Module consumes `IMAGE_META_MID` and fetches the referenced image
-   artifact outside SB.
-3. UWB processing runs only when the optional UWB source path is enabled.
-4. Alignment logic transforms source outputs into a common World / Map frame.
-5. cFS integration distributes outputs to downstream consumers.
-
-If UWB is disabled or unavailable, data flow SHALL continue with the remaining enabled sources and the alignment output SHALL record UWB as unavailable.
-
-## 5. Connectivity Between Modules
-
-| Source Module | Target Module | Interface Type | Notes |
+| Source Module | Target Module | Interface Type | 비고 |
 | --- | --- | --- | --- |
-| UWB Module | Pose / Frame Alignment Module | Data message | Position and ranging result |
-| GPS Interface | Pose / Frame Alignment Module | Data message | GPS position and timestamp |
-| IMU Interface | Pose / Frame Alignment Module | Data message | Attitude, angular rate, acceleration |
+| GPS Interface | Pose / Frame Alignment Module | Data message | GPS 위치 및 timestamp |
+| IMU Interface | Pose / Frame Alignment Module | Data message | 자세, 각속도, 가속도 |
 | Telemetry Interface | cFS Integration Layer | SB message | `TELEMETRY_STATUS_MID (0x1903)` |
-| Image Interface | Reconstruction Module | SB message | `IMAGE_META_MID (0x1904)`; metadata/reference only |
-| Reconstruction Module | Pose / Frame Alignment Module | Data message | 3D result and metadata |
-| Pose / Frame Alignment Module | Reconstruction Module / Map Manifest | Metadata update | Per-chunk transform and alignment_status update via accumulated map manifest interface |
-| Pose / Frame Alignment Module | cFS Integration Layer | Data message | Unified output |
-| cFS Integration Layer | All Modules | Control/config interface | Runtime control |
+| Image / Video Path | Reconstruction Module | Ground-side transfer path | camera image 또는 video frame 입력 |
+| Reconstruction Module | Pose / Frame Alignment Module | Data message | 3차원 결과 및 메타데이터 |
+| Pose / Frame Alignment Module | Reconstruction Module / Map Manifest | Metadata update | accumulated map manifest interface를 통한 per-chunk transform 및 `alignment_status` 갱신 |
+| Pose / Frame Alignment Module | cFS Integration Layer | Data message | 통합 출력 |
+| cFS Integration Layer | All Modules | Control/config interface | runtime control |
 
-## 6. Architecture Constraints
+## 6. 아키텍처 제약조건
 
-- Use consistent interface definitions across modules.
-- Preserve traceability from requirements to verification.
-- Isolate module responsibilities where possible.
-- Treat UWB as an optional source module, not as a mandatory dependency of reconstruction or accumulated map visualization.
+- 모듈 간 인터페이스 정의는 일관되게 유지해야 한다.
+- 요구사항과 검증 사이의 traceability를 보존해야 한다.
+- 가능하면 모듈 책임을 분리해야 한다.
 
-## 7. Open Items
+## 7. 미정 항목
 
-- OI-ARCH-01: Deployment split between ground-side Raspberry Pi, remote GPU server, and any onboard/drone-side process needs to be finalized.
-- OI-ARCH-02: Large artifact transfer path for reconstruction outputs needs to be finalized against cFS SB payload limits and storage constraints.
-- OI-ARCH-03: Failure isolation policy between UWB, reconstruction, alignment, and cFS integration needs to be finalized.
+- `OI-ARCH-01`: 지상국 Raspberry Pi, 원격 GPU server, onboard/drone-side process 간의 배치 분할을 확정해야 한다.
+- `OI-ARCH-02`: reconstruction 출력용 large artifact 전송 경로를 cFS SB payload 한계 및 저장 제약과 함께 확정해야 한다.
+- `OI-ARCH-03`: reconstruction, alignment, cFS integration 간 failure isolation policy를 확정해야 한다.

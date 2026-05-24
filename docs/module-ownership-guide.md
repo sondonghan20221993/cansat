@@ -1,154 +1,90 @@
-# Module Ownership Guide
+# 모듈 담당 범위 가이드
 
-## 1. Purpose
+## 1. 목적
 
-This guide defines how to split requirements across parallel development tracks so that UWB, 3D mapping, pose alignment, and cFS integration can be developed independently and merged cleanly.
+이 가이드는 3D mapping, pose alignment, cFS integration을 병렬로 개발하더라도 각 요구사항을 독립적으로 작성하고, 이후 충돌 없이 통합할 수 있도록 문서별 담당 범위를 정의한다.
 
-## 2. Recommended Team Split
+## 2. 권장 역할 분리
 
-### 2.1 UWB Team
+### 2.1 3D Mapping 담당
 
-Owns:
+담당 범위:
 
-- Distance message reception from anchors
-- Distance filtering and validation
-- Distance set construction
-- Trilateration logic
-- Residual calculation
-- Valid and invalid result generation
-- UWB-side performance and algorithm tests
+- 이미지 및 센서 입력 요구사항
+- reconstruction pipeline
+- reconstruction 출력 및 품질 기준
+- mapping 측 시험
 
-Primary documents:
-
-- [03-interface-specification.md](03-interface-specification.md)
-- [04-uwb-requirements.md](modules/04-uwb-requirements.md)
-- [08-verification-plan.md](verification/08-verification-plan.md)
-
-### 2.2 3D Mapping Team
-
-Owns:
-
-- Image and sensor input requirements
-- Reconstruction pipeline
-- Reconstruction outputs and quality criteria
-- Mapping-side tests
-
-Primary documents:
+주요 문서:
 
 - [03-interface-specification.md](03-interface-specification.md)
 - [05-reconstruction-requirements.md](modules/05-reconstruction-requirements.md)
 - [08-verification-plan.md](verification/08-verification-plan.md)
 
-### 2.3 Pose / Frame Alignment Team
+### 2.2 Pose / Frame Alignment 담당
 
-Owns:
+담당 범위:
 
-- UWB frame, camera frame, and map frame definitions
-- Transform logic
-- Calibration and offset parameters
-- Alignment validation
+- GPS frame, camera frame, map frame 정의
+- transform 로직
+- calibration 및 offset 파라미터
+- alignment 검증
 
-Primary documents:
+주요 문서:
 
 - [03-interface-specification.md](03-interface-specification.md)
 - [06-pose-frame-alignment-requirements.md](modules/06-pose-frame-alignment-requirements.md)
 - [08-verification-plan.md](verification/08-verification-plan.md)
 
-### 2.4 cFS Team
+### 2.3 cFS 담당
 
-Owns:
+담당 범위:
 
 - cFS app lifecycle
-- SB message routing
-- Timer behavior
-- Configuration loading
-- Logging and event handling
-- Runtime integration between modules
+- SB 메시지 라우팅
+- timer 동작
+- configuration loading
+- logging 및 event 처리
+- 모듈 간 runtime integration
 
-Primary documents:
+주요 문서:
 
 - [02-system-architecture.md](02-system-architecture.md)
 - [03-interface-specification.md](03-interface-specification.md)
 - [07-cfs-integration-requirements.md](modules/07-cfs-integration-requirements.md)
 - [08-verification-plan.md](verification/08-verification-plan.md)
 
-## 3. Document Allocation Rules
+## 3. 문서 배치 규칙
 
-Use the following rule of thumb when writing or moving requirements.
+요구사항을 작성하거나 이동할 때는 아래 기준을 사용한다.
 
-| If the requirement is about... | Put it in... |
+| 요구사항 내용 | 배치 문서 |
 | --- | --- |
-| Overall mission, scope, common units, system-wide constraints | [01-system-requirements.md](01-system-requirements.md) |
-| Which module connects to which module | [02-system-architecture.md](02-system-architecture.md) |
-| Message fields, structure definitions, timestamp rules, coordinate conventions, error representation | [03-interface-specification.md](03-interface-specification.md) |
-| UWB distance handling and trilateration behavior | [04-uwb-requirements.md](modules/04-uwb-requirements.md) |
-| Image-based 3D reconstruction behavior | [05-reconstruction-requirements.md](modules/05-reconstruction-requirements.md) |
-| Coordinate frame transform and calibration behavior | [06-pose-frame-alignment-requirements.md](modules/06-pose-frame-alignment-requirements.md) |
-| cFS execution, SB, timers, config, and event logging | [07-cfs-integration-requirements.md](modules/07-cfs-integration-requirements.md) |
-| How to test or verify any requirement | [08-verification-plan.md](verification/08-verification-plan.md) |
+| 전체 임무, 범위, 공통 단위, 시스템 전역 제약조건 | [01-system-requirements.md](01-system-requirements.md) |
+| 어떤 모듈이 어떤 모듈과 연결되는지 | [02-system-architecture.md](02-system-architecture.md) |
+| 메시지 필드, 구조 정의, timestamp 규칙, 좌표계 규칙, 오류 표현 | [03-interface-specification.md](03-interface-specification.md) |
+| 이미지 기반 3D reconstruction 동작 | [05-reconstruction-requirements.md](modules/05-reconstruction-requirements.md) |
+| 좌표계 변환 및 calibration 동작 | [06-pose-frame-alignment-requirements.md](modules/06-pose-frame-alignment-requirements.md) |
+| cFS 실행, SB, timer, config, event logging | [07-cfs-integration-requirements.md](modules/07-cfs-integration-requirements.md) |
+| 모든 요구사항의 시험 및 검증 방법 | [08-verification-plan.md](verification/08-verification-plan.md) |
 
-## 4. How To Place The UWB Requirement Set
+## 5. 병합 전략
 
-Your current UWB requirement draft should not be copied into only one file. It should be split as follows.
+병렬 개발 결과를 충돌 없이 병합하려면 다음 순서를 따른다.
 
-### 4.1 Move to System Requirements
+1. 먼저 공유 인터페이스 정의를 고정한다.
+2. 각 담당 주체는 자신이 맡은 모듈 문서 안에서만 내부 로직을 수정한다.
+3. 모듈 간 계약 변경은 반드시 인터페이스 문서를 통해 반영한다.
+4. 통합 영향은 아키텍처 문서에 반영한다.
+5. 요구사항이 바뀌면 검증 항목도 함께 추가 또는 수정한다.
 
-- Coordinate system definition as a system-wide rule
-- Anchor coordinate loading as a top-level operating constraint
-- Global timestamp policy
-- Global logging policy
-- System-level update-rate and performance targets
+## 6. 피해야 할 안티패턴
 
-### 4.2 Move to Interface Specification
+- 동일한 메시지 필드를 여러 모듈 문서에 중복 정의하지 않는다.
+- 서로 다른 모듈 문서에서 좌표계를 독립적으로 다시 정의하지 않는다.
+- reconstruction 내부 구현을 cFS integration 문서에 넣지 않는다.
+- 추적 가능한 검증 항목 없이 시험 절차만 모듈 문서에 두지 않는다.
 
-- Distance message format
-- `Position_Result` field definitions
-- Units, timestamp basis, `NaN` and `-1` conventions
-- Error code representation and propagation rules
+## 7. 권장 다음 단계
 
-### 4.3 Move to UWB Requirements
-
-- Distance reception and filtering behavior
-- Duplicate distance handling
-- Distance set construction
-- Output cycle timer behavior for UWB positioning
-- Planar trilateration behavior
-- Residual calculation
-- Valid and invalid position decision rules
-- UWB-side performance requirements
-
-### 4.4 Move to Verification Plan
-
-- Python algorithm tests
-- Round-trip trilateration tests
-- Invalid input tests
-- Residual validation tests
-- Duplicate-distance handling tests
-- Hardware integration tests with anchors and tag
-
-## 5. Merge Strategy
-
-To merge parallel development work cleanly:
-
-1. Freeze shared interface definitions first.
-2. Let each team update only its owned module document for internal logic.
-3. Route any cross-team contract change through the interface document.
-4. Reflect integration impacts in the architecture document.
-5. Add or update verification items whenever a requirement changes.
-
-## 6. Anti-Patterns To Avoid
-
-- Do not define the same message field in multiple module documents.
-- Do not redefine coordinate systems independently in different module documents.
-- Do not put cFS runtime behavior inside the UWB algorithm document.
-- Do not put reconstruction internals inside the cFS integration document.
-- Do not place test procedures only inside module documents without traceability in the verification plan.
-
-## 7. Suggested Next Step
-
-Use this guide to refactor the current UWB draft into:
-
-- system rules in `01-system-requirements.md`
-- message and result contracts in `03-interface-specification.md`
-- algorithm behavior in `04-uwb-requirements.md`
-- test content in `08-verification-plan.md`
+이 가이드를 기준으로 reconstruction, alignment, cFS integration 요구사항의 경계를 유지하면서 각 문서의 책임을 분리한다.
