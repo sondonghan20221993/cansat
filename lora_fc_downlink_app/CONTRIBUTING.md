@@ -1,3 +1,3 @@
-# Contributing Guide
+# 기여 가이드
 
-Please see our [top-level contributing guide](https://github.com/nasa/cFS/blob/main/CONTRIBUTING.md) for more information on how to contribute. 
+기여 방법에 대한 자세한 내용은 [상위 CONTRIBUTING 가이드](https://github.com/nasa/cFS/blob/main/CONTRIBUTING.md)를 참고한다.

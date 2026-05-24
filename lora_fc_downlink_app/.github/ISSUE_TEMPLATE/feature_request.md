@@ -1,23 +1,22 @@
 ---
-name: Feature request
-about: Suggest an idea for this project
+name: 기능 요청
+about: 프로젝트에 대한 아이디어를 제안합니다
 title: ''
 labels: ''
 assignees: ''
-
 ---
 
-**Is your feature request related to a problem? Please describe.**
-A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+**이 기능 요청이 어떤 문제와 관련되어 있나요?**  
+현재 겪고 있는 문제를 명확하고 간결하게 설명한다.
 
-**Describe the solution you'd like**
-A clear and concise description of what you want to happen.
+**원하는 해결 방법**  
+원하는 동작이나 결과를 설명한다.
 
-**Describe alternatives you've considered**
-A clear and concise description of any alternative solutions or features you've considered.
+**검토한 대안**  
+고려했던 다른 해결책이나 기능이 있다면 설명한다.
 
-**Additional context**
-Add any other context about the feature request here.
+**추가 문맥**  
+기능 요청 이해에 필요한 추가 정보를 적는다.
 
-**Requester Info**
-Full name and company/organization if applicable
+**요청자 정보**  
+성명 및 회사/조직(해당 시)

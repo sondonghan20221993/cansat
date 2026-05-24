@@ -1,41 +1,41 @@
-# Security Policy
+# 보안 정책
 
-## Reporting a Vulnerability
+## 취약점 보고
 
-To report a vulnerability for the lora_fc_downlink_app subsystem please [submit an issue](https://github.com/nasa/lora_fc_downlink_app/issues/new/choose).
+`lora_fc_downlink_app` 하위 시스템의 취약점을 보고하려면 [이슈를 생성](https://github.com/nasa/lora_fc_downlink_app/issues/new/choose)한다.
 
-For general cFS vulnerabilities please [open a cFS framework issue](https://github.com/nasa/cfs/issues/new/choose) and see our [top-level security policy](https://github.com/nasa/cFS/security/policy) for additional information.
+일반적인 cFS 취약점은 [cFS framework issue](https://github.com/nasa/cfs/issues/new/choose)를 등록하고, 추가 정보는 [상위 보안 정책](https://github.com/nasa/cFS/security/policy)을 참고한다.
 
-In either case please use the "Bug Report" template and provide as much information as possible. Apply appropriate labels for each report. For security related reports, tag the issue with the "security" label.
+두 경우 모두 `Bug Report` 템플릿을 사용하고 가능한 한 많은 정보를 제공해야 한다. 각 보고서에는 적절한 라벨을 적용하며, 보안 관련 보고서에는 `security` 라벨을 붙인다.
 
-## Testing
+## 테스트
 
-**Disclaimer: nasa/lora_fc_downlink_app is not responsible for any liability incurred under the [Apache License 2.0](https://github.com/nasa/lora_fc_downlink_app/blob/main/LICENSE).**
+**면책 고지: nasa/lora_fc_downlink_app은 [Apache License 2.0](https://github.com/nasa/lora_fc_downlink_app/blob/main/LICENSE)에 따라 발생하는 책임을 부담하지 않는다.**
 
-Testing is an important aspect our team values to improve lora_fc_downlink_app. 
+테스트는 `lora_fc_downlink_app` 품질 향상을 위해 중요한 활동이다.
 
-To view tools used for the cFS bundle, see our [top-level security policy](https://github.com/nasa/cFS/security/policy). 
+cFS 번들에 사용되는 도구는 [상위 보안 정책](https://github.com/nasa/cFS/security/policy)에서 확인할 수 있다.
 
 ### CodeQL
 
-The [lora_fc_downlink_app CodeQL GitHub Actions workflow](https://github.com/nasa/lora_fc_downlink_app/actions/workflows/codeql-build.yml) is available to the public. To review the results, fork the lora_fc_downlink_app repository and run the CodeQL workflow. 
+[lora_fc_downlink_app CodeQL GitHub Actions 워크플로](https://github.com/nasa/lora_fc_downlink_app/actions/workflows/codeql-build.yml)는 공개되어 있다. 결과를 검토하려면 `lora_fc_downlink_app` 저장소를 포크하고 CodeQL 워크플로를 실행한다.
 
-CodeQL is ran for every push and pull-request on all branches of lora_fc_downlink_app in GitHub Actions. 
+CodeQL은 GitHub Actions에서 `lora_fc_downlink_app`의 모든 브랜치에 대한 push와 pull request마다 실행된다.
 
-For the CodeQL GitHub Actions setup, visit https://github.com/github/codeql-action. 
+CodeQL GitHub Actions 구성은 <https://github.com/github/codeql-action>에서 확인할 수 있다.
 
 ### Cppcheck
 
-The [lora_fc_downlink_app Cppcheck GitHub Actions workflow and results](https://github.com/nasa/lora_fc_downlink_app/actions/workflows/static-analysis.yml) are available to the public. To view the results, select a workflow and download the artifacts. 
+[lora_fc_downlink_app Cppcheck GitHub Actions 워크플로와 결과](https://github.com/nasa/lora_fc_downlink_app/actions/workflows/static-analysis.yml)는 공개되어 있다. 결과를 확인하려면 해당 워크플로를 선택하고 artifact를 다운로드한다.
 
-Cppcheck is ran for every push on the main branch and every pull request on all branches of lora_fc_downlink_app in Github Actions. 
+Cppcheck는 GitHub Actions에서 `lora_fc_downlink_app`의 main 브랜치 push와 모든 pull request마다 실행된다.
 
-For more information about Cppcheck, visit http://cppcheck.sourceforge.net/.
+Cppcheck에 대한 자세한 내용은 <http://cppcheck.sourceforge.net/>에서 확인할 수 있다.
 
-## Additional Support
+## 추가 지원
 
-For additional support, submit a GitHub issue. You can also email the cfs community at cfs-community@lists.nasa.gov. 
+추가 지원이 필요하면 GitHub issue를 등록한다. `cfs-community@lists.nasa.gov`로 cFS 커뮤니티에 이메일을 보낼 수도 있다.
 
-You can subscribe to the mailing list [here](https://lists.nasa.gov/mailman/listinfo/cfs-community) that includes all the community members/users of the NASA core Flight Software (cFS) product line. The mailing list is used to communicate any information related to the cFS product such as current releases, bug findings and fixes, enhancement requests, community meeting notifications, sending out meeting minutes, etc.
+NASA core Flight Software(cFS) 제품군의 커뮤니티 구성원이 포함된 메일링 리스트는 [여기](https://lists.nasa.gov/mailman/listinfo/cfs-community)에서 구독할 수 있다. 이 메일링 리스트는 릴리스, 버그 수정, 개선 요청, 커뮤니티 미팅 공지, 회의록 배포 등 cFS 관련 정보를 공유하는 데 사용된다.
 
-If you wish to report a cybersecurity incident or concern, please contact the NASA Security Operations Center either by phone at 1-877-627-2732 or via email address soc@nasa.gov.
+사이버보안 사고나 우려 사항을 보고하려면 NASA Security Operations Center에 전화 `1-877-627-2732` 또는 이메일 `soc@nasa.gov`로 연락한다.

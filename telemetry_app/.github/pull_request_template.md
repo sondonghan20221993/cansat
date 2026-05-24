@@ -1,34 +1,40 @@
-**Describe the contribution**
-A clear and concise description of what the contribution is.
-- Include explicitly what issue it addresses [e.g. Fixes #X]
+**기여 내용 설명**  
+이번 기여가 무엇인지 명확하고 간결하게 설명한다.
 
-**Testing performed**
-Steps taken to test the contribution:
-1. Build steps '...'
-1. Execution steps '...'
+- 어떤 이슈를 해결하는지 명시한다. 예: `Fixes #X`
 
-**Expected behavior changes**
-A clear and concise description of how this contribution will change behavior and level of impact.
- - API Change: xxx (if applicable)
- - Behavior Change: xxx (if applicable)
- - Or no impact to behavior
+**수행한 테스트**  
+이번 기여를 검증하기 위해 수행한 단계를 적는다.
 
-**System(s) tested on**
- - Hardware: [e.g. PC, SP0, MCP750]
- - OS: [e.g. Ubuntu 18.04, RTEMS 4.11, VxWorks 6.9]
- - Versions: [e.g. cFE 6.6, OSAL 4.2, PSP 1.3 for mcp750, any related apps or tools]
+1. 빌드 단계: `...`
+2. 실행 단계: `...`
 
-**Additional context**
-Add any other context about the contribution here.
+**예상되는 동작 변경**  
+이번 기여가 동작과 영향 범위를 어떻게 바꾸는지 설명한다.
 
-**Third party code**
-If included, identify any third party code and provide text file of license
+- API 변경: xxx (해당 시)
+- 동작 변경: xxx (해당 시)
+- 또는 동작 영향 없음
 
-**Contributor Info - All information REQUIRED for consideration of pull request**
-Full name and company/organization/center of all contributors ("Personal" if individual work)
-- If NASA Civil Servant Employee or GSFC Contractor on SES II
-  - Address/email/phone and contract/task information (if applicable) must be on file
-- Else if Company
-  - **HAND SIGNED** Company CLA must be on file (once per release): [Company CLA](https://github.com/nasa/cFE/blob/master/docs/GSC_18128_Corp_CLA_form_1219.pdf)
-- Else if Individual
-  - **HAND SIGNED** Individual CLA must be on file (once per release): [Individual CLA](https://github.com/nasa/cFE/blob/master/docs/GSC_18128_Ind_CLA_form_1219.pdf)
+**테스트한 시스템**
+
+- Hardware: 예: `PC`, `SP0`, `MCP750`
+- OS: 예: `Ubuntu 18.04`, `RTEMS 4.11`, `VxWorks 6.9`
+- Versions: 예: `cFE 6.6`, `OSAL 4.2`, `PSP 1.3 for mcp750`, 관련 앱/도구 버전
+
+**추가 문맥**  
+필요한 추가 정보를 적는다.
+
+**서드파티 코드**  
+포함된 서드파티 코드가 있다면 식별하고 라이선스 문서를 함께 제공한다.
+
+**기여자 정보 - PR 검토를 위해 모두 필수**
+
+모든 기여자의 성명과 회사/조직/센터를 적는다. 개인 작업인 경우 `Personal`로 표기한다.
+
+- NASA 공무원 또는 SES II GSFC 계약자인 경우
+  - 주소/이메일/전화번호 및 계약/과업 정보(해당 시)가 등록되어 있어야 한다.
+- 회사 소속인 경우
+  - 릴리스당 한 번, **자필 서명된** 회사 CLA가 등록되어 있어야 한다: [Company CLA](https://github.com/nasa/cFE/blob/master/docs/GSC_18128_Corp_CLA_form_1219.pdf)
+- 개인인 경우
+  - 릴리스당 한 번, **자필 서명된** 개인 CLA가 등록되어 있어야 한다: [Individual CLA](https://github.com/nasa/cFE/blob/master/docs/GSC_18128_Ind_CLA_form_1219.pdf)

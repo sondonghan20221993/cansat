@@ -1,35 +1,36 @@
 ---
-name: Bug report
-about: Create a report to help us improve
+name: 버그 리포트
+about: 개선을 위해 버그를 보고합니다
 title: ''
 labels: ''
 assignees: ''
-
 ---
 
-**Describe the bug**
-A clear and concise description of what the bug is.
+**버그 설명**  
+버그가 무엇인지 명확하고 간결하게 설명한다.
 
-**To Reproduce**
-Steps to reproduce the behavior:
-1. Go to '...'
-2. Click on '....'
-3. Scroll down to '....'
-4. See error
+**재현 방법**  
+동작을 재현하는 단계를 적는다.
 
-**Expected behavior**
-A clear and concise description of what you expected to happen.
+1. `...`로 이동
+2. `...`를 클릭
+3. `...`까지 스크롤
+4. 오류 확인
 
-**Code snips**
-If applicable, add references to the software.
+**예상 동작**  
+원래 기대했던 동작을 설명한다.
 
-**System observed on:**
- - Hardware
- - OS: [e.g. Linux 4.4]
- - Versions [e.g. cFE 6.6, OSAL 4.2, PSP 1.3 for mcp750, any related apps]
+**코드 조각**  
+필요하면 관련 코드나 파일 위치를 적는다.
 
-**Additional context**
-Add any other context about the problem here.
+**관측 시스템**
 
-**Reporter Info**
-Full name and company/organization if applicable
+- Hardware
+- OS: 예: `Linux 4.4`
+- Versions: 예: `cFE 6.6`, `OSAL 4.2`, `PSP 1.3 for mcp750`, 관련 앱 버전
+
+**추가 문맥**  
+문제 이해에 필요한 추가 정보를 적는다.
+
+**제보자 정보**  
+성명 및 회사/조직(해당 시)

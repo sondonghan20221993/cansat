@@ -3,18 +3,18 @@
 
 # Core Flight System : Framework : App : Sample
 
-This repository contains a sample application (telemetry_app), which is a framework component of the Core Flight System.
+이 저장소는 Core Flight System 프레임워크 구성 요소인 샘플 애플리케이션 `telemetry_app`을 포함한다.
 
-This sample application is a non-flight example application implementation for the cFS Bundle. It is intended to be located in the `apps/telemetry_app` subdirectory of a cFS Mission Tree. The Core Flight System is bundled at <https://github.com/nasa/cFS> (which includes telemetry_app as a submodule), which includes build and execution instructions.
+이 샘플 애플리케이션은 cFS 번들을 위한 non-flight 예제 구현이다. 일반적으로 cFS Mission Tree의 `apps/telemetry_app` 하위 디렉터리에 위치하도록 설계되었다. Core Flight System 번들은 [nasa/cFS](https://github.com/nasa/cFS)에 있으며, 빌드와 실행 지침을 함께 제공한다.
 
-telemetry_app is an example for how to build and link an application in cFS. See also the skeleton_app (<https://github.com/nasa/skeleton_app>) if you are looking for a bare-bones application to which to add your business logic.
+`telemetry_app`은 cFS에서 애플리케이션을 빌드하고 링크하는 방법을 보여주는 예제이다. 비즈니스 로직을 추가할 최소 골격 앱이 필요하다면 [skeleton_app](https://github.com/nasa/skeleton_app)도 참고할 수 있다.
 
-## Known issues
+## 알려진 문제
 
-As a sample application, extensive testing is not performed prior to release and only minimal functionality is included. Note discrepancies likely exist between this application and the example detailed in the application developer guide.
+샘플 애플리케이션 특성상 릴리스 전에 광범위한 테스트를 수행하지 않으며, 최소 기능만 포함한다. 따라서 이 애플리케이션과 애플리케이션 개발자 가이드의 예제 사이에 차이가 있을 수 있다.
 
-## Getting Help
+## 도움 받기
 
-For best results, submit issues:questions or issues:help wanted requests at <https://github.com/nasa/cFS>.
+가장 좋은 방법은 [nasa/cFS](https://github.com/nasa/cFS)에 `issues:question` 또는 `issues:help wanted` 유형의 요청을 등록하는 것이다.
 
-Official cFS page: <http://cfs.gsfc.nasa.gov>
+공식 cFS 페이지: <http://cfs.gsfc.nasa.gov>
