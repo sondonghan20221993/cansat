@@ -12,7 +12,7 @@
 ## 개발 빌드: stable-rc1+dev46
 - 나머지 int32 CFE 상태 변수를 CFE_Status_t로 변환
 - 초기화 중 syslog 쓰기를 이벤트로 변환
-- <https://github.com/nasa/telemetry_app/pull/218> 및 <https://github.com/nasa/telemetry_app/pull/216>을 참조하세요.
+- <https://github.com/nasa/telemetry_app/pull/218> 및 <https://github.com/nasa/telemetry_app/pull/216> 참조
 
 ## 개발 빌드: equuleus-rc4+dev40
 - EDS 디스패처에 이름 변경 사항 적용
@@ -30,7 +30,7 @@
 - telemetry_app을 현재 규약에 맞게 정리
 - CommandCode 변수의 이름을 FcnCode로 바꿉니다.
 - 초기화 중 CFE_TBL_Load() 성공 여부 확인 추가
-- <https://github.com/nasa/telemetry_app/pull/212>, <https://github.com/nasa/telemetry_app/pull/187> 및 <https://github.com/nasa/telemetry_app/pull/190>을 참조하세요.
+- <https://github.com/nasa/telemetry_app/pull/212>, <https://github.com/nasa/telemetry_app/pull/187> 및 <https://github.com/nasa/telemetry_app/pull/190> 참조
 
 ## 개발 빌드: v1.3.0-rc4+dev56
 - 공통 이벤트에 일관된 이벤트 ID 이름 적용
@@ -40,7 +40,7 @@
 - 초기화 중 전역 데이터 구조를 0으로 만듭니다.
 - cmd와 util을 별도의 파일로 이동
 - 현재 패턴에 따라 소스 파일 구성
-- <https://github.com/nasa/telemetry_app/pull/189>, <https://github.com/nasa/telemetry_app/pull/195>, <https://github.com/nasa/telemetry_app/pull/198>, <https://github.com/nasa/telemetry_app/pull/200>, <https://github.com/nasa/telemetry_app/pull/201>, <https://github.com/nasa/telemetry_app/pull/205> 및 <https://github.com/nasa/telemetry_app/pull/208>을 참조하세요.
+- <https://github.com/nasa/telemetry_app/pull/189>, <https://github.com/nasa/telemetry_app/pull/195>, <https://github.com/nasa/telemetry_app/pull/198>, <https://github.com/nasa/telemetry_app/pull/200>, <https://github.com/nasa/telemetry_app/pull/201>, <https://github.com/nasa/telemetry_app/pull/205> 및 <https://github.com/nasa/telemetry_app/pull/208> 참조
 
 ## 개발 빌드: v1.3.0-rc4+dev39
 - cmake 레시피 업데이트
@@ -49,13 +49,13 @@
 ## 개발 빌드: v1.3.0-rc4+dev35
 - 중복된 댓글 삭제
 - CHANGELOG.md 생성
-- <https://github.com/nasa/telemetry_app/pull/185> 및 <https://github.com/nasa/telemetry_app/pull/183>을 참조하세요.
+- <https://github.com/nasa/telemetry_app/pull/185> 및 <https://github.com/nasa/telemetry_app/pull/183> 참조
 
 ## 개발 빌드: v1.3.0-rc4+dev27
 - 잘못 정렬된 댓글
 - 반환 값 주위의 불필요한 괄호를 제거합니다.
 - '반품'을 제거하세요. void 함수의 마지막 줄에서.
-- <https://github.com/nasa/telemetry_app/pull/177>, <https://github.com/nasa/telemetry_app/pull/179> 및 <https://github.com/nasa/telemetry_app/pull/181>을 참조하세요.
+- <https://github.com/nasa/telemetry_app/pull/177>, <https://github.com/nasa/telemetry_app/pull/179> 및 <https://github.com/nasa/telemetry_app/pull/181> 참조
 
 ## 개발 빌드: v1.3.0-rc4+dev21
 - 빈 이벤트 필터 등록 제거
@@ -65,7 +65,7 @@
 ## 개발 빌드: v1.3.0-rc4+dev16
 - 저작권 헤더 업데이트
 - 버전 정보 표준화
-- <https://github.com/nasa/telemetry_app/pull/171> 및 <https://github.com/nasa/cFS/pull/445>을 참조하세요.
+- <https://github.com/nasa/telemetry_app/pull/171> 및 <https://github.com/nasa/cFS/pull/445> 참조
 
 ## 개발 빌드: v1.3.0-rc4+dev9
 - 선호하는 UT 패턴 사용
@@ -75,15 +75,15 @@
 ## 개발 빌드: v1.3.0-rc4+dev4
 - CFE_MSG_PTR 변환 매크로 사용
 - cFS-Caelum-rc4의 기준을 v1.3.0-rc4로 업데이트
-- <https://github.com/nasa/telemetry_app/pull/163> 및 <https://github.com/nasa/cFS/pull/390>을 참조하세요.
+- <https://github.com/nasa/telemetry_app/pull/163> 및 <https://github.com/nasa/cFS/pull/390> 참조
 
 ## 개발 빌드: v1.2.0-rc1+dev73
 - 필요한 경우 CFE_SB_ValueToMsgId를 적용합니다.
-- <https://github.com/nasa/telemetry_app/pull/155> 및 <https://github.com/nasa/cFS/pull/359>을 참조하세요.
+- <https://github.com/nasa/telemetry_app/pull/155> 및 <https://github.com/nasa/cFS/pull/359> 참조
 
 ## 개발 빌드: v1.2.0-rc1+dev66
 -  CodeQL 워크플로에서 코딩 표준 구현
-- <https://github.com/nasa/telemetry_app/pull/150> 및 <https://github.com/nasa/cFS/pull/270>을 참조하세요.
+- <https://github.com/nasa/telemetry_app/pull/150> 및 <https://github.com/nasa/cFS/pull/270> 참조
 
 ## 개발 빌드: v1.2.0-rc1+dev62
 - 애플리케이션이 스스로 등록할 필요가 없으므로 앱 등록 호출 `CFE_ES_RegisterApp()`을(를) 제거합니다.
@@ -191,10 +191,3 @@
 ## _**공식 릴리스: 1.0.0a**_
 - cFE 6.6.0a, Apache 2.0의 일부로 출시됨
 
-## 알려진 문제
-샘플 애플리케이션으로서 출시 전에 광범위한 테스트가 수행되지 않으며 최소한의 기능만 포함됩니다. 이 애플리케이션과 애플리케이션 개발자 가이드에 자세히 설명된 예제 간에 불일치가 있을 수 있습니다.
-
-## 도움 받기
-추가 질문이나 도움이 필요하면 <https://github.com/nasa/cFS>에 이슈를 등록하세요.
-
-공식 cFS 페이지: <http://cfs.gsfc.nasa.gov>
