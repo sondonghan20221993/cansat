@@ -1002,3 +1002,21 @@ downlink 텔레메트리 상태는 `downlink_app`의 책임이며
 - 정확한 명령 라우팅 테이블: 대상 앱 MID 매핑에 대한 명령 코드입니다.
 - 상태별 허용 명령 클래스 표는 명령 안전 사양 이후에 확정되었습니다.
 - 업링크 패킷 형식과 버전 정책.
+
+### 18.12 추가 고려사항
+
+다음 항목은 현 단계에서 상세 구현 또는 수치 정책까지 고정하지 않지만,
+최종 명령 처리 및 복구 정책을 확정할 때 반드시 함께 검토해야 한다.
+
+- 재부팅 후 상태 유실: `boot_count`, `reset_reason`, startup state, 마지막으로 승인된 command sequence, active configuration, route cache 복원 여부를 함께 고려해야 한다.
+- 오래된 명령 또는 중복 명령의 재실행: sequence, timestamp, replay reject 외에도 boot 경계, sequence wraparound, 허용 시간 창을 고려해야 한다.
+- app crash 또는 hang: heartbeat, restart count, app health 외에 restart 주체, restart 성공 기준, hang 판정 기준을 고려해야 한다.
+- FC link 부분 장애: 완전한 링크 손실뿐 아니라 MAVLink heartbeat는 살아 있으나 attitude/GPS/EKF 일부만 stale한 경우도 별도로 고려해야 한다.
+- 통신 복구 후 명령 폭주: queue limit, priority, stale drop 외에 burst rate limit, old command purge, 중복 route update 정리 정책을 고려해야 한다.
+- 반복 재시작 또는 반복 복구 실패: recovery escalation과 minimum-reporting mode 외에 재시작 횟수 창, operator intervention 필요 조건, 최종 fail-safe 상태를 고려해야 한다.
+- 시간 무효 상태: `TimeValid=false`일 때 어떤 명령은 제한하고 어떤 명령은 허용할지, route update를 포함한 상태 의존 명령 제한을 고려해야 한다.
+- 부분 장애 상태 정의: `CFS_DEGRADED`를 단일 상태로만 두지 않고, GPS/EKF/bridge/link 저하와 같은 부분 장애 유형을 구분할 필요가 있는지 검토해야 한다.
+- persistent state integrity: boot counter, command sequence cache, route cache, active configuration 저장본의 checksum 또는 CRC 오류 처리 정책을 고려해야 한다.
+- route/config 적용 원자성: route update 또는 configuration 변경이 일부만 적용된 상태로 남지 않도록 atomic apply 또는 rollback 필요성을 고려해야 한다.
+- 복구 중 허용 명령: `CFS_RECOVERY` 또는 최소 보고 상태에서 허용되는 명령 클래스의 최소 집합을 별도로 검토해야 한다.
+- 권한 또는 출처 검증: sequence/replay 검증과 별도로, 명령 출처와 권한 수준을 어떻게 결합할지 검토해야 한다.
