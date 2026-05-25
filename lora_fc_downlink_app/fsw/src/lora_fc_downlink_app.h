@@ -24,10 +24,16 @@ typedef struct
     uint32                          DownlinkCount;
     uint32                          LastAttitudeTimestampMs;
     uint32                          LastLocalTimestampMs;
+    uint32                          LastGpsTimestampMs;
+    uint32                          LastEkfTimestampMs;
+    uint32                          LastSystemHealthTimestampMs;
     uint8                           PacketType;
     uint8                           AttitudeValid;
     uint8                           LocalValid;
-    uint8                           Spare;
+    uint8                           GpsValid;
+    uint8                           EkfValid;
+    uint8                           SystemHealthState;
+    uint8                           Spare[2];
     CFE_SB_PipeId_t                 CommandPipe;
     LORA_FC_DOWNLINK_APP_HkTlm_t     HkTlm;
 } LORA_FC_DOWNLINK_APP_Data_t;
@@ -38,5 +44,6 @@ void         LORA_FC_DOWNLINK_APP_Main(void);
 CFE_Status_t LORA_FC_DOWNLINK_APP_Init(void);
 bool         LORA_FC_DOWNLINK_APP_VerifyCmdLength(const CFE_MSG_Message_t *msg_ptr, size_t expected_length);
 void         LORA_FC_DOWNLINK_APP_ReportHousekeeping(void);
+void         LORA_FC_DOWNLINK_APP_ProcessInputMessage(const CFE_SB_Buffer_t *sb_buf_ptr);
 
 #endif

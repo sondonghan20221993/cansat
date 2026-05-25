@@ -84,6 +84,14 @@ void LORA_FC_DOWNLINK_APP_TaskPipe(const CFE_SB_Buffer_t *sb_buf_ptr)
     {
         LORA_FC_DOWNLINK_APP_ProcessGroundCommand(sb_buf_ptr);
     }
+    else if (CFE_SB_MsgIdToValue(msg_id) == LORA_FC_DOWNLINK_APP_FC_ATTITUDE_STATE_MID_VALUE ||
+             CFE_SB_MsgIdToValue(msg_id) == LORA_FC_DOWNLINK_APP_FC_EKF_LOCAL_STATE_MID_VALUE ||
+             CFE_SB_MsgIdToValue(msg_id) == LORA_FC_DOWNLINK_APP_FC_GPS_RAW_STATE_MID_VALUE ||
+             CFE_SB_MsgIdToValue(msg_id) == LORA_FC_DOWNLINK_APP_FC_EKF_STATUS_MID_VALUE ||
+             CFE_SB_MsgIdToValue(msg_id) == LORA_FC_DOWNLINK_APP_SYSTEM_HEALTH_MID_VALUE)
+    {
+        LORA_FC_DOWNLINK_APP_ProcessInputMessage(sb_buf_ptr);
+    }
     else
     {
         CFE_EVS_SendEvent(LORA_FC_DOWNLINK_APP_MID_ERR_EID, CFE_EVS_EventType_ERROR,

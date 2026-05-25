@@ -1,0 +1,11 @@
+#ifndef UPLINK_APP_EVENTIDS_H
+#define UPLINK_APP_EVENTIDS_H
+
+#define UPLINK_APP_STARTUP_EID     1
+#define UPLINK_APP_COMMAND_ERR_EID 2
+#define UPLINK_APP_NOOP_EID        3
+#define UPLINK_APP_RESET_EID       4
+#define UPLINK_APP_PUBLISH_EID     5
+
+#endif
+

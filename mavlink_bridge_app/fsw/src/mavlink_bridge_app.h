@@ -41,7 +41,7 @@ typedef struct
 
 extern MAVLINK_BRIDGE_APP_Data_t MAVLINK_BRIDGE_APP_Data;
 
-void         MAV_BRIDGE_APP_Main(void);
+void         MAVLINK_BRIDGE_APP_Main(void);
 CFE_Status_t MAVLINK_BRIDGE_APP_Init(void);
 void         MAVLINK_BRIDGE_APP_ReportHousekeeping(void);
 bool         MAVLINK_BRIDGE_APP_VerifyCmdLength(const CFE_MSG_Message_t *MsgPtr, size_t ExpectedLength);

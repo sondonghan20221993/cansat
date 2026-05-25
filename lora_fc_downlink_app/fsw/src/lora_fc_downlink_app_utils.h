@@ -1,11 +1,9 @@
 #ifndef LORA_FC_DOWNLINK_APP_UTILS_H
 #define LORA_FC_DOWNLINK_APP_UTILS_H
 
-#include "mavlink_bridge_app_msg.h"
+#include "lora_fc_downlink_app.h"
 
 void LORA_FC_DOWNLINK_APP_ReportHousekeeping(void);
-void LORA_FC_DOWNLINK_APP_ProcessAttitude(const MAVLINK_BRIDGE_APP_AttitudeTlm_t *msg);
-void LORA_FC_DOWNLINK_APP_ProcessLocalState(const MAVLINK_BRIDGE_APP_EkfLocalTlm_t *msg);
-void LORA_FC_DOWNLINK_APP_BuildPacket(void);
+void LORA_FC_DOWNLINK_APP_ProcessInputMessage(const CFE_SB_Buffer_t *sb_buf_ptr);
 
 #endif

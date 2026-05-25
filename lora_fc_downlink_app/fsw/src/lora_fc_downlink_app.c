@@ -93,6 +93,41 @@ CFE_Status_t LORA_FC_DOWNLINK_APP_Init(void)
         return status;
     }
 
+    status = CFE_SB_Subscribe(CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_FC_ATTITUDE_STATE_MID_VALUE),
+                              LORA_FC_DOWNLINK_APP_Data.CommandPipe);
+    if (status != CFE_SUCCESS)
+    {
+        return status;
+    }
+
+    status = CFE_SB_Subscribe(CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_FC_EKF_LOCAL_STATE_MID_VALUE),
+                              LORA_FC_DOWNLINK_APP_Data.CommandPipe);
+    if (status != CFE_SUCCESS)
+    {
+        return status;
+    }
+
+    status = CFE_SB_Subscribe(CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_FC_GPS_RAW_STATE_MID_VALUE),
+                              LORA_FC_DOWNLINK_APP_Data.CommandPipe);
+    if (status != CFE_SUCCESS)
+    {
+        return status;
+    }
+
+    status = CFE_SB_Subscribe(CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_FC_EKF_STATUS_MID_VALUE),
+                              LORA_FC_DOWNLINK_APP_Data.CommandPipe);
+    if (status != CFE_SUCCESS)
+    {
+        return status;
+    }
+
+    status = CFE_SB_Subscribe(CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_SYSTEM_HEALTH_MID_VALUE),
+                              LORA_FC_DOWNLINK_APP_Data.CommandPipe);
+    if (status != CFE_SUCCESS)
+    {
+        return status;
+    }
+
     CFE_ES_WriteToSysLog("LORA_FC_DOWNLINK_APP: before version string\n");
     CFE_Config_GetVersionString(version_string, LORA_FC_DOWNLINK_APP_CFG_MAX_VERSION_STR_LEN, "LoRa FC Downlink App",
                                 LORA_FC_DOWNLINK_APP_VERSION, LORA_FC_DOWNLINK_APP_BUILD_CODENAME,

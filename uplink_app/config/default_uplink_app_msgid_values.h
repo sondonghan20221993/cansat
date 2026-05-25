@@ -1,0 +1,10 @@
+#ifndef DEFAULT_UPLINK_APP_MSGID_VALUES_H
+#define DEFAULT_UPLINK_APP_MSGID_VALUES_H
+
+#include "uplink_app_interface_cfg_values.h"
+
+#define UPLINK_APP_HK_TLM_MID 0x08D0
+#define UPLINK_STATUS_MID     0x190A
+
+#endif
+

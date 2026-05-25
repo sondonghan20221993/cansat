@@ -1,0 +1,11 @@
+#ifndef CFS_CORE_APP_EVENTIDS_H
+#define CFS_CORE_APP_EVENTIDS_H
+
+#define CFS_CORE_APP_STARTUP_EID     1
+#define CFS_CORE_APP_COMMAND_ERR_EID 2
+#define CFS_CORE_APP_NOOP_EID        3
+#define CFS_CORE_APP_RESET_EID       4
+#define CFS_CORE_APP_PUBLISH_EID     5
+
+#endif
+

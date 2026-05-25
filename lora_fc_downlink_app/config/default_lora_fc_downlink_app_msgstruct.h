@@ -26,11 +26,17 @@ typedef struct
     uint8  CommandCounter;
     uint8  AttitudeValid;
     uint8  LocalValid;
+    uint8  GpsValid;
+    uint8  EkfValid;
+    uint8  SystemHealthState;
     uint8  PacketType;
-    uint8  Reserved[3];
+    uint8  Reserved;
     uint32 DownlinkCount;
     uint32 LastAttitudeTimestampMs;
     uint32 LastLocalTimestampMs;
+    uint32 LastGpsTimestampMs;
+    uint32 LastEkfTimestampMs;
+    uint32 LastSystemHealthTimestampMs;
 } LORA_FC_DOWNLINK_APP_HkPayload_t;
 
 typedef struct

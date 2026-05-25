@@ -1,8 +1,0 @@
-#ifndef DEFAULT_MAVLINK_BRIDGE_APP_MSGID_VALUES_H
-#define DEFAULT_MAVLINK_BRIDGE_APP_MSGID_VALUES_H
-
-#include "mavlink_bridge_app_interface_cfg_values.h"
-
-#define MAVLINK_BRIDGE_APP_HK_TLM_MID 0x08A0
-
-#endif
