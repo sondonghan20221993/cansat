@@ -1,5 +1,6 @@
 #include "lora_fc_downlink_app_utils.h"
 #include "lora_fc_downlink_app.h"
+#include "lora_fc_downlink_app_eventids.h"
 
 typedef struct
 {
@@ -41,6 +42,16 @@ void LORA_FC_DOWNLINK_APP_ReportHousekeeping(void)
     LORA_FC_DOWNLINK_APP_Data.HkTlm.Payload.EkfValid          = LORA_FC_DOWNLINK_APP_Data.EkfValid;
     LORA_FC_DOWNLINK_APP_Data.HkTlm.Payload.SystemHealthState = LORA_FC_DOWNLINK_APP_Data.SystemHealthState;
     LORA_FC_DOWNLINK_APP_Data.HkTlm.Payload.PacketType        = LORA_FC_DOWNLINK_APP_Data.PacketType;
+
+    CFE_EVS_SendEvent(LORA_FC_DOWNLINK_APP_HK_INF_EID, CFE_EVS_EventType_INFORMATION,
+                      "LORA_FC_DOWNLINK_APP HK: downlink_count=%lu att=%u local=%u gps=%u ekf=%u health=%u pkt=%u",
+                      (unsigned long)LORA_FC_DOWNLINK_APP_Data.HkTlm.Payload.DownlinkCount,
+                      (unsigned int)LORA_FC_DOWNLINK_APP_Data.HkTlm.Payload.AttitudeValid,
+                      (unsigned int)LORA_FC_DOWNLINK_APP_Data.HkTlm.Payload.LocalValid,
+                      (unsigned int)LORA_FC_DOWNLINK_APP_Data.HkTlm.Payload.GpsValid,
+                      (unsigned int)LORA_FC_DOWNLINK_APP_Data.HkTlm.Payload.EkfValid,
+                      (unsigned int)LORA_FC_DOWNLINK_APP_Data.HkTlm.Payload.SystemHealthState,
+                      (unsigned int)LORA_FC_DOWNLINK_APP_Data.HkTlm.Payload.PacketType);
 
     CFE_SB_TransmitMsg(CFE_MSG_PTR(LORA_FC_DOWNLINK_APP_Data.HkTlm.TelemetryHeader), true);
 }

@@ -60,6 +60,13 @@ void CFS_CORE_APP_ReportHousekeeping(void)
     CFS_CORE_APP_Data.HkTlm.RouteUpdateCount = CFS_CORE_APP_Data.MissionRoute.UpdateCount +
                                                CFS_CORE_APP_Data.LandingRoute.UpdateCount;
 
+    CFE_EVS_SendEvent(CFS_CORE_APP_HK_EID, CFE_EVS_EventType_INFORMATION,
+                      "CFS_CORE_APP HK: mission_wp=%u landing_wp=%u route_updates=%lu last_route_ts=%lu",
+                      (unsigned int)CFS_CORE_APP_Data.HkTlm.MissionRouteWaypointCount,
+                      (unsigned int)CFS_CORE_APP_Data.HkTlm.LandingRouteWaypointCount,
+                      (unsigned long)CFS_CORE_APP_Data.HkTlm.RouteUpdateCount,
+                      (unsigned long)CFS_CORE_APP_Data.HkTlm.LastRouteUpdateTimestampMs);
+
     CFE_SB_TimeStampMsg(CFE_MSG_PTR(CFS_CORE_APP_Data.HkTlm.TelemetryHeader));
     CFE_SB_TransmitMsg(CFE_MSG_PTR(CFS_CORE_APP_Data.HkTlm.TelemetryHeader), true);
 }

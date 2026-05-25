@@ -6,6 +6,7 @@
 #define CFS_CORE_APP_NOOP_EID        3
 #define CFS_CORE_APP_RESET_EID       4
 #define CFS_CORE_APP_PUBLISH_EID     5
+#define CFS_CORE_APP_HK_EID          6
 
 #endif
 
