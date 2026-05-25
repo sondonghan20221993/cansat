@@ -30,6 +30,35 @@ typedef struct
 
 typedef struct
 {
+    float X;
+    float Y;
+    float Z;
+} UPLINK_APP_Waypoint_t;
+
+typedef struct
+{
+    uint8  RouteType;
+    uint8  RouteVersion;
+    uint8  WaypointCount;
+    uint8  Reserved;
+    UPLINK_APP_Waypoint_t Waypoints[UPLINK_APP_ROUTE_MAX_WAYPOINTS];
+} UPLINK_APP_RouteUpdatePayload_t;
+
+typedef struct
+{
+    CFE_MSG_TelemetryHeader_t TelemetryHeader;
+    uint32                    Seq;
+    uint32                    TimestampMs;
+    uint32                    SourceSequence;
+    uint8                     RouteType;
+    uint8                     RouteVersion;
+    uint8                     WaypointCount;
+    uint8                     Reserved;
+    UPLINK_APP_Waypoint_t     Waypoints[UPLINK_APP_ROUTE_MAX_WAYPOINTS];
+} UPLINK_APP_RouteUpdateTlm_t;
+
+typedef struct
+{
     CFE_MSG_TelemetryHeader_t TelemetryHeader;
     uint8                     CommandCounter;
     uint8                     CommandErrorCounter;

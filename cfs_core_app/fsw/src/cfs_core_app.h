@@ -33,6 +33,18 @@ typedef struct
 
 typedef struct
 {
+    uint32                  TimestampMs;
+    uint32                  SourceSequence;
+    uint32                  UpdateCount;
+    uint8                   RouteType;
+    uint8                   RouteVersion;
+    uint8                   WaypointCount;
+    bool                    Valid;
+    CFS_CORE_APP_Waypoint_t Waypoints[CFS_CORE_APP_ROUTE_MAX_WAYPOINTS];
+} CFS_CORE_APP_RouteCache_t;
+
+typedef struct
+{
     uint8                       CmdCounter;
     uint8                       ErrCounter;
     uint16                      Reserved;
@@ -46,6 +58,8 @@ typedef struct
     CFS_CORE_APP_StateCache_t   GpsState;
     CFS_CORE_APP_StateCache_t   EkfState;
     CFS_CORE_APP_BridgeCache_t  BridgeState;
+    CFS_CORE_APP_RouteCache_t   MissionRoute;
+    CFS_CORE_APP_RouteCache_t   LandingRoute;
     CFS_CORE_APP_HkTlm_t        HkTlm;
     CFS_CORE_APP_SystemHealthTlm_t SystemHealthTlm;
 } CFS_CORE_APP_Data_t;

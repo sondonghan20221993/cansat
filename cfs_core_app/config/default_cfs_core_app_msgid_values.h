@@ -5,6 +5,7 @@
 
 #define CFS_CORE_APP_HK_TLM_MID 0x08C0
 #define SYSTEM_HEALTH_MID       0x1904
+#define ROUTE_UPDATE_MID        0x190B
 
 #endif
 

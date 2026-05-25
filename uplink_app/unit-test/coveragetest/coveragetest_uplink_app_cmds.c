@@ -53,9 +53,31 @@ void Test_UPLINK_APP_ProcessUplink_Accept(void)
     UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_ROUTED);
 }
 
+void Test_UPLINK_APP_ProcessUplink_RouteUpdate(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_ROUTE_UPDATE;
+    TestMsg.PayloadLength = 8;
+    TestMsg.Sequence      = 11;
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ParseRouteUpdatePayload), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_PublishRouteUpdate), true);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.AcceptedCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastRouteTarget, UPLINK_APP_ROUTE_CORE);
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(UPLINK_APP_Noop);
     ADD_TEST(UPLINK_APP_ResetCounters);
     ADD_TEST(UPLINK_APP_ProcessUplink_Accept);
+    ADD_TEST(UPLINK_APP_ProcessUplink_RouteUpdate);
 }

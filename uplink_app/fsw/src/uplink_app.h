@@ -44,6 +44,10 @@ void         UPLINK_APP_ServicePrototype(void);
 void         UPLINK_APP_ProcessUplink(const UPLINK_APP_ProcessUplinkCmd_t *Cmd);
 bool         UPLINK_APP_ValidateProxyCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd, UPLINK_APP_Result_t *Result);
 UPLINK_APP_RouteTarget_t UPLINK_APP_ResolveRouteTarget(uint8 CommandClass);
+bool         UPLINK_APP_ParseRouteUpdatePayload(const UPLINK_APP_ProcessUplinkCmd_t *Cmd,
+                                                UPLINK_APP_RouteUpdatePayload_t *Payload);
+bool         UPLINK_APP_PublishRouteUpdate(const UPLINK_APP_ProcessUplinkCmd_t *Cmd,
+                                           const UPLINK_APP_RouteUpdatePayload_t *Payload);
 
 #endif
 

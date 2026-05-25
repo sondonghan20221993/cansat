@@ -1,6 +1,7 @@
 #include "uplink_app_utils.h"
 #include "uplink_app_eventids.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -112,6 +113,140 @@ bool UPLINK_APP_ValidateProxyCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd, U
 
     *Result = UPLINK_APP_RESULT_ACCEPT;
     return true;
+}
+
+static bool UPLINK_APP_IsWaypointFinite(const UPLINK_APP_Waypoint_t *Waypoint)
+{
+    return isfinite(Waypoint->X) && isfinite(Waypoint->Y) && isfinite(Waypoint->Z);
+}
+
+static bool UPLINK_APP_IsWaypointInFlyableArea(const UPLINK_APP_Waypoint_t *Waypoint)
+{
+    if (Waypoint->X < UPLINK_APP_ROUTE_FLYABLE_X_MIN_M || Waypoint->X > UPLINK_APP_ROUTE_FLYABLE_X_MAX_M)
+    {
+        return false;
+    }
+
+    if (Waypoint->Y < UPLINK_APP_ROUTE_FLYABLE_Y_MIN_M || Waypoint->Y > UPLINK_APP_ROUTE_FLYABLE_Y_MAX_M)
+    {
+        return false;
+    }
+
+    if (Waypoint->Z < UPLINK_APP_ROUTE_ALTITUDE_MIN_M || Waypoint->Z > UPLINK_APP_ROUTE_ALTITUDE_MAX_M)
+    {
+        return false;
+    }
+
+    return true;
+}
+
+static bool UPLINK_APP_IsWaypointInNoFlyArea(const UPLINK_APP_Waypoint_t *Waypoint)
+{
+#if UPLINK_APP_ROUTE_NOFLY_ENABLE
+    return (Waypoint->X >= UPLINK_APP_ROUTE_NOFLY_X_MIN_M && Waypoint->X <= UPLINK_APP_ROUTE_NOFLY_X_MAX_M &&
+            Waypoint->Y >= UPLINK_APP_ROUTE_NOFLY_Y_MIN_M && Waypoint->Y <= UPLINK_APP_ROUTE_NOFLY_Y_MAX_M);
+#else
+    (void)Waypoint;
+    return false;
+#endif
+}
+
+static float UPLINK_APP_GetWaypointDistance(const UPLINK_APP_Waypoint_t *First, const UPLINK_APP_Waypoint_t *Second)
+{
+    const float Dx = Second->X - First->X;
+    const float Dy = Second->Y - First->Y;
+    const float Dz = Second->Z - First->Z;
+
+    return sqrtf((Dx * Dx) + (Dy * Dy) + (Dz * Dz));
+}
+
+bool UPLINK_APP_ParseRouteUpdatePayload(const UPLINK_APP_ProcessUplinkCmd_t *Cmd, UPLINK_APP_RouteUpdatePayload_t *Payload)
+{
+    size_t ExpectedLength;
+    uint32 Index;
+
+    memset(Payload, 0, sizeof(*Payload));
+
+    if (Cmd->PayloadLength < 4U)
+    {
+        return false;
+    }
+
+    if ((size_t)Cmd->PayloadLength > sizeof(*Payload))
+    {
+        return false;
+    }
+
+    memcpy(Payload, Cmd->Payload, Cmd->PayloadLength);
+
+    if ((Payload->RouteType != UPLINK_APP_ROUTE_SEGMENT_MISSION_EXTENSION) &&
+        (Payload->RouteType != UPLINK_APP_ROUTE_SEGMENT_LANDING))
+    {
+        return false;
+    }
+
+    if ((Payload->WaypointCount == 0U) || (Payload->WaypointCount > UPLINK_APP_ROUTE_MAX_WAYPOINTS))
+    {
+        return false;
+    }
+
+    ExpectedLength = 4U + ((size_t)Payload->WaypointCount * sizeof(UPLINK_APP_Waypoint_t));
+    if ((size_t)Cmd->PayloadLength != ExpectedLength)
+    {
+        return false;
+    }
+
+    for (Index = 0; Index < Payload->WaypointCount; ++Index)
+    {
+        const UPLINK_APP_Waypoint_t *Waypoint = &Payload->Waypoints[Index];
+
+        if (!UPLINK_APP_IsWaypointFinite(Waypoint))
+        {
+            return false;
+        }
+
+        if (!UPLINK_APP_IsWaypointInFlyableArea(Waypoint))
+        {
+            return false;
+        }
+
+        if (UPLINK_APP_IsWaypointInNoFlyArea(Waypoint))
+        {
+            return false;
+        }
+
+        if (Index > 0U)
+        {
+            const float SegmentDistance = UPLINK_APP_GetWaypointDistance(&Payload->Waypoints[Index - 1U], Waypoint);
+
+            if (SegmentDistance < UPLINK_APP_ROUTE_MIN_SEGMENT_DIST_M ||
+                SegmentDistance > UPLINK_APP_ROUTE_MAX_SEGMENT_DIST_M)
+            {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+bool UPLINK_APP_PublishRouteUpdate(const UPLINK_APP_ProcessUplinkCmd_t *Cmd, const UPLINK_APP_RouteUpdatePayload_t *Payload)
+{
+    UPLINK_APP_RouteUpdateTlm_t RouteUpdate;
+
+    memset(&RouteUpdate, 0, sizeof(RouteUpdate));
+    CFE_MSG_Init(CFE_MSG_PTR(RouteUpdate.TelemetryHeader), CFE_SB_ValueToMsgId(ROUTE_UPDATE_MID), sizeof(RouteUpdate));
+
+    RouteUpdate.Seq           = UPLINK_APP_Data.SequenceCounter + 1U;
+    RouteUpdate.TimestampMs   = UPLINK_APP_Data.LastRxTimeMs;
+    RouteUpdate.SourceSequence = Cmd->Sequence;
+    RouteUpdate.RouteType     = Payload->RouteType;
+    RouteUpdate.RouteVersion  = Payload->RouteVersion;
+    RouteUpdate.WaypointCount = Payload->WaypointCount;
+    memcpy(RouteUpdate.Waypoints, Payload->Waypoints, sizeof(RouteUpdate.Waypoints));
+
+    CFE_SB_TimeStampMsg(CFE_MSG_PTR(RouteUpdate.TelemetryHeader));
+    return (CFE_SB_TransmitMsg(CFE_MSG_PTR(RouteUpdate.TelemetryHeader), true) == CFE_SUCCESS);
 }
 
 UPLINK_APP_RouteTarget_t UPLINK_APP_ResolveRouteTarget(uint8 CommandClass)

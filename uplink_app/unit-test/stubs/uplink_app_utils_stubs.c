@@ -42,6 +42,24 @@ UPLINK_APP_RouteTarget_t UPLINK_APP_ResolveRouteTarget(uint8 CommandClass)
     return UT_GenStub_GetReturnValue(UPLINK_APP_ResolveRouteTarget, UPLINK_APP_RouteTarget_t);
 }
 
+bool UPLINK_APP_ParseRouteUpdatePayload(const UPLINK_APP_ProcessUplinkCmd_t *Cmd, UPLINK_APP_RouteUpdatePayload_t *Payload)
+{
+    UT_GenStub_SetupReturnBuffer(UPLINK_APP_ParseRouteUpdatePayload, bool);
+    UT_GenStub_AddParam(UPLINK_APP_ParseRouteUpdatePayload, const UPLINK_APP_ProcessUplinkCmd_t *, Cmd);
+    UT_GenStub_AddParam(UPLINK_APP_ParseRouteUpdatePayload, UPLINK_APP_RouteUpdatePayload_t *, Payload);
+    UT_GenStub_Execute(UPLINK_APP_ParseRouteUpdatePayload, Basic, NULL);
+    return UT_GenStub_GetReturnValue(UPLINK_APP_ParseRouteUpdatePayload, bool);
+}
+
+bool UPLINK_APP_PublishRouteUpdate(const UPLINK_APP_ProcessUplinkCmd_t *Cmd, const UPLINK_APP_RouteUpdatePayload_t *Payload)
+{
+    UT_GenStub_SetupReturnBuffer(UPLINK_APP_PublishRouteUpdate, bool);
+    UT_GenStub_AddParam(UPLINK_APP_PublishRouteUpdate, const UPLINK_APP_ProcessUplinkCmd_t *, Cmd);
+    UT_GenStub_AddParam(UPLINK_APP_PublishRouteUpdate, const UPLINK_APP_RouteUpdatePayload_t *, Payload);
+    UT_GenStub_Execute(UPLINK_APP_PublishRouteUpdate, Basic, NULL);
+    return UT_GenStub_GetReturnValue(UPLINK_APP_PublishRouteUpdate, bool);
+}
+
 void UPLINK_APP_UpdateStatusTelemetry(uint32 NowMs)
 {
     UT_GenStub_AddParam(UPLINK_APP_UpdateStatusTelemetry, uint32, NowMs);

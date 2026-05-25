@@ -17,5 +17,12 @@ typedef enum
     CFS_CORE_APP_FAULT_EKF_INVALID    = 3
 } CFS_CORE_APP_FaultCode_t;
 
+typedef enum
+{
+    CFS_CORE_APP_ROUTE_SEGMENT_NONE              = 0,
+    CFS_CORE_APP_ROUTE_SEGMENT_MISSION_EXTENSION = 1,
+    CFS_CORE_APP_ROUTE_SEGMENT_LANDING           = 2
+} CFS_CORE_APP_RouteSegmentType_t;
+
 #endif
 

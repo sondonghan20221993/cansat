@@ -11,7 +11,8 @@ typedef enum
     UPLINK_APP_RESULT_REJECT_VERSION = 5,
     UPLINK_APP_RESULT_REJECT_CLASS   = 6,
     UPLINK_APP_RESULT_REJECT_LENGTH  = 7,
-    UPLINK_APP_RESULT_ROUTE_MISS     = 8
+    UPLINK_APP_RESULT_ROUTE_MISS     = 8,
+    UPLINK_APP_RESULT_REJECT_ROUTE   = 9
 } UPLINK_APP_Result_t;
 
 typedef enum
@@ -32,6 +33,13 @@ typedef enum
     UPLINK_APP_CLASS_MODE         = 5,
     UPLINK_APP_CLASS_DIAGNOSTIC   = 6
 } UPLINK_APP_CommandClass_t;
+
+typedef enum
+{
+    UPLINK_APP_ROUTE_SEGMENT_NONE              = 0,
+    UPLINK_APP_ROUTE_SEGMENT_MISSION_EXTENSION = 1,
+    UPLINK_APP_ROUTE_SEGMENT_LANDING           = 2
+} UPLINK_APP_RouteSegmentType_t;
 
 typedef enum
 {

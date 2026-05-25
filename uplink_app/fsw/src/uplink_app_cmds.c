@@ -29,6 +29,7 @@ void UPLINK_APP_ProcessUplink(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
     uint64                   TimeMs;
     UPLINK_APP_Result_t      Result;
     UPLINK_APP_RouteTarget_t RouteTarget;
+    UPLINK_APP_RouteUpdatePayload_t RoutePayload;
 
     TimeNow = CFE_TIME_GetTime();
     TimeMs  = ((uint64)TimeNow.Seconds * 1000ULL) + ((uint64)TimeNow.Subseconds * 1000ULL / 0x100000000ULL);
@@ -62,6 +63,37 @@ void UPLINK_APP_ProcessUplink(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
                           (unsigned int)Cmd->CommandClass, (unsigned int)Cmd->Sequence);
         UPLINK_APP_UpdateStatusTelemetry(0);
         return;
+    }
+
+    if (Cmd->CommandClass == UPLINK_APP_CLASS_ROUTE_UPDATE)
+    {
+        if (!UPLINK_APP_ParseRouteUpdatePayload(Cmd, &RoutePayload))
+        {
+            UPLINK_APP_Data.ErrCounter++;
+            UPLINK_APP_Data.RejectedCount++;
+            UPLINK_APP_Data.LastCommandResult = UPLINK_APP_RESULT_REJECT_ROUTE;
+            UPLINK_APP_Data.LinkState         = UPLINK_APP_LINK_DEGRADED;
+            CFE_EVS_SendEvent(UPLINK_APP_COMMAND_ERR_EID, CFE_EVS_EventType_ERROR,
+                              "UPLINK_APP: invalid route update payload seq=%u len=%u",
+                              (unsigned int)Cmd->Sequence, (unsigned int)Cmd->PayloadLength);
+            UPLINK_APP_UpdateStatusTelemetry(0);
+            return;
+        }
+
+        if (!UPLINK_APP_PublishRouteUpdate(Cmd, &RoutePayload))
+        {
+            UPLINK_APP_Data.ErrCounter++;
+            UPLINK_APP_Data.RoutingFailureCount++;
+            UPLINK_APP_Data.LastCommandResult = UPLINK_APP_RESULT_FAILED;
+            UPLINK_APP_Data.LastRouteTarget   = (uint8)RouteTarget;
+            UPLINK_APP_Data.LinkState         = UPLINK_APP_LINK_DEGRADED;
+            CFE_EVS_SendEvent(UPLINK_APP_COMMAND_ERR_EID, CFE_EVS_EventType_ERROR,
+                              "UPLINK_APP: failed to publish route update seq=%u type=%u count=%u",
+                              (unsigned int)Cmd->Sequence, (unsigned int)RoutePayload.RouteType,
+                              (unsigned int)RoutePayload.WaypointCount);
+            UPLINK_APP_UpdateStatusTelemetry(0);
+            return;
+        }
     }
 
     UPLINK_APP_Data.CmdCounter++;

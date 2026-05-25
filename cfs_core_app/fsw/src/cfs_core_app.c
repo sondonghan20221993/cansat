@@ -126,6 +126,12 @@ CFE_Status_t CFS_CORE_APP_Init(void)
         return Status;
     }
 
+    Status = CFE_SB_Subscribe(CFE_SB_ValueToMsgId(ROUTE_UPDATE_MID), CFS_CORE_APP_Data.CommandPipe);
+    if (Status != CFE_SUCCESS)
+    {
+        return Status;
+    }
+
     CFE_EVS_SendEvent(CFS_CORE_APP_STARTUP_EID, CFE_EVS_EventType_INFORMATION,
                       "CFS_CORE_APP Initialized");
 

@@ -54,9 +54,37 @@ void Test_CFS_CORE_APP_UpdateHealth_Recovery(void)
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.RecoveryRequested, 1);
 }
 
+void Test_CFS_CORE_APP_ProcessStateMessage_RouteUpdate(void)
+{
+    CFE_SB_Buffer_t              Buffer;
+    CFS_CORE_APP_RouteUpdateTlm_t *RouteMsg;
+
+    memset(&Buffer, 0, sizeof(Buffer));
+    RouteMsg = (CFS_CORE_APP_RouteUpdateTlm_t *)&Buffer.Msg;
+    CFE_MSG_Init(CFE_MSG_PTR(RouteMsg->TelemetryHeader), CFE_SB_ValueToMsgId(ROUTE_UPDATE_MID), sizeof(*RouteMsg));
+    RouteMsg->TimestampMs   = 1234;
+    RouteMsg->SourceSequence = 55;
+    RouteMsg->RouteType     = 1;
+    RouteMsg->RouteVersion  = 2;
+    RouteMsg->WaypointCount = 2;
+    RouteMsg->Waypoints[0].X = 1.0f;
+    RouteMsg->Waypoints[0].Y = 2.0f;
+    RouteMsg->Waypoints[0].Z = 3.0f;
+    RouteMsg->Waypoints[1].X = 4.0f;
+    RouteMsg->Waypoints[1].Y = 5.0f;
+    RouteMsg->Waypoints[1].Z = 4.0f;
+
+    CFS_CORE_APP_ProcessStateMessage(&Buffer);
+
+    UtAssert_BOOL_TRUE(CFS_CORE_APP_Data.MissionRoute.Valid);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.MissionRoute.RouteVersion, 2);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.MissionRoute.WaypointCount, 2);
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(CFS_CORE_APP_ReportHousekeeping);
     ADD_TEST(CFS_CORE_APP_UpdateHealth_Nominal);
     ADD_TEST(CFS_CORE_APP_UpdateHealth_Recovery);
+    ADD_TEST(CFS_CORE_APP_ProcessStateMessage_RouteUpdate);
 }

@@ -33,12 +33,32 @@ static bool CFS_CORE_APP_StateExpired(const CFS_CORE_APP_StateCache_t *Cache, ui
     return (NowMs - Cache->TimestampMs) > TimeoutMs;
 }
 
+static void CFS_CORE_APP_UpdateRouteCache(CFS_CORE_APP_RouteCache_t *Cache, const CFS_CORE_APP_RouteUpdateTlm_t *Msg)
+{
+    Cache->TimestampMs   = Msg->TimestampMs;
+    Cache->SourceSequence = Msg->SourceSequence;
+    Cache->UpdateCount++;
+    Cache->RouteType     = Msg->RouteType;
+    Cache->RouteVersion  = Msg->RouteVersion;
+    Cache->WaypointCount = Msg->WaypointCount;
+    Cache->Valid         = true;
+    memcpy(Cache->Waypoints, Msg->Waypoints, sizeof(Cache->Waypoints));
+}
+
 void CFS_CORE_APP_ReportHousekeeping(void)
 {
     CFS_CORE_APP_Data.HkTlm.CommandCounter       = CFS_CORE_APP_Data.CmdCounter;
     CFS_CORE_APP_Data.HkTlm.CommandErrorCounter  = CFS_CORE_APP_Data.ErrCounter;
+    CFS_CORE_APP_Data.HkTlm.MissionRouteWaypointCount = CFS_CORE_APP_Data.MissionRoute.WaypointCount;
+    CFS_CORE_APP_Data.HkTlm.LandingRouteWaypointCount = CFS_CORE_APP_Data.LandingRoute.WaypointCount;
     CFS_CORE_APP_Data.HkTlm.PublishCount         = CFS_CORE_APP_Data.PublishCount;
     CFS_CORE_APP_Data.HkTlm.LastPublishTimestampMs = CFS_CORE_APP_Data.LastPublishTimeMs;
+    CFS_CORE_APP_Data.HkTlm.LastRouteUpdateTimestampMs =
+        (CFS_CORE_APP_Data.MissionRoute.TimestampMs > CFS_CORE_APP_Data.LandingRoute.TimestampMs) ?
+            CFS_CORE_APP_Data.MissionRoute.TimestampMs :
+            CFS_CORE_APP_Data.LandingRoute.TimestampMs;
+    CFS_CORE_APP_Data.HkTlm.RouteUpdateCount = CFS_CORE_APP_Data.MissionRoute.UpdateCount +
+                                               CFS_CORE_APP_Data.LandingRoute.UpdateCount;
 
     CFE_SB_TimeStampMsg(CFE_MSG_PTR(CFS_CORE_APP_Data.HkTlm.TelemetryHeader));
     CFE_SB_TransmitMsg(CFE_MSG_PTR(CFS_CORE_APP_Data.HkTlm.TelemetryHeader), true);
@@ -100,6 +120,24 @@ void CFS_CORE_APP_ProcessStateMessage(CFE_SB_Buffer_t *SBBufPtr)
     else if (CFE_SB_MsgIdToValue(MsgId) == CFS_CORE_APP_FC_EKF_STATUS_MID_VALUE)
     {
         CFS_CORE_APP_UpdateStateCache(&CFS_CORE_APP_Data.EkfState, (const CFS_CORE_APP_GenericStateTlm_t *)MsgPtr);
+    }
+    else if (CFE_SB_MsgIdToValue(MsgId) == ROUTE_UPDATE_MID)
+    {
+        const CFS_CORE_APP_RouteUpdateTlm_t *RouteMsg = (const CFS_CORE_APP_RouteUpdateTlm_t *)MsgPtr;
+
+        if (RouteMsg->RouteType == CFS_CORE_APP_ROUTE_SEGMENT_MISSION_EXTENSION)
+        {
+            CFS_CORE_APP_UpdateRouteCache(&CFS_CORE_APP_Data.MissionRoute, RouteMsg);
+        }
+        else if (RouteMsg->RouteType == CFS_CORE_APP_ROUTE_SEGMENT_LANDING)
+        {
+            CFS_CORE_APP_UpdateRouteCache(&CFS_CORE_APP_Data.LandingRoute, RouteMsg);
+        }
+
+        CFE_EVS_SendEvent(CFS_CORE_APP_STARTUP_EID, CFE_EVS_EventType_INFORMATION,
+                          "CFS_CORE_APP: route updated type=%u version=%u count=%u src_seq=%lu",
+                          (unsigned int)RouteMsg->RouteType, (unsigned int)RouteMsg->RouteVersion,
+                          (unsigned int)RouteMsg->WaypointCount, (unsigned long)RouteMsg->SourceSequence);
     }
 
     NowMs = CFS_CORE_APP_GetTimeMs();

@@ -19,6 +19,7 @@ endif()
 add_cfe_app(uplink_app ${APP_SRC_FILES})
 
 target_include_directories(uplink_app PUBLIC fsw/inc)
+target_link_libraries(uplink_app m)
 
 if (ENABLE_UNIT_TESTS)
   add_subdirectory(unit-test)

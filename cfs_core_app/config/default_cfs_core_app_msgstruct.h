@@ -21,9 +21,12 @@ typedef struct
     CFE_MSG_TelemetryHeader_t TelemetryHeader;
     uint8                     CommandCounter;
     uint8                     CommandErrorCounter;
-    uint16                    Reserved;
+    uint8                     MissionRouteWaypointCount;
+    uint8                     LandingRouteWaypointCount;
     uint32                    PublishCount;
     uint32                    LastPublishTimestampMs;
+    uint32                    LastRouteUpdateTimestampMs;
+    uint32                    RouteUpdateCount;
 } CFS_CORE_APP_HkTlm_t;
 
 typedef struct
@@ -37,6 +40,26 @@ typedef struct
     uint8                     RecoveryRequested;
     uint8                     Reserved;
 } CFS_CORE_APP_SystemHealthTlm_t;
+
+typedef struct
+{
+    float X;
+    float Y;
+    float Z;
+} CFS_CORE_APP_Waypoint_t;
+
+typedef struct
+{
+    CFE_MSG_TelemetryHeader_t TelemetryHeader;
+    uint32                    Seq;
+    uint32                    TimestampMs;
+    uint32                    SourceSequence;
+    uint8                     RouteType;
+    uint8                     RouteVersion;
+    uint8                     WaypointCount;
+    uint8                     Reserved;
+    CFS_CORE_APP_Waypoint_t   Waypoints[CFS_CORE_APP_ROUTE_MAX_WAYPOINTS];
+} CFS_CORE_APP_RouteUpdateTlm_t;
 
 #endif
 
