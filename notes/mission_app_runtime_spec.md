@@ -672,6 +672,8 @@ FC, 모터 또는 액추에이터 명령 및 비행 제어 매개변수
 
 현재 기준 E2E sender는 모니터 및 링크 상태 동작의 일부만 검증한다. 추가로 MAVLink Bridge, IMU, GPS, EKF, downlink, 시스템 상태, uplink 메시지 흐름에 대한 테스트가 필요하다.
 
+하드웨어 연결 전 시험 단계에서는 UART 또는 LoRa 실장 대신 `localhost` 기반 UDP 입력/출력 또는 동등한 mock sink를 임시 시험 구성으로 사용할 수 있다. 이 구성은 실제 FC mission 반영이나 LoRa 물리 송신을 대체하는 것이 아니라, 입력 수신, 패킷 검증, Software Bus 게시, 내부 상태 반영, HK/Event 확인과 같은 내부 계약을 검증하기 위한 임시 수단으로만 사용해야 한다. UDP 기반 시험 입력 경로, 포트 번호, sink 방식은 시험 환경에 맞게 변경 가능해야 하며, 최종 하드웨어 통합 구성으로 고정된 것으로 간주해서는 안 된다.
+
 ### 16.1 기능별 테스트
 
 | 기능 | 입력 | 기대 결과 | 검증 방법 |
@@ -684,13 +686,17 @@ FC, 모터 또는 액추에이터 명령 및 비행 제어 매개변수
 | `downlink_app` 송신 오류 처리 | LoRa 또는 지상국 송신 실패 | 송신 오류 수가 증가하고 오류 상태가 유지된다. | error count, last fault code 확인 |
 | `uplink_app` 설정 반영 | 유효한 runtime configuration 명령 | pending 검증 후 active 설정이 갱신된다. | 설정 상태, sequence, 적용 로그 확인 |
 | `uplink_app` 설정 거부 | 범위 오류, CRC 오류, 비호환 설정 | 설정이 거부되고 active 값은 유지된다. | reject code, active config 불변 확인 |
+| `uplink_app` UDP 임시 입력 검증 | `localhost` UDP 또는 동등한 mock transport를 통해 정상/비정상 uplink packet을 입력한다. | 실제 하드웨어 없이도 수신, 길이 검증, CRC 검증, sequence 검증, route/viewpoint payload 검증이 수행된다. | accept/reject count, 오류 이벤트, `UPLINK_STATUS_MID`, 로그 확인 |
 | `uplink_app` 경로 수정 | 승인된 기존 경로 수정 payload | 경로 수정 정보가 수신·검증되고 상위 임무 계층에 전달된다. | uplink status, route update 처리 로그 확인 |
 | `uplink_app` 내부 복구 명령 | parser reset, serial reconnect, app restart request | 승인된 명령만 전달되고 결과가 `UPLINK_STATUS_MID`에 반영된다. | command result, reject/accept count 확인 |
+| `cfs_core_app` 경로 상태 반영 | 정상 route update 또는 landing route update 입력 | mission route/landing route cache, route update counter, 마지막 route update 시각이 갱신된다. | HK, route update 로그, `SYSTEM_HEALTH_MID` 연계 상태 확인 |
+| `downlink_app` mock sink 출력 | 실제 LoRa 장치 대신 file sink, stdout sink, UDP localhost sink 또는 동등한 mock sink로 송신한다. | downlink packet 생성, sequence 증가, 송신 카운터 증가, 실패 시 error count 반영이 확인된다. | HK, 송신 로그, mock sink 출력 확인 |
 ### 16.2 통합 테스트
 
 | 통합 시나리오 | 절차 | 기대 결과 |
 | --- | --- | --- |
 | FC 상태 수신부터 downlink 송신까지 | FC가 MAVLink 상태를 송신하고 Raspberry Pi가 이를 받아 지상국으로 전송한다. | `mavlink_bridge_app` → `cfs_core_app` → `downlink_app` 경로가 연속 동작하고 지상국에서 상태를 확인할 수 있다. |
+| 하드웨어 미연결 내부 계약 시험 | 실제 FC 또는 LoRa 장치 없이 `localhost` UDP 입력과 mock sink 출력을 사용해 uplink/downlink 흐름을 구동한다. | uplink packet 수신, 검증, SB route 전달, `cfs_core_app` 상태 반영, downlink packet 생성까지가 하드웨어 없이 검증된다. 실제 FC mission 반영과 LoRa 물리 송신은 이 시험 범위에 포함되지 않는다. |
 | uplink 기반 운용 설정 변경 | 지상국에서 설정 변경 명령을 송신한다. | `uplink_app`가 명령을 검증하고 승인된 값만 active 설정에 반영한다. |
 | uplink 기반 경로 수정 | 지상국에서 기존 경로 수정 payload를 송신한다. | 기체 측 cFS가 경로 수정 정보를 수신·검증하고 상위 임무 계층에 반영한다. |
 | 통신 장애 후 복구 | FC-UART 링크 또는 LoRa 송신을 일시적으로 차단한 뒤 복구한다. | 시스템 상태가 성능 저하 또는 복구 필요 상태로 전이되었다가, 링크 복구 후 정상 상태로 돌아온다. |
