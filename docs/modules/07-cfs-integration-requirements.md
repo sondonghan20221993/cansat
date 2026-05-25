@@ -55,7 +55,7 @@ baseline 필수 SB 입력 집합은 `IMU_STATE_MID (0x1901)`, `GPS_STATE_MID (0x
 
 ### cFS 경계에서의 Timestamp 및 Correlation
 
-- **CFS-LNK-09**: cFS Software Bus에 publish되는 모든 메시지는 차량 측에서 생성 시점에 부여된 `cFS_TIME` timestamp를 가져야 한다. relay 또는 bridge component가 차량 생성 `timestamp` field를 덮어써서는 안 된다.
+- **CFS-LNK-09**: control/health 경로의 cFS Software Bus 메시지는 차량 측에서 생성 시점에 부여된 `cFS_TIME` timestamp를 가져야 한다. relay 또는 bridge component가 차량 생성 `timestamp` field를 덮어써서는 안 된다. image/video 경로의 authoritative timestamp policy는 현재 baseline에서 미정이며, 추후 통합 시험 결과에 따라 별도 확정한다.
 - **CFS-LNK-10**: image/video path의 per-image correlation key 정책은 현재 baseline에서 미정으로 둔다. image capture를 기체 측에서 직접 제어하지 않으므로 image-level identifier를 필수 cFS contract로 고정해서는 안 된다.
 - **CFS-LNK-11**: 동일 reconstruction job 또는 동일 source event를 참조하는 모든 LoRa status 또는 event message는 사용 가능한 경우 reconstruction 요청 또는 image/video metadata와 동일한 `job_id` 또는 `seq`를 가져야 한다.
 - **CFS-LNK-12**: reconstruction 관련 메시지는 job submission 시 할당된 `job_id`를 가져야 한다. `job_id`는 reconstruction request, result, 관련 LoRa event message 전 구간에서 변경 없이 보존되어야 한다.

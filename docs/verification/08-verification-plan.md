@@ -23,7 +23,7 @@
 ### 3.1 Other Module Unit Test Summary
 | Module | Test Scope | Pass Criteria |
 |---|---|---|
-| Reconstruction Module | Pipeline functions, remote execution, artifact handling, accumulated map manifest | See TC-REC-01 through TC-REC-18 |
+| Reconstruction Module | Pipeline functions, remote execution, artifact handling, accumulated map manifest, inbox monitoring, session-state viewer | See TC-REC-01 through TC-REC-29 |
 | Pose / Alignment Module | Transform math, calibration status, sensor fallback, per-chunk alignment metadata | See TC-ALIGN-01 through TC-ALIGN-12 |
 | cFS Integration Layer | Message routing, timers, configuration, app lifecycle, event/log behavior | See TC-CFS-01 through TC-CFS-19 |
 ### 3.2 Reconstruction 검증 UI 테스트
@@ -85,7 +85,7 @@ Additional reconstruction verification cases:
 | TC ID | Test Name | Input Condition | Expected Output | Requirement |
 |---|---|---|---|---|
 | TC-CFS-01 | cFS app initialization | Startup with valid configuration | App initializes config, SB subscriptions, timers, and event services | CFS-APP-01, CFS-APP-02 |
-| TC-CFS-02 | cFS non-blocking main loop | Timer, SB message, and reconstruction status events arrive together | Main loop processes events without blocking unrelated modules | CFS-APP-03, CFS-TMR-04 |
+| TC-CFS-02 | cFS non-blocking main loop | Timer, SB message, and reconstruction status events arrive together | Main loop processes events without blocking unrelated modules | CFS-APP-03, CFS-TMR-02 |
 | TC-CFS-03 | cFS shutdown logging | Shutdown request during nominal operation | Resources are released and final status event is recorded | CFS-APP-04 |
 | TC-CFS-04 | Software Bus routing | Reconstruction metadata and baseline SB inputs are published | SB messages preserve timestamp, source, status, and payload references | CFS-SB-01, CFS-SB-02, CFS-SB-03 |
 | TC-CFS-05 | Configuration validation | Missing required endpoint or transform config | Affected module does not enter nominal operation and emits traceable event | CFS-CFG-01, CFS-CFG-02, CFS-CFG-03 |
@@ -156,8 +156,34 @@ to avoid mixing implementation requirements and verification requirements.
 | REC-OUT-11       | 05-reconstruction-requirements.md | Unit Test      | TC-REC-02   |
 | REC-OUT-12       | 05-reconstruction-requirements.md | Unit Test      | TC-REC-01, TC-REC-03 |
 | REC-OUT-13       | 05-reconstruction-requirements.md | Unit Test      | TC-REC-02   |
+| REC-IN-01        | 05-reconstruction-requirements.md | Integration Test | TC-REC-06 |
+| REC-IN-02        | 05-reconstruction-requirements.md | Integration Test | TC-REC-10 |
+| REC-IN-03        | 05-reconstruction-requirements.md | Integration Test | TC-REC-09 |
+| REC-IN-04        | 05-reconstruction-requirements.md | Integration Test | TC-REC-09 |
+| REC-IN-05        | 05-reconstruction-requirements.md | Unit/Integration Test | TC-REC-08 |
+| REC-IN-06        | 05-reconstruction-requirements.md | Unit/Integration Test | TC-REC-08 |
+| REC-IN-07        | 05-reconstruction-requirements.md | Unit Test | TC-REC-08 |
+| REC-IN-08        | 05-reconstruction-requirements.md | Unit Test | TC-REC-07 |
+| REC-IN-09        | 05-reconstruction-requirements.md | Integration Test | TC-REC-10 |
+| REC-IN-10        | 05-reconstruction-requirements.md | Integration Test | TC-REC-04, TC-REC-10 |
+| REC-IN-10A       | 05-reconstruction-requirements.md | Integration Test | TC-REC-26 |
+| REC-PROC-01      | 05-reconstruction-requirements.md | Unit/Integration Test | TC-REC-06, TC-REC-09 |
+| REC-PROC-02      | 05-reconstruction-requirements.md | Integration Test | TC-REC-06 |
+| REC-PROC-03      | 05-reconstruction-requirements.md | Unit Test | TC-REC-11 |
+| REC-PROC-04      | 05-reconstruction-requirements.md | Unit/Integration Test | TC-REC-06, TC-REC-26 |
+| REC-PROC-05      | 05-reconstruction-requirements.md | Unit/Integration Test | TC-REC-06, TC-REC-26 |
+| REC-PROC-06      | 05-reconstruction-requirements.md | Unit Test | TC-REC-11 |
+| REC-PROC-07      | 05-reconstruction-requirements.md | Unit Test | TC-REC-08 |
+| REC-PROC-08      | 05-reconstruction-requirements.md | Unit Test | TC-REC-07 |
+| REC-PROC-08A     | 05-reconstruction-requirements.md | Integration Test | TC-REC-26, TC-REC-29 |
+| REC-PROC-09      | 05-reconstruction-requirements.md | Integration Test | TC-REC-04, TC-REC-10 |
+| REC-PROC-10      | 05-reconstruction-requirements.md | Hardware/Performance Test | TBD (GPU deployment validation) |
+| REC-PROC-11      | 05-reconstruction-requirements.md | Integration Test | TC-REC-05, TC-REC-10 |
+| REC-PROC-12      | 05-reconstruction-requirements.md | Integration Test | TC-REC-04, TC-REC-10 |
+| REC-PROC-13      | 05-reconstruction-requirements.md | Integration Test | TC-REC-09 |
 | REC-PROC-13A     | 05-reconstruction-requirements.md | Integration Test | TC-REC-04 |
 | REC-PROC-13B     | 05-reconstruction-requirements.md | Integration Test | TC-REC-05 |
+| REC-PROC-13C     | 05-reconstruction-requirements.md | Integration Test | TC-REC-26, TC-REC-29 |
 | REC-PROC-17      | 05-reconstruction-requirements.md | Unit/Integration Test | TC-REC-13 |
 | REC-PROC-18      | 05-reconstruction-requirements.md | Unit/Integration Test | TC-REC-13 |
 | REC-PROC-19      | 05-reconstruction-requirements.md | Unit/Integration Test | TC-REC-14, TC-ALIGN-05 |
@@ -180,6 +206,20 @@ to avoid mixing implementation requirements and verification requirements.
 | REC-OUT-20       | 05-reconstruction-requirements.md | Integration Test | TC-REC-24 |
 | REC-OUT-21       | 05-reconstruction-requirements.md | Integration Test | TC-REC-25 |
 | REC-OUT-22       | 05-reconstruction-requirements.md | Integration Test | TC-REC-24 |
+| REC-PROC-14      | 05-reconstruction-requirements.md | Integration Test | TC-REC-06 |
+| REC-PROC-15      | 05-reconstruction-requirements.md | Integration Test | TC-REC-06, TC-REC-09 |
+| REC-PROC-16      | 05-reconstruction-requirements.md | Integration Test | TC-REC-05, TC-REC-13 |
+| REC-PROC-16A     | 05-reconstruction-requirements.md | Integration Test | TC-REC-26, TC-REC-29 |
+| REC-OUT-01       | 05-reconstruction-requirements.md | Integration Test | TC-REC-05, TC-REC-12 |
+| REC-OUT-02       | 05-reconstruction-requirements.md | Integration Test | TC-REC-10 |
+| REC-OUT-03       | 05-reconstruction-requirements.md | Integration Test | TC-REC-10 |
+| REC-OUT-04       | 05-reconstruction-requirements.md | Unit Test | TC-REC-12 |
+| REC-OUT-05       | 05-reconstruction-requirements.md | Integration Test | TC-REC-06 |
+| REC-OUT-06       | 05-reconstruction-requirements.md | Integration Test | TC-REC-06 |
+| REC-OUT-07       | 05-reconstruction-requirements.md | Integration Test | TC-REC-06, TC-REC-09 |
+| REC-OUT-08       | 05-reconstruction-requirements.md | Integration Test | TC-REC-09 |
+| REC-OUT-09       | 05-reconstruction-requirements.md | Integration Test | TC-REC-09 |
+| REC-OUT-10       | 05-reconstruction-requirements.md | Integration Test | TC-REC-09 |
 | REC-OUT-14       | 05-reconstruction-requirements.md | Unit/Integration Test | TC-REC-13 |
 | REC-OUT-15       | 05-reconstruction-requirements.md | Unit/Integration Test | TC-REC-13 |
 | REC-OUT-16       | 05-reconstruction-requirements.md | Integration Test | TC-REC-14 |
@@ -192,6 +232,15 @@ to avoid mixing implementation requirements and verification requirements.
 | REC-OUT-13B      | 05-reconstruction-requirements.md | Integration Test | TC-REC-29 |
 | REC-OUT-23       | 05-reconstruction-requirements.md | Integration Test | TC-REC-29 |
 | REC-OUT-24       | 05-reconstruction-requirements.md | Integration Test | TC-REC-29 |
+| REC-ERR-01       | 05-reconstruction-requirements.md | Integration Test | TC-REC-09 |
+| REC-ERR-02       | 05-reconstruction-requirements.md | Integration Test | TC-REC-09, TC-REC-23 |
+| REC-ERR-03       | 05-reconstruction-requirements.md | Integration Test | TC-REC-09 |
+| REC-ERR-04       | 05-reconstruction-requirements.md | Integration Test | TC-REC-09 |
+| REC-ERR-05       | 05-reconstruction-requirements.md | Integration Test | TC-REC-09 |
+| REC-PERF-01      | 05-reconstruction-requirements.md | Integration Test | TC-REC-10 |
+| REC-PERF-02      | 05-reconstruction-requirements.md | Hardware/Performance Test | TBD (GPU deployment validation) |
+| REC-PERF-03      | 05-reconstruction-requirements.md | Integration Test | TC-REC-10 |
+| REC-PERF-04      | 05-reconstruction-requirements.md | Performance Validation | TBD (runtime/throughput target finalization) |
 | ALIGN-PROC-01    | 06-pose-frame-alignment-requirements.md | Integration Test | TC-ALIGN-01 |
 | ALIGN-PROC-02    | 06-pose-frame-alignment-requirements.md | Integration Test | TC-ALIGN-01 |
 | ALIGN-PROC-04    | 06-pose-frame-alignment-requirements.md | Integration Test | TC-ALIGN-02 |
@@ -206,7 +255,6 @@ to avoid mixing implementation requirements and verification requirements.
 | ALIGN-PROC-10    | 06-pose-frame-alignment-requirements.md | Integration Test | TC-ALIGN-04 |
 | ALIGN-PROC-11    | 06-pose-frame-alignment-requirements.md | Unit/Integration Test | TC-REC-13, TC-ALIGN-04 |
 | ALIGN-OUT-06     | 06-pose-frame-alignment-requirements.md | Integration Test | TC-ALIGN-04 |
-| ALIGN-ERR-04     | 06-pose-frame-alignment-requirements.md | Integration Test | TC-ALIGN-03 |
 | ALIGN-ERR-05     | 06-pose-frame-alignment-requirements.md | Integration Test | TC-ALIGN-05 |
 | ALIGN-PROC-03    | 06-pose-frame-alignment-requirements.md | Integration Test | TC-ALIGN-09 |
 | ALIGN-PROC-06    | 06-pose-frame-alignment-requirements.md | Integration Test | TC-ALIGN-10 |
@@ -220,16 +268,24 @@ to avoid mixing implementation requirements and verification requirements.
 | CFS-SB-01~02     | 07-cfs-integration-requirements.md | Module Integration Test | TC-CFS-04 |
 | CFS-SB-03        | 07-cfs-integration-requirements.md | Module Integration Test | TC-CFS-04, TC-CFS-24 |
 | CFS-SB-05~11     | 07-cfs-integration-requirements.md | Module Integration Test | TC-CFS-08 |
+| CFS-SB-07A       | 07-cfs-integration-requirements.md | Module Integration Test | TC-CFS-08 |
 | CFS-SB-13~15     | 07-cfs-integration-requirements.md | Module Integration Test | TC-CFS-15 |
 | CFS-SB-16        | 07-cfs-integration-requirements.md | Module Integration Test | TC-CFS-17 |
 | CFS-SB-17        | 07-cfs-integration-requirements.md | Module Integration Test | TC-CFS-18 |
 | CFS-SB-18        | 07-cfs-integration-requirements.md | Module Integration Test | TC-CFS-19 |
 | CFS-TMR-01~02    | 07-cfs-integration-requirements.md | Unit/Integration Test | TC-CFS-02 |
 | CFS-TMR-05~07    | 07-cfs-integration-requirements.md | Module Integration Test | TC-CFS-09, TC-CFS-10, TC-CFS-12 |
+| CFS-TMR-08       | 07-cfs-integration-requirements.md | Module Integration Test | TC-CFS-10 |
+| CFS-TMR-09       | 07-cfs-integration-requirements.md | Module Integration Test | TC-CFS-13 |
+| CFS-TMR-10       | 07-cfs-integration-requirements.md | Module Integration Test | TC-CFS-10 |
 | CFS-CFG-01~04    | 07-cfs-integration-requirements.md | Module Integration Test | TC-CFS-05, TC-CFS-06 |
 | CFS-CFG-06~08    | 07-cfs-integration-requirements.md | Module Integration Test | TC-CFS-09 |
+| CFS-CFG-09       | 07-cfs-integration-requirements.md | Module Integration Test | TC-CFS-08 |
 | CFS-LOG-01, CFS-LOG-03~07 | 07-cfs-integration-requirements.md | Module Integration Test | TC-CFS-09, TC-CFS-10, TC-CFS-14 |
+| CFS-LOG-04       | 07-cfs-integration-requirements.md | Module Integration Test | TC-CFS-04 |
+| CFS-LOG-07       | 07-cfs-integration-requirements.md | Module Integration Test | TC-CFS-04 |
 | CFS-LOG-08~10    | 07-cfs-integration-requirements.md | Module Integration Test | TC-CFS-18 |
+| CFS-DEP-01~03    | 07-cfs-integration-requirements.md | Deployment Verification | TBD (hardware deployment test) |
 | CFS-DEP-04       | 07-cfs-integration-requirements.md | Deployment Verification | TBD (hardware deployment test) |
 | CFS-VER-06       | 07-cfs-integration-requirements.md | Integration Test | TC-CFS-08 |
 | CFS-VER-07       | 07-cfs-integration-requirements.md | Integration Test | TC-CFS-09, TC-CFS-10 |
@@ -238,7 +294,11 @@ to avoid mixing implementation requirements and verification requirements.
 | CFS-VER-14       | 07-cfs-integration-requirements.md | Integration Test | TC-CFS-18 |
 | CFS-VER-15       | 07-cfs-integration-requirements.md | Integration Test | TC-CFS-19 |
 | CFS-LNK-01       | 07-cfs-integration-requirements.md | Module Integration Test | TC-CFS-23 |
+| CFS-LNK-02       | 07-cfs-integration-requirements.md | Module Integration Test | TC-CFS-23 |
 | CFS-LNK-03       | 07-cfs-integration-requirements.md | Module Integration Test | TC-CFS-23 |
+| CFS-LNK-04       | 07-cfs-integration-requirements.md | Module Integration Test | TC-CFS-23 |
+| CFS-LNK-06       | 07-cfs-integration-requirements.md | Module Integration Test | TC-CFS-23 |
+| CFS-LNK-07       | 07-cfs-integration-requirements.md | Module Integration Test | TC-CFS-23 |
 | CFS-LNK-09       | 07-cfs-integration-requirements.md | Module Integration Test | TC-CFS-24 |
 | CFS-LNK-10~13    | 07-cfs-integration-requirements.md | Module Integration Test | TC-CFS-25 |
 

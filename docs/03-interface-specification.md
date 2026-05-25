@@ -28,7 +28,7 @@ Error_Code 체계를 준수해야 한다.
 - `seq`는 하나의 source module 안에서 session 전체에 걸쳐 단조 증가해야 한다. 소비자는 `seq`를 이용해 누락이나 재정렬을 감지할 수 있다.
 - `frame_id`, `job_id`는 각각 좌표계 frame과 reconstruction job에 연관된 이벤트를 설명하는 모든 메시지에 채워져야 한다.
 - LoRa status 메시지와 image/video 메타데이터 메시지가 동일 차량 이벤트를 설명하는 경우, 지상국 correlation을 위해 동일한 `job_id` 또는 `seq` 값을 가져야 한다.
-- 지상국 소비자는 cross-link correlation 시 ground reception time이 아니라 차량에서 생성한 `timestamp` field를 권위 있는 event time으로 사용해야 한다.
+- control/health 경로에 대해서는 지상국 소비자가 차량에서 생성한 `timestamp` field를 권위 있는 event time으로 사용해야 한다. image/video 경로의 authoritative timestamp policy는 현재 baseline에서 확정되지 않았으며, 최종 정책이 정해지기 전까지는 문서화된 ground-side receive-time approximation을 사용할 수 있다.
 
 ### 2.1 통신 링크 역할 계약
 
@@ -181,7 +181,7 @@ Reconstruction 결과의 좌표 기반 검증 UI 연동 필드 정의:
 | `job_id` | string | Yes | client가 생성한 reconstruction job 식별자 |
 | `image_set_id` | string | Yes | 논리적 image set 식별자 |
 | `images[]` | list | Yes | 순서가 보존된 이미지 descriptor 목록 |
-| `images[].timestamp` | cFS_TIME | Yes | wire layer에서 직렬화된 acquisition timestamp |
+| `images[].timestamp` | cFS_TIME | Yes | 현재는 backend 또는 bridge가 제공하는 image acquisition 또는 ingestion 기준 timestamp. 최종 authoritative policy는 미정 |
 | `images[].source_path` | string | Yes | server가 읽을 수 있는 이미지 경로 또는 URI |
 | `output_format` | string | Yes | 요청한 외부 출력 형식, 현재는 주로 `glb` |
 | `aux_pose` | object/null | No | 선택적 camera pose 또는 localization 보조 정보 |
@@ -509,12 +509,12 @@ Prototype session-state resource policy:
 
 #### 3.6.3 Timestamp Consistency Rule
 
-양쪽 링크 역할의 모든 메시지는 vehicle-generated `cFS_TIME` timestamp를 authoritative event time으로 사용해야 한다.
+control/health 링크의 메시지는 vehicle-generated `cFS_TIME` timestamp를 authoritative event time으로 사용해야 한다. image/video 링크의 timestamp policy는 현재 baseline에서 최종 확정되지 않았다.
 
 - 모든 downlink 및 uplink 메시지의 `timestamp` 필드는 차량 측 생성 시점에 cFS_TIME으로 설정되어야 한다.
-- image/video metadata 메시지는 LoRa telemetry 메시지와 동일한 cFS_TIME 기준을 사용해야 한다.
-- ground-side reception time은 진단 목적으로 별도 `rx_timestamp` 필드에 기록할 수 있지만, event correlation에서 `timestamp`를 대체해서는 안 된다.
-- 소비 모듈은 ground reception time이 비슷하다고 해서 동일 시점 이벤트로 가정해서는 안 되며, 시간 순서와 상관관계는 vehicle-generated `timestamp`를 기준으로 판단해야 한다.
+- image/video metadata 메시지의 최종 timestamp 기준은 현재 미정이며, image capture를 기체 측에서 직접 제어하지 않는 baseline에서는 ground-side receive-time approximation을 사용할 수 있다.
+- ground-side reception time은 진단 목적으로 별도 `rx_timestamp` 필드에 기록할 수 있다. image/video 경로에서는 최종 정책이 확정되기 전까지 이 값을 근사 event time으로 사용할 수 있다.
+- 소비 모듈은 control/health 링크에 대해서는 vehicle-generated `timestamp`를 기준으로 시간 순서와 상관관계를 판단해야 한다. image/video 경로의 최종 authoritative timestamp rule은 추후 확정한다.
 
 #### 3.6.4 Cross-Link Correlation Fields
 
@@ -604,3 +604,4 @@ Timestamp origin rule:
 - OI-IFC-12: `FC_ODOMETRY_MID` and `FC_EKF_STATUS_MID` conditional publication policy needs to be frozen — specifically whether absence of these messages triggers a degraded status or is silently tolerated (Section 3.2AB).
 - OI-IFC-13: MAVLink Bridge serial device configuration contract (device path, baud rate, reconnect policy) needs to be finalized (Section 3.2AA).
 - OI-IFC-14: 이미지 단위 correlation key 정책은 현재 baseline에서 미정이다. image capture를 기체 측에서 직접 제어하지 않으므로 per-image identifier를 필수 공통 필드로 고정하지 않는다.
+- OI-IFC-15: image/video 경로의 authoritative timestamp policy는 현재 baseline에서 미정이다. `cFS_TIME` 기반 image-origin timestamp를 사용할지, 문서화된 ground-side receive-time approximation을 사용할지는 추후 통합 시험 결과를 반영하여 확정해야 한다.

@@ -62,7 +62,7 @@
 - frame transform을 관리한다
 - offset과 calibration을 적용한다
 - 통합된 좌표 출력값을 생성한다
-- GPS, IMU, camera, reconstruction 좌표계를 World / Map frame으로 정렬한다
+- GPS, IMU, MAVLink FC state (FC_LOCAL_POS_MID, FC_ATTITUDE_MID, FC_ODOMETRY_MID), camera, reconstruction 좌표계를 World / Map frame으로 정렬한다
 
 ### 3.7 cFS Integration Layer
 
@@ -74,9 +74,9 @@
 
 모듈 간 정보 이동 방식은 다음과 같다.
 
-1. `imu_app`, `gps_app`, `telemetry_app`가 baseline 필수 SB 입력 집합을 publish한다.
+1. `imu_app`, `gps_app`, `telemetry_app`가 baseline 필수 SB 입력 집합을 publish한다. `mavlink_bridge_app`은 FC MAVLink 바이트 스트림을 수신하여 `FC_LOCAL_POS_MID`, `FC_ATTITUDE_MID`, `FC_GPS_RAW_MID` 등 typed SB 메시지로 변환하여 publish한다.
 2. Reconstruction Module은 지상국 image/video 경로를 통해 전달된 image 입력을 소비한다.
-3. Alignment 로직은 source 출력을 공통 World / Map frame으로 변환한다.
+3. Alignment 로직은 GPS, IMU, MAVLink FC state, camera, reconstruction source 출력을 공통 World / Map frame으로 변환한다.
 4. cFS integration이 출력을 downstream consumer에 배포한다.
 
 ## 5. 모듈 간 연결 관계
@@ -85,6 +85,8 @@
 | --- | --- | --- | --- |
 | GPS Interface | Pose / Frame Alignment Module | Data message | GPS 위치 및 timestamp |
 | IMU Interface | Pose / Frame Alignment Module | Data message | 자세, 각속도, 가속도 |
+| MAVLink Bridge | Pose / Frame Alignment Module | SB message | `FC_LOCAL_POS_MID (0x1905)`, `FC_ATTITUDE_MID (0x1906)`, `FC_ODOMETRY_MID (0x1908)` (선택적 alignment 입력) |
+| MAVLink Bridge | cFS Integration Layer | SB message | `MAVLINK_BRIDGE_STATUS_MID (0x190A)` — bridge health 및 link state |
 | Telemetry Interface | cFS Integration Layer | SB message | `TELEMETRY_STATUS_MID (0x1903)` |
 | Image / Video Path | Reconstruction Module | Ground-side transfer path | camera image 또는 video frame 입력 |
 | Reconstruction Module | Pose / Frame Alignment Module | Data message | 3차원 결과 및 메타데이터 |
