@@ -65,6 +65,7 @@
 - MAVLink Bridge Module은 Flight Controller MAVLink 메시지를 파싱하고 cFS SB 메시지로 변환해야 한다. raw MAVLink frame을 cFS Software Bus에 직접 전달해서는 안 된다.
 - MAVLink Bridge Module은 독립적으로 enable/disable 가능해야 한다. 비활성화된 경우에도 다른 센서 또는 alignment 모듈의 정상 동작을 방해해서는 안 된다.
 - 시스템은 LoRa telemetry link와 image/video link에 대해 별도의 health 및 state tracking을 유지해야 한다. 각 링크는 `03-interface-specification.md`에 정의된 `ALIVE`, `DEGRADED`, `LOST` 분류를 사용해 독립적인 link state를 보고해야 한다.
+- 시스템은 uplink command를 통해 FC 직접 제어를 수행해서는 안 된다. 여기서 FC 직접 제어에는 비행 모드 변경, 모터/액추에이터 제어, FC-level parameter 변경, FC-level mission upload가 포함된다. 단, 기존 임무 경로 뒤에 검증된 추가 경로 segment를 반영하는 경로 수정 명령은 예외적으로 허용될 수 있으며, 이 경우에도 자세 제어 또는 모터 제어와 같은 직접 제어 명령으로 실행되어서는 안 된다.
 - 시스템은 control/health 경로의 모든 downlink 및 uplink 메시지 생성 시점에 차량 측 `cFS_TIME` timestamp를 부여해야 한다. 지상국 소비자는 이 차량 생성 timestamp를 cross-link correlation을 위한 기준 event time으로 사용해야 한다. image/video 경로의 timestamp 기준은 현재 미정이며, 추후 통합 시험 결과에 따라 별도 확정한다.
 - 동일한 차량 이벤트를 설명하는 메시지에는 `frame_id`, `job_id`, `seq` correlation field를 포함해야 하며, 지상국 소비자가 LoRa status 데이터와 image/video 데이터를 연결할 수 있어야 한다.
 

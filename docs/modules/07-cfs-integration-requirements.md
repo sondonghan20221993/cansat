@@ -44,6 +44,7 @@ baseline 필수 SB 입력 집합은 `IMU_STATE_MID (0x1901)`, `GPS_STATE_MID (0x
 ### 링크 역할 할당
 
 - **CFS-LNK-01**: LoRa telemetry link (`link_role = LORA`)는 heartbeat, HK, status, fault/event report, uplink command traffic만 전달해야 한다.
+- **CFS-LNK-01A**: uplink command traffic은 기본적으로 cFS mission-layer command로 해석되어야 하며, FC 직접 제어 명령으로 처리되어서는 안 된다. 단, 기존 임무 경로 뒤에 추가 경로 segment를 반영하는 경로 수정 명령은 예외적으로 허용될 수 있다. 이 경우에도 해당 명령은 검증된 경로 정보 전달로만 처리되어야 하며, 비행 모드 변경, 모터/액추에이터 제어, FC-level mission upload, FC-level parameter 변경을 직접 수행해서는 안 된다.
 - **CFS-LNK-02**: image/video link (`link_role = IMG_VID`)는 image frame, video stream, large payload transfer, reconstruction artifact traffic만 전달해야 한다.
 - **CFS-LNK-03**: LoRa link에 배정된 traffic class를 image/video link로 라우팅해서는 안 되며, 그 반대도 마찬가지다. 단, 명시적으로 문서화되고 승인된 fallback policy가 있는 경우는 예외다.
 
