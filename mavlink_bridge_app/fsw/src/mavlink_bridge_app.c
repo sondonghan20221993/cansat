@@ -8,7 +8,7 @@
 
 MAVLINK_BRIDGE_APP_Data_t MAVLINK_BRIDGE_APP_Data;
 
-void MAVLINK_BRIDGE_APP_Main(void)
+void MAV_BRIDGE_APP_Main(void)
 {
     CFE_Status_t     Status;
     CFE_SB_Buffer_t *SBBufPtr;

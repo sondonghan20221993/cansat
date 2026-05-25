@@ -16,6 +16,6 @@ else()
   )
 endif()
 
-add_cfe_app(mavlink_bridge_app ${APP_SRC_FILES})
+add_cfe_app(mav_bridge_app ${APP_SRC_FILES})
 
-target_include_directories(mavlink_bridge_app PUBLIC fsw/inc)
+target_include_directories(mav_bridge_app PUBLIC fsw/inc)
