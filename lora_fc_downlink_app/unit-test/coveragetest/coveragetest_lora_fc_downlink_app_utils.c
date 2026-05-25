@@ -48,29 +48,37 @@ void Test_LORA_FC_DOWNLINK_APP_ReportHousekeeping(void)
 
 void Test_LORA_FC_DOWNLINK_APP_ProcessInputMessage(void)
 {
-    CFE_SB_Buffer_t                       Buffer;
+    uint8                                 Storage[sizeof(TEST_LORA_FC_DOWNLINK_APP_SystemHealthTlm_t)];
+    CFE_SB_Buffer_t                      *Buffer;
+    CFE_SB_MsgId_t                        MsgId;
     TEST_LORA_FC_DOWNLINK_APP_GenericStateTlm_t *Attitude;
     TEST_LORA_FC_DOWNLINK_APP_SystemHealthTlm_t *Health;
 
-    memset(&Buffer, 0, sizeof(Buffer));
-    Attitude = (TEST_LORA_FC_DOWNLINK_APP_GenericStateTlm_t *)&Buffer.Msg;
+    memset(Storage, 0, sizeof(Storage));
+    Buffer   = (CFE_SB_Buffer_t *)Storage;
+    Attitude = (TEST_LORA_FC_DOWNLINK_APP_GenericStateTlm_t *)Storage;
     CFE_MSG_Init(CFE_MSG_PTR(Attitude->TelemetryHeader),
                  CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_FC_ATTITUDE_STATE_MID_VALUE), sizeof(*Attitude));
     Attitude->TimestampMs = 1111;
     Attitude->Valid       = 1;
-    LORA_FC_DOWNLINK_APP_ProcessInputMessage(&Buffer);
+    MsgId = CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_FC_ATTITUDE_STATE_MID_VALUE);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+    LORA_FC_DOWNLINK_APP_ProcessInputMessage(Buffer);
 
     UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.LastAttitudeTimestampMs, 1111);
     UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.AttitudeValid, 1);
     UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.DownlinkCount, 1);
 
-    memset(&Buffer, 0, sizeof(Buffer));
-    Health = (TEST_LORA_FC_DOWNLINK_APP_SystemHealthTlm_t *)&Buffer.Msg;
+    memset(Storage, 0, sizeof(Storage));
+    Buffer = (CFE_SB_Buffer_t *)Storage;
+    Health = (TEST_LORA_FC_DOWNLINK_APP_SystemHealthTlm_t *)Storage;
     CFE_MSG_Init(CFE_MSG_PTR(Health->TelemetryHeader),
                  CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_SYSTEM_HEALTH_MID_VALUE), sizeof(*Health));
     Health->TimestampMs = 2222;
     Health->HealthState = 3;
-    LORA_FC_DOWNLINK_APP_ProcessInputMessage(&Buffer);
+    MsgId = CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_SYSTEM_HEALTH_MID_VALUE);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+    LORA_FC_DOWNLINK_APP_ProcessInputMessage(Buffer);
 
     UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.LastSystemHealthTimestampMs, 2222);
     UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.SystemHealthState, 3);

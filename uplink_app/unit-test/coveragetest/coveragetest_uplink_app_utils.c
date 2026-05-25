@@ -22,6 +22,22 @@ void Test_UPLINK_APP_ValidateProxyCommand(void)
     UtAssert_INT32_EQ(Result, UPLINK_APP_RESULT_REJECT_VERSION);
 }
 
+void Test_UPLINK_APP_VerifyCmdLength_Impl(void)
+{
+    UPLINK_APP_NoopCmd_t TestMsg;
+    size_t               MsgSize;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+
+    MsgSize = sizeof(TestMsg);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetSize), &MsgSize, sizeof(MsgSize), false);
+    UtAssert_BOOL_TRUE(UPLINK_APP_VerifyCmdLength(CFE_MSG_PTR(TestMsg.CommandHeader), sizeof(TestMsg)));
+
+    MsgSize = sizeof(TestMsg);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetSize), &MsgSize, sizeof(MsgSize), false);
+    UtAssert_BOOL_FALSE(UPLINK_APP_VerifyCmdLength(CFE_MSG_PTR(TestMsg.CommandHeader), sizeof(TestMsg) + 1));
+}
+
 void Test_UPLINK_APP_ParseRouteUpdatePayload(void)
 {
     UPLINK_APP_ProcessUplinkCmd_t    Cmd;
@@ -69,6 +85,7 @@ void Test_UPLINK_APP_ReportHousekeeping(void)
 void UtTest_Setup(void)
 {
     ADD_TEST(UPLINK_APP_ValidateProxyCommand);
+    ADD_TEST(UPLINK_APP_VerifyCmdLength_Impl);
     ADD_TEST(UPLINK_APP_ParseRouteUpdatePayload);
     ADD_TEST(UPLINK_APP_ResolveRouteTarget);
     ADD_TEST(UPLINK_APP_ReportHousekeeping);

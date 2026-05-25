@@ -14,6 +14,22 @@ void Test_CFS_CORE_APP_ReportHousekeeping(void)
     CFS_CORE_APP_ReportHousekeeping();
 }
 
+void Test_CFS_CORE_APP_VerifyCmdLength_Impl(void)
+{
+    CFS_CORE_APP_NoopCmd_t TestMsg;
+    size_t                 MsgSize;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+
+    MsgSize = sizeof(TestMsg);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetSize), &MsgSize, sizeof(MsgSize), false);
+    UtAssert_BOOL_TRUE(CFS_CORE_APP_VerifyCmdLength(CFE_MSG_PTR(TestMsg.CommandHeader), sizeof(TestMsg)));
+
+    MsgSize = sizeof(TestMsg);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetSize), &MsgSize, sizeof(MsgSize), false);
+    UtAssert_BOOL_FALSE(CFS_CORE_APP_VerifyCmdLength(CFE_MSG_PTR(TestMsg.CommandHeader), sizeof(TestMsg) + 1));
+}
+
 void Test_CFS_CORE_APP_UpdateHealth_Nominal(void)
 {
     uint32 NowMs = 5000;
@@ -56,12 +72,17 @@ void Test_CFS_CORE_APP_UpdateHealth_Recovery(void)
 
 void Test_CFS_CORE_APP_ProcessStateMessage_RouteUpdate(void)
 {
-    CFE_SB_Buffer_t              Buffer;
+    uint8                        Storage[sizeof(CFS_CORE_APP_RouteUpdateTlm_t)];
+    CFE_SB_Buffer_t             *Buffer;
+    CFE_SB_MsgId_t               MsgId;
     CFS_CORE_APP_RouteUpdateTlm_t *RouteMsg;
 
-    memset(&Buffer, 0, sizeof(Buffer));
-    RouteMsg = (CFS_CORE_APP_RouteUpdateTlm_t *)&Buffer.Msg;
+    memset(Storage, 0, sizeof(Storage));
+    Buffer   = (CFE_SB_Buffer_t *)Storage;
+    RouteMsg = (CFS_CORE_APP_RouteUpdateTlm_t *)Storage;
     CFE_MSG_Init(CFE_MSG_PTR(RouteMsg->TelemetryHeader), CFE_SB_ValueToMsgId(ROUTE_UPDATE_MID), sizeof(*RouteMsg));
+    MsgId = CFE_SB_ValueToMsgId(ROUTE_UPDATE_MID);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
     RouteMsg->TimestampMs   = 1234;
     RouteMsg->SourceSequence = 55;
     RouteMsg->RouteType     = 1;
@@ -74,7 +95,7 @@ void Test_CFS_CORE_APP_ProcessStateMessage_RouteUpdate(void)
     RouteMsg->Waypoints[1].Y = 5.0f;
     RouteMsg->Waypoints[1].Z = 4.0f;
 
-    CFS_CORE_APP_ProcessStateMessage(&Buffer);
+    CFS_CORE_APP_ProcessStateMessage(Buffer);
 
     UtAssert_BOOL_TRUE(CFS_CORE_APP_Data.MissionRoute.Valid);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.MissionRoute.RouteVersion, 2);
@@ -84,6 +105,7 @@ void Test_CFS_CORE_APP_ProcessStateMessage_RouteUpdate(void)
 void UtTest_Setup(void)
 {
     ADD_TEST(CFS_CORE_APP_ReportHousekeeping);
+    ADD_TEST(CFS_CORE_APP_VerifyCmdLength_Impl);
     ADD_TEST(CFS_CORE_APP_UpdateHealth_Nominal);
     ADD_TEST(CFS_CORE_APP_UpdateHealth_Recovery);
     ADD_TEST(CFS_CORE_APP_ProcessStateMessage_RouteUpdate);

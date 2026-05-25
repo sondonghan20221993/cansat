@@ -7,16 +7,13 @@
 void Test_CFS_CORE_APP_VerifyCmdLength(void)
 {
     CFS_CORE_APP_NoopCmd_t TestMsg;
-    size_t                 MsgSize;
 
     memset(&TestMsg, 0, sizeof(TestMsg));
-    MsgSize = sizeof(TestMsg);
 
-    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetSize), &MsgSize, sizeof(MsgSize), false);
+    UT_SetDefaultReturnValue(UT_KEY(CFS_CORE_APP_VerifyCmdLength), true);
     UtAssert_BOOL_TRUE(CFS_CORE_APP_VerifyCmdLength(CFE_MSG_PTR(TestMsg.CommandHeader), sizeof(TestMsg)));
 
-    MsgSize = sizeof(TestMsg);
-    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetSize), &MsgSize, sizeof(MsgSize), false);
+    UT_SetDefaultReturnValue(UT_KEY(CFS_CORE_APP_VerifyCmdLength), false);
     UtAssert_BOOL_FALSE(CFS_CORE_APP_VerifyCmdLength(CFE_MSG_PTR(TestMsg.CommandHeader), sizeof(TestMsg) + 1));
 }
 

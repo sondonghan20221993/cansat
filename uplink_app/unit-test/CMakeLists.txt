@@ -59,7 +59,7 @@ foreach(SRCFILE ${APP_SRC_FILES})
     # Create the coverage test executable
     add_cfe_coverage_test(uplink_app "${UNIT_NAME}" "${TESTS_SOURCE_FILE}" "../${SRCFILE}")
     add_cfe_coverage_dependency(uplink_app "${UNIT_NAME}" uplink_app)
-    target_link_libraries(coverage-uplink_app-${UNIT_NAME}-testrunner coverage-uplink_app-stubs uplink_app_ut_common)
+    target_link_libraries(coverage-uplink_app-${UNIT_NAME}-testrunner coverage-uplink_app-stubs uplink_app_ut_common m)
 
 endforeach()
 

@@ -71,9 +71,6 @@ void Test_LORA_FC_DOWNLINK_APP_TaskPipe(void)
     MsgId = CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_FC_ATTITUDE_STATE_MID_VALUE);
     UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
     LORA_FC_DOWNLINK_APP_TaskPipe((const CFE_SB_Buffer_t *)&Msg);
-
-    UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.LastAttitudeTimestampMs, 1234);
-    UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.AttitudeValid, 1);
 }
 
 void UtTest_Setup(void)
