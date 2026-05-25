@@ -735,7 +735,7 @@ FC, 모터 또는 액추에이터 명령 및 비행 제어 매개변수
 
 `uplink_app`은 지상국 기원 명령이 cFS mission app layer로 진입하는 유일한 승인 경로이다. 다른 앱은 raw ground command를 직접 수신해서는 안 된다.
 
-`uplink_app`은 비행 모드 변경, FC-level mission 변경, 모터 또는 액추에이터 제어, FC-level 파라미터 변경과 같이 FC 상태에 직접 영향을 주는 명령을 발행해서는 안 된다. 이러한 명령은 Section 3의 기본 플랫폼 경계 정책에서 금지된다. cFS가 관리하는 경로 수정은 Raspberry Pi 미션 계층에서 다루는 경로 정보로 한정되며, FC 안전 정책을 우회하지 않는다.
+`uplink_app`은 비행 모드 변경, FC-level mission 변경, 모터 또는 액추에이터 제어, FC-level 파라미터 변경과 같이 FC 상태에 직접 영향을 주는 명령을 발행해서는 안 된다. 이러한 명령은 Section 3의 기본 플랫폼 경계 정책에서 금지된다. 경로 수정 명령은 비행체가 따라갈 임무 경로에 영향을 주는 명령이지만, `uplink_app`이 이를 직접적인 자세 제어, 모터 제어, 또는 FC 내부 제어 명령으로 실행하는 것은 아니다. `uplink_app`은 수신된 경로 정보를 검증한 뒤 상위 임무 계층 또는 경로 관리 계층에 전달하는 역할만 수행하며, FC 안전 정책을 우회해서는 안 된다.
 
 ### 18.2 승인된 명령 클래스
 
@@ -859,7 +859,7 @@ FC, 모터 또는 액추에이터 명령 및 비행 제어 매개변수
 
 ### 18.5.2 경로 및 viewpoint 명령 처리
 
-경로 수정 및 viewpoint 명령은 runtime configuration과 별도 경로로 처리해야 한다.
+경로 수정 및 viewpoint 명령은 runtime configuration과 별도 경로로 처리해야 한다. `route update` 명령은 기존 임무 경로를 대체하는 명령이 아니라, 기존 경로 뒤에 추가 경로 segment를 이어 붙이는 명령으로 해석한다. 본 시스템은 최소한 `mission_extension`과 `landing`의 두 종류의 추가 경로 segment를 지원해야 한다.
 
 처리 단계:
 
@@ -868,6 +868,10 @@ FC, 모터 또는 액추에이터 명령 및 비행 제어 매개변수
 3. 기존 경로 수정 명령인지, viewpoint 입력 명령인지 구분한다.
 4. 유효한 payload만 상위 임무 계층이 사용할 수 있는 내부 표현으로 변환한다.
 5. 변환된 결과를 대상 소비자에게 전달하고, 처리 결과를 `UPLINK_STATUS_MID`에 반영한다.
+
+좌표 유효 검증은 수신된 추가 경로가 사전에 정의된 비행 가능 영역 안에 존재하는지, 위험 구역 또는 비행 금지 구역을 침범하지 않는지, 그리고 모든 waypoint의 고도가 최소 2m 이상 최대 8m 이하인지 확인하는 과정이다. 또한 추가 경로는 waypoint 개수 제한과 인접 waypoint 간 허용 거리 범위를 만족해야 하며, 이러한 조건을 충족하지 못하는 경로는 거부되어야 한다.
+
+상위 임무 계층에는 검증된 route segment 정보가 전달되어야 하며, 여기에는 최소한 `route_type`, `route_version`, `waypoint_count`, 그리고 waypoint 배열이 포함되어야 한다. 이 내부 표현은 raw uplink payload를 그대로 재사용하는 것이 아니라, 경로 관리 계층이 직접 사용할 수 있는 검증된 route segment 구조로 변환되어야 한다.
 
 경로 수정 및 viewpoint 명령 처리에서 `uplink_app`은 다음을 수행하지 않는다.
 
