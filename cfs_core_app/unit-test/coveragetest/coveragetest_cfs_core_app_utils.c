@@ -237,10 +237,14 @@ void Test_CFS_CORE_APP_ProcessStateMessage_BridgeHk(void)
     typedef struct
     {
         CFE_MSG_TelemetryHeader_t TelemetryHeader;
-        uint32                    LastRxTimestampMs;
+        uint8                     CommandCounter;
+        uint8                     CommandErrorCounter;
         uint8                     LinkState;
         uint8                     LastErrorCode;
-        uint8                     Reserved[2];
+        uint32                    BytesReceived;
+        uint32                    ReconnectAttemptCount;
+        uint32                    ParseErrorCount;
+        uint32                    LastRxTimestampMs;
     } TEST_CFS_CORE_APP_BridgeHk_t;
 
     uint8                      Storage[sizeof(TEST_CFS_CORE_APP_BridgeHk_t)];
@@ -255,9 +259,14 @@ void Test_CFS_CORE_APP_ProcessStateMessage_BridgeHk(void)
                  sizeof(*BridgeMsg));
     MsgId = CFE_SB_ValueToMsgId(CFS_CORE_APP_BRIDGE_HK_MID_VALUE);
     UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+    BridgeMsg->CommandCounter   = 1;
+    BridgeMsg->CommandErrorCounter = 0;
     BridgeMsg->LastRxTimestampMs = 777;
     BridgeMsg->LinkState         = 2;
     BridgeMsg->LastErrorCode     = 9;
+    BridgeMsg->BytesReceived     = 100;
+    BridgeMsg->ReconnectAttemptCount = 1;
+    BridgeMsg->ParseErrorCount   = 0;
 
     CFS_CORE_APP_ProcessStateMessage(Buffer);
 

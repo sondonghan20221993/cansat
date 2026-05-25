@@ -83,6 +83,49 @@ void Test_LORA_FC_DOWNLINK_APP_ProcessInputMessage(void)
     UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.LastSystemHealthTimestampMs, 2222);
     UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.SystemHealthState, 3);
     UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.DownlinkCount, 2);
+
+    memset(Storage, 0, sizeof(Storage));
+    Buffer = (CFE_SB_Buffer_t *)Storage;
+    Attitude = (TEST_LORA_FC_DOWNLINK_APP_GenericStateTlm_t *)Storage;
+    CFE_MSG_Init(CFE_MSG_PTR(Attitude->TelemetryHeader),
+                 CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_FC_EKF_LOCAL_STATE_MID_VALUE), sizeof(*Attitude));
+    Attitude->TimestampMs = 3333;
+    Attitude->Valid       = 1;
+    MsgId = CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_FC_EKF_LOCAL_STATE_MID_VALUE);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+    LORA_FC_DOWNLINK_APP_ProcessInputMessage(Buffer);
+
+    UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.LastLocalTimestampMs, 3333);
+    UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.LocalValid, 1);
+
+    memset(Storage, 0, sizeof(Storage));
+    Buffer = (CFE_SB_Buffer_t *)Storage;
+    Attitude = (TEST_LORA_FC_DOWNLINK_APP_GenericStateTlm_t *)Storage;
+    CFE_MSG_Init(CFE_MSG_PTR(Attitude->TelemetryHeader),
+                 CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_FC_GPS_RAW_STATE_MID_VALUE), sizeof(*Attitude));
+    Attitude->TimestampMs = 4444;
+    Attitude->Valid       = 1;
+    MsgId = CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_FC_GPS_RAW_STATE_MID_VALUE);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+    LORA_FC_DOWNLINK_APP_ProcessInputMessage(Buffer);
+
+    UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.LastGpsTimestampMs, 4444);
+    UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.GpsValid, 1);
+
+    memset(Storage, 0, sizeof(Storage));
+    Buffer = (CFE_SB_Buffer_t *)Storage;
+    Attitude = (TEST_LORA_FC_DOWNLINK_APP_GenericStateTlm_t *)Storage;
+    CFE_MSG_Init(CFE_MSG_PTR(Attitude->TelemetryHeader),
+                 CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_FC_EKF_STATUS_MID_VALUE), sizeof(*Attitude));
+    Attitude->TimestampMs = 5555;
+    Attitude->Valid       = 1;
+    MsgId = CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_FC_EKF_STATUS_MID_VALUE);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+    LORA_FC_DOWNLINK_APP_ProcessInputMessage(Buffer);
+
+    UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.LastEkfTimestampMs, 5555);
+    UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.EkfValid, 1);
+    UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.PacketType, LORA_FC_DOWNLINK_APP_FC_STATE_PACKET_TYPE);
 }
 
 void UtTest_Setup(void)

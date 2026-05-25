@@ -35,8 +35,15 @@
 | `CFS_CORE_APP_VerifyCmdLength_Impl` | 실제 `VerifyCmdLength` 구현이 정상 길이/비정상 길이를 올바르게 판단하는지 확인 |
 | `CFS_CORE_APP_UpdateHealth_Nominal` | 정상 attitude/local/gps/ekf/bridge 입력에서 health가 `NOMINAL`이 되는지 확인 |
 | `CFS_CORE_APP_UpdateHealth_Recovery` | bridge timeout 상태에서 health가 `RECOVERY`로 전이되고 recovery flag가 설정되는지 확인 |
+| `CFS_CORE_APP_UpdateHealth_GpsStale` | GPS stale 입력에서 health가 `DEGRADED`로 전이되고 `GPS_STALE` fault가 설정되는지 확인 |
+| `CFS_CORE_APP_UpdateHealth_EkfInvalid` | EKF invalid 입력에서 health가 `DEGRADED`로 전이되는지 확인 |
+| `CFS_CORE_APP_UpdateHealth_LocalTimeout` | local state timeout에서 health가 `DEGRADED`로 전이되는지 확인 |
+| `CFS_CORE_APP_UpdateHealth_AttitudeTimeout` | attitude timeout에서 health가 `DEGRADED`로 전이되는지 확인 |
 | `CFS_CORE_APP_ProcessStateMessage_RouteUpdate` | `ROUTE_UPDATE_MID` 입력 시 mission route cache가 갱신되는지 확인 |
+| `CFS_CORE_APP_ProcessStateMessage_LandingRouteUpdate` | `ROUTE_UPDATE_MID`의 landing route 입력 시 landing route cache가 갱신되는지 확인 |
+| `CFS_CORE_APP_ProcessStateMessage_BridgeHk` | bridge HK 입력 시 bridge cache가 갱신되는지 확인 |
 | `CFS_CORE_APP_ReportHousekeeping` | HK 생성 경로가 실행되고 route/HK 필드 계산 경로가 동작하는지 확인 |
+| `CFS_CORE_APP_ServicePrototype` | prototype service 경로가 호출 가능하고 publish 주기 계산 경로를 타는지 확인 |
 
 ### `uplink_app`
 
@@ -56,12 +63,17 @@
 | `UPLINK_APP_ResetCounters` | command/error/accept/reject/routing failure counter 초기화 확인 |
 | `UPLINK_APP_ProcessUplink_Accept` | 정상 config class 입력이 수락되고 `LastCommandResult`가 `ROUTED`로 반영되는지 확인 |
 | `UPLINK_APP_ProcessUplink_RouteUpdate` | 정상 route update 명령이 core target으로 라우팅되는지 확인 |
+| `UPLINK_APP_ProcessUplink_Reject` | validate reject 경로에서 reject/error counter와 상태가 반영되는지 확인 |
+| `UPLINK_APP_ProcessUplink_RouteMiss` | route target을 찾지 못하는 경우 routing failure가 증가하는지 확인 |
+| `UPLINK_APP_ProcessUplink_RouteParseReject` | route payload 파싱 실패 시 reject 처리되는지 확인 |
+| `UPLINK_APP_ProcessUplink_RoutePublishFail` | route publish 실패 시 routing failure 및 오류 상태가 반영되는지 확인 |
 | `UPLINK_APP_VerifyCmdLength` (`dispatch`) | dispatch 경로에서 길이 검증 helper 결과에 따라 분기 가능한지 확인 |
 | `UPLINK_APP_TaskPipe_SendHk` | `SEND_HK` MID 수신 시 HK 보고 경로 진입 확인 |
 | `UPLINK_APP_VerifyCmdLength_Impl` | 실제 `VerifyCmdLength` 구현이 정상 길이/비정상 길이를 올바르게 판단하는지 확인 |
-| `UPLINK_APP_ValidateProxyCommand` | protocol version 오류와 정상 route class 입력을 올바르게 판정하는지 확인 |
-| `UPLINK_APP_ParseRouteUpdatePayload` | 정상 route payload를 파싱하고, 잘못된 고도 route를 거부하는지 확인 |
+| `UPLINK_APP_ValidateProxyCommand` | protocol version 오류, 잘못된 class, zero payload route/viewpoint, 과도한 payload 길이를 올바르게 거부하는지 확인 |
+| `UPLINK_APP_ParseRouteUpdatePayload` | 정상 route payload를 파싱하고 잘못된 route type, waypoint 수, 무한대 좌표, 고도 오류, 최소/최대 거리 위반을 거부하는지 확인 |
 | `UPLINK_APP_ResolveRouteTarget` | command class별 route target(core/downlink/none)이 올바르게 반환되는지 확인 |
+| `UPLINK_APP_UpdateStatusTelemetry` | accepted/rejected/routing failure count와 last command/result/link state/route target이 상태 텔레메트리에 반영되는지 확인 |
 | `UPLINK_APP_ReportHousekeeping` | HK 생성 경로가 실행되는지 확인 |
 
 ### `lora_fc_downlink_app`
@@ -83,7 +95,7 @@
 | `LORA_FC_DOWNLINK_APP_VerifyCmdLength` | command MID + function code 기반 길이 검증 구현 확인 |
 | `LORA_FC_DOWNLINK_APP_TaskPipe` | `SEND_HK`, command, FC attitude input이 올바른 처리 경로로 분기되는지 확인 |
 | `LORA_FC_DOWNLINK_APP_ReportHousekeeping` | HK payload에 downlink count, valid flag, health state가 반영되는지 확인 |
-| `LORA_FC_DOWNLINK_APP_ProcessInputMessage` | attitude 입력과 system health 입력이 timestamp/valid/health/downlink count를 갱신하는지 확인 |
+| `LORA_FC_DOWNLINK_APP_ProcessInputMessage` | attitude, local, gps, ekf, system health 입력이 timestamp/valid/health/downlink count와 packet type을 갱신하는지 확인 |
 
 ## 런타임 시험
 
@@ -128,8 +140,6 @@
 - `uplink_app` sequence 증가/중복/replay 검사
 - `uplink_app` 권한 수준 검사
 - `uplink_app` viewpoint payload 상세 검증
-- `cfs_core_app`의 `GPS stale -> DEGRADED` 분기
-- `cfs_core_app`의 `EKF invalid -> DEGRADED` 분기
 - `lora_fc_downlink_app` mock sink 기반 송신 성공/실패 시험
 - 실제 FC mission 반영 직전 candidate packet 생성 시험
 
