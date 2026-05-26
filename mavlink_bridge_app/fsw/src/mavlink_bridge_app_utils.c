@@ -293,33 +293,6 @@ static void MAVLINK_BRIDGE_APP_SendCompanionHeartbeat(uint32 NowMs)
     }
 }
 
-static bool MAVLINK_BRIDGE_APP_StreamRefreshNeeded(uint32 NowMs)
-{
-    if (MAVLINK_BRIDGE_APP_Data.TargetSystemId == 0U)
-    {
-        return false;
-    }
-
-    if (MAVLINK_BRIDGE_APP_Data.LastAttitudeRxMs == 0U)
-    {
-        return true;
-    }
-
-    if ((NowMs - MAVLINK_BRIDGE_APP_Data.LastAttitudeRxMs) >= MAVLINK_BRIDGE_APP_STREAM_REACQUIRE_TIMEOUT_MS)
-    {
-        return true;
-    }
-
-    if ((NowMs - MAVLINK_BRIDGE_APP_Data.LastStreamRequestMs) >= MAVLINK_BRIDGE_APP_STREAM_REACQUIRE_TIMEOUT_MS &&
-        (MAVLINK_BRIDGE_APP_Data.LastGpsRawRxMs == 0U || MAVLINK_BRIDGE_APP_Data.LastEkfLocalRxMs == 0U ||
-         MAVLINK_BRIDGE_APP_Data.LastEkfStatusRxMs == 0U))
-    {
-        return true;
-    }
-
-    return false;
-}
-
 static CFE_Status_t MAVLINK_BRIDGE_APP_RequestMessageInterval(uint32 MsgId, uint32 IntervalUs)
 {
     uint8 Payload[MAVLINK_MSG_ID_COMMAND_LONG_LEN];
@@ -1163,8 +1136,6 @@ void MAVLINK_BRIDGE_APP_ServiceSerial(void)
 
     MAVLINK_BRIDGE_APP_SendCompanionHeartbeat(NowMs);
     if (MAVLINK_BRIDGE_APP_Data.TargetSystemId != 0U &&
-        (MAVLINK_BRIDGE_APP_Data.StreamRequestPending != 0U ||
-         MAVLINK_BRIDGE_APP_StreamRefreshNeeded(NowMs)) &&
         (NowMs - MAVLINK_BRIDGE_APP_Data.LastStreamRequestMs) >= MAVLINK_BRIDGE_APP_STREAM_REQUEST_RETRY_MS)
     {
         MAVLINK_BRIDGE_APP_Data.StreamRequestPending = 1;
