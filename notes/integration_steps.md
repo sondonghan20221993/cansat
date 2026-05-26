@@ -295,3 +295,84 @@ python3 ~/Desktop/cfs-telemetry-app/bridge/mavlink_uart_bridge.py
 - 목표 msgid가 보이면 `mavlink_bridge_app -> cFS publish -> downlink` 검증 단계로 진행한다.
 - `HEARTBEAT (0)`와 `TIMESYNC (111)`만 보이면 먼저 companion 쪽 `SET_MESSAGE_INTERVAL` 요청이 수행됐는지 확인한다.
 - companion request가 정상인데도 계속 `0/111`만 보이면 FC 포트 매핑과 FC 상태를 다시 확인한다.
+
+## PC 최종 수신 검증 절차
+
+이 절차의 목적은 Raspberry Pi가 받은 FC 텔레메트리가 PC까지 실제로 전달되는지 확인하는 것이다.
+
+### 1. Pi 로그 저장 실행
+
+Pi에서 `cpu1` 로그를 파일로 저장하면서 실행한다.
+
+```bash
+cd ~/Desktop/cFS_clean/build-native_std/exe/cpu1
+sudo ./core-cpu1 2>&1 | tee /tmp/core-cpu1.log
+```
+
+기대 결과:
+
+- `cFS`가 `OPERATIONAL`까지 진입한다.
+- `MAV_BRIDGE_APP` serial open 로그가 보인다.
+- stream request 또는 `COMMAND_ACK cmd=511 result=0` 로그가 보인다.
+
+### 2. Pi 입력 메시지 존재 확인
+
+별도 터미널에서 bridge 입력 메시지가 실제로 들어오는지 확인한다.
+
+```bash
+grep -n "ATTITUDE decoded\|LOCAL_POSITION_NED decoded\|GLOBAL_POSITION_INT mapped\|GPS_RAW_INT decoded\|EKF_STATUS_REPORT decoded" /tmp/core-cpu1.log
+```
+
+기대 결과:
+
+- 최소 `ATTITUDE`, `GPS_RAW_INT`, `GLOBAL_POSITION_INT`, `EKF_STATUS_REPORT` 중 하나 이상이 반복 확인된다.
+
+주의:
+
+- `LOCAL_POSITION_NED`는 현재 FC 상태에 따라 없을 수 있다.
+
+### 3. PC 수신 로그 저장
+
+PC에서는 최종 수신기 로그를 파일로 저장한다.
+
+필수 조건:
+
+- 로그에 수신 시각 또는 샘플 순서를 식별할 수 있어야 한다.
+- 최소 30초 이상 연속 구간을 저장해야 한다.
+
+기대 결과:
+
+- 동일 시험 시간대에 PC에서 반복 수신 흔적이 남는다.
+
+### 4. 정지 상태 연속 수신 확인
+
+기체를 정지 상태로 두고 최소 30초 동안 다음을 확인한다.
+
+- Pi 로그에서 목표 메시지 수신이 계속된다.
+- PC 로그에서도 수신 공백 없이 프레임이 계속 도착한다.
+
+실패 판정:
+
+- Pi 입력은 있는데 PC 수신이 없으면 downlink 이후 구간 문제다.
+- Pi 입력 자체가 없으면 FC 송신 조건 또는 Pi bridge 입력 단계 문제다.
+
+### 5. 값 변화 반영 확인
+
+가능하면 기체 자세를 소폭 바꾸거나 위치가 변하는 상황을 만들어 연속 샘플 변화를 본다.
+
+기대 결과:
+
+- `ATTITUDE` 관련 값 또는 위치 관련 값이 Pi와 PC 양쪽 로그에서 함께 변한다.
+
+실패 판정:
+
+- PC에서 수신은 되지만 값이 계속 고정되면 payload 매핑 또는 갱신 경로를 점검한다.
+
+### 6. 최종 성공 기준
+
+다음 조건을 모두 만족하면 PC 최종 수신 검증 성공으로 본다.
+
+- Pi에서 목표 텔레메트리 입력이 반복 확인된다.
+- 같은 시간대에 PC에서도 반복 수신이 확인된다.
+- 최소 30초 동안 수신 공백이 없다.
+- 자세 또는 위치 변화 시 PC 측 값도 함께 변한다.

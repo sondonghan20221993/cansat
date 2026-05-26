@@ -132,6 +132,61 @@
 - `cfs_core_app` route cache 반영
 - 잘못된 route payload reject
 
+### PC 수신 시험
+
+시험 목적:
+- Raspberry Pi에서 수신한 FC 텔레메트리가 PC까지 도달하는지 검증한다.
+- `mavlink_bridge_app -> cFS publish -> downlink 경로 -> PC 수신기` 구간의 연속성을 확인한다.
+- FC 미송신과 브리지/다운링크 문제를 구분할 수 있도록 판정 기준을 명확히 한다.
+
+사전 조건:
+- Raspberry Pi의 `native_std/cpu1`가 `OPERATIONAL` 상태다.
+- `MAV_BRIDGE_APP`가 `/dev/serial0`를 `57600` baud로 open했다.
+- FC와 Raspberry Pi 사이 UART 링크가 연결되어 있다.
+- Pi 로그에서 다음 중 하나 이상이 이미 확인됐다.
+  - `ATTITUDE (30)`
+  - `GPS_RAW_INT (24)`
+  - `GLOBAL_POSITION_INT (33)`
+  - `EKF_STATUS_REPORT (193)`
+- PC에는 LoRa 수신기 또는 최종 수신기와 그에 맞는 시리얼/로그 확인 도구가 준비되어 있다.
+
+입력:
+- FC가 송신하는 MAVLink 텔레메트리
+- Raspberry Pi에서 실행 중인 baseline app set
+- PC 측 수신기에서 출력하는 raw 프레임 또는 디코드 로그
+
+절차:
+1. Raspberry Pi에서 `core-cpu1` 로그를 저장하면서 실행한다.
+2. Pi 로그에서 bridge가 telemetry stream request를 수행했고 목표 메시지를 수신 중인지 확인한다.
+3. 같은 시간대에 PC 측 수신기 로그를 저장한다.
+4. FC 자세 또는 위치가 변하지 않는 정지 상태에서 PC가 최소 30초 동안 프레임을 계속 수신하는지 확인한다.
+5. 가능하면 기체를 소폭 움직이거나 자세를 바꿔서 PC에서 연속 샘플 간 값 변화가 보이는지 확인한다.
+6. Pi 로그 시각과 PC 로그 시각을 대조해 동일 시험 구간에서 양쪽 모두 수신이 지속됐는지 확인한다.
+
+관찰 항목:
+- Pi 로그의 bridge 입력 메시지 존재 여부
+- PC 측 수신 프레임 존재 여부
+- PC 측 수신 중단 또는 간헐 손실 여부
+- 연속 샘플 간 자세/위치 값 변화 여부
+
+기대 결과:
+- Pi 로그에 `ATTITUDE`, `GPS_RAW_INT`, `GLOBAL_POSITION_INT`, `EKF_STATUS_REPORT` 중 하나 이상이 반복적으로 나타난다.
+- PC 측 로그에 동일 시험 시간대의 downlink 수신 흔적이 반복적으로 나타난다.
+- 정지 상태에서도 최소 30초 동안 수신 공백 없이 프레임이 계속 도착한다.
+- 자세 또는 위치를 실제로 변화시키면 PC 측 연속 샘플 값에도 변화가 반영된다.
+
+판정 기준:
+- `PASS`: Pi에서 bridge 입력이 반복 확인되고, 같은 구간에 PC에서도 수신이 반복 확인되며, 값 변화 시험 시 PC 데이터가 함께 변한다.
+- `FAIL-PI-IN`: Pi에서 목표 메시지 수신이 보이지 않는다. 이 경우 PC 수신 시험 실패 원인은 FC 송신 조건 또는 Pi bridge 입력 단계다.
+- `FAIL-DOWNLINK`: Pi에서는 목표 메시지 수신이 반복 확인되지만 PC에서 수신이 없다. 이 경우 원인은 `cFS publish -> downlink -> PC` 구간이다.
+- `FAIL-DATA-STALE`: PC에서 수신은 되지만 자세/위치 변화 시험에서 값이 계속 고정된다. 이 경우 downlink payload 매핑 또는 갱신 주기를 점검해야 한다.
+
+에러 및 엣지 케이스:
+- `LOCAL_POSITION_NED (32)`가 보이지 않아도 즉시 실패로 판정하지 않는다. 현재 FC local-position 생성 조건 미충족이면 정상일 수 있다.
+- `HEARTBEAT (0)`와 `TIMESYNC (111)`만 보이면 FC companion stream 요청이 충분히 적용되지 않은 것으로 보고 PC 수신 시험을 계속 진행하지 않는다.
+- PC 수신기가 연결됐지만 수신 로그에 타임스탬프가 없으면 Pi 로그와 시간 대조가 불가능하므로 시험 결과를 보류한다.
+- PC 수신기 버퍼 누락 가능성을 줄이기 위해 동일 시험 구간 로그는 파일로 저장해야 한다.
+
 ## 아직 미구현 또는 미검증인 테스트
 
 현재 문서에 정의됐지만 아직 unit test 또는 런타임 시험으로 충분히 보강되지 않은 항목:
