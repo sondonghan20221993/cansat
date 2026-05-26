@@ -555,3 +555,90 @@ The following behaviors are not implemented and must not be assumed during test 
 - active restart of bridge or peer apps
 - debounce or dwell-time logic during recovery
 - persistence of last health state across app restart
+
+## 21. System-Level Unimplemented Areas
+
+The following items were identified during Raspberry Pi runtime verification and are not fully implemented as an operational end-to-end capability.
+
+### 21.1 LoRa uplink transport path
+
+`uplink_app` command validation and route-update routing were verified through the UDP local test path.
+However, a physical `PC LoRa -> Raspberry Pi LoRa -> uplink_app` transport path is not yet implemented as a confirmed runtime path.
+
+Current state:
+
+- `uplink_app` accepts `PROCESS_UPLINK` command packets delivered on `UPLINK_APP_CMD_MID`
+- `tools/uplink_route_update_sender.py` injects those packets through UDP port `1234`
+- no repository-confirmed runtime component was identified that reads LoRa uplink bytes and converts them into `PROCESS_UPLINK` command packets for `uplink_app`
+
+Implication:
+
+- current uplink verification covers app-internal validation and routing
+- current uplink verification does not cover physical LoRa uplink transport
+
+### 21.2 Runtime configuration application path
+
+`UPLINK_APP_CLASS_CONFIG` is a recognized command class, but no confirmed implementation was identified that applies configuration payloads to mission-app runtime parameters such as publish period, timeout values, or equivalent output-rate controls.
+
+Current state:
+
+- config-class acceptance exists at the command-validation level
+- no confirmed end-to-end implementation was identified that decodes a config payload and updates active settings in `cfs_core_app`, `telemetry_app`, or another mission app
+
+Implication:
+
+- route-update testing is currently supported
+- output-period or timeout-change testing is not currently supported as an implemented operational feature
+
+### 21.3 LoRa downlink robustness
+
+LoRa downlink output from `mavlink_bridge_app` is not yet robust under current runtime conditions.
+
+Observed runtime symptom:
+
+- repeated `LoRa write failed errno=11, forcing reopen`
+
+Relevant implementation behavior:
+
+- the LoRa port is opened with `O_NONBLOCK`
+- a single `write()` failure triggers immediate close and reopen
+- transient backpressure is not distinguished from a persistent link fault
+
+Implication:
+
+- LoRa downlink path exists and attempts transmission
+- LoRa downlink path is not yet stable enough to be treated as fully operational
+
+### 21.4 Health-state observability on Raspberry Pi logs
+
+`cfs_core_app` health-state transitions are published through `SYSTEM_HEALTH_MID`, but are not emitted as dedicated EVS transition logs.
+
+Current state:
+
+- Raspberry Pi runtime logs show input activity and startup events
+- Raspberry Pi runtime logs do not directly show `NOMINAL`, `DEGRADED`, or `RECOVERY` transitions from `cfs_core_app`
+
+Implication:
+
+- health-state verification currently depends on telemetry consumers such as Open MCT or another subscriber to `SYSTEM_HEALTH_MID`
+- direct operator confirmation from EVS logs alone is not currently sufficient
+
+### 21.5 Fault-detail granularity
+
+Some fault conditions are intentionally or unintentionally collapsed into shared outputs.
+
+Current state:
+
+- `local timeout`
+- `attitude timeout`
+- `ekf invalid`
+
+all map to:
+
+- `HealthState = DEGRADED`
+- `FaultCode = EKF_INVALID`
+
+Implication:
+
+- current output is sufficient to detect degraded estimator-related health
+- current output is not sufficient to distinguish the exact degraded source without additional telemetry correlation
