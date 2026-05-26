@@ -78,6 +78,11 @@ typedef struct
 static MAVLINK_BRIDGE_APP_ParserContext_t MAVLINK_BRIDGE_APP_Parser;
 static uint8 MAVLINK_BRIDGE_APP_TxSequence;
 
+static bool MAVLINK_BRIDGE_APP_ShouldLogDecoded(uint32 Sequence)
+{
+    return (Sequence <= 3U) || ((Sequence % 25U) == 0U);
+}
+
 static uint32 MAVLINK_BRIDGE_APP_GetTimeMs(void)
 {
     CFE_TIME_SysTime_t TimeNow = CFE_TIME_GetTime();
@@ -311,34 +316,68 @@ static CFE_Status_t MAVLINK_BRIDGE_APP_RequestMessageInterval(uint32 MsgId, uint
 
 void MAVLINK_BRIDGE_APP_RequestTelemetryStreams(void)
 {
+    CFE_Status_t Status;
+
     if (MAVLINK_BRIDGE_APP_Data.TargetSystemId == 0U)
     {
         return;
     }
 
-    if (MAVLINK_BRIDGE_APP_RequestMessageInterval(MAVLINK_MSG_ID_ATTITUDE, MAVLINK_BRIDGE_APP_ATTITUDE_INTERVAL_US) !=
-        CFE_SUCCESS)
+    CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_STREAM_EID, CFE_EVS_EventType_INFORMATION,
+                      "MAVLINK_BRIDGE_APP: requesting telemetry streams from sys=%u comp=%u",
+                      (unsigned int)MAVLINK_BRIDGE_APP_Data.TargetSystemId,
+                      (unsigned int)MAVLINK_BRIDGE_APP_Data.TargetComponentId);
+
+    Status = MAVLINK_BRIDGE_APP_RequestMessageInterval(MAVLINK_MSG_ID_ATTITUDE, MAVLINK_BRIDGE_APP_ATTITUDE_INTERVAL_US);
+    if (Status != CFE_SUCCESS)
     {
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_STREAM_EID, CFE_EVS_EventType_ERROR,
+                          "MAVLINK_BRIDGE_APP: request failed msgid=%u status=0x%08lX",
+                          (unsigned int)MAVLINK_MSG_ID_ATTITUDE,
+                          (unsigned long)Status);
         return;
     }
-    if (MAVLINK_BRIDGE_APP_RequestMessageInterval(MAVLINK_MSG_ID_LOCAL_POSITION_NED,
-                                                  MAVLINK_BRIDGE_APP_LOCAL_POSITION_INTERVAL_US) != CFE_SUCCESS)
+
+    Status = MAVLINK_BRIDGE_APP_RequestMessageInterval(MAVLINK_MSG_ID_LOCAL_POSITION_NED,
+                                                       MAVLINK_BRIDGE_APP_LOCAL_POSITION_INTERVAL_US);
+    if (Status != CFE_SUCCESS)
     {
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_STREAM_EID, CFE_EVS_EventType_ERROR,
+                          "MAVLINK_BRIDGE_APP: request failed msgid=%u status=0x%08lX",
+                          (unsigned int)MAVLINK_MSG_ID_LOCAL_POSITION_NED,
+                          (unsigned long)Status);
         return;
     }
-    if (MAVLINK_BRIDGE_APP_RequestMessageInterval(MAVLINK_MSG_ID_GLOBAL_POSITION_INT,
-                                                  MAVLINK_BRIDGE_APP_GLOBAL_POSITION_INTERVAL_US) != CFE_SUCCESS)
+
+    Status = MAVLINK_BRIDGE_APP_RequestMessageInterval(MAVLINK_MSG_ID_GLOBAL_POSITION_INT,
+                                                       MAVLINK_BRIDGE_APP_GLOBAL_POSITION_INTERVAL_US);
+    if (Status != CFE_SUCCESS)
     {
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_STREAM_EID, CFE_EVS_EventType_ERROR,
+                          "MAVLINK_BRIDGE_APP: request failed msgid=%u status=0x%08lX",
+                          (unsigned int)MAVLINK_MSG_ID_GLOBAL_POSITION_INT,
+                          (unsigned long)Status);
         return;
     }
-    if (MAVLINK_BRIDGE_APP_RequestMessageInterval(MAVLINK_MSG_ID_GPS_RAW_INT, MAVLINK_BRIDGE_APP_GPS_RAW_INTERVAL_US) !=
-        CFE_SUCCESS)
+
+    Status = MAVLINK_BRIDGE_APP_RequestMessageInterval(MAVLINK_MSG_ID_GPS_RAW_INT, MAVLINK_BRIDGE_APP_GPS_RAW_INTERVAL_US);
+    if (Status != CFE_SUCCESS)
     {
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_STREAM_EID, CFE_EVS_EventType_ERROR,
+                          "MAVLINK_BRIDGE_APP: request failed msgid=%u status=0x%08lX",
+                          (unsigned int)MAVLINK_MSG_ID_GPS_RAW_INT,
+                          (unsigned long)Status);
         return;
     }
-    if (MAVLINK_BRIDGE_APP_RequestMessageInterval(MAVLINK_MSG_ID_EKF_STATUS_REPORT,
-                                                  MAVLINK_BRIDGE_APP_EKF_STATUS_INTERVAL_US) != CFE_SUCCESS)
+
+    Status = MAVLINK_BRIDGE_APP_RequestMessageInterval(MAVLINK_MSG_ID_EKF_STATUS_REPORT,
+                                                       MAVLINK_BRIDGE_APP_EKF_STATUS_INTERVAL_US);
+    if (Status != CFE_SUCCESS)
     {
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_STREAM_EID, CFE_EVS_EventType_ERROR,
+                          "MAVLINK_BRIDGE_APP: request failed msgid=%u status=0x%08lX",
+                          (unsigned int)MAVLINK_MSG_ID_EKF_STATUS_REPORT,
+                          (unsigned long)Status);
         return;
     }
 
@@ -584,11 +623,14 @@ static void MAVLINK_BRIDGE_APP_PublishAttitude(uint32 BridgeTimestampMs)
     CFE_SB_TransmitMsg(CFE_MSG_PTR(Tlm->TelemetryHeader), true);
     MAVLINK_BRIDGE_APP_ServiceLoRa();
 
-    CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_PARSE_EID, CFE_EVS_EventType_INFORMATION,
-                      "MAVLINK_BRIDGE_APP: ATTITUDE decoded seq=%lu boot_ms=%lu rx_ms=%lu",
-                      (unsigned long)Tlm->Seq,
-                      (unsigned long)Tlm->TimestampMs,
-                      (unsigned long)BridgeTimestampMs);
+    if (MAVLINK_BRIDGE_APP_ShouldLogDecoded(Tlm->Seq))
+    {
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_PARSE_EID, CFE_EVS_EventType_INFORMATION,
+                          "MAVLINK_BRIDGE_APP: ATTITUDE decoded seq=%lu boot_ms=%lu rx_ms=%lu",
+                          (unsigned long)Tlm->Seq,
+                          (unsigned long)Tlm->TimestampMs,
+                          (unsigned long)BridgeTimestampMs);
+    }
 }
 
 static void MAVLINK_BRIDGE_APP_PublishEkfLocal(uint32 BridgeTimestampMs)
@@ -621,11 +663,14 @@ static void MAVLINK_BRIDGE_APP_PublishEkfLocal(uint32 BridgeTimestampMs)
     CFE_SB_TransmitMsg(CFE_MSG_PTR(Tlm->TelemetryHeader), true);
     MAVLINK_BRIDGE_APP_ServiceLoRa();
 
-    CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_PARSE_EID, CFE_EVS_EventType_INFORMATION,
-                      "MAVLINK_BRIDGE_APP: LOCAL_POSITION_NED decoded seq=%lu boot_ms=%lu rx_ms=%lu",
-                      (unsigned long)Tlm->Seq,
-                      (unsigned long)Tlm->TimestampMs,
-                      (unsigned long)BridgeTimestampMs);
+    if (MAVLINK_BRIDGE_APP_ShouldLogDecoded(Tlm->Seq))
+    {
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_PARSE_EID, CFE_EVS_EventType_INFORMATION,
+                          "MAVLINK_BRIDGE_APP: LOCAL_POSITION_NED decoded seq=%lu boot_ms=%lu rx_ms=%lu",
+                          (unsigned long)Tlm->Seq,
+                          (unsigned long)Tlm->TimestampMs,
+                          (unsigned long)BridgeTimestampMs);
+    }
 }
 
 static void MAVLINK_BRIDGE_APP_PublishGlobalPositionAsLocal(uint32 BridgeTimestampMs)
@@ -667,11 +712,14 @@ static void MAVLINK_BRIDGE_APP_PublishGlobalPositionAsLocal(uint32 BridgeTimesta
     CFE_SB_TransmitMsg(CFE_MSG_PTR(Tlm->TelemetryHeader), true);
     MAVLINK_BRIDGE_APP_ServiceLoRa();
 
-    CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_PARSE_EID, CFE_EVS_EventType_INFORMATION,
-                      "MAVLINK_BRIDGE_APP: GLOBAL_POSITION_INT mapped seq=%lu boot_ms=%lu rx_ms=%lu",
-                      (unsigned long)Tlm->Seq,
-                      (unsigned long)Tlm->TimestampMs,
-                      (unsigned long)BridgeTimestampMs);
+    if (MAVLINK_BRIDGE_APP_ShouldLogDecoded(Tlm->Seq))
+    {
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_PARSE_EID, CFE_EVS_EventType_INFORMATION,
+                          "MAVLINK_BRIDGE_APP: GLOBAL_POSITION_INT mapped seq=%lu boot_ms=%lu rx_ms=%lu",
+                          (unsigned long)Tlm->Seq,
+                          (unsigned long)Tlm->TimestampMs,
+                          (unsigned long)BridgeTimestampMs);
+    }
 }
 
 static void MAVLINK_BRIDGE_APP_PublishGpsRaw(uint32 BridgeTimestampMs)
@@ -715,12 +763,15 @@ static void MAVLINK_BRIDGE_APP_PublishGpsRaw(uint32 BridgeTimestampMs)
     CFE_SB_TimeStampMsg(CFE_MSG_PTR(Tlm->TelemetryHeader));
     CFE_SB_TransmitMsg(CFE_MSG_PTR(Tlm->TelemetryHeader), true);
 
-    CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_PARSE_EID, CFE_EVS_EventType_INFORMATION,
-                      "MAVLINK_BRIDGE_APP: GPS_RAW_INT decoded seq=%lu fix=%u sats=%u rx_ms=%lu",
-                      (unsigned long)Tlm->Seq,
-                      (unsigned int)Tlm->FixType,
-                      (unsigned int)Tlm->SatellitesVisible,
-                      (unsigned long)BridgeTimestampMs);
+    if (MAVLINK_BRIDGE_APP_ShouldLogDecoded(Tlm->Seq))
+    {
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_PARSE_EID, CFE_EVS_EventType_INFORMATION,
+                          "MAVLINK_BRIDGE_APP: GPS_RAW_INT decoded seq=%lu fix=%u sats=%u rx_ms=%lu",
+                          (unsigned long)Tlm->Seq,
+                          (unsigned int)Tlm->FixType,
+                          (unsigned int)Tlm->SatellitesVisible,
+                          (unsigned long)BridgeTimestampMs);
+    }
 }
 
 static void MAVLINK_BRIDGE_APP_PublishEkfStatus(uint32 BridgeTimestampMs)
@@ -758,11 +809,14 @@ static void MAVLINK_BRIDGE_APP_PublishEkfStatus(uint32 BridgeTimestampMs)
     CFE_SB_TimeStampMsg(CFE_MSG_PTR(Tlm->TelemetryHeader));
     CFE_SB_TransmitMsg(CFE_MSG_PTR(Tlm->TelemetryHeader), true);
 
-    CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_PARSE_EID, CFE_EVS_EventType_INFORMATION,
-                      "MAVLINK_BRIDGE_APP: EKF_STATUS_REPORT decoded seq=%lu flags=0x%04X rx_ms=%lu",
-                      (unsigned long)Tlm->Seq,
-                      (unsigned int)Tlm->Flags,
-                      (unsigned long)BridgeTimestampMs);
+    if (MAVLINK_BRIDGE_APP_ShouldLogDecoded(Tlm->Seq))
+    {
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_PARSE_EID, CFE_EVS_EventType_INFORMATION,
+                          "MAVLINK_BRIDGE_APP: EKF_STATUS_REPORT decoded seq=%lu flags=0x%04X rx_ms=%lu",
+                          (unsigned long)Tlm->Seq,
+                          (unsigned int)Tlm->Flags,
+                          (unsigned long)BridgeTimestampMs);
+    }
 }
 
 static void MAVLINK_BRIDGE_APP_HandleFrameComplete(uint32 RxTimestampMs, uint8 CrcHigh)
@@ -771,11 +825,6 @@ static void MAVLINK_BRIDGE_APP_HandleFrameComplete(uint32 RxTimestampMs, uint8 C
     uint16 ReceivedCrc;
 
     ReceivedCrc = ((uint16)CrcHigh << 8) | MAVLINK_BRIDGE_APP_Parser.CrcLow;
-    CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_PARSE_EID, CFE_EVS_EventType_INFORMATION,
-                      "MAVLINK_BRIDGE_APP: frame msgid=%lu len=%u rx_ms=%lu",
-                      (unsigned long)MAVLINK_BRIDGE_APP_Parser.MsgId,
-                      (unsigned int)MAVLINK_BRIDGE_APP_Parser.PayloadLen,
-                      (unsigned long)RxTimestampMs);
 
     if (MAVLINK_BRIDGE_APP_Parser.MsgId == MAVLINK_MSG_ID_HEARTBEAT)
     {
@@ -916,10 +965,6 @@ static void MAVLINK_BRIDGE_APP_HandleFrameComplete(uint32 RxTimestampMs, uint8 C
     }
     else
     {
-        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_PARSE_EID, CFE_EVS_EventType_INFORMATION,
-                          "MAVLINK_BRIDGE_APP: unsupported msgid=%lu len=%u",
-                          (unsigned long)MAVLINK_BRIDGE_APP_Parser.MsgId,
-                          (unsigned int)MAVLINK_BRIDGE_APP_Parser.PayloadLen);
     }
 
     MAVLINK_BRIDGE_APP_ResetParser();
@@ -929,9 +974,6 @@ static void MAVLINK_BRIDGE_APP_ProcessReceivedByte(uint8 Byte, uint32 RxTimestam
 {
     if (Byte == MAVLINK_STX_V1)
     {
-        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_PARSE_EID, CFE_EVS_EventType_INFORMATION,
-                          "MAVLINK_BRIDGE_APP: saw STX_V1 rx_ms=%lu",
-                          (unsigned long)RxTimestampMs);
         MAVLINK_BRIDGE_APP_ResetParser();
         MAVLINK_BRIDGE_APP_Parser.IsV2  = 0;
         MAVLINK_BRIDGE_APP_Parser.State = MAVLINK_PARSE_GOT_LENGTH;
@@ -939,9 +981,6 @@ static void MAVLINK_BRIDGE_APP_ProcessReceivedByte(uint8 Byte, uint32 RxTimestam
     }
     else if (Byte == MAVLINK_STX_V2)
     {
-        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_PARSE_EID, CFE_EVS_EventType_INFORMATION,
-                          "MAVLINK_BRIDGE_APP: saw STX_V2 rx_ms=%lu",
-                          (unsigned long)RxTimestampMs);
         MAVLINK_BRIDGE_APP_ResetParser();
         MAVLINK_BRIDGE_APP_Parser.IsV2  = 1;
         MAVLINK_BRIDGE_APP_Parser.State = MAVLINK_PARSE_GOT_LENGTH;
@@ -1107,9 +1146,6 @@ void MAVLINK_BRIDGE_APP_ServiceSerial(void)
 {
     uint32  NowMs;
     uint8   RxBuffer[MAVLINK_BRIDGE_APP_READ_CHUNK_SIZE];
-    char    HexPreview[3 * 64 + 1];
-    size_t  PreviewCount;
-    size_t  Offset;
     ssize_t ReadSize;
     bool    SawData;
 
@@ -1154,29 +1190,6 @@ void MAVLINK_BRIDGE_APP_ServiceSerial(void)
     while ((ReadSize = read(MAVLINK_BRIDGE_APP_Data.SerialFd, RxBuffer, sizeof(RxBuffer))) > 0)
     {
         SawData = true;
-        PreviewCount = ((size_t)ReadSize < 64U) ? (size_t)ReadSize : 64U;
-        Offset       = 0;
-        memset(HexPreview, 0, sizeof(HexPreview));
-
-        for (size_t Index = 0; Index < PreviewCount; ++Index)
-        {
-            int Written = snprintf(&HexPreview[Offset], sizeof(HexPreview) - Offset,
-                                   (Index + 1U < PreviewCount) ? "%02X " : "%02X",
-                                   (unsigned int)RxBuffer[Index]);
-            if (Written <= 0)
-            {
-                break;
-            }
-            Offset += (size_t)Written;
-            if (Offset >= sizeof(HexPreview))
-            {
-                break;
-            }
-        }
-
-        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_LINK_EID, CFE_EVS_EventType_INFORMATION,
-                          "MAVLINK_BRIDGE_APP: read %ld bytes first=0x%02X data=%s",
-                          (long)ReadSize, (unsigned int)RxBuffer[0], HexPreview);
         MAVLINK_BRIDGE_APP_HandleReceivedBytes(RxBuffer, ReadSize, NowMs);
     }
 
