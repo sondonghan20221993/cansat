@@ -7,5 +7,6 @@
 #define MAVLINK_BRIDGE_APP_RESET_EID       4
 #define MAVLINK_BRIDGE_APP_LINK_EID        5
 #define MAVLINK_BRIDGE_APP_PARSE_EID       6
+#define MAVLINK_BRIDGE_APP_STREAM_EID      7
 
 #endif

@@ -9,22 +9,39 @@
 
 #define MAVLINK_STX_V1               0xFE
 #define MAVLINK_STX_V2               0xFD
+#define MAVLINK_MSG_ID_HEARTBEAT               0U
+#define MAVLINK_MSG_ID_SYS_TIME                2U
 #define MAVLINK_MSG_ID_GPS_RAW_INT            24U
-#define MAVLINK_MSG_ID_LOCAL_POSITION_NED      32U
-#define MAVLINK_MSG_ID_GLOBAL_POSITION_INT     33U
-#define MAVLINK_MSG_ID_ATTITUDE      30U
-#define MAVLINK_MSG_ID_EKF_STATUS_REPORT      193U
+#define MAVLINK_MSG_ID_ATTITUDE               30U
+#define MAVLINK_MSG_ID_LOCAL_POSITION_NED     32U
+#define MAVLINK_MSG_ID_GLOBAL_POSITION_INT    33U
+#define MAVLINK_MSG_ID_COMMAND_LONG           76U
+#define MAVLINK_MSG_ID_COMMAND_ACK            77U
+#define MAVLINK_MSG_ID_TIMESYNC              111U
+#define MAVLINK_MSG_ID_EKF_STATUS_REPORT     193U
+#define MAVLINK_MSG_ID_COMMAND_LONG_LEN       33U
+#define MAVLINK_MSG_ID_HEARTBEAT_LEN           9U
 #define MAVLINK_GPS_RAW_INT_PAYLOAD_LEN       30U
 #define MAVLINK_GPS_RAW_INT_CRC_EXTRA         24U
 #define MAVLINK_LOCAL_POSITION_NED_PAYLOAD_LEN 28U
 #define MAVLINK_LOCAL_POSITION_NED_CRC_EXTRA   185U
 #define MAVLINK_GLOBAL_POSITION_INT_PAYLOAD_LEN 28U
 #define MAVLINK_GLOBAL_POSITION_INT_CRC_EXTRA   104U
-#define MAVLINK_ATTITUDE_PAYLOAD_LEN 28U
-#define MAVLINK_ATTITUDE_CRC_EXTRA   39U
+#define MAVLINK_ATTITUDE_PAYLOAD_LEN          28U
+#define MAVLINK_ATTITUDE_CRC_EXTRA            39U
 #define MAVLINK_EKF_STATUS_PAYLOAD_LEN        22U
 #define MAVLINK_EKF_STATUS_CRC_EXTRA          71U
-#define MAVLINK_MAX_PAYLOAD_LEN      255U
+#define MAVLINK_HEARTBEAT_CRC_EXTRA           50U
+#define MAVLINK_COMMAND_LONG_CRC_EXTRA       152U
+#define MAVLINK_COMMAND_ACK_CRC_EXTRA        143U
+#define MAVLINK_MAX_PAYLOAD_LEN              255U
+#define MAVLINK_MAX_FRAME_LEN                64U
+#define MAVLINK_BRIDGE_APP_SYSTEM_ID         200U
+#define MAVLINK_BRIDGE_APP_COMPONENT_ID      190U
+#define MAVLINK_CMD_SET_MESSAGE_INTERVAL     511U
+#define MAVLINK_TYPE_ONBOARD_CONTROLLER      18U
+#define MAVLINK_AUTOPILOT_INVALID             8U
+#define MAVLINK_RESULT_ACCEPTED               0U
 
 typedef enum
 {
@@ -59,6 +76,7 @@ typedef struct
 } MAVLINK_BRIDGE_APP_ParserContext_t;
 
 static MAVLINK_BRIDGE_APP_ParserContext_t MAVLINK_BRIDGE_APP_Parser;
+static uint8 MAVLINK_BRIDGE_APP_TxSequence;
 
 static uint32 MAVLINK_BRIDGE_APP_GetTimeMs(void)
 {
@@ -175,6 +193,163 @@ static void MAVLINK_BRIDGE_APP_CloseLoRa(void)
     }
 }
 
+static void MAVLINK_BRIDGE_APP_WriteU16LE(uint8 *Data, uint16 Value)
+{
+    Data[0] = (uint8)(Value & 0xFFU);
+    Data[1] = (uint8)((Value >> 8) & 0xFFU);
+}
+
+static void MAVLINK_BRIDGE_APP_WriteU32LE(uint8 *Data, uint32 Value)
+{
+    Data[0] = (uint8)(Value & 0xFFU);
+    Data[1] = (uint8)((Value >> 8) & 0xFFU);
+    Data[2] = (uint8)((Value >> 16) & 0xFFU);
+    Data[3] = (uint8)((Value >> 24) & 0xFFU);
+}
+
+static void MAVLINK_BRIDGE_APP_WriteFloatLE(uint8 *Data, float Value)
+{
+    uint32 RawValue;
+
+    memcpy(&RawValue, &Value, sizeof(RawValue));
+    MAVLINK_BRIDGE_APP_WriteU32LE(Data, RawValue);
+}
+
+static CFE_Status_t MAVLINK_BRIDGE_APP_SendMavlinkV2(uint32 MsgId, const uint8 *Payload, uint8 PayloadLen, uint8 CrcExtra)
+{
+    uint8  Frame[MAVLINK_MAX_FRAME_LEN];
+    size_t FrameLen;
+    uint16 Crc;
+    uint8  Index;
+    ssize_t WriteRc;
+
+    if (MAVLINK_BRIDGE_APP_Data.SerialFd < 0)
+    {
+        return CFE_STATUS_EXTERNAL_RESOURCE_FAIL;
+    }
+
+    if (PayloadLen > MAVLINK_MAX_PAYLOAD_LEN || (10U + PayloadLen + 2U) > sizeof(Frame))
+    {
+        return CFE_STATUS_BAD_ARGUMENT;
+    }
+
+    Frame[0] = MAVLINK_STX_V2;
+    Frame[1] = PayloadLen;
+    Frame[2] = 0;
+    Frame[3] = 0;
+    Frame[4] = MAVLINK_BRIDGE_APP_TxSequence++;
+    Frame[5] = MAVLINK_BRIDGE_APP_SYSTEM_ID;
+    Frame[6] = MAVLINK_BRIDGE_APP_COMPONENT_ID;
+    Frame[7] = (uint8)(MsgId & 0xFFU);
+    Frame[8] = (uint8)((MsgId >> 8) & 0xFFU);
+    Frame[9] = (uint8)((MsgId >> 16) & 0xFFU);
+
+    if (PayloadLen > 0U && Payload != NULL)
+    {
+        memcpy(&Frame[10], Payload, PayloadLen);
+    }
+
+    Crc = 0xFFFFU;
+    for (Index = 1; Index < (uint8)(10U + PayloadLen); ++Index)
+    {
+        MAVLINK_BRIDGE_APP_CrcAccumulate(Frame[Index], &Crc);
+    }
+    MAVLINK_BRIDGE_APP_CrcAccumulate(CrcExtra, &Crc);
+
+    Frame[10U + PayloadLen] = (uint8)(Crc & 0xFFU);
+    Frame[11U + PayloadLen] = (uint8)((Crc >> 8) & 0xFFU);
+    FrameLen = 12U + PayloadLen;
+
+    WriteRc = write(MAVLINK_BRIDGE_APP_Data.SerialFd, Frame, FrameLen);
+    if (WriteRc != (ssize_t)FrameLen)
+    {
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_STREAM_EID, CFE_EVS_EventType_ERROR,
+                          "MAVLINK_BRIDGE_APP: MAVLink tx failed msgid=%lu errno=%d",
+                          (unsigned long)MsgId, errno);
+        return CFE_STATUS_EXTERNAL_RESOURCE_FAIL;
+    }
+
+    return CFE_SUCCESS;
+}
+
+static void MAVLINK_BRIDGE_APP_SendCompanionHeartbeat(uint32 NowMs)
+{
+    uint8 Payload[MAVLINK_MSG_ID_HEARTBEAT_LEN];
+
+    if ((NowMs - MAVLINK_BRIDGE_APP_Data.LastHeartbeatTxMs) < MAVLINK_BRIDGE_APP_HEARTBEAT_INTERVAL_MS)
+    {
+        return;
+    }
+
+    memset(Payload, 0, sizeof(Payload));
+    Payload[4] = MAVLINK_TYPE_ONBOARD_CONTROLLER;
+    Payload[5] = MAVLINK_AUTOPILOT_INVALID;
+    Payload[8] = 3;
+
+    if (MAVLINK_BRIDGE_APP_SendMavlinkV2(MAVLINK_MSG_ID_HEARTBEAT, Payload, sizeof(Payload), MAVLINK_HEARTBEAT_CRC_EXTRA) ==
+        CFE_SUCCESS)
+    {
+        MAVLINK_BRIDGE_APP_Data.LastHeartbeatTxMs = NowMs;
+    }
+}
+
+static CFE_Status_t MAVLINK_BRIDGE_APP_RequestMessageInterval(uint32 MsgId, uint32 IntervalUs)
+{
+    uint8 Payload[MAVLINK_MSG_ID_COMMAND_LONG_LEN];
+
+    memset(Payload, 0, sizeof(Payload));
+    MAVLINK_BRIDGE_APP_WriteFloatLE(&Payload[0], (float)MsgId);
+    MAVLINK_BRIDGE_APP_WriteFloatLE(&Payload[4], (float)IntervalUs);
+    MAVLINK_BRIDGE_APP_WriteU16LE(&Payload[28], MAVLINK_CMD_SET_MESSAGE_INTERVAL);
+    Payload[30] = MAVLINK_BRIDGE_APP_Data.TargetSystemId;
+    Payload[31] = MAVLINK_BRIDGE_APP_Data.TargetComponentId;
+    Payload[32] = 0;
+
+    return MAVLINK_BRIDGE_APP_SendMavlinkV2(MAVLINK_MSG_ID_COMMAND_LONG, Payload, sizeof(Payload),
+                                            MAVLINK_COMMAND_LONG_CRC_EXTRA);
+}
+
+void MAVLINK_BRIDGE_APP_RequestTelemetryStreams(void)
+{
+    if (MAVLINK_BRIDGE_APP_Data.TargetSystemId == 0U)
+    {
+        return;
+    }
+
+    if (MAVLINK_BRIDGE_APP_RequestMessageInterval(MAVLINK_MSG_ID_ATTITUDE, MAVLINK_BRIDGE_APP_ATTITUDE_INTERVAL_US) !=
+        CFE_SUCCESS)
+    {
+        return;
+    }
+    if (MAVLINK_BRIDGE_APP_RequestMessageInterval(MAVLINK_MSG_ID_LOCAL_POSITION_NED,
+                                                  MAVLINK_BRIDGE_APP_LOCAL_POSITION_INTERVAL_US) != CFE_SUCCESS)
+    {
+        return;
+    }
+    if (MAVLINK_BRIDGE_APP_RequestMessageInterval(MAVLINK_MSG_ID_GLOBAL_POSITION_INT,
+                                                  MAVLINK_BRIDGE_APP_GLOBAL_POSITION_INTERVAL_US) != CFE_SUCCESS)
+    {
+        return;
+    }
+    if (MAVLINK_BRIDGE_APP_RequestMessageInterval(MAVLINK_MSG_ID_GPS_RAW_INT, MAVLINK_BRIDGE_APP_GPS_RAW_INTERVAL_US) !=
+        CFE_SUCCESS)
+    {
+        return;
+    }
+    if (MAVLINK_BRIDGE_APP_RequestMessageInterval(MAVLINK_MSG_ID_EKF_STATUS_REPORT,
+                                                  MAVLINK_BRIDGE_APP_EKF_STATUS_INTERVAL_US) != CFE_SUCCESS)
+    {
+        return;
+    }
+
+    MAVLINK_BRIDGE_APP_Data.StreamRequestPending = 0;
+    MAVLINK_BRIDGE_APP_Data.LastStreamRequestMs  = MAVLINK_BRIDGE_APP_GetTimeMs();
+    CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_STREAM_EID, CFE_EVS_EventType_INFORMATION,
+                      "MAVLINK_BRIDGE_APP: requested telemetry streams from sys=%u comp=%u",
+                      (unsigned int)MAVLINK_BRIDGE_APP_Data.TargetSystemId,
+                      (unsigned int)MAVLINK_BRIDGE_APP_Data.TargetComponentId);
+}
+
 static bool MAVLINK_BRIDGE_APP_GetBaudConstant(uint32 Baudrate, speed_t *BaudConstant)
 {
     switch (Baudrate)
@@ -225,7 +400,7 @@ static CFE_Status_t MAVLINK_BRIDGE_APP_OpenSerial(void)
         return CFE_STATUS_EXTERNAL_RESOURCE_FAIL;
     }
 
-    Fd = open(MAVLINK_BRIDGE_APP_SERIAL_PATH, O_RDONLY | O_NOCTTY | O_NONBLOCK);
+    Fd = open(MAVLINK_BRIDGE_APP_SERIAL_PATH, O_RDWR | O_NOCTTY | O_NONBLOCK);
     if (Fd < 0)
     {
         MAVLINK_BRIDGE_APP_Data.LastErrorCode = MAVLINK_BRIDGE_ERROR_SERIAL_OPEN_FAIL;
@@ -276,6 +451,10 @@ static CFE_Status_t MAVLINK_BRIDGE_APP_OpenSerial(void)
     MAVLINK_BRIDGE_APP_Data.SerialFd       = Fd;
     MAVLINK_BRIDGE_APP_Data.LastErrorCode  = MAVLINK_BRIDGE_ERROR_NONE;
     MAVLINK_BRIDGE_APP_Data.LastRxTimestampMs = 0;
+    MAVLINK_BRIDGE_APP_Data.LastHeartbeatTxMs = 0;
+    MAVLINK_BRIDGE_APP_Data.LastStreamRequestMs = 0;
+    MAVLINK_BRIDGE_APP_Data.TargetDiscoveryStartMs = MAVLINK_BRIDGE_APP_GetTimeMs();
+    MAVLINK_BRIDGE_APP_Data.StreamRequestPending = 1;
     MAVLINK_BRIDGE_APP_SetLinkState(MAVLINK_BRIDGE_LINK_CONNECTED);
     MAVLINK_BRIDGE_APP_ResetParser();
 
@@ -590,7 +769,41 @@ static void MAVLINK_BRIDGE_APP_HandleFrameComplete(uint32 RxTimestampMs, uint8 C
                       (unsigned int)MAVLINK_BRIDGE_APP_Parser.PayloadLen,
                       (unsigned long)RxTimestampMs);
 
-    if (MAVLINK_BRIDGE_APP_Parser.MsgId == MAVLINK_MSG_ID_ATTITUDE)
+    if (MAVLINK_BRIDGE_APP_Parser.MsgId == MAVLINK_MSG_ID_HEARTBEAT)
+    {
+        MAVLINK_BRIDGE_APP_Data.TargetSystemId    = MAVLINK_BRIDGE_APP_Parser.SysId;
+        MAVLINK_BRIDGE_APP_Data.TargetComponentId = MAVLINK_BRIDGE_APP_Parser.CompId;
+        MAVLINK_BRIDGE_APP_Data.LastRxTimestampMs = RxTimestampMs;
+        MAVLINK_BRIDGE_APP_SetLinkState(MAVLINK_BRIDGE_LINK_CONNECTED);
+    }
+    else if (MAVLINK_BRIDGE_APP_Parser.MsgId == MAVLINK_MSG_ID_COMMAND_ACK)
+    {
+        ComputedCrc = MAVLINK_BRIDGE_APP_ComputeFrameCrc(&MAVLINK_BRIDGE_APP_Parser, MAVLINK_COMMAND_ACK_CRC_EXTRA);
+        if (ComputedCrc == ReceivedCrc && MAVLINK_BRIDGE_APP_Parser.PayloadLen >= 10U)
+        {
+            uint16 Command = MAVLINK_BRIDGE_APP_ReadU16LE(&MAVLINK_BRIDGE_APP_Parser.Payload[8]);
+            uint8  Result  = MAVLINK_BRIDGE_APP_Parser.Payload[0];
+
+            if (Command == MAVLINK_CMD_SET_MESSAGE_INTERVAL)
+            {
+                if (Result == MAVLINK_RESULT_ACCEPTED)
+                {
+                    MAVLINK_BRIDGE_APP_Data.StreamRequestAckCount++;
+                }
+
+                CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_STREAM_EID, CFE_EVS_EventType_INFORMATION,
+                                  "MAVLINK_BRIDGE_APP: COMMAND_ACK cmd=%u result=%u ack_count=%u",
+                                  (unsigned int)Command,
+                                  (unsigned int)Result,
+                                  (unsigned int)MAVLINK_BRIDGE_APP_Data.StreamRequestAckCount);
+            }
+        }
+        else
+        {
+            MAVLINK_BRIDGE_APP_RecordParseError(MAVLINK_BRIDGE_ERROR_PARSE_FAIL);
+        }
+    }
+    else if (MAVLINK_BRIDGE_APP_Parser.MsgId == MAVLINK_MSG_ID_ATTITUDE)
     {
         ComputedCrc = MAVLINK_BRIDGE_APP_ComputeFrameCrc(&MAVLINK_BRIDGE_APP_Parser, MAVLINK_ATTITUDE_CRC_EXTRA);
         if (ComputedCrc == ReceivedCrc)
@@ -911,6 +1124,22 @@ void MAVLINK_BRIDGE_APP_ServiceSerial(void)
         }
 
         return;
+    }
+
+    MAVLINK_BRIDGE_APP_SendCompanionHeartbeat(NowMs);
+    if (MAVLINK_BRIDGE_APP_Data.StreamRequestPending != 0U &&
+        MAVLINK_BRIDGE_APP_Data.TargetSystemId != 0U &&
+        (NowMs - MAVLINK_BRIDGE_APP_Data.LastStreamRequestMs) >= MAVLINK_BRIDGE_APP_STREAM_REQUEST_RETRY_MS)
+    {
+        MAVLINK_BRIDGE_APP_RequestTelemetryStreams();
+    }
+    else if (MAVLINK_BRIDGE_APP_Data.StreamRequestPending != 0U &&
+             MAVLINK_BRIDGE_APP_Data.TargetSystemId == 0U &&
+             (NowMs - MAVLINK_BRIDGE_APP_Data.TargetDiscoveryStartMs) >= MAVLINK_BRIDGE_APP_TARGET_DISCOVERY_TIMEOUT_MS)
+    {
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_STREAM_EID, CFE_EVS_EventType_INFORMATION,
+                          "MAVLINK_BRIDGE_APP: waiting for FC heartbeat before stream request");
+        MAVLINK_BRIDGE_APP_Data.TargetDiscoveryStartMs = NowMs;
     }
 
     SawData = false;
