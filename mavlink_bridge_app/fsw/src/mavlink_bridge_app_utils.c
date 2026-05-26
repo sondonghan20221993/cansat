@@ -293,6 +293,33 @@ static void MAVLINK_BRIDGE_APP_SendCompanionHeartbeat(uint32 NowMs)
     }
 }
 
+static bool MAVLINK_BRIDGE_APP_StreamRefreshNeeded(uint32 NowMs)
+{
+    if (MAVLINK_BRIDGE_APP_Data.TargetSystemId == 0U)
+    {
+        return false;
+    }
+
+    if (MAVLINK_BRIDGE_APP_Data.LastAttitudeRxMs == 0U)
+    {
+        return true;
+    }
+
+    if ((NowMs - MAVLINK_BRIDGE_APP_Data.LastAttitudeRxMs) >= MAVLINK_BRIDGE_APP_STREAM_REACQUIRE_TIMEOUT_MS)
+    {
+        return true;
+    }
+
+    if ((NowMs - MAVLINK_BRIDGE_APP_Data.LastStreamRequestMs) >= MAVLINK_BRIDGE_APP_STREAM_REACQUIRE_TIMEOUT_MS &&
+        (MAVLINK_BRIDGE_APP_Data.LastGpsRawRxMs == 0U || MAVLINK_BRIDGE_APP_Data.LastEkfLocalRxMs == 0U ||
+         MAVLINK_BRIDGE_APP_Data.LastEkfStatusRxMs == 0U))
+    {
+        return true;
+    }
+
+    return false;
+}
+
 static CFE_Status_t MAVLINK_BRIDGE_APP_RequestMessageInterval(uint32 MsgId, uint32 IntervalUs)
 {
     uint8 Payload[MAVLINK_MSG_ID_COMMAND_LONG_LEN];
@@ -342,7 +369,6 @@ void MAVLINK_BRIDGE_APP_RequestTelemetryStreams(void)
         return;
     }
 
-    MAVLINK_BRIDGE_APP_Data.StreamRequestPending = 0;
     MAVLINK_BRIDGE_APP_Data.LastStreamRequestMs  = MAVLINK_BRIDGE_APP_GetTimeMs();
     CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_STREAM_EID, CFE_EVS_EventType_INFORMATION,
                       "MAVLINK_BRIDGE_APP: requested telemetry streams from sys=%u comp=%u",
@@ -454,6 +480,10 @@ static CFE_Status_t MAVLINK_BRIDGE_APP_OpenSerial(void)
     MAVLINK_BRIDGE_APP_Data.LastHeartbeatTxMs = 0;
     MAVLINK_BRIDGE_APP_Data.LastStreamRequestMs = 0;
     MAVLINK_BRIDGE_APP_Data.TargetDiscoveryStartMs = MAVLINK_BRIDGE_APP_GetTimeMs();
+    MAVLINK_BRIDGE_APP_Data.LastAttitudeRxMs = 0;
+    MAVLINK_BRIDGE_APP_Data.LastEkfLocalRxMs = 0;
+    MAVLINK_BRIDGE_APP_Data.LastGpsRawRxMs = 0;
+    MAVLINK_BRIDGE_APP_Data.LastEkfStatusRxMs = 0;
     MAVLINK_BRIDGE_APP_Data.StreamRequestPending = 1;
     MAVLINK_BRIDGE_APP_SetLinkState(MAVLINK_BRIDGE_LINK_CONNECTED);
     MAVLINK_BRIDGE_APP_ResetParser();
@@ -575,6 +605,7 @@ static void MAVLINK_BRIDGE_APP_PublishAttitude(uint32 BridgeTimestampMs)
     Tlm->RollspeedRps  = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[16]);
     Tlm->PitchspeedRps = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[20]);
     Tlm->YawspeedRps   = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[24]);
+    MAVLINK_BRIDGE_APP_Data.LastAttitudeRxMs = BridgeTimestampMs;
 
     CFE_SB_TimeStampMsg(CFE_MSG_PTR(Tlm->TelemetryHeader));
     CFE_SB_TransmitMsg(CFE_MSG_PTR(Tlm->TelemetryHeader), true);
@@ -611,6 +642,7 @@ static void MAVLINK_BRIDGE_APP_PublishEkfLocal(uint32 BridgeTimestampMs)
     Tlm->Vx_mps      = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[16]);
     Tlm->Vy_mps      = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[20]);
     Tlm->Vz_mps      = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[24]);
+    MAVLINK_BRIDGE_APP_Data.LastEkfLocalRxMs = BridgeTimestampMs;
 
     CFE_SB_TimeStampMsg(CFE_MSG_PTR(Tlm->TelemetryHeader));
     CFE_SB_TransmitMsg(CFE_MSG_PTR(Tlm->TelemetryHeader), true);
@@ -656,6 +688,7 @@ static void MAVLINK_BRIDGE_APP_PublishGlobalPositionAsLocal(uint32 BridgeTimesta
     Tlm->Vx_mps      = (float)VxCms / 100.0f;
     Tlm->Vy_mps      = (float)VyCms / 100.0f;
     Tlm->Vz_mps      = (float)VzCms / 100.0f;
+    MAVLINK_BRIDGE_APP_Data.LastEkfLocalRxMs = BridgeTimestampMs;
 
     CFE_SB_TimeStampMsg(CFE_MSG_PTR(Tlm->TelemetryHeader));
     CFE_SB_TransmitMsg(CFE_MSG_PTR(Tlm->TelemetryHeader), true);
@@ -696,6 +729,7 @@ static void MAVLINK_BRIDGE_APP_PublishGpsRaw(uint32 BridgeTimestampMs)
         Tlm->Valid     = 1;
         Tlm->Stale     = 0;
         Tlm->ErrorCode = MAVLINK_BRIDGE_ERROR_NONE;
+        MAVLINK_BRIDGE_APP_Data.LastGpsRawRxMs = BridgeTimestampMs;
     }
     else
     {
@@ -738,6 +772,7 @@ static void MAVLINK_BRIDGE_APP_PublishEkfStatus(uint32 BridgeTimestampMs)
         Tlm->Valid     = 1;
         Tlm->Stale     = 0;
         Tlm->ErrorCode = MAVLINK_BRIDGE_ERROR_NONE;
+        MAVLINK_BRIDGE_APP_Data.LastEkfStatusRxMs = BridgeTimestampMs;
     }
     else
     {
@@ -1127,10 +1162,12 @@ void MAVLINK_BRIDGE_APP_ServiceSerial(void)
     }
 
     MAVLINK_BRIDGE_APP_SendCompanionHeartbeat(NowMs);
-    if (MAVLINK_BRIDGE_APP_Data.StreamRequestPending != 0U &&
-        MAVLINK_BRIDGE_APP_Data.TargetSystemId != 0U &&
+    if (MAVLINK_BRIDGE_APP_Data.TargetSystemId != 0U &&
+        (MAVLINK_BRIDGE_APP_Data.StreamRequestPending != 0U ||
+         MAVLINK_BRIDGE_APP_StreamRefreshNeeded(NowMs)) &&
         (NowMs - MAVLINK_BRIDGE_APP_Data.LastStreamRequestMs) >= MAVLINK_BRIDGE_APP_STREAM_REQUEST_RETRY_MS)
     {
+        MAVLINK_BRIDGE_APP_Data.StreamRequestPending = 1;
         MAVLINK_BRIDGE_APP_RequestTelemetryStreams();
     }
     else if (MAVLINK_BRIDGE_APP_Data.StreamRequestPending != 0U &&

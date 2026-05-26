@@ -25,6 +25,10 @@ typedef struct
     uint32    LastHeartbeatTxMs;
     uint32    LastStreamRequestMs;
     uint32    TargetDiscoveryStartMs;
+    uint32    LastAttitudeRxMs;
+    uint32    LastEkfLocalRxMs;
+    uint32    LastGpsRawRxMs;
+    uint32    LastEkfStatusRxMs;
     uint32    ReconnectAttemptCount;
     uint32    ParseErrorCount;
     uint32    BytesReceived;
