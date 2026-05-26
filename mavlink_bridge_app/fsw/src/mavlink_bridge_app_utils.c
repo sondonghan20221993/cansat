@@ -220,6 +220,17 @@ static void MAVLINK_BRIDGE_APP_WriteFloatLE(uint8 *Data, float Value)
     MAVLINK_BRIDGE_APP_WriteU32LE(Data, RawValue);
 }
 
+static void MAVLINK_BRIDGE_APP_RecordLengthError(uint32 MsgId, uint8 ActualLength, uint8 ExpectedLength)
+{
+    MAVLINK_BRIDGE_APP_Data.LastErrorCode = MAVLINK_BRIDGE_ERROR_INVALID_VALUE;
+    MAVLINK_BRIDGE_APP_Data.ParseErrorCount++;
+    CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_PARSE_EID, CFE_EVS_EventType_INFORMATION,
+                      "MAVLINK_BRIDGE_APP: invalid payload msgid=%lu actual=%u expected=%u",
+                      (unsigned long)MsgId,
+                      (unsigned int)ActualLength,
+                      (unsigned int)ExpectedLength);
+}
+
 static CFE_Status_t MAVLINK_BRIDGE_APP_SendMavlinkV2(uint32 MsgId, const uint8 *Payload, uint8 PayloadLen, uint8 CrcExtra)
 {
     uint8  Frame[MAVLINK_MAX_FRAME_LEN];
@@ -235,7 +246,7 @@ static CFE_Status_t MAVLINK_BRIDGE_APP_SendMavlinkV2(uint32 MsgId, const uint8 *
 
     if (PayloadLen > MAVLINK_MAX_PAYLOAD_LEN || (10U + PayloadLen + 2U) > sizeof(Frame))
     {
-        return CFE_STATUS_BAD_ARGUMENT;
+        return CFE_ES_BAD_ARGUMENT;
     }
 
     Frame[0] = MAVLINK_STX_V2;
@@ -599,7 +610,9 @@ static void MAVLINK_BRIDGE_APP_PublishAttitude(uint32 BridgeTimestampMs)
 
     if (MAVLINK_BRIDGE_APP_Parser.PayloadLen != MAVLINK_ATTITUDE_PAYLOAD_LEN)
     {
-        MAVLINK_BRIDGE_APP_RecordParseError(MAVLINK_BRIDGE_ERROR_INVALID_VALUE);
+        MAVLINK_BRIDGE_APP_RecordLengthError(MAVLINK_MSG_ID_ATTITUDE,
+                                             MAVLINK_BRIDGE_APP_Parser.PayloadLen,
+                                             MAVLINK_ATTITUDE_PAYLOAD_LEN);
         return;
     }
 
@@ -639,7 +652,9 @@ static void MAVLINK_BRIDGE_APP_PublishEkfLocal(uint32 BridgeTimestampMs)
 
     if (MAVLINK_BRIDGE_APP_Parser.PayloadLen != MAVLINK_LOCAL_POSITION_NED_PAYLOAD_LEN)
     {
-        MAVLINK_BRIDGE_APP_RecordParseError(MAVLINK_BRIDGE_ERROR_INVALID_VALUE);
+        MAVLINK_BRIDGE_APP_RecordLengthError(MAVLINK_MSG_ID_LOCAL_POSITION_NED,
+                                             MAVLINK_BRIDGE_APP_Parser.PayloadLen,
+                                             MAVLINK_LOCAL_POSITION_NED_PAYLOAD_LEN);
         return;
     }
 
@@ -683,7 +698,9 @@ static void MAVLINK_BRIDGE_APP_PublishGlobalPositionAsLocal(uint32 BridgeTimesta
 
     if (MAVLINK_BRIDGE_APP_Parser.PayloadLen != MAVLINK_GLOBAL_POSITION_INT_PAYLOAD_LEN)
     {
-        MAVLINK_BRIDGE_APP_RecordParseError(MAVLINK_BRIDGE_ERROR_INVALID_VALUE);
+        MAVLINK_BRIDGE_APP_RecordLengthError(MAVLINK_MSG_ID_GLOBAL_POSITION_INT,
+                                             MAVLINK_BRIDGE_APP_Parser.PayloadLen,
+                                             MAVLINK_GLOBAL_POSITION_INT_PAYLOAD_LEN);
         return;
     }
 
@@ -729,7 +746,9 @@ static void MAVLINK_BRIDGE_APP_PublishGpsRaw(uint32 BridgeTimestampMs)
 
     if (MAVLINK_BRIDGE_APP_Parser.PayloadLen != MAVLINK_GPS_RAW_INT_PAYLOAD_LEN)
     {
-        MAVLINK_BRIDGE_APP_RecordParseError(MAVLINK_BRIDGE_ERROR_INVALID_VALUE);
+        MAVLINK_BRIDGE_APP_RecordLengthError(MAVLINK_MSG_ID_GPS_RAW_INT,
+                                             MAVLINK_BRIDGE_APP_Parser.PayloadLen,
+                                             MAVLINK_GPS_RAW_INT_PAYLOAD_LEN);
         return;
     }
 
@@ -780,7 +799,9 @@ static void MAVLINK_BRIDGE_APP_PublishEkfStatus(uint32 BridgeTimestampMs)
 
     if (MAVLINK_BRIDGE_APP_Parser.PayloadLen != MAVLINK_EKF_STATUS_PAYLOAD_LEN)
     {
-        MAVLINK_BRIDGE_APP_RecordParseError(MAVLINK_BRIDGE_ERROR_INVALID_VALUE);
+        MAVLINK_BRIDGE_APP_RecordLengthError(MAVLINK_MSG_ID_EKF_STATUS_REPORT,
+                                             MAVLINK_BRIDGE_APP_Parser.PayloadLen,
+                                             MAVLINK_EKF_STATUS_PAYLOAD_LEN);
         return;
     }
 
