@@ -29,7 +29,7 @@
 #define MAVLINK_GLOBAL_POSITION_INT_CRC_EXTRA   104U
 #define MAVLINK_ATTITUDE_PAYLOAD_LEN          28U
 #define MAVLINK_ATTITUDE_CRC_EXTRA            39U
-#define MAVLINK_EKF_STATUS_PAYLOAD_LEN        22U
+#define MAVLINK_EKF_STATUS_MIN_PAYLOAD_LEN    21U
 #define MAVLINK_EKF_STATUS_CRC_EXTRA          71U
 #define MAVLINK_HEARTBEAT_CRC_EXTRA           50U
 #define MAVLINK_COMMAND_LONG_CRC_EXTRA       152U
@@ -744,7 +744,7 @@ static void MAVLINK_BRIDGE_APP_PublishGpsRaw(uint32 BridgeTimestampMs)
     MAVLINK_BRIDGE_APP_GpsRawTlm_t *Tlm;
     uint64                          TimeUsec;
 
-    if (MAVLINK_BRIDGE_APP_Parser.PayloadLen != MAVLINK_GPS_RAW_INT_PAYLOAD_LEN)
+    if (MAVLINK_BRIDGE_APP_Parser.PayloadLen < MAVLINK_GPS_RAW_INT_PAYLOAD_LEN)
     {
         MAVLINK_BRIDGE_APP_RecordLengthError(MAVLINK_MSG_ID_GPS_RAW_INT,
                                              MAVLINK_BRIDGE_APP_Parser.PayloadLen,
@@ -797,11 +797,11 @@ static void MAVLINK_BRIDGE_APP_PublishEkfStatus(uint32 BridgeTimestampMs)
 {
     MAVLINK_BRIDGE_APP_EkfStatusTlm_t *Tlm;
 
-    if (MAVLINK_BRIDGE_APP_Parser.PayloadLen != MAVLINK_EKF_STATUS_PAYLOAD_LEN)
+    if (MAVLINK_BRIDGE_APP_Parser.PayloadLen < MAVLINK_EKF_STATUS_MIN_PAYLOAD_LEN)
     {
         MAVLINK_BRIDGE_APP_RecordLengthError(MAVLINK_MSG_ID_EKF_STATUS_REPORT,
                                              MAVLINK_BRIDGE_APP_Parser.PayloadLen,
-                                             MAVLINK_EKF_STATUS_PAYLOAD_LEN);
+                                             MAVLINK_EKF_STATUS_MIN_PAYLOAD_LEN);
         return;
     }
 
