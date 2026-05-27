@@ -157,7 +157,9 @@ void CFS_CORE_APP_UpdateHealth(uint32 NowMs, bool ForcePublish)
     uint32                          LastValidInputTimestampMs;
     bool                            BridgeTimedOut;
     bool                            GpsUnavailable;
-    bool                            EkfUnavailable;
+    bool                            EkfTimedOut;
+    bool                            LocalTimedOut;
+    bool                            AttitudeTimedOut;
 
     if (!ForcePublish && (NowMs - CFS_CORE_APP_Data.LastPublishTimeMs) < CFS_CORE_APP_PROTOTYPE_PERIOD_MS)
     {
@@ -186,16 +188,16 @@ void CFS_CORE_APP_UpdateHealth(uint32 NowMs, bool ForcePublish)
         LastValidInputTimestampMs = NowMs;
     }
 
-    BridgeTimedOut = !CFS_CORE_APP_Data.BridgeState.Received ||
-                     (NowMs - CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs) > CFS_CORE_APP_BRIDGE_TIMEOUT_MS;
-    GpsUnavailable = CFS_CORE_APP_StateExpired(&CFS_CORE_APP_Data.GpsState, NowMs, CFS_CORE_APP_GPS_TIMEOUT_MS) ||
-                     !CFS_CORE_APP_Data.GpsState.Valid || (CFS_CORE_APP_Data.GpsState.Stale != 0);
-    EkfUnavailable = CFS_CORE_APP_StateExpired(&CFS_CORE_APP_Data.EkfState, NowMs, CFS_CORE_APP_EKF_TIMEOUT_MS) ||
-                     CFS_CORE_APP_StateExpired(&CFS_CORE_APP_Data.LocalState, NowMs, CFS_CORE_APP_LOCAL_TIMEOUT_MS) ||
-                     CFS_CORE_APP_StateExpired(&CFS_CORE_APP_Data.AttitudeState, NowMs, CFS_CORE_APP_ATTITUDE_TIMEOUT_MS) ||
-                     !CFS_CORE_APP_Data.EkfState.Valid || (CFS_CORE_APP_Data.EkfState.Stale != 0) ||
-                     !CFS_CORE_APP_Data.LocalState.Valid || (CFS_CORE_APP_Data.LocalState.Stale != 0) ||
-                     !CFS_CORE_APP_Data.AttitudeState.Valid || (CFS_CORE_APP_Data.AttitudeState.Stale != 0);
+    BridgeTimedOut   = !CFS_CORE_APP_Data.BridgeState.Received ||
+                       (NowMs - CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs) > CFS_CORE_APP_BRIDGE_TIMEOUT_MS;
+    GpsUnavailable   = CFS_CORE_APP_StateExpired(&CFS_CORE_APP_Data.GpsState, NowMs, CFS_CORE_APP_GPS_TIMEOUT_MS) ||
+                       !CFS_CORE_APP_Data.GpsState.Valid || (CFS_CORE_APP_Data.GpsState.Stale != 0);
+    EkfTimedOut      = CFS_CORE_APP_StateExpired(&CFS_CORE_APP_Data.EkfState, NowMs, CFS_CORE_APP_EKF_TIMEOUT_MS) ||
+                       !CFS_CORE_APP_Data.EkfState.Valid || (CFS_CORE_APP_Data.EkfState.Stale != 0);
+    LocalTimedOut    = CFS_CORE_APP_StateExpired(&CFS_CORE_APP_Data.LocalState, NowMs, CFS_CORE_APP_LOCAL_TIMEOUT_MS) ||
+                       !CFS_CORE_APP_Data.LocalState.Valid || (CFS_CORE_APP_Data.LocalState.Stale != 0);
+    AttitudeTimedOut = CFS_CORE_APP_StateExpired(&CFS_CORE_APP_Data.AttitudeState, NowMs, CFS_CORE_APP_ATTITUDE_TIMEOUT_MS) ||
+                       !CFS_CORE_APP_Data.AttitudeState.Valid || (CFS_CORE_APP_Data.AttitudeState.Stale != 0);
 
     Tlm = &CFS_CORE_APP_Data.SystemHealthTlm;
     CFS_CORE_APP_Data.LastPublishTimeMs = NowMs;
@@ -214,10 +216,22 @@ void CFS_CORE_APP_UpdateHealth(uint32 NowMs, bool ForcePublish)
         Tlm->FaultCode         = CFS_CORE_APP_FAULT_BRIDGE_TIMEOUT;
         Tlm->RecoveryRequested = 1;
     }
-    else if (EkfUnavailable)
+    else if (EkfTimedOut)
     {
         Tlm->HealthState       = CFS_CORE_APP_HEALTH_DEGRADED;
         Tlm->FaultCode         = CFS_CORE_APP_FAULT_EKF_INVALID;
+        Tlm->RecoveryRequested = 0;
+    }
+    else if (LocalTimedOut)
+    {
+        Tlm->HealthState       = CFS_CORE_APP_HEALTH_DEGRADED;
+        Tlm->FaultCode         = CFS_CORE_APP_FAULT_LOCAL_TIMEOUT;
+        Tlm->RecoveryRequested = 0;
+    }
+    else if (AttitudeTimedOut)
+    {
+        Tlm->HealthState       = CFS_CORE_APP_HEALTH_DEGRADED;
+        Tlm->FaultCode         = CFS_CORE_APP_FAULT_ATTITUDE_TIMEOUT;
         Tlm->RecoveryRequested = 0;
     }
     else if (GpsUnavailable)

@@ -143,7 +143,7 @@ void Test_CFS_CORE_APP_UpdateHealth_LocalTimeout(void)
     CFS_CORE_APP_UpdateHealth(NowMs, true);
 
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_DEGRADED);
-    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.FaultCode, CFS_CORE_APP_FAULT_EKF_INVALID);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.FaultCode, CFS_CORE_APP_FAULT_LOCAL_TIMEOUT);
 }
 
 void Test_CFS_CORE_APP_UpdateHealth_AttitudeTimeout(void)
@@ -168,7 +168,7 @@ void Test_CFS_CORE_APP_UpdateHealth_AttitudeTimeout(void)
     CFS_CORE_APP_UpdateHealth(NowMs, true);
 
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_DEGRADED);
-    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.FaultCode, CFS_CORE_APP_FAULT_EKF_INVALID);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.FaultCode, CFS_CORE_APP_FAULT_ATTITUDE_TIMEOUT);
 }
 
 void Test_CFS_CORE_APP_ProcessStateMessage_RouteUpdate(void)
