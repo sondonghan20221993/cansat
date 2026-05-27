@@ -312,6 +312,48 @@ bool UPLINK_APP_ForwardConfigCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
     return Ok;
 }
 
+bool UPLINK_APP_ForwardModeCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
+{
+    UPLINK_APP_ModeCmdTlm_t ModeTlm;
+
+    memset(&ModeTlm, 0, sizeof(ModeTlm));
+    CFE_MSG_Init(CFE_MSG_PTR(ModeTlm.TelemetryHeader), CFE_SB_ValueToMsgId(MODE_CMD_MID),
+                 sizeof(ModeTlm));
+
+    ModeTlm.Seq            = UPLINK_APP_Data.SequenceCounter + 1U;
+    ModeTlm.TimestampMs    = UPLINK_APP_Data.LastRxTimeMs;
+    ModeTlm.SourceSequence = Cmd->Sequence;
+    ModeTlm.PayloadLength  = Cmd->PayloadLength;
+    if (Cmd->PayloadLength > 0)
+    {
+        memcpy(ModeTlm.Payload, Cmd->Payload, Cmd->PayloadLength);
+    }
+
+    CFE_SB_TimeStampMsg(CFE_MSG_PTR(ModeTlm.TelemetryHeader));
+    return (CFE_SB_TransmitMsg(CFE_MSG_PTR(ModeTlm.TelemetryHeader), true) == CFE_SUCCESS);
+}
+
+bool UPLINK_APP_ForwardDiagnosticCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
+{
+    UPLINK_APP_DiagnosticCmdTlm_t DiagTlm;
+
+    memset(&DiagTlm, 0, sizeof(DiagTlm));
+    CFE_MSG_Init(CFE_MSG_PTR(DiagTlm.TelemetryHeader), CFE_SB_ValueToMsgId(DIAGNOSTIC_CMD_MID),
+                 sizeof(DiagTlm));
+
+    DiagTlm.Seq            = UPLINK_APP_Data.SequenceCounter + 1U;
+    DiagTlm.TimestampMs    = UPLINK_APP_Data.LastRxTimeMs;
+    DiagTlm.SourceSequence = Cmd->Sequence;
+    DiagTlm.PayloadLength  = Cmd->PayloadLength;
+    if (Cmd->PayloadLength > 0)
+    {
+        memcpy(DiagTlm.Payload, Cmd->Payload, Cmd->PayloadLength);
+    }
+
+    CFE_SB_TimeStampMsg(CFE_MSG_PTR(DiagTlm.TelemetryHeader));
+    return (CFE_SB_TransmitMsg(CFE_MSG_PTR(DiagTlm.TelemetryHeader), true) == CFE_SUCCESS);
+}
+
 void UPLINK_APP_LoadState(void)
 {
     UPLINK_APP_PersistentState_t State;

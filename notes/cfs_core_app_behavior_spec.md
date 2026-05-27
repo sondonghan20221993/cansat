@@ -1,33 +1,33 @@
-# cfs_core_app Behavior Specification
+# cfs_core_app 동작 명세
 
-## 1. Purpose
+## 1. 목적
 
-This document defines the current implemented behavior of `cfs_core_app` in this repository.
-It is a code-aligned specification for review, integration, and test execution.
+이 문서는 현재 이 저장소에서 구현된 `cfs_core_app`의 동작을 정의한다.
+코드와 정합된 명세서로, 리뷰, 통합, 테스트 수행에 활용한다.
 
-This document does not define target behavior that is not present in code.
-If the code and this document disagree, the code must be treated as the source to investigate.
+이 문서는 코드에 존재하지 않는 목표 동작을 정의하지 않는다.
+코드와 이 문서가 서로 다르면, 코드를 조사의 원본으로 취급해야 한다.
 
-## 2. Scope
+## 2. 범위
 
-This specification covers:
+이 명세는 다음을 다룬다.
 
-- `cfs_core_app` message subscriptions
-- Internal cached state updated by each subscribed message
-- `SYSTEM_HEALTH_MID` output fields and publish timing
-- Health-state classification logic
-- Timeout handling for bridge, GPS, EKF, local-state, and attitude-state inputs
-- Behavior after startup and after input loss
-- Existing unit-test coverage and recommended runtime verification
+- `cfs_core_app` 메시지 구독
+- 각 구독 메시지 수신 시 갱신되는 내부 캐시 상태
+- `SYSTEM_HEALTH_MID` 출력 필드 및 게시 타이밍
+- 헬스 상태 분류 로직
+- bridge, GPS, EKF, local-state, attitude-state 입력의 타임아웃 처리
+- 시작 후 및 입력 손실 후 동작
+- 기존 단위 테스트 커버리지 및 런타임 검증 권고
 
-This specification does not cover:
+이 명세는 다음을 다루지 않는다.
 
-- `mavlink_bridge_app` internal parsing rules
-- `downlink_app` packet formatting
-- Any active restart of other apps or devices
-- Any fault-handling behavior not present in `cfs_core_app`
+- `mavlink_bridge_app` 내부 파싱 규칙
+- `downlink_app` 패킷 형식
+- 다른 앱이나 장치의 능동적 재시작
+- `cfs_core_app`에 존재하지 않는 오류 처리 동작
 
-## 3. References
+## 3. 참조
 
 - Source: [cfs_core_app.c](/C:/Users/sdh97/Documents/GitHub/cfs-telemetry-app/cfs_core_app/fsw/src/cfs_core_app.c)
 - Source: [cfs_core_app_dispatch.c](/C:/Users/sdh97/Documents/GitHub/cfs-telemetry-app/cfs_core_app/fsw/src/cfs_core_app_dispatch.c)
@@ -40,126 +40,126 @@ This specification does not cover:
 - Config: [default_cfs_core_app_msgdefs.h](/C:/Users/sdh97/Documents/GitHub/cfs-telemetry-app/cfs_core_app/config/default_cfs_core_app_msgdefs.h)
 - Tests: [coveragetest_cfs_core_app_utils.c](/C:/Users/sdh97/Documents/GitHub/cfs-telemetry-app/cfs_core_app/unit-test/coveragetest/coveragetest_cfs_core_app_utils.c)
 
-## 4. Responsibilities
+## 4. 책임
 
-`cfs_core_app` has the following implemented responsibilities:
+`cfs_core_app`의 현재 구현 책임은 다음과 같다.
 
-- Subscribe to bridge housekeeping, FC state messages, route updates, and app command/HK messages.
-- Cache the latest received bridge, attitude, local, GPS, EKF, mission-route, and landing-route data.
-- Recompute system health whenever a subscribed state message is received.
-- Recompute system health periodically when no input arrives.
-- Publish `SYSTEM_HEALTH_MID`.
-- Publish housekeeping telemetry on HK request.
+- bridge HK, FC 상태 메시지, 경로 갱신, 앱 명령/HK 메시지 구독
+- 수신된 최신 bridge, attitude, local, GPS, EKF, mission-route, landing-route 데이터 캐시
+- 구독된 상태 메시지 수신 시마다 시스템 헬스 재계산
+- 입력이 없을 때 주기적으로 시스템 헬스 재계산
+- `SYSTEM_HEALTH_MID` 게시
+- HK 요청 수신 시 HK 텔레메트리 게시
 
-`cfs_core_app` does not currently:
+`cfs_core_app`은 현재 다음을 수행하지 않는다.
 
-- Restart another app
-- Reopen a serial device
-- Reset an external component
-- Publish a separate recovery command
-- Persist health state across restart
+- 다른 앱 재시작
+- 시리얼 장치 재열기
+- 외부 컴포넌트 재설정
+- 별도 복구 명령 게시
+- 재시작 후 헬스 상태 지속
 
-## 5. Definitions
+## 5. 용어 정의
 
-The following terms are used consistently in this document.
+이 문서에서 일관되게 사용하는 용어는 다음과 같다.
 
-- `state cache`: The latest in-memory copy of a subscribed FC state message.
-- `bridge cache`: The latest in-memory copy of subscribed bridge housekeeping summary fields.
-- `received`: Internal boolean indicating that at least one message of that type has been processed since app initialization.
-- `expired`: Internal condition where `NowMs - TimestampMs > TimeoutMs`, or where no message has ever been received for that cache.
-- `unavailable`: Input condition used by health logic to mark an input as unsuitable for nominal operation.
-- `force publish`: A direct health publish request triggered after processing a subscribed state message.
-- `periodic publish`: A health publish attempt triggered from the app main-loop timeout path.
+- `state cache`: 구독된 FC 상태 메시지의 최신 in-memory 복사본
+- `bridge cache`: 구독된 bridge HK 요약 필드의 최신 in-memory 복사본
+- `received`: 앱 초기화 이후 해당 타입의 메시지가 최소 하나 이상 처리됐음을 나타내는 내부 boolean
+- `expired`: `NowMs - TimestampMs > TimeoutMs` 조건이거나, 해당 캐시에 메시지가 한 번도 수신되지 않은 상태
+- `unavailable`: 헬스 로직이 해당 입력을 정상 운용에 부적합하다고 표시하는 입력 조건
+- `force publish`: 구독된 상태 메시지 처리 직후 트리거되는 직접 헬스 게시 요청
+- `periodic publish`: 앱 메인 루프의 타임아웃 경로에서 트리거되는 헬스 게시 시도
 
-## 6. Interfaces
+## 6. 인터페이스
 
-### 6.1 Subscribed messages
+### 6.1 구독 메시지
 
-`cfs_core_app` subscribes to the following message IDs during initialization.
+`cfs_core_app`은 초기화 중 다음 메시지 ID를 구독한다.
 
-| Symbol | Value | Purpose |
+| 심볼 | 값 | 목적 |
 | --- | --- | --- |
-| `CFS_CORE_APP_CMD_MID_VALUE` | `0x18C0` | Command input |
-| `CFS_CORE_APP_SEND_HK_MID_VALUE` | `0x18C1` | HK request |
-| `CFS_CORE_APP_BRIDGE_HK_MID_VALUE` | `0x08A0` | Bridge HK mirror input |
-| `CFS_CORE_APP_FC_EKF_LOCAL_STATE_MID_VALUE` | `0x1905` | FC local-state input |
-| `CFS_CORE_APP_FC_ATTITUDE_STATE_MID_VALUE` | `0x1906` | FC attitude-state input |
-| `CFS_CORE_APP_FC_GPS_RAW_STATE_MID_VALUE` | `0x1907` | FC GPS-state input |
-| `CFS_CORE_APP_FC_EKF_STATUS_MID_VALUE` | `0x1908` | FC EKF-status input |
-| `ROUTE_UPDATE_MID` | `0x190B` | Route update input |
+| `CFS_CORE_APP_CMD_MID_VALUE` | `0x18C0` | 명령 입력 |
+| `CFS_CORE_APP_SEND_HK_MID_VALUE` | `0x18C1` | HK 요청 |
+| `CFS_CORE_APP_BRIDGE_HK_MID_VALUE` | `0x08A0` | Bridge HK 미러 입력 |
+| `CFS_CORE_APP_FC_EKF_LOCAL_STATE_MID_VALUE` | `0x1905` | FC local-state 입력 |
+| `CFS_CORE_APP_FC_ATTITUDE_STATE_MID_VALUE` | `0x1906` | FC attitude-state 입력 |
+| `CFS_CORE_APP_FC_GPS_RAW_STATE_MID_VALUE` | `0x1907` | FC GPS-state 입력 |
+| `CFS_CORE_APP_FC_EKF_STATUS_MID_VALUE` | `0x1908` | FC EKF-status 입력 |
+| `ROUTE_UPDATE_MID` | `0x190B` | 경로 갱신 입력 |
 
-### 6.2 Published messages
+### 6.2 게시 메시지
 
-| Symbol | Value | Purpose |
+| 심볼 | 값 | 목적 |
 | --- | --- | --- |
-| `CFS_CORE_APP_HK_TLM_MID` | `0x08C0` | Housekeeping telemetry |
-| `SYSTEM_HEALTH_MID` | `0x1904` | System health telemetry |
+| `CFS_CORE_APP_HK_TLM_MID` | `0x08C0` | HK 텔레메트리 |
+| `SYSTEM_HEALTH_MID` | `0x1904` | 시스템 헬스 텔레메트리 |
 
-## 7. Input Payloads
+## 7. 입력 페이로드
 
-### 7.1 Generic FC state input
+### 7.1 일반 FC 상태 입력
 
-The following subscribed inputs are processed as `CFS_CORE_APP_GenericStateTlm_t`:
+다음 구독 입력은 `CFS_CORE_APP_GenericStateTlm_t`로 처리된다.
 
 - attitude state
 - local state
 - GPS state
 - EKF state
 
-The payload fields consumed by `cfs_core_app` are:
+`cfs_core_app`이 소비하는 페이로드 필드는 다음과 같다.
 
-| Field | Type | Used for |
+| 필드 | 형식 | 용도 |
 | --- | --- | --- |
-| `TimestampMs` | `uint32` | Expiration and last-valid-input selection |
-| `Seq` | `uint32` | Cached for traceability only |
-| `Valid` | `uint8` | Input availability decision |
-| `Stale` | `uint8` | Input availability decision |
-| `ErrorCode` | `uint8` | Cached for traceability only |
+| `TimestampMs` | `uint32` | 만료 및 마지막 유효 입력 선택 |
+| `Seq` | `uint32` | 추적용 캐시만 |
+| `Valid` | `uint8` | 입력 가용성 판단 |
+| `Stale` | `uint8` | 입력 가용성 판단 |
+| `ErrorCode` | `uint8` | 추적용 캐시만 |
 
-No sequence monotonicity check is implemented.
-No timestamp source validation is implemented.
-No payload length validation is performed for these telemetry inputs.
+시퀀스 단조 검사는 구현되어 있지 않다.
+타임스탬프 출처 유효성 검사는 구현되어 있지 않다.
+이 텔레메트리 입력에 대한 페이로드 길이 검증은 수행되지 않는다.
 
-### 7.2 Bridge HK input
+### 7.2 Bridge HK 입력
 
-`CFS_CORE_APP_BridgeHkMirror_t` fields consumed by `cfs_core_app` are:
+`cfs_core_app`이 소비하는 `CFS_CORE_APP_BridgeHkMirror_t` 필드는 다음과 같다.
 
-| Field | Type | Used for |
+| 필드 | 형식 | 용도 |
 | --- | --- | --- |
-| `LinkState` | `uint8` | Cached only |
-| `LastErrorCode` | `uint8` | Cached only |
-| `LastRxTimestampMs` | `uint32` | Bridge-timeout decision |
+| `LinkState` | `uint8` | 캐시 전용 |
+| `LastErrorCode` | `uint8` | 캐시 전용 |
+| `LastRxTimestampMs` | `uint32` | bridge 타임아웃 판단 |
 
-The bridge command/error counters and byte counters are not used in health classification.
+bridge 명령/오류 카운터와 바이트 카운터는 헬스 분류에 사용하지 않는다.
 
-### 7.3 Route update input
+### 7.3 경로 갱신 입력
 
-`ROUTE_UPDATE_MID` is processed as `CFS_CORE_APP_RouteUpdateTlm_t`.
+`ROUTE_UPDATE_MID`는 `CFS_CORE_APP_RouteUpdateTlm_t`로 처리된다.
 
-The consumed fields are:
+소비되는 필드는 다음과 같다.
 
-| Field | Type | Used for |
+| 필드 | 형식 | 용도 |
 | --- | --- | --- |
-| `TimestampMs` | `uint32` | Route cache timestamp |
-| `SourceSequence` | `uint32` | Cached for traceability |
-| `RouteType` | `uint8` | Mission-route or landing-route selection |
-| `RouteVersion` | `uint8` | Cached |
-| `WaypointCount` | `uint8` | Cached and reported in HK |
-| `Waypoints[]` | array | Cached |
+| `TimestampMs` | `uint32` | 경로 캐시 타임스탬프 |
+| `SourceSequence` | `uint32` | 추적용 캐시 |
+| `RouteType` | `uint8` | mission-route 또는 landing-route 선택 |
+| `RouteVersion` | `uint8` | 캐시 |
+| `WaypointCount` | `uint8` | 캐시 및 HK에 보고 |
+| `Waypoints[]` | 배열 | 캐시 |
 
-Only the following route types update a cache:
+다음 경로 타입만 캐시를 갱신한다.
 
 - `CFS_CORE_APP_ROUTE_SEGMENT_MISSION_EXTENSION`
 - `CFS_CORE_APP_ROUTE_SEGMENT_LANDING`
 
-Any other route type produces no route-cache update.
-Route updates do not affect health-state classification.
+그 외 경로 타입은 경로 캐시를 갱신하지 않는다.
+경로 갱신은 헬스 상태 분류에 영향을 주지 않는다.
 
-## 8. Internal State
+## 8. 내부 상태
 
-### 8.1 Cached FC states
+### 8.1 캐시된 FC 상태
 
-Each FC state cache stores:
+각 FC 상태 캐시는 다음을 저장한다.
 
 - `TimestampMs`
 - `Seq`
@@ -168,30 +168,30 @@ Each FC state cache stores:
 - `ErrorCode`
 - `Received`
 
-The app maintains one cache for each of:
+앱은 다음 각각에 대해 하나의 캐시를 유지한다.
 
 - attitude state
 - local state
 - GPS state
 - EKF state
 
-### 8.2 Cached bridge state
+### 8.2 캐시된 bridge 상태
 
-The bridge cache stores:
+bridge 캐시는 다음을 저장한다.
 
 - `LinkState`
 - `LastErrorCode`
 - `LastRxTimestampMs`
 - `Received`
 
-### 8.3 Cached route state
+### 8.3 캐시된 경로 상태
 
-The app maintains:
+앱은 다음을 유지한다.
 
-- one mission-route cache
-- one landing-route cache
+- mission-route 캐시 1개
+- landing-route 캐시 1개
 
-Each route cache stores:
+각 경로 캐시는 다음을 저장한다.
 
 - `TimestampMs`
 - `SourceSequence`
@@ -202,396 +202,396 @@ Each route cache stores:
 - `Valid`
 - `Waypoints[]`
 
-## 9. Timing Configuration
+## 9. 타이밍 설정
 
-The following timing constants are implemented.
+다음 타이밍 상수가 구현되어 있다.
 
-| Constant | Value | Meaning |
+| 상수 | 값 | 의미 |
 | --- | --- | --- |
-| `CFS_CORE_APP_SB_POLL_TIMEOUT_MS` | `200` | Main-loop SB receive timeout |
-| `CFS_CORE_APP_PROTOTYPE_PERIOD_MS` | `1000` | Minimum interval for periodic health publish |
-| `CFS_CORE_APP_ATTITUDE_TIMEOUT_MS` | `2000` | Attitude-state expiration threshold |
-| `CFS_CORE_APP_LOCAL_TIMEOUT_MS` | `2000` | Local-state expiration threshold |
-| `CFS_CORE_APP_GPS_TIMEOUT_MS` | `3000` | GPS-state expiration threshold |
-| `CFS_CORE_APP_EKF_TIMEOUT_MS` | `2000` | EKF-state expiration threshold |
-| `CFS_CORE_APP_BRIDGE_TIMEOUT_MS` | `3000` | Bridge timeout threshold |
+| `CFS_CORE_APP_SB_POLL_TIMEOUT_MS` | `200` | 메인 루프 SB 수신 타임아웃 |
+| `CFS_CORE_APP_PROTOTYPE_PERIOD_MS` | `1000` | 주기적 헬스 게시의 최소 간격 |
+| `CFS_CORE_APP_ATTITUDE_TIMEOUT_MS` | `2000` | attitude-state 만료 임계값 |
+| `CFS_CORE_APP_LOCAL_TIMEOUT_MS` | `2000` | local-state 만료 임계값 |
+| `CFS_CORE_APP_GPS_TIMEOUT_MS` | `3000` | GPS-state 만료 임계값 |
+| `CFS_CORE_APP_EKF_TIMEOUT_MS` | `2000` | EKF-state 만료 임계값 |
+| `CFS_CORE_APP_BRIDGE_TIMEOUT_MS` | `3000` | bridge 타임아웃 임계값 |
 
-## 10. Health Output Contract
+## 10. 헬스 출력 계약
 
-`SYSTEM_HEALTH_MID` publishes the following fields:
+`SYSTEM_HEALTH_MID`는 다음 필드를 게시한다.
 
-| Field | Meaning |
+| 필드 | 의미 |
 | --- | --- |
-| `Seq` | Monotonic app-local publish counter incremented for every health publication |
-| `TimestampMs` | Current cFE time in milliseconds at publish time |
-| `LastValidInputTimestampMs` | Maximum timestamp among received attitude/local/GPS/EKF caches, or `NowMs` if none have been received |
-| `HealthState` | `NOMINAL`, `DEGRADED`, or `RECOVERY` in current implementation |
-| `FaultCode` | `NONE`, `BRIDGE_TIMEOUT`, `GPS_STALE`, `EKF_INVALID`, `LOCAL_TIMEOUT`, or `ATTITUDE_TIMEOUT` |
-| `RecoveryRequested` | `1` only for bridge-timeout condition, otherwise `0` |
+| `Seq` | 모든 헬스 게시 시마다 증가하는 단조 앱-로컬 게시 카운터 |
+| `TimestampMs` | 게시 시점의 cFE 시간 (밀리초) |
+| `LastValidInputTimestampMs` | 수신된 attitude/local/GPS/EKF 캐시 중 최대 타임스탬프. 아무것도 수신되지 않은 경우 `NowMs` |
+| `HealthState` | 현재 구현에서 `NOMINAL`, `DEGRADED`, 또는 `RECOVERY` |
+| `FaultCode` | `NONE`, `BRIDGE_TIMEOUT`, `GPS_STALE`, `EKF_INVALID`, `LOCAL_TIMEOUT`, 또는 `ATTITUDE_TIMEOUT` |
+| `RecoveryRequested` | bridge 타임아웃 조건에서만 `1`, 그 외에는 `0` |
 
-The current implementation zero-initializes the telemetry structure before each publish.
-The current implementation reinitializes the message header before each publish.
+현재 구현은 매 게시 전 텔레메트리 구조체를 0으로 초기화한다.
+현재 구현은 매 게시 전 메시지 헤더를 재초기화한다.
 
-## 11. Publish Conditions
+## 11. 게시 조건
 
-### 11.1 Immediate health publish
+### 11.1 즉시 헬스 게시
 
-`cfs_core_app` publishes `SYSTEM_HEALTH_MID` immediately after processing any of the following:
+`cfs_core_app`은 다음 처리 직후 `SYSTEM_HEALTH_MID`를 즉시 게시한다.
 
 - bridge HK
 - attitude state
 - local state
 - GPS state
 - EKF state
-- route update
+- 경로 갱신
 
-### 11.2 Periodic health publish
+### 11.2 주기적 헬스 게시
 
-If no SB message is received for `200 ms`, the app enters the timeout path.
-On that path, the app attempts a health update.
+SB 메시지가 `200 ms` 동안 수신되지 않으면 앱은 타임아웃 경로로 진입한다.
+이 경로에서 앱은 헬스 갱신을 시도한다.
 
-The health update is published only when:
+헬스 갱신은 다음 조건에서만 게시된다.
 
 `NowMs - LastPublishTimeMs >= 1000`
 
-### 11.3 Housekeeping publish
+### 11.3 HK 게시
 
-Housekeeping is published only when `CFS_CORE_APP_SEND_HK_MID_VALUE` is received.
+HK는 `CFS_CORE_APP_SEND_HK_MID_VALUE` 수신 시에만 게시된다.
 
-## 12. Health Classification Rules
+## 12. 헬스 분류 규칙
 
-Health classification is evaluated in strict priority order.
-Only the highest-priority matching condition determines the output.
+헬스 분류는 엄격한 우선순위 순서로 평가된다.
+가장 높은 우선순위의 일치 조건만 출력을 결정한다.
 
-### 12.1 Priority 1: Bridge timeout
+### 12.1 우선순위 1: Bridge 타임아웃
 
-Condition:
+조건:
 
-- bridge cache has never been received
-- or `NowMs - BridgeState.LastRxTimestampMs > 3000`
+- bridge 캐시가 한 번도 수신되지 않음
+- 또는 `NowMs - BridgeState.LastRxTimestampMs > 3000`
 
-Output:
+출력:
 
 - `HealthState = CFS_CORE_APP_HEALTH_RECOVERY`
 - `FaultCode = CFS_CORE_APP_FAULT_BRIDGE_TIMEOUT`
 - `RecoveryRequested = 1`
 
-### 12.2 Priority 2: EKF invalid or stale
+### 12.2 우선순위 2: EKF 무효 또는 stale
 
-Condition:
+조건:
 
-- EKF state expired (`NowMs - EkfState.TimestampMs > 2000`, or never received)
-- or EKF `Valid == 0`
-- or EKF `Stale != 0`
+- EKF 상태 만료 (`NowMs - EkfState.TimestampMs > 2000`, 또는 수신된 적 없음)
+- 또는 EKF `Valid == 0`
+- 또는 EKF `Stale != 0`
 
-Output:
+출력:
 
 - `HealthState = CFS_CORE_APP_HEALTH_DEGRADED`
 - `FaultCode = CFS_CORE_APP_FAULT_EKF_INVALID`
 - `RecoveryRequested = 0`
 
-### 12.3 Priority 3: Local state timeout
+### 12.3 우선순위 3: Local state 타임아웃
 
-Condition:
+조건:
 
-- local state expired (`NowMs - LocalState.TimestampMs > 2000`, or never received)
+- local state 만료 (`NowMs - LocalState.TimestampMs > 2000`, 또는 수신된 적 없음)
 
-Output:
+출력:
 
 - `HealthState = CFS_CORE_APP_HEALTH_DEGRADED`
 - `FaultCode = CFS_CORE_APP_FAULT_LOCAL_TIMEOUT`
 - `RecoveryRequested = 0`
 
-### 12.4 Priority 4: Attitude state timeout
+### 12.4 우선순위 4: Attitude state 타임아웃
 
-Condition:
+조건:
 
-- attitude state expired (`NowMs - AttitudeState.TimestampMs > 2000`, or never received)
+- attitude state 만료 (`NowMs - AttitudeState.TimestampMs > 2000`, 또는 수신된 적 없음)
 
-Output:
+출력:
 
 - `HealthState = CFS_CORE_APP_HEALTH_DEGRADED`
 - `FaultCode = CFS_CORE_APP_FAULT_ATTITUDE_TIMEOUT`
 - `RecoveryRequested = 0`
 
-### 12.5 Priority 5: GPS unavailability
+### 12.5 우선순위 5: GPS 불가용
 
-Condition:
+조건:
 
-- GPS state expired
-- or GPS `Valid == 0`
-- or GPS `Stale != 0`
+- GPS state 만료
+- 또는 GPS `Valid == 0`
+- 또는 GPS `Stale != 0`
 
-Output:
+출력:
 
 - `HealthState = CFS_CORE_APP_HEALTH_DEGRADED`
 - `FaultCode = CFS_CORE_APP_FAULT_GPS_STALE`
 - `RecoveryRequested = 0`
 
-### 12.6 Priority 6: Nominal
+### 12.6 우선순위 6: 정상
 
-Condition:
+조건:
 
-- none of the previous conditions are true
+- 이전 조건 중 어느 것도 해당하지 않음
 
-Output:
+출력:
 
 - `HealthState = CFS_CORE_APP_HEALTH_NOMINAL`
 - `FaultCode = CFS_CORE_APP_FAULT_NONE`
 - `RecoveryRequested = 0`
 
-### 12.7 Unused enum state
+### 12.7 미사용 enum 상태
 
-`CFS_CORE_APP_HEALTH_FAILED` is defined in message definitions but is not produced by current code.
+`CFS_CORE_APP_HEALTH_FAILED`는 메시지 정의에 정의되어 있으나 현재 코드에서 생성되지 않는다.
 
-## 13. Detailed Timeout and Fault Handling
+## 13. 타임아웃 및 오류 처리 상세
 
-### 13.1 Bridge timeout
+### 13.1 Bridge 타임아웃
 
-`bridge timeout` is evaluated from bridge HK `LastRxTimestampMs`, not from the arrival time of any FC state message.
+`bridge timeout`은 FC 상태 메시지의 도착 시각이 아닌 bridge HK의 `LastRxTimestampMs`를 기준으로 평가된다.
 
-Effects:
+효과:
 
-- produces `RECOVERY`
-- produces `FAULT_BRIDGE_TIMEOUT`
-- sets `RecoveryRequested = 1`
-- suppresses GPS and EKF fault reporting because bridge timeout has higher priority
+- `RECOVERY` 생성
+- `FAULT_BRIDGE_TIMEOUT` 생성
+- `RecoveryRequested = 1` 설정
+- bridge 타임아웃이 더 높은 우선순위를 가지므로 GPS 및 EKF 오류 보고 억제
 
 ### 13.2 GPS stale
 
-`gps stale` covers all of the following:
+`gps stale`은 다음을 모두 포함한다.
 
-- no GPS message has been received
-- GPS timestamp age exceeds `3000 ms`
+- GPS 메시지가 한 번도 수신되지 않음
+- GPS 타임스탬프 경과 시간이 `3000 ms` 초과
 - GPS `Valid == 0`
 - GPS `Stale != 0`
 
-Effects:
+효과:
 
-- produces `DEGRADED`
-- produces `FAULT_GPS_STALE`
-- does not set `RecoveryRequested`
+- `DEGRADED` 생성
+- `FAULT_GPS_STALE` 생성
+- `RecoveryRequested` 미설정
 
 ### 13.3 EKF invalid
 
-`ekf invalid` covers all of the following:
+`ekf invalid`는 다음을 모두 포함한다.
 
-- no EKF message has been received
-- EKF timestamp age exceeds `2000 ms`
+- EKF 메시지가 한 번도 수신되지 않음
+- EKF 타임스탬프 경과 시간이 `2000 ms` 초과
 - EKF `Valid == 0`
 - EKF `Stale != 0`
 
-Effects:
+효과:
 
-- produces `DEGRADED`
-- produces `FAULT_EKF_INVALID`
-- does not set `RecoveryRequested`
+- `DEGRADED` 생성
+- `FAULT_EKF_INVALID` 생성
+- `RecoveryRequested` 미설정
 
-### 13.4 Local timeout
+### 13.4 Local 타임아웃
 
-`local timeout` is represented by a dedicated fault code `FAULT_LOCAL_TIMEOUT`.
+`local timeout`은 전용 오류 코드 `FAULT_LOCAL_TIMEOUT`으로 표현된다.
 
-`local timeout` covers:
+`local timeout` 조건:
 
-- no local-state message has been received
-- local-state timestamp age exceeds `2000 ms`
+- local-state 메시지가 한 번도 수신되지 않음
+- local-state 타임스탬프 경과 시간이 `2000 ms` 초과
 
-Effects:
+효과:
 
-- produces `DEGRADED`
-- produces `FAULT_LOCAL_TIMEOUT`
-- does not set `RecoveryRequested`
+- `DEGRADED` 생성
+- `FAULT_LOCAL_TIMEOUT` 생성
+- `RecoveryRequested` 미설정
 
-Note: local `Valid == 0` or `Stale != 0` is evaluated under Priority 2 (EKF-related) alongside EKF state validity.
-Local timeout (expired timestamp) is a distinct condition evaluated at Priority 3 with its own fault code.
+참고: local `Valid == 0` 또는 `Stale != 0`은 EKF 상태 유효성과 함께 우선순위 2(EKF 관련)에서 평가된다.
+Local 타임아웃(만료된 타임스탬프)은 우선순위 3에서 자체 오류 코드로 평가되는 별도 조건이다.
 
-### 13.5 Attitude timeout
+### 13.5 Attitude 타임아웃
 
-`attitude timeout` is represented by a dedicated fault code `FAULT_ATTITUDE_TIMEOUT`.
+`attitude timeout`은 전용 오류 코드 `FAULT_ATTITUDE_TIMEOUT`으로 표현된다.
 
-`attitude timeout` covers:
+`attitude timeout` 조건:
 
-- no attitude-state message has been received
-- attitude-state timestamp age exceeds `2000 ms`
+- attitude-state 메시지가 한 번도 수신되지 않음
+- attitude-state 타임스탬프 경과 시간이 `2000 ms` 초과
 
-Effects:
+효과:
 
-- produces `DEGRADED`
-- produces `FAULT_ATTITUDE_TIMEOUT`
-- does not set `RecoveryRequested`
+- `DEGRADED` 생성
+- `FAULT_ATTITUDE_TIMEOUT` 생성
+- `RecoveryRequested` 미설정
 
-Note: attitude `Valid == 0` or `Stale != 0` is evaluated under Priority 2 (EKF-related).
-Attitude timeout (expired timestamp) is a distinct condition evaluated at Priority 4 with its own fault code.
+참고: attitude `Valid == 0` 또는 `Stale != 0`은 우선순위 2(EKF 관련)에서 평가된다.
+Attitude 타임아웃(만료된 타임스탬프)은 우선순위 4에서 자체 오류 코드로 평가되는 별도 조건이다.
 
-## 14. Startup, Input Loss, and Recovery Behavior
+## 14. 시작, 입력 손실, 복구 동작
 
-### 14.1 Startup
+### 14.1 시작
 
-At initialization, the entire app data structure is zeroed.
-All caches begin with `Received = false`.
+초기화 시 전체 앱 데이터 구조는 0으로 초기화된다.
+모든 캐시는 `Received = false`로 시작한다.
 
-As a result:
+결과:
 
-- before the first bridge HK is processed, the bridge condition evaluates as timed out
-- before the first health-relevant FC states are processed, those caches can also evaluate as expired
+- 첫 번째 bridge HK 처리 전에는 bridge 조건이 타임아웃으로 평가된다
+- 첫 번째 헬스 관련 FC 상태 처리 전에는 해당 캐시도 만료로 평가될 수 있다
 
-Because bridge timeout has highest priority, the app can publish `RECOVERY` during startup until valid bridge HK is received.
+bridge 타임아웃이 최우선 순위를 가지므로, 유효한 bridge HK가 수신될 때까지 앱은 시작 중에 `RECOVERY`를 게시할 수 있다.
 
-### 14.2 Input loss
+### 14.2 입력 손실
 
-If inputs stop arriving:
+입력이 수신되지 않으면:
 
-- the app main loop continues running
-- every `200 ms` SB timeout triggers the periodic service path
-- health is republished at most once per `1000 ms`
-- expired caches eventually cause `DEGRADED` or `RECOVERY`
+- 앱 메인 루프는 계속 실행된다
+- 매 `200 ms` SB 타임아웃마다 주기 서비스 경로가 트리거된다
+- 헬스는 최대 `1000 ms`에 한 번 재게시된다
+- 만료된 캐시는 결국 `DEGRADED` 또는 `RECOVERY`를 유발한다
 
-### 14.3 Input restoration
+### 14.3 입력 복원
 
-There is no separate recovery state machine.
+별도의 복구 상태 머신은 없다.
 
-A 10-second stabilization timer (`CFS_CORE_APP_NOMINAL_STABILITY_MS = 10000`) is required before transitioning to `NOMINAL` from a non-NOMINAL state.
+비-NOMINAL 상태에서 `NOMINAL`로 전이하려면 10초 안정화 타이머(`CFS_CORE_APP_NOMINAL_STABILITY_MS = 10000`)가 필요하다.
 
-When all fault conditions clear, the app enters a stabilization window:
-- during the window, `HealthState = DEGRADED`, `FaultCode = NONE`
-- after `10 s` of continuous fault-free operation, the app transitions to `NOMINAL`
+모든 오류 조건이 해소되면 앱은 안정화 창에 진입한다.
+- 창 동안에는 `HealthState = DEGRADED`, `FaultCode = NONE`
+- 10초 연속 오류 없는 운용 후 앱은 `NOMINAL`로 전이한다
 
-If a fault recurs during the stabilization window, the timer resets.
+안정화 창 중 오류가 재발하면 타이머가 리셋된다.
 
-If the app was already in `NOMINAL` before the non-NOMINAL episode, the timer is reset to `0` on re-entry into non-NOMINAL and restarts on the next fault-free cycle.
+비-NOMINAL 에피소드 이전에 이미 `NOMINAL` 상태였다면, 비-NOMINAL 재진입 시 타이머가 `0`으로 리셋되고 다음 오류 없는 주기에 다시 시작된다.
 
-### 14.4 Active recovery actions
+### 14.4 능동 복구 조치
 
-The only implemented recovery action is:
+유일하게 구현된 복구 조치는 다음이다.
 
-- set `RecoveryRequested = 1` in `SYSTEM_HEALTH_MID` on bridge timeout
+- bridge 타임아웃 시 `SYSTEM_HEALTH_MID`에 `RecoveryRequested = 1` 설정
 
-No additional recovery side effect is implemented.
+추가 복구 부작용은 구현되어 있지 않다.
 
-## 15. Housekeeping Behavior
+## 15. HK 동작
 
-On HK request, the app reports:
+HK 요청 시 앱은 다음을 보고한다.
 
-- command counter
-- command error counter
-- mission route waypoint count
-- landing route waypoint count
-- publish count
-- last publish timestamp
-- last route update timestamp
-- total route update count
+- 명령 카운터
+- 명령 오류 카운터
+- mission route waypoint 수
+- landing route waypoint 수
+- 게시 횟수
+- 마지막 게시 타임스탬프
+- 마지막 경로 갱신 타임스탬프
+- 총 경로 갱신 횟수
 
-The app also emits an EVS informational event summarizing route-related HK fields.
+앱은 경로 관련 HK 필드를 요약하는 EVS 정보 이벤트도 발생시킨다.
 
-## 16. Route Handling Rules
+## 16. 경로 처리 규칙
 
-Mission and landing routes are cached independently.
-Each accepted route update increments the selected route cache `UpdateCount`.
+mission route와 landing route는 독립적으로 캐시된다.
+허용된 경로 갱신 시마다 선택된 경로 캐시의 `UpdateCount`가 증가한다.
 
-Route updates affect:
+경로 갱신이 영향을 주는 항목:
 
-- route caches
-- HK counters
-- route update EVS event emission
-- immediate health republish timing
+- 경로 캐시
+- HK 카운터
+- 경로 갱신 EVS 이벤트 발생
+- 즉시 헬스 재게시 타이밍
 
-Route updates do not affect:
+경로 갱신이 영향을 주지 않는 항목:
 
-- health-state classification
-- fault-code selection
+- 헬스 상태 분류
+- 오류 코드 선택
 - `RecoveryRequested`
 
-## 17. Command Handling
+## 17. 명령 처리
 
-The app currently supports only:
+앱은 현재 다음만 지원한다.
 
 - NOOP
-- reset counters
+- 카운터 리셋
 
-Telemetry inputs are not validated with command-length checks.
-Unknown command codes increment the command-error counter.
+텔레메트리 입력은 명령 길이 검사로 유효성을 검사하지 않는다.
+알 수 없는 명령 코드는 명령 오류 카운터를 증가시킨다.
 
-## 18. Existing Unit-Test Coverage
+## 18. 기존 단위 테스트 커버리지
 
-The current unit tests verify:
+현재 단위 테스트는 다음을 검증한다.
 
-- housekeeping function executes
-- command-length verification success and failure
-- nominal health classification
-- bridge-timeout health classification
-- GPS stale health classification
-- EKF invalid health classification
-- local timeout classification as `FAULT_EKF_INVALID`
-- attitude timeout classification as `FAULT_EKF_INVALID`
-- mission-route cache update
-- landing-route cache update
-- bridge HK cache update
-- service prototype execution path
-- initialization success
-- initialization failure on subscribe error
-- NOOP command
-- reset-counters command
+- HK 함수 실행
+- 명령 길이 검증 성공 및 실패
+- 정상 헬스 분류
+- bridge 타임아웃 헬스 분류
+- GPS stale 헬스 분류
+- EKF invalid 헬스 분류
+- `FAULT_EKF_INVALID`로서의 local 타임아웃 분류
+- `FAULT_EKF_INVALID`로서의 attitude 타임아웃 분류
+- mission-route 캐시 갱신
+- landing-route 캐시 갱신
+- bridge HK 캐시 갱신
+- service prototype 실행 경로
+- 초기화 성공
+- 구독 오류 시 초기화 실패
+- NOOP 명령
+- 카운터 리셋 명령
 
-## 19. Recommended Verification Procedure
+## 19. 검증 절차 권고
 
-### 19.1 Static verification
+### 19.1 정적 검증
 
-Review the following source locations before runtime test:
+런타임 테스트 전 다음 소스 위치를 검토한다.
 
-- initialization and subscriptions in [cfs_core_app.c](/C:/Users/sdh97/Documents/GitHub/cfs-telemetry-app/cfs_core_app/fsw/src/cfs_core_app.c:52)
-- message routing in [cfs_core_app_dispatch.c](/C:/Users/sdh97/Documents/GitHub/cfs-telemetry-app/cfs_core_app/fsw/src/cfs_core_app_dispatch.c:21)
-- cache updates in [cfs_core_app_utils.c](/C:/Users/sdh97/Documents/GitHub/cfs-telemetry-app/cfs_core_app/fsw/src/cfs_core_app_utils.c:91)
-- health classification in [cfs_core_app_utils.c](/C:/Users/sdh97/Documents/GitHub/cfs-telemetry-app/cfs_core_app/fsw/src/cfs_core_app_utils.c:154)
+- [cfs_core_app.c](/C:/Users/sdh97/Documents/GitHub/cfs-telemetry-app/cfs_core_app/fsw/src/cfs_core_app.c:52)의 초기화 및 구독
+- [cfs_core_app_dispatch.c](/C:/Users/sdh97/Documents/GitHub/cfs-telemetry-app/cfs_core_app/fsw/src/cfs_core_app_dispatch.c:21)의 메시지 라우팅
+- [cfs_core_app_utils.c](/C:/Users/sdh97/Documents/GitHub/cfs-telemetry-app/cfs_core_app/fsw/src/cfs_core_app_utils.c:91)의 캐시 갱신
+- [cfs_core_app_utils.c](/C:/Users/sdh97/Documents/GitHub/cfs-telemetry-app/cfs_core_app/fsw/src/cfs_core_app_utils.c:154)의 헬스 분류
 
-### 19.2 Runtime verification matrix
+### 19.2 런타임 검증 매트릭스
 
-| ID | Scenario | Stimulus | Expected output |
+| ID | 시나리오 | 자극 | 기대 출력 |
 | --- | --- | --- | --- |
-| CORE-RUN-001 | Nominal | bridge HK and all FC states arrive fresh with `Valid=1`, `Stale=0` | `SYSTEM_HEALTH_MID` reports `NOMINAL`, `FAULT_NONE`, `RecoveryRequested=0` |
-| CORE-RUN-002 | Bridge timeout | stop bridge HK updates for more than `3000 ms` | `SYSTEM_HEALTH_MID` reports `RECOVERY`, `FAULT_BRIDGE_TIMEOUT`, `RecoveryRequested=1` |
-| CORE-RUN-003 | GPS stale flag | deliver fresh bridge, attitude, local, EKF; set GPS `Stale=1` | `SYSTEM_HEALTH_MID` reports `DEGRADED`, `FAULT_GPS_STALE`, `RecoveryRequested=0` |
-| CORE-RUN-004 | GPS timeout | stop GPS updates for more than `3000 ms` while bridge and EKF-related inputs stay fresh | `SYSTEM_HEALTH_MID` reports `DEGRADED`, `FAULT_GPS_STALE` |
-| CORE-RUN-005 | EKF invalid flag | set EKF `Valid=0` with other inputs fresh | `SYSTEM_HEALTH_MID` reports `DEGRADED`, `FAULT_EKF_INVALID` |
-| CORE-RUN-006 | Local timeout | stop local-state updates for more than `2000 ms` while bridge, attitude, GPS, EKF stay fresh | `SYSTEM_HEALTH_MID` reports `DEGRADED`, `FAULT_LOCAL_TIMEOUT` |
-| CORE-RUN-007 | Attitude timeout | stop attitude-state updates for more than `2000 ms` while bridge, local, GPS, EKF stay fresh | `SYSTEM_HEALTH_MID` reports `DEGRADED`, `FAULT_ATTITUDE_TIMEOUT` |
-| CORE-RUN-008 | Priority check | force simultaneous bridge timeout and GPS stale | `SYSTEM_HEALTH_MID` reports `RECOVERY`, `FAULT_BRIDGE_TIMEOUT` |
-| CORE-RUN-009 | Recovery to nominal | after CORE-RUN-002 or CORE-RUN-003, resume fresh valid inputs | next health evaluation returns to `NOMINAL` |
-| CORE-RUN-010 | Startup warm-up | start app before first bridge HK | first health outputs may report `RECOVERY` until bridge HK arrives |
+| CORE-RUN-001 | 정상 | bridge HK와 모든 FC 상태가 `Valid=1`, `Stale=0`으로 신선하게 도착 | `SYSTEM_HEALTH_MID`가 `NOMINAL`, `FAULT_NONE`, `RecoveryRequested=0` 보고 |
+| CORE-RUN-002 | Bridge 타임아웃 | bridge HK 갱신을 `3000 ms` 이상 중단 | `SYSTEM_HEALTH_MID`가 `RECOVERY`, `FAULT_BRIDGE_TIMEOUT`, `RecoveryRequested=1` 보고 |
+| CORE-RUN-003 | GPS stale 플래그 | 신선한 bridge, attitude, local, EKF 전달; GPS `Stale=1` 설정 | `SYSTEM_HEALTH_MID`가 `DEGRADED`, `FAULT_GPS_STALE`, `RecoveryRequested=0` 보고 |
+| CORE-RUN-004 | GPS 타임아웃 | bridge와 EKF 관련 입력은 신선하게 유지하면서 GPS 갱신을 `3000 ms` 이상 중단 | `SYSTEM_HEALTH_MID`가 `DEGRADED`, `FAULT_GPS_STALE` 보고 |
+| CORE-RUN-005 | EKF invalid 플래그 | 다른 입력은 신선하게 유지하면서 EKF `Valid=0` 설정 | `SYSTEM_HEALTH_MID`가 `DEGRADED`, `FAULT_EKF_INVALID` 보고 |
+| CORE-RUN-006 | Local 타임아웃 | bridge, attitude, GPS, EKF는 신선하게 유지하면서 local-state 갱신을 `2000 ms` 이상 중단 | `SYSTEM_HEALTH_MID`가 `DEGRADED`, `FAULT_LOCAL_TIMEOUT` 보고 |
+| CORE-RUN-007 | Attitude 타임아웃 | bridge, local, GPS, EKF는 신선하게 유지하면서 attitude-state 갱신을 `2000 ms` 이상 중단 | `SYSTEM_HEALTH_MID`가 `DEGRADED`, `FAULT_ATTITUDE_TIMEOUT` 보고 |
+| CORE-RUN-008 | 우선순위 확인 | bridge 타임아웃과 GPS stale를 동시에 강제 | `SYSTEM_HEALTH_MID`가 `RECOVERY`, `FAULT_BRIDGE_TIMEOUT` 보고 |
+| CORE-RUN-009 | 복구 후 정상 | CORE-RUN-002 또는 CORE-RUN-003 이후 신선한 유효 입력 재개 | 다음 헬스 평가 시 `NOMINAL` 복귀 |
+| CORE-RUN-010 | 시작 워밍업 | 첫 번째 bridge HK 이전에 앱 시작 | bridge HK 도착 전까지 첫 헬스 출력에서 `RECOVERY` 보고 가능 |
 
-### 19.3 Log and telemetry observation points
+### 19.3 로그 및 텔레메트리 관찰 지점
 
-Observe:
+다음을 관찰한다.
 
-- `SYSTEM_HEALTH_MID` fields in the consumer path or telemetry display
-- HK fields in `CFS_CORE_APP_HK_TLM_MID`
-- EVS event `CFS_CORE_APP Initialized`
-- EVS route update log
-- EVS housekeeping log
+- 소비자 경로 또는 텔레메트리 표시의 `SYSTEM_HEALTH_MID` 필드
+- `CFS_CORE_APP_HK_TLM_MID`의 HK 필드
+- EVS 이벤트 `CFS_CORE_APP Initialized`
+- EVS 경로 갱신 로그
+- EVS HK 로그
 
-Do not rely on EVS alone for health-state transitions.
-Current health-state transitions are published as telemetry and are not emitted as dedicated EVS transition events.
+헬스 상태 전이에 EVS만 의존하지 않는다.
+현재 헬스 상태 전이는 텔레메트리로 게시되며, 전용 EVS 전이 이벤트로 발생하지 않는다.
 
-## 20. Known Gaps
+## 20. 알려진 미구현 항목
 
-The following behaviors are not implemented and must not be assumed during test or operations:
+다음 동작은 구현되어 있지 않으며 테스트 또는 운용 시 가정해서는 안 된다.
 
-- `FAILED` health output state
-- sequence-gap or duplicate detection
-- timestamp-base validation
-- active restart of bridge or peer apps
-- persistence of last health state across app restart
+- `FAILED` 헬스 출력 상태
+- 시퀀스 갭 또는 중복 감지
+- 타임스탬프 기준 유효성 검사
+- bridge 또는 peer 앱의 능동적 재시작
+- 앱 재시작 후 마지막 헬스 상태 지속
 
-The following were previously listed as gaps and are now implemented:
+다음 항목은 이전에 미구현으로 나열됐으나 현재 구현 완료되었다.
 
-- dedicated fault code for local timeout → `FAULT_LOCAL_TIMEOUT = 4` (implemented in A2)
-- dedicated fault code for attitude timeout → `FAULT_ATTITUDE_TIMEOUT = 5` (implemented in A2)
-- debounce or dwell-time logic during recovery → 10 s `NOMINAL_STABILITY_MS` stabilization timer (implemented in A4)
+- local 타임아웃 전용 오류 코드 → `FAULT_LOCAL_TIMEOUT = 4` (A2에서 구현)
+- attitude 타임아웃 전용 오류 코드 → `FAULT_ATTITUDE_TIMEOUT = 5` (A2에서 구현)
+- 복구 중 디바운스 또는 대기 시간 로직 → 10초 `NOMINAL_STABILITY_MS` 안정화 타이머 (A4에서 구현)
 
-## 21. System-Level Unimplemented Areas
+## 21. 시스템 수준 미구현 영역
 
-The following items were identified during Raspberry Pi runtime verification and are not fully implemented as an operational end-to-end capability.
+다음 항목은 Raspberry Pi 런타임 검증 중 확인된 것으로, 운용 end-to-end 기능으로 완전히 구현되어 있지 않다.
 
-### 21.1 LoRa uplink transport path
+### 21.1 LoRa uplink 전송 경로
 
 **[2026-05-27 실물 검증 완료]**
 
@@ -613,69 +613,69 @@ The following items were identified during Raspberry Pi runtime verification and
 - `--allow-seq-regression` 없이 운용 시 동일 sequence 번호 반복 전송은 거부된다. 실운용에서는 매 전송마다 sequence를 증가시켜야 한다.
 - Pi의 LoRa 모듈은 `/dev/ttyUSB0` (CP2102 USB-UART), FC UART는 `/dev/ttyAMA0`으로 분리 확인되었다.
 
-### 21.2 Runtime configuration application path
+### 21.2 런타임 구성 적용 경로
 
-`UPLINK_APP_CLASS_CONFIG` is a recognized command class, but no confirmed implementation was identified that applies configuration payloads to mission-app runtime parameters such as publish period, timeout values, or equivalent output-rate controls.
+`UPLINK_APP_CLASS_CONFIG`는 인식된 명령 클래스이나, 게시 주기, 타임아웃 값 등 mission-app 런타임 파라미터에 구성 페이로드를 실제로 적용하는 구현은 확인되지 않았다.
 
-Current state:
+현재 상태:
 
-- config-class acceptance exists at the command-validation level
-- no confirmed end-to-end implementation was identified that decodes a config payload and updates active settings in `cfs_core_app`, `telemetry_app`, or another mission app
+- config 클래스 수락은 명령 검증 수준에서 존재한다
+- config 페이로드를 디코딩하여 `cfs_core_app`, `telemetry_app` 또는 다른 mission 앱의 활성 설정을 갱신하는 end-to-end 구현은 확인되지 않았다
 
-Implication:
+의미:
 
-- route-update testing is currently supported
-- output-period or timeout-change testing is not currently supported as an implemented operational feature
+- route-update 테스트는 현재 지원된다
+- 출력 주기 또는 타임아웃 변경 테스트는 현재 구현된 운용 기능으로 지원되지 않는다
 
-### 21.3 LoRa downlink robustness
+### 21.3 LoRa downlink 안정성
 
-LoRa downlink output from `mavlink_bridge_app` is not yet robust under current runtime conditions.
+`mavlink_bridge_app`의 LoRa downlink 출력은 현재 런타임 조건에서 아직 안정적이지 않다.
 
-Observed runtime symptom:
+확인된 런타임 증상:
 
-- repeated `LoRa write failed errno=11, forcing reopen`
+- 반복적인 `LoRa write failed errno=11, forcing reopen`
 
-Relevant implementation behavior:
+관련 구현 동작:
 
-- the LoRa port is opened with `O_NONBLOCK`
-- a single `write()` failure triggers immediate close and reopen
-- transient backpressure is not distinguished from a persistent link fault
+- LoRa 포트는 `O_NONBLOCK`으로 열린다
+- 단일 `write()` 실패 시 즉시 닫기 및 재열기가 트리거된다
+- 일시적 backpressure와 지속적 링크 오류가 구별되지 않는다
 
-Implication:
+의미:
 
-- LoRa downlink path exists and attempts transmission
-- LoRa downlink path is not yet stable enough to be treated as fully operational
+- LoRa downlink 경로는 존재하며 전송을 시도한다
+- LoRa downlink 경로는 완전히 운용 가능한 것으로 취급하기에 아직 충분히 안정적이지 않다
 
-### 21.4 Health-state observability on Raspberry Pi logs
+### 21.4 Raspberry Pi 로그에서의 헬스 상태 가시성
 
-`cfs_core_app` health-state transitions are published through `SYSTEM_HEALTH_MID`, but are not emitted as dedicated EVS transition logs.
+`cfs_core_app` 헬스 상태 전이는 `SYSTEM_HEALTH_MID`를 통해 게시되나, 전용 EVS 전이 로그로는 발생하지 않는다.
 
-Current state:
+현재 상태:
 
-- Raspberry Pi runtime logs show input activity and startup events
-- Raspberry Pi runtime logs do not directly show `NOMINAL`, `DEGRADED`, or `RECOVERY` transitions from `cfs_core_app`
+- Raspberry Pi 런타임 로그에는 입력 활동과 시작 이벤트가 표시된다
+- Raspberry Pi 런타임 로그에는 `cfs_core_app`의 `NOMINAL`, `DEGRADED`, `RECOVERY` 전이가 직접 표시되지 않는다
 
-Implication:
+의미:
 
-- health-state verification currently depends on telemetry consumers such as Open MCT or another subscriber to `SYSTEM_HEALTH_MID`
-- direct operator confirmation from EVS logs alone is not currently sufficient
+- 헬스 상태 검증은 현재 Open MCT 또는 `SYSTEM_HEALTH_MID`의 다른 구독자와 같은 텔레메트리 소비자에 의존한다
+- EVS 로그만으로는 현재 운용자의 직접 확인이 충분하지 않다
 
-### 21.5 Fault-detail granularity
+### 21.5 오류 세부 정보 세밀도
 
-Some fault conditions are intentionally or unintentionally collapsed into shared outputs.
+일부 오류 조건은 의도적으로 또는 비의도적으로 공통 출력으로 통합된다.
 
-Current state:
+현재 상태:
 
 - `local timeout`
 - `attitude timeout`
 - `ekf invalid`
 
-all map to:
+모두 다음으로 매핑된다.
 
 - `HealthState = DEGRADED`
 - `FaultCode = EKF_INVALID`
 
-Implication:
+의미:
 
-- current output is sufficient to detect degraded estimator-related health
-- current output is not sufficient to distinguish the exact degraded source without additional telemetry correlation
+- 현재 출력은 추정기 관련 헬스 저하 감지에 충분하다
+- 현재 출력은 추가 텔레메트리 상관 없이 정확한 저하 원인을 구별하기에 충분하지 않다

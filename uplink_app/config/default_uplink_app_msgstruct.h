@@ -91,6 +91,28 @@ typedef struct
 typedef struct
 {
     CFE_MSG_TelemetryHeader_t TelemetryHeader;
+    uint32                    Seq;
+    uint32                    TimestampMs;
+    uint16                    SourceSequence;
+    uint8                     PayloadLength;
+    uint8                     Reserved;
+    uint8                     Payload[UPLINK_APP_MAX_PAYLOAD_LENGTH];
+} UPLINK_APP_ModeCmdTlm_t;
+
+typedef struct
+{
+    CFE_MSG_TelemetryHeader_t TelemetryHeader;
+    uint32                    Seq;
+    uint32                    TimestampMs;
+    uint16                    SourceSequence;
+    uint8                     PayloadLength;
+    uint8                     Reserved;
+    uint8                     Payload[UPLINK_APP_MAX_PAYLOAD_LENGTH];
+} UPLINK_APP_DiagnosticCmdTlm_t;
+
+typedef struct
+{
+    CFE_MSG_TelemetryHeader_t TelemetryHeader;
     uint8                     CommandCounter;
     uint8                     CommandErrorCounter;
     uint16                    Reserved;

@@ -9,6 +9,8 @@
 #define RECOVERY_CMD_MID      0x190C
 #define VIEWPOINT_CMD_MID     0x190D
 #define CONFIG_CMD_MID        0x190E
+#define MODE_CMD_MID          0x190F
+#define DIAGNOSTIC_CMD_MID    0x1910
 
 #endif
 

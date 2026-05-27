@@ -168,6 +168,38 @@ void UPLINK_APP_ProcessUplink(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
             return;
         }
     }
+    else if (Cmd->CommandClass == UPLINK_APP_CLASS_MODE)
+    {
+        if (!UPLINK_APP_ForwardModeCommand(Cmd))
+        {
+            UPLINK_APP_Data.ErrCounter++;
+            UPLINK_APP_Data.RoutingFailureCount++;
+            UPLINK_APP_Data.LastCommandResult = UPLINK_APP_RESULT_FAILED;
+            UPLINK_APP_Data.LastRouteTarget   = (uint8)RouteTarget;
+            UPLINK_APP_Data.LinkState         = UPLINK_APP_LINK_DEGRADED;
+            CFE_EVS_SendEvent(UPLINK_APP_COMMAND_ERR_EID, CFE_EVS_EventType_ERROR,
+                              "UPLINK_APP: failed to forward mode command seq=%u",
+                              (unsigned int)Cmd->Sequence);
+            UPLINK_APP_UpdateStatusTelemetry(0);
+            return;
+        }
+    }
+    else if (Cmd->CommandClass == UPLINK_APP_CLASS_DIAGNOSTIC)
+    {
+        if (!UPLINK_APP_ForwardDiagnosticCommand(Cmd))
+        {
+            UPLINK_APP_Data.ErrCounter++;
+            UPLINK_APP_Data.RoutingFailureCount++;
+            UPLINK_APP_Data.LastCommandResult = UPLINK_APP_RESULT_FAILED;
+            UPLINK_APP_Data.LastRouteTarget   = (uint8)RouteTarget;
+            UPLINK_APP_Data.LinkState         = UPLINK_APP_LINK_DEGRADED;
+            CFE_EVS_SendEvent(UPLINK_APP_COMMAND_ERR_EID, CFE_EVS_EventType_ERROR,
+                              "UPLINK_APP: failed to forward diagnostic command seq=%u",
+                              (unsigned int)Cmd->Sequence);
+            UPLINK_APP_UpdateStatusTelemetry(0);
+            return;
+        }
+    }
 
     UPLINK_APP_Data.CmdCounter++;
     UPLINK_APP_Data.AcceptedCount++;
