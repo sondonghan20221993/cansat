@@ -562,19 +562,25 @@ The following items were identified during Raspberry Pi runtime verification and
 
 ### 21.1 LoRa uplink transport path
 
-`uplink_app` command validation and route-update routing were verified through the UDP local test path.
-However, a physical `PC LoRa -> Raspberry Pi LoRa -> uplink_app` transport path is not yet implemented as a confirmed runtime path.
+**[2026-05-27 실물 검증 완료]**
 
-Current state:
+`PC LoRa (COM7) → 무선 → Pi /dev/ttyUSB0 → lora_uplink_bridge.py → uplink_app UDP:1234 → cfs_core_app` 경로가 실물에서 end-to-end 확인되었다.
 
-- `uplink_app` accepts `PROCESS_UPLINK` command packets delivered on `UPLINK_APP_CMD_MID`
-- `tools/uplink_route_update_sender.py` injects those packets through UDP port `1234`
-- no repository-confirmed runtime component was identified that reads LoRa uplink bytes and converts them into `PROCESS_UPLINK` command packets for `uplink_app`
+검증 시 발견 및 수정 사항:
 
-Implication:
+- `lora_uplink_bridge.py`의 `MAX_PAYLOAD_LENGTH`가 `192`로 설정되어 있어 `uplink_app`이 기대하는 `212` bytes 대신 `208` bytes 패킷을 생성했다.
+- `uplink_route_update_sender.py`의 `UPLINK_APP_MAX_PAYLOAD_LENGTH = 196`에 맞춰 `MAX_PAYLOAD_LENGTH`를 `196`으로 수정했다 (commit 7a63a98).
 
-- current uplink verification covers app-internal validation and routing
-- current uplink verification does not cover physical LoRa uplink transport
+확인된 정상 동작:
+
+- `lora_uplink_bridge.py --serial-path /dev/ttyUSB0 --allow-seq-regression` 실행 후 `serial open: /dev/ttyUSB0` 출력
+- PC에서 `route-good` 전송 시 Pi에서 `forwarded uplink frame: class=2 seq=1 flags=0 payload_len=28` 출력
+- cFS 로그에서 `UPLINK_APP: routed uplink class=2 seq=1 target=1 payload_len=28` 및 `CFS_CORE_APP: route updated type=1 version=1 count=2 src_seq=1` 확인
+
+운용 시 주의사항:
+
+- `--allow-seq-regression` 없이 운용 시 동일 sequence 번호 반복 전송은 거부된다. 실운용에서는 매 전송마다 sequence를 증가시켜야 한다.
+- Pi의 LoRa 모듈은 `/dev/ttyUSB0` (CP2102 USB-UART), FC UART는 `/dev/ttyAMA0`으로 분리 확인되었다.
 
 ### 21.2 Runtime configuration application path
 
