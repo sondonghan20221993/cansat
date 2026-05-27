@@ -27,9 +27,15 @@ typedef struct
     uint32                 RoutingFailureCount;
     uint32                 LastAcceptedSequence;
     uint16                 LastCommandCode;
+    uint16                 LastRxSequence;
     uint8                  LastCommandResult;
     uint8                  LastRouteTarget;
     uint8                  LinkState;
+    uint8                  Valid;
+    uint8                  ActiveTransportId;
+    uint8                  ConfigPendingState;
+    uint8                  LastConfigResult;
+    uint8                  LastRollbackReason;
     CFE_SB_PipeId_t        CommandPipe;
     UPLINK_APP_HkTlm_t     HkTlm;
     UPLINK_APP_StatusTlm_t StatusTlm;

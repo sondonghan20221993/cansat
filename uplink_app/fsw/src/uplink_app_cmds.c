@@ -45,8 +45,9 @@ void UPLINK_APP_ProcessUplink(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
     TimeNow = CFE_TIME_GetTime();
     TimeMs  = ((uint64)TimeNow.Seconds * 1000ULL) + ((uint64)TimeNow.Subseconds * 1000ULL / 0x100000000ULL);
 
-    UPLINK_APP_Data.LastRxTimeMs    = (uint32)TimeMs;
-    UPLINK_APP_Data.LastCommandCode = Cmd->CommandClass;
+    UPLINK_APP_Data.LastRxTimeMs     = (uint32)TimeMs;
+    UPLINK_APP_Data.LastCommandCode  = Cmd->CommandClass;
+    UPLINK_APP_Data.LastRxSequence   = Cmd->Sequence;
 
     if (!UPLINK_APP_IsSequenceAccepted(Cmd->Sequence))
     {

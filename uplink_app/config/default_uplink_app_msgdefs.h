@@ -49,5 +49,13 @@ typedef enum
     UPLINK_APP_ROUTE_DOWNLINK  = 2
 } UPLINK_APP_RouteTarget_t;
 
+typedef enum
+{
+    UPLINK_APP_CONFIG_IDLE       = 0,
+    UPLINK_APP_CONFIG_PENDING    = 1,
+    UPLINK_APP_CONFIG_VALIDATING = 2,
+    UPLINK_APP_CONFIG_REJECTED   = 3
+} UPLINK_APP_ConfigPendingState_t;
+
 #endif
 

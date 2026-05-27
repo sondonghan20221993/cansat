@@ -77,10 +77,15 @@ typedef struct
     uint32                    RejectedCount;
     uint32                    RoutingFailureCount;
     uint16                    LastCommandCode;
+    uint16                    LastCommandSequence;
     uint8                     LastCommandResult;
     uint8                     LinkState;
+    uint8                     Valid;
+    uint8                     ActiveTransportId;
     uint8                     LastRouteTarget;
-    uint8                     Reserved;
+    uint8                     ConfigPendingState;
+    uint8                     LastConfigResult;
+    uint8                     LastRollbackReason;
 } UPLINK_APP_StatusTlm_t;
 
 #endif

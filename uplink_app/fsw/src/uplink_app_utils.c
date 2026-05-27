@@ -38,9 +38,15 @@ void UPLINK_APP_UpdateStatusTelemetry(uint32 NowMs)
     Tlm->RejectedCount       = UPLINK_APP_Data.RejectedCount;
     Tlm->RoutingFailureCount = UPLINK_APP_Data.RoutingFailureCount;
     Tlm->LastCommandCode     = UPLINK_APP_Data.LastCommandCode;
+    Tlm->LastCommandSequence = UPLINK_APP_Data.LastRxSequence;
     Tlm->LastCommandResult   = UPLINK_APP_Data.LastCommandResult;
     Tlm->LinkState           = UPLINK_APP_Data.LinkState;
+    Tlm->Valid               = UPLINK_APP_Data.Valid;
+    Tlm->ActiveTransportId   = UPLINK_APP_Data.ActiveTransportId;
     Tlm->LastRouteTarget     = UPLINK_APP_Data.LastRouteTarget;
+    Tlm->ConfigPendingState  = UPLINK_APP_Data.ConfigPendingState;
+    Tlm->LastConfigResult    = UPLINK_APP_Data.LastConfigResult;
+    Tlm->LastRollbackReason  = UPLINK_APP_Data.LastRollbackReason;
 
     CFE_SB_TimeStampMsg(CFE_MSG_PTR(Tlm->TelemetryHeader));
     CFE_SB_TransmitMsg(CFE_MSG_PTR(Tlm->TelemetryHeader), true);

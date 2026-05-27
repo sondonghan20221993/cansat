@@ -167,9 +167,15 @@ void Test_UPLINK_APP_UpdateStatusTelemetry(void)
     UPLINK_APP_Data.RejectedCount       = 1;
     UPLINK_APP_Data.RoutingFailureCount = 3;
     UPLINK_APP_Data.LastCommandCode     = UPLINK_APP_CLASS_ROUTE_UPDATE;
+    UPLINK_APP_Data.LastRxSequence      = 7;
     UPLINK_APP_Data.LastCommandResult   = UPLINK_APP_RESULT_ROUTED;
     UPLINK_APP_Data.LinkState           = UPLINK_APP_LINK_NOMINAL;
+    UPLINK_APP_Data.Valid               = 1;
+    UPLINK_APP_Data.ActiveTransportId   = 0;
     UPLINK_APP_Data.LastRouteTarget     = UPLINK_APP_ROUTE_CORE;
+    UPLINK_APP_Data.ConfigPendingState  = UPLINK_APP_CONFIG_IDLE;
+    UPLINK_APP_Data.LastConfigResult    = 0;
+    UPLINK_APP_Data.LastRollbackReason  = 0;
 
     UPLINK_APP_UpdateStatusTelemetry(555);
 
@@ -180,9 +186,15 @@ void Test_UPLINK_APP_UpdateStatusTelemetry(void)
     UtAssert_INT32_EQ(UPLINK_APP_Data.StatusTlm.RejectedCount, 1);
     UtAssert_INT32_EQ(UPLINK_APP_Data.StatusTlm.RoutingFailureCount, 3);
     UtAssert_INT32_EQ(UPLINK_APP_Data.StatusTlm.LastCommandCode, UPLINK_APP_CLASS_ROUTE_UPDATE);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.StatusTlm.LastCommandSequence, 7);
     UtAssert_INT32_EQ(UPLINK_APP_Data.StatusTlm.LastCommandResult, UPLINK_APP_RESULT_ROUTED);
     UtAssert_INT32_EQ(UPLINK_APP_Data.StatusTlm.LinkState, UPLINK_APP_LINK_NOMINAL);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.StatusTlm.Valid, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.StatusTlm.ActiveTransportId, 0);
     UtAssert_INT32_EQ(UPLINK_APP_Data.StatusTlm.LastRouteTarget, UPLINK_APP_ROUTE_CORE);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.StatusTlm.ConfigPendingState, UPLINK_APP_CONFIG_IDLE);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.StatusTlm.LastConfigResult, 0);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.StatusTlm.LastRollbackReason, 0);
 }
 
 void UtTest_Setup(void)
