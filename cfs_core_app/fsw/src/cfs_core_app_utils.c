@@ -247,6 +247,30 @@ void CFS_CORE_APP_UpdateHealth(uint32 NowMs, bool ForcePublish)
         Tlm->RecoveryRequested = 0;
     }
 
+    Tlm->AttitudeStatus.Valid     = CFS_CORE_APP_Data.AttitudeState.Valid;
+    Tlm->AttitudeStatus.Stale     = CFS_CORE_APP_Data.AttitudeState.Stale;
+    Tlm->AttitudeStatus.ErrorCode = CFS_CORE_APP_Data.AttitudeState.ErrorCode;
+    Tlm->AttitudeStatus.TimedOut  = (uint8)AttitudeTimedOut;
+
+    Tlm->LocalStatus.Valid     = CFS_CORE_APP_Data.LocalState.Valid;
+    Tlm->LocalStatus.Stale     = CFS_CORE_APP_Data.LocalState.Stale;
+    Tlm->LocalStatus.ErrorCode = CFS_CORE_APP_Data.LocalState.ErrorCode;
+    Tlm->LocalStatus.TimedOut  = (uint8)LocalTimedOut;
+
+    Tlm->GpsStatus.Valid     = CFS_CORE_APP_Data.GpsState.Valid;
+    Tlm->GpsStatus.Stale     = CFS_CORE_APP_Data.GpsState.Stale;
+    Tlm->GpsStatus.ErrorCode = CFS_CORE_APP_Data.GpsState.ErrorCode;
+    Tlm->GpsStatus.TimedOut  = (uint8)GpsUnavailable;
+
+    Tlm->EkfStatus.Valid     = CFS_CORE_APP_Data.EkfState.Valid;
+    Tlm->EkfStatus.Stale     = CFS_CORE_APP_Data.EkfState.Stale;
+    Tlm->EkfStatus.ErrorCode = CFS_CORE_APP_Data.EkfState.ErrorCode;
+    Tlm->EkfStatus.TimedOut  = (uint8)EkfTimedOut;
+
+    Tlm->BridgeStatus.LinkState  = CFS_CORE_APP_Data.BridgeState.LinkState;
+    Tlm->BridgeStatus.ErrorCode  = CFS_CORE_APP_Data.BridgeState.LastErrorCode;
+    Tlm->BridgeStatus.TimedOut   = (uint8)BridgeTimedOut;
+
     if (Tlm->HealthState != CFS_CORE_APP_Data.LastHealthState)
     {
         CFE_EVS_SendEvent(CFS_CORE_APP_HEALTH_TRANSITION_EID, CFE_EVS_EventType_INFORMATION,
