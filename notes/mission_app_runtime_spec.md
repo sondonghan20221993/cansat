@@ -655,6 +655,35 @@ window 기반 제한과 카운터 재설정의 상호작용 규칙:
 - `last_config_result`.
 - `last_config_error`.
 
+### 13.1 pending/active 버퍼 소유 앱
+
+다음 표는 pending config 버퍼를 자체적으로 소유하는 앱을 고정한다.
+버퍼를 소유한다는 것은 해당 앱이 `pending_config`, `active_config`, `last_config_result` 상태를 자체 데이터 구조에 선언하고 유지할 책임이 있음을 의미한다.
+
+| 앱 | 버퍼 소유 | 근거 |
+| --- | --- | --- |
+| `cfs_core_app` | **예** | 헬스 분류 임계값, 안정화 타이머, publish 주기 등 런타임 변경 가능 파라미터를 보유한다 |
+| `mavlink_bridge_app` | **예** | FC 스트림 요청 파라미터, 재시도 한도, 타임아웃 임계값 등 런타임 변경 가능 파라미터를 보유한다 |
+| `downlink_app` | **예** | 전송 주기, 전송 타임아웃, 활성 MID 목록 등 런타임 변경 가능 파라미터를 보유한다 |
+| `uplink_app` | **제한적** | `uplink_app` 자체 파라미터(최대 payload 길이, 프로토콜 버전 허용 범위 등)가 필요한 경우에만 로컬 버퍼를 유지한다. 다른 앱 대상 config는 해당 앱 MID로 전달만 수행하며 버퍼를 소유하지 않는다 |
+
+`uplink_app`은 config 명령을 수신하면 `config_scope` 필드로 대상 앱을 판별하고, 대상 앱의 `CONFIG_CMD_MID`로 검증된 payload를 전달한다. 각 target 앱이 자신의 pending 버퍼에서 최종 검증 및 적용을 수행한다.
+
+### 13.2 앱별 필수 상태 변수
+
+pending/active 버퍼를 소유하는 각 앱은 최소한 다음 상태 변수를 선언해야 한다.
+
+| 변수 | 형식 | 의미 |
+| --- | --- | --- |
+| `ConfigPendingState` | `uint8` | `IDLE=0`, `PENDING=1`, `REJECTED=2` |
+| `LastConfigResult` | `uint8` | `0=성공`, `1=실패` (최근 활성화 결과) |
+| `LastRollbackReason` | `uint8` | 롤백 발생 시 원인 코드, 없으면 `0` |
+| `ConfigGeneration` | `uint32` | 활성화 성공마다 단조 증가 |
+
+`previous_config`(롤백 버퍼)와 `active_config_version` / `pending_config_version`은 각 앱의 파라미터 스키마 확정 이후 앱별로 추가한다.
+
+### 13.3 활성화 경계
+
 활성화 경계는 앱마다 다릅니다.
 
 | 앱 | 활성화 경계 |
