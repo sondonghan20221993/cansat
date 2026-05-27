@@ -24,6 +24,15 @@ void UPLINK_APP_TaskPipe(CFE_SB_Buffer_t *SBBufPtr)
         return;
     }
 
+    if (CFE_SB_MsgIdToValue(MsgId) == SYSTEM_HEALTH_MID_VALUE)
+    {
+        const UPLINK_APP_SysHealthMirror_t *HealthMsg =
+            (const UPLINK_APP_SysHealthMirror_t *)MsgPtr;
+        UPLINK_APP_Data.CfsHealthState    = HealthMsg->HealthState;
+        UPLINK_APP_Data.CfsHealthReceived = 1U;
+        return;
+    }
+
     if (CFE_SB_MsgIdToValue(MsgId) != UPLINK_APP_CMD_MID_VALUE)
     {
         UPLINK_APP_Data.ErrCounter++;

@@ -90,6 +90,40 @@ void UPLINK_APP_ProcessUplink(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
         return;
     }
 
+    if (UPLINK_APP_Data.CfsHealthReceived)
+    {
+        uint8 State   = UPLINK_APP_Data.CfsHealthState;
+        bool  Blocked = false;
+
+        if (State == 3U) /* FAILED: block all */
+        {
+            Blocked = true;
+        }
+        else if (State == 2U) /* RECOVERY: only DIAGNOSTIC allowed */
+        {
+            Blocked = (Cmd->CommandClass != UPLINK_APP_CLASS_DIAGNOSTIC);
+        }
+        else if (State == 1U) /* DEGRADED: block ROUTE_UPDATE + VIEWPOINT */
+        {
+            Blocked = (Cmd->CommandClass == UPLINK_APP_CLASS_ROUTE_UPDATE ||
+                       Cmd->CommandClass == UPLINK_APP_CLASS_VIEWPOINT);
+        }
+
+        if (Blocked)
+        {
+            UPLINK_APP_Data.ErrCounter++;
+            UPLINK_APP_Data.RejectedCount++;
+            UPLINK_APP_Data.LastCommandResult = UPLINK_APP_RESULT_REJECT_STATE;
+            UPLINK_APP_Data.LinkState         = UPLINK_APP_LINK_DEGRADED;
+            CFE_EVS_SendEvent(UPLINK_APP_STATE_BLOCK_EID, CFE_EVS_EventType_ERROR,
+                              "UPLINK_APP: command blocked by health state=%u class=%u seq=%u",
+                              (unsigned int)State, (unsigned int)Cmd->CommandClass,
+                              (unsigned int)Cmd->Sequence);
+            UPLINK_APP_UpdateStatusTelemetry(0);
+            return;
+        }
+    }
+
     if (Cmd->CommandClass == UPLINK_APP_CLASS_ROUTE_UPDATE)
     {
         if (!UPLINK_APP_ParseRouteUpdatePayload(Cmd, &RoutePayload))

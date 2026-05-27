@@ -36,6 +36,8 @@ typedef struct
     uint8                  ConfigPendingState;
     uint8                  LastConfigResult;
     uint8                  LastRollbackReason;
+    uint8                  CfsHealthState;
+    uint8                  CfsHealthReceived;
     CFE_SB_PipeId_t        CommandPipe;
     UPLINK_APP_HkTlm_t     HkTlm;
     UPLINK_APP_StatusTlm_t StatusTlm;
