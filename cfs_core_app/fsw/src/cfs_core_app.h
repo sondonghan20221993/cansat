@@ -47,7 +47,8 @@ typedef struct
 {
     uint8                       CmdCounter;
     uint8                       ErrCounter;
-    uint16                      Reserved;
+    uint8                       LastHealthState;
+    uint8                       Reserved;
     uint32                      RunStatus;
     uint32                      SequenceCounter;
     uint32                      PublishCount;

@@ -233,6 +233,16 @@ void CFS_CORE_APP_UpdateHealth(uint32 NowMs, bool ForcePublish)
         Tlm->RecoveryRequested = 0;
     }
 
+    if (Tlm->HealthState != CFS_CORE_APP_Data.LastHealthState)
+    {
+        CFE_EVS_SendEvent(CFS_CORE_APP_HEALTH_TRANSITION_EID, CFE_EVS_EventType_INFORMATION,
+                          "CFS_CORE_APP: health %u->%u fault=%u",
+                          (unsigned int)CFS_CORE_APP_Data.LastHealthState,
+                          (unsigned int)Tlm->HealthState,
+                          (unsigned int)Tlm->FaultCode);
+        CFS_CORE_APP_Data.LastHealthState = Tlm->HealthState;
+    }
+
     CFE_SB_TimeStampMsg(CFE_MSG_PTR(Tlm->TelemetryHeader));
     CFE_SB_TransmitMsg(CFE_MSG_PTR(Tlm->TelemetryHeader), true);
 }

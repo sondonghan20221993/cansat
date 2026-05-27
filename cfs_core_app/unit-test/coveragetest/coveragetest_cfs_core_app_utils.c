@@ -276,6 +276,48 @@ void Test_CFS_CORE_APP_ProcessStateMessage_BridgeHk(void)
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.BridgeState.LastErrorCode, 9);
 }
 
+void Test_CFS_CORE_APP_UpdateHealth_HealthTransition(void)
+{
+    UT_CheckEvent_t EventTest;
+    uint32          NowMs = 5000;
+
+    CFS_CORE_APP_Data.AttitudeState.Received        = true;
+    CFS_CORE_APP_Data.AttitudeState.TimestampMs     = 4900;
+    CFS_CORE_APP_Data.AttitudeState.Valid           = 1;
+    CFS_CORE_APP_Data.LocalState.Received           = true;
+    CFS_CORE_APP_Data.LocalState.TimestampMs        = 4900;
+    CFS_CORE_APP_Data.LocalState.Valid              = 1;
+    CFS_CORE_APP_Data.GpsState.Received             = true;
+    CFS_CORE_APP_Data.GpsState.TimestampMs          = 4800;
+    CFS_CORE_APP_Data.GpsState.Valid                = 1;
+    CFS_CORE_APP_Data.EkfState.Received             = true;
+    CFS_CORE_APP_Data.EkfState.TimestampMs          = 4900;
+    CFS_CORE_APP_Data.EkfState.Valid                = 1;
+    CFS_CORE_APP_Data.BridgeState.Received          = true;
+    CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 4900;
+
+    /* NOMINAL==0 equals initial LastHealthState==0: no transition event */
+    UT_CHECKEVENT_SETUP(&EventTest, CFS_CORE_APP_HEALTH_TRANSITION_EID, NULL);
+    CFS_CORE_APP_UpdateHealth(NowMs, true);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_NOMINAL);
+    UtAssert_INT32_EQ(EventTest.MatchCount, 0);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.LastHealthState, CFS_CORE_APP_HEALTH_NOMINAL);
+
+    /* NOMINAL->DEGRADED: transition event fires once */
+    CFS_CORE_APP_Data.GpsState.Stale = 1;
+    UT_CHECKEVENT_SETUP(&EventTest, CFS_CORE_APP_HEALTH_TRANSITION_EID, NULL);
+    CFS_CORE_APP_UpdateHealth(NowMs + 100, true);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_DEGRADED);
+    UtAssert_INT32_EQ(EventTest.MatchCount, 1);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.LastHealthState, CFS_CORE_APP_HEALTH_DEGRADED);
+
+    /* Still DEGRADED: no additional transition event */
+    UT_CHECKEVENT_SETUP(&EventTest, CFS_CORE_APP_HEALTH_TRANSITION_EID, NULL);
+    CFS_CORE_APP_UpdateHealth(NowMs + 200, true);
+    UtAssert_INT32_EQ(EventTest.MatchCount, 0);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.LastHealthState, CFS_CORE_APP_HEALTH_DEGRADED);
+}
+
 void Test_CFS_CORE_APP_ServicePrototype(void)
 {
     CFS_CORE_APP_Data.LastPublishTimeMs = 1000;
@@ -294,6 +336,7 @@ void UtTest_Setup(void)
     ADD_TEST(CFS_CORE_APP_UpdateHealth_EkfInvalid);
     ADD_TEST(CFS_CORE_APP_UpdateHealth_LocalTimeout);
     ADD_TEST(CFS_CORE_APP_UpdateHealth_AttitudeTimeout);
+    ADD_TEST(CFS_CORE_APP_UpdateHealth_HealthTransition);
     ADD_TEST(CFS_CORE_APP_ProcessStateMessage_RouteUpdate);
     ADD_TEST(CFS_CORE_APP_ProcessStateMessage_LandingRouteUpdate);
     ADD_TEST(CFS_CORE_APP_ProcessStateMessage_BridgeHk);
