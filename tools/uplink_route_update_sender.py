@@ -3,7 +3,13 @@ import argparse
 import socket
 import struct
 import sys
+import time
 from typing import Iterable, List, Sequence, Tuple
+
+try:
+    import serial
+except ModuleNotFoundError:
+    serial = None
 
 
 UPLINK_APP_CMD_MID = 0x18D0
@@ -111,6 +117,15 @@ def send_packet(packet: bytes, host: str, port: int) -> None:
         sock.sendto(packet, (host, port))
 
 
+def send_lora_serial(frame_line: str, serial_path: str, baudrate: int, write_delay_s: float = 0.05) -> None:
+    if serial is None:
+        raise RuntimeError("pyserial is required for lora-serial transport: pip install pyserial")
+    with serial.Serial(serial_path, baudrate, timeout=2.0) as port:
+        time.sleep(write_delay_s)
+        port.write((frame_line + "\n").encode("ascii"))
+        port.flush()
+
+
 def pretty_waypoints(waypoints: Iterable[Tuple[float, float, float]]) -> str:
     return ", ".join(f"({x:.2f}, {y:.2f}, {z:.2f})" for x, y, z in waypoints)
 
@@ -142,9 +157,20 @@ def main() -> int:
     parser.add_argument("--route-version", type=int, default=1)
     parser.add_argument(
         "--transport",
-        choices=["udp", "lora-text"],
+        choices=["udp", "lora-text", "lora-serial"],
         default="udp",
-        help="udp sends directly to cFS, lora-text prints the LoRa serial frame for the bridge",
+        help="udp sends directly to cFS, lora-text prints the LoRa frame, lora-serial sends via serial port",
+    )
+    parser.add_argument(
+        "--serial-path",
+        default=None,
+        help="serial port path for lora-serial transport (e.g. COM3 or /dev/ttyUSB0)",
+    )
+    parser.add_argument(
+        "--baudrate",
+        type=int,
+        default=57600,
+        help="serial baudrate for lora-serial transport (default: 57600)",
     )
     args = parser.parse_args()
 
@@ -161,8 +187,17 @@ def main() -> int:
     if args.transport == "udp":
         packet = build_command_packet(UPLINK_APP_PROCESS_UPLINK_CC, proxy_payload)
         send_packet(packet, args.host, args.port)
-    else:
+    elif args.transport == "lora-text":
         print(build_lora_uplink_frame(args.sequence, route_payload))
+    else:
+        if not args.serial_path:
+            print("error: --serial-path is required for lora-serial transport", file=sys.stderr)
+            return 1
+        frame_line = build_lora_uplink_frame(args.sequence, route_payload)
+        print(f"sending via serial {args.serial_path} at {args.baudrate} baud")
+        print(f"frame: {frame_line}")
+        send_lora_serial(frame_line, args.serial_path, args.baudrate)
+        print("sent")
     return 0
 
 
