@@ -158,7 +158,7 @@ MID 계약을 정의했습니다. 앱은 다른 앱이 소유한 앱을 직접 �
 | `SYSTEM_HEALTH_MID` (`0x1904`) | `cfs_core_app` | `cfs_core_app` | `downlink_app`, 운영자 모니터링 소비자 | `CFS_CORE_APP_CMD_MID` (`0x18C0`) | 1 Hz periodic + 상태 전이 이벤트 | Section 6.5 | 필수 입력(IMU/GPS/EKF/BRIDGE) freshness/유효성 규칙 통과 | 입력 부족 시 `CFS_DEGRADED` 또는 `CFS_RECOVERY` 게시, FaultCode로 원인 구분 | `CFE_TIME` mission elapsed ms | 생산자 로컬 단조 증가, wrap 허용 |
 | `DOWNLINK_STATUS_MID` (`0x1905`) | `downlink_app` (`lora_fc_downlink_app`) | `downlink_app` | `cfs_core_app`, 운영자 모니터링 소비자 | `DOWNLINK_APP_CMD_MID` (`0x18B0`), `DOWNLINK_APP_SEND_HK_MID` (`0x18B1`) | 1 Hz periodic + 송신 결과 이벤트 | Section 6.6 | downlink 처리 루프가 상태 필드와 카운터를 최신으로 유지 | 송신 실패 시 오류 카운터 증가, `DEGRADED` 상태와 마지막 오류 코드 게시 | `CFE_TIME` mission elapsed ms | 생산자 로컬 단조 증가, wrap 허용 |
 | `UPLINK_STATUS_MID` (`0x190A`) | `uplink_app` | `uplink_app` | `cfs_core_app`, 운영자 모니터링 소비자 | `UPLINK_APP_CMD_MID` (`0x18D0`) | 1 Hz periodic + 명령 처리 결과 이벤트 | Section 18.7 | 프레임 검증/라우팅 처리 결과를 상태 필드에 반영 | CRC/길이/인증/시퀀스 실패 시 reject 카운터와 오류 코드 게시 | `CFE_TIME` mission elapsed ms | 수락된 uplink command sequence는 단조 증가, 회귀/중복 거부 |
-| `ROUTE_UPDATE_MID` (`0x190B`) | `cfs_core_app` | `uplink_app`(입력 생산), `cfs_core_app`(cache 반영 상태 생산) | `cfs_core_app`(입력 소비), 임무 경로 소비자 앱 | `UPLINK_APP_CMD_MID` (`0x18D0`) ingress, 내부 route 반영 인터페이스 | 이벤트 기반(유효 route update 수락 시) | Section 18.5.2 route payload + Section 6.5 연계 상태 | waypoint 개수, 필드 범위, route version/sequence, CRC/길이 검증 통과 | 검증 실패 시 `uplink_app`에서 거부, `UPLINK_STATUS_MID`에 원인 게시, 기존 active route 유지 | `CFE_TIME` mission elapsed ms | route update sequence는 소스별 단조 증가, 회귀/중복은 거부 |
+| `ROUTE_UPDATE_MID` (`0x190B`) | `cfs_core_app` | `uplink_app`(입력 생산), `cfs_core_app`(cache 반영 상태 생산) | `cfs_core_app`(입력 소비), 임무 경로 소비자 앱 | `UPLINK_APP_CMD_MID` (`0x18D0`) ingress, 내부 route 반영 인터페이스 | 이벤트 기반(유효 route update 수락 시) | Section 18.5.2 route payload + Section 6.5 연계 상태 | waypoint 개수(`1..16`), 필드 범위, route version/sequence, CRC/길이, 인접 waypoint 거리(`2m..2m`) 검증 통과 | 검증 실패 시 `uplink_app`에서 거부, `UPLINK_STATUS_MID`에 원인 게시, 기존 active route 유지 | `CFE_TIME` mission elapsed ms | route update sequence는 소스별 단조 증가, 회귀/중복은 거부 |
 
 ### 5.2 시간 기준 유효성 정책
 
@@ -818,11 +818,12 @@ FC, 모터 또는 액추에이터 명령 및 비행 제어 매개변수
 1. `mav_bridge_app`
 2. `cfs_core_app`
 3. `uplink_app`
-4. `lora_fc_downlink_app`
+4. `lora_fc_downlink_app` (Section 4의 `downlink_app` 구현체)
 
 기준 우선순위 정책:
 
 - `mav_bridge_app`와 `cfs_core_app`은 downlink/uplink 앱보다 높은 우선순위를 가져야 한다.
+- 본 섹션의 `mav_bridge_app`은 Section 4의 `mavlink_bridge_app`과 동일한 앱을 의미한다.
 - `uplink_app`은 `lora_fc_downlink_app`와 같거나 더 높은 우선순위를 가져야 한다.
 - 스택 크기는 각 앱의 현재 cFS sample baseline을 사용하되, parser 또는 route validation 확장으로 인해 오버플로우 위험이 확인되면 그 앱만 상향 조정한다.
 
@@ -879,6 +880,8 @@ Level 3 명령은 명시적 운용자 승인과 request token 검증을 모두 �
 - `CFS_DEGRADED`: 모든 기준 앱 활성, 단 정상 상태가 필요한 명령만 차단
 - `CFS_RECOVERY`: `cfs_core_app`와 필수 bridge/status path 유지, 구성 변경과 mode 변경 차단
 - 최소 보고 시작: `cfs_core_app`, 필수 bridge/status publish, 오류 보고만 유지
+- `CFS_DEGRADED -> CFS_NOMINAL` 복귀 조건: 필수 입력(`IMU_STATE_MID`, `GPS_STATE_MID`, `EKF_STATE_MID`, `BRIDGE_STATUS_MID`)이 freshness/유효성 규칙을 모두 만족하고 active critical FaultCode가 없는 상태가 연속 `10 s` 유지될 때 복귀한다.
+- `CFS_RECOVERY -> CFS_NOMINAL` 복귀 조건: 복구 대상으로 지정된 필수 입력이 모두 복원된 뒤, 위 `CFS_DEGRADED -> CFS_NOMINAL` 조건을 동일하게 연속 `10 s` 만족할 때 복귀한다.
 
 ### 17.10 시퀀스 및 정확성 기준
 
@@ -1108,6 +1111,11 @@ route update payload는 최소한 다음 필드를 포함해야 한다.
 | `waypoint_count` | `uint8` | waypoint 개수 | `1` 이상 최대 waypoint 제한 이하 |
 | `waypoints` | waypoint 배열 | route segment 좌표 | finite, flyable area, altitude, segment distance 조건 충족 |
 
+route update baseline 수치 기준:
+
+- `MAX_ROUTE_WAYPOINT_COUNT = 16`
+- 인접 waypoint 간 3D 거리: `2m 이상 2m 이하`
+
 출력 계약:
 
 - 유효한 payload는 mission layer가 직접 사용할 수 있는 검증된 route segment 구조로 변환되어야 한다.
@@ -1311,6 +1319,11 @@ counter management payload는 최소한 다음 필드를 포함해야 한다.
 5. 변환된 결과를 대상 소비자에게 전달하고, 처리 결과를 `UPLINK_STATUS_MID`에 반영한다.
 
 좌표 유효 검증은 수신된 추가 경로가 사전에 정의된 비행 가능 영역 안에 존재하는지, 위험 구역 또는 비행 금지 구역을 침범하지 않는지, 그리고 모든 waypoint의 고도가 최소 2m 이상 최대 8m 이하인지 확인하는 과정이다. 또한 추가 경로는 waypoint 개수 제한과 인접 waypoint 간 허용 거리 범위를 만족해야 하며, 이러한 조건을 충족하지 못하는 경로는 거부되어야 한다.
+
+본 문서의 route update 기준 수치는 Section 18.4.6.2와 동일하게 고정한다.
+
+- waypoint 개수: `1..16`
+- 인접 waypoint 간 3D 거리: `2m..2m`
 
 상위 임무 계층에는 검증된 route segment 정보가 전달되어야 하며, 여기에는 최소한 `route_type`, `route_version`, `waypoint_count`, 그리고 waypoint 배열이 포함되어야 한다. 이 내부 표현은 raw uplink payload를 그대로 재사용하는 것이 아니라, 경로 관리 계층이 직접 사용할 수 있는 검증된 route segment 구조로 변환되어야 한다.
 
