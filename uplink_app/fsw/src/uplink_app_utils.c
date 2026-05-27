@@ -160,6 +160,14 @@ static float UPLINK_APP_GetWaypointDistance(const UPLINK_APP_Waypoint_t *First, 
     return sqrtf((Dx * Dx) + (Dy * Dy) + (Dz * Dz));
 }
 
+static bool UPLINK_APP_IsWaypointSegmentDistanceValid(const UPLINK_APP_Waypoint_t *First,
+                                                      const UPLINK_APP_Waypoint_t *Second)
+{
+    const float SegmentDistance = UPLINK_APP_GetWaypointDistance(First, Second);
+
+    return fabsf(SegmentDistance - UPLINK_APP_ROUTE_SEGMENT_DIST_M) <= UPLINK_APP_ROUTE_SEGMENT_DIST_TOL_M;
+}
+
 bool UPLINK_APP_ParseRouteUpdatePayload(const UPLINK_APP_ProcessUplinkCmd_t *Cmd, UPLINK_APP_RouteUpdatePayload_t *Payload)
 {
     size_t ExpectedLength;
@@ -217,10 +225,7 @@ bool UPLINK_APP_ParseRouteUpdatePayload(const UPLINK_APP_ProcessUplinkCmd_t *Cmd
 
         if (Index > 0U)
         {
-            const float SegmentDistance = UPLINK_APP_GetWaypointDistance(&Payload->Waypoints[Index - 1U], Waypoint);
-
-            if (SegmentDistance < UPLINK_APP_ROUTE_MIN_SEGMENT_DIST_M ||
-                SegmentDistance > UPLINK_APP_ROUTE_MAX_SEGMENT_DIST_M)
+            if (!UPLINK_APP_IsWaypointSegmentDistanceValid(&Payload->Waypoints[Index - 1U], Waypoint))
             {
                 return false;
             }

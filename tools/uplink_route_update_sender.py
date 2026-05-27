@@ -8,7 +8,7 @@ from typing import Iterable, List, Sequence, Tuple
 
 UPLINK_APP_CMD_MID = 0x18D0
 UPLINK_APP_PROCESS_UPLINK_CC = 2
-UPLINK_APP_MAX_PAYLOAD_LENGTH = 192
+UPLINK_APP_MAX_PAYLOAD_LENGTH = 196
 
 UPLINK_CLASS_ROUTE_UPDATE = 2
 
@@ -117,13 +117,13 @@ def pretty_waypoints(waypoints: Iterable[Tuple[float, float, float]]) -> str:
 
 def preset_case(case_name: str) -> Tuple[int, List[Tuple[float, float, float]]]:
     if case_name == "route-good":
-        return ROUTE_TYPE_MISSION_EXTENSION, [(0.0, -10.0, 3.0), (5.0, -12.0, 4.0)]
+        return ROUTE_TYPE_MISSION_EXTENSION, [(0.0, -10.0, 3.0), (2.0, -10.0, 3.0)]
     if case_name == "route-landing":
-        return ROUTE_TYPE_LANDING, [(2.0, -8.0, 4.0), (2.0, -8.0, 2.5)]
+        return ROUTE_TYPE_LANDING, [(2.0, -8.0, 4.0), (2.0, -8.0, 2.0)]
     if case_name == "route-bad-alt":
-        return ROUTE_TYPE_MISSION_EXTENSION, [(0.0, -10.0, 1.0), (5.0, -12.0, 4.0)]
+        return ROUTE_TYPE_MISSION_EXTENSION, [(0.0, -10.0, 1.0), (2.0, -10.0, 3.0)]
     if case_name == "route-bad-distance":
-        return ROUTE_TYPE_MISSION_EXTENSION, [(0.0, -10.0, 3.0), (100.0, -12.0, 4.0)]
+        return ROUTE_TYPE_MISSION_EXTENSION, [(0.0, -10.0, 3.0), (2.01, -10.0, 3.0)]
     raise ValueError(f"unknown case: {case_name}")
 
 

@@ -59,6 +59,7 @@ void Test_UPLINK_APP_ParseRouteUpdatePayload(void)
     UPLINK_APP_ProcessUplinkCmd_t    Cmd;
     UPLINK_APP_RouteUpdatePayload_t  Payload;
     UPLINK_APP_RouteUpdatePayload_t *PayloadSrc;
+    uint32                           Index;
 
     memset(&Cmd, 0, sizeof(Cmd));
     PayloadSrc = (UPLINK_APP_RouteUpdatePayload_t *)Cmd.Payload;
@@ -68,9 +69,9 @@ void Test_UPLINK_APP_ParseRouteUpdatePayload(void)
     PayloadSrc->Waypoints[0].X = 0.0f;
     PayloadSrc->Waypoints[0].Y = -10.0f;
     PayloadSrc->Waypoints[0].Z = 3.0f;
-    PayloadSrc->Waypoints[1].X = 5.0f;
-    PayloadSrc->Waypoints[1].Y = -12.0f;
-    PayloadSrc->Waypoints[1].Z = 4.0f;
+    PayloadSrc->Waypoints[1].X = 2.0f;
+    PayloadSrc->Waypoints[1].Y = -10.0f;
+    PayloadSrc->Waypoints[1].Z = 3.0f;
     Cmd.PayloadLength = (uint8)(4U + (2U * sizeof(UPLINK_APP_Waypoint_t)));
 
     UtAssert_BOOL_TRUE(UPLINK_APP_ParseRouteUpdatePayload(&Cmd, &Payload));
@@ -99,11 +100,38 @@ void Test_UPLINK_APP_ParseRouteUpdatePayload(void)
     UtAssert_BOOL_FALSE(UPLINK_APP_ParseRouteUpdatePayload(&Cmd, &Payload));
 
     PayloadSrc->Waypoints[0].X = 0.0f;
-    PayloadSrc->Waypoints[1].X = 0.1f;
+    PayloadSrc->Waypoints[1].X = 1.99f;
     PayloadSrc->Waypoints[1].Y = -10.0f;
     PayloadSrc->Waypoints[1].Z = 3.0f;
     UtAssert_BOOL_FALSE(UPLINK_APP_ParseRouteUpdatePayload(&Cmd, &Payload));
 
+    PayloadSrc->Waypoints[1].X = 2.0f;
+    PayloadSrc->Waypoints[1].Y = -10.0f;
+    PayloadSrc->Waypoints[1].Z = 3.0f;
+    UtAssert_BOOL_TRUE(UPLINK_APP_ParseRouteUpdatePayload(&Cmd, &Payload));
+
+    PayloadSrc->Waypoints[1].X = 2.01f;
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseRouteUpdatePayload(&Cmd, &Payload));
+
+    PayloadSrc->WaypointCount = UPLINK_APP_ROUTE_MAX_WAYPOINTS;
+    for (Index = 0; Index < PayloadSrc->WaypointCount; ++Index)
+    {
+        PayloadSrc->Waypoints[Index].X = (float)(Index * 2U);
+        PayloadSrc->Waypoints[Index].Y = -10.0f;
+        PayloadSrc->Waypoints[Index].Z = 3.0f;
+    }
+    Cmd.PayloadLength = (uint8)(4U + ((size_t)PayloadSrc->WaypointCount * sizeof(UPLINK_APP_Waypoint_t)));
+    UtAssert_BOOL_TRUE(UPLINK_APP_ParseRouteUpdatePayload(&Cmd, &Payload));
+
+    PayloadSrc->WaypointCount = UPLINK_APP_ROUTE_MAX_WAYPOINTS + 1U;
+    Cmd.PayloadLength         = 4U;
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseRouteUpdatePayload(&Cmd, &Payload));
+
+    PayloadSrc->WaypointCount = 2;
+    Cmd.PayloadLength         = (uint8)(4U + (2U * sizeof(UPLINK_APP_Waypoint_t)));
+    PayloadSrc->Waypoints[0].X = 0.0f;
+    PayloadSrc->Waypoints[0].Y = -10.0f;
+    PayloadSrc->Waypoints[0].Z = 3.0f;
     PayloadSrc->Waypoints[1].X = 100.0f;
     PayloadSrc->Waypoints[1].Y = -10.0f;
     PayloadSrc->Waypoints[1].Z = 4.0f;
