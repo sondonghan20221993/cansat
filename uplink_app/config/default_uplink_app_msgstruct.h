@@ -60,6 +60,15 @@ typedef struct
 typedef struct
 {
     CFE_MSG_TelemetryHeader_t TelemetryHeader;
+    uint32                    Seq;
+    uint32                    TimestampMs;
+    uint16                    SourceSequence;
+    uint8                     Reserved[2];
+} UPLINK_APP_RecoveryCmdTlm_t;
+
+typedef struct
+{
+    CFE_MSG_TelemetryHeader_t TelemetryHeader;
     uint8                     CommandCounter;
     uint8                     CommandErrorCounter;
     uint16                    Reserved;
