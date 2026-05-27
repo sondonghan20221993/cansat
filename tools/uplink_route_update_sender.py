@@ -23,6 +23,18 @@ def calc_checksum(packet: bytes) -> int:
     return checksum
 
 
+def crc16_ccitt(data: bytes) -> int:
+    crc = 0xFFFF
+    for byte in data:
+        crc ^= byte << 8
+        for _ in range(8):
+            if crc & 0x8000:
+                crc = ((crc << 1) ^ 0x1021) & 0xFFFF
+            else:
+                crc = (crc << 1) & 0xFFFF
+    return crc
+
+
 def ccsds_primary(mid: int, total_packet_size: int) -> bytes:
     return struct.pack(">HHH", mid, 0xC000, total_packet_size - 7)
 
@@ -81,6 +93,19 @@ def build_route_payload(route_type: int, route_version: int, waypoints: Sequence
     return payload
 
 
+def build_lora_uplink_frame(
+    sequence: int,
+    proxy_payload: bytes,
+    command_class: int = UPLINK_CLASS_ROUTE_UPDATE,
+    version: int = 1,
+    flags: int = 0,
+) -> str:
+    payload_hex = proxy_payload.hex().upper()
+    canonical_without_crc = f"UP,{version},{command_class},{sequence},{flags},{payload_hex}"
+    crc = crc16_ccitt(canonical_without_crc.encode("ascii"))
+    return f"{canonical_without_crc},{crc:04X}"
+
+
 def send_packet(packet: bytes, host: str, port: int) -> None:
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.sendto(packet, (host, port))
@@ -115,18 +140,29 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=1234)
     parser.add_argument("--sequence", type=int, default=1)
     parser.add_argument("--route-version", type=int, default=1)
+    parser.add_argument(
+        "--transport",
+        choices=["udp", "lora-text"],
+        default="udp",
+        help="udp sends directly to cFS, lora-text prints the LoRa serial frame for the bridge",
+    )
     args = parser.parse_args()
 
     route_type, waypoints = preset_case(args.case_name)
     route_payload = build_route_payload(route_type, args.route_version, waypoints)
     proxy_payload = build_process_uplink_payload(args.sequence, route_payload)
-    packet = build_command_packet(UPLINK_APP_PROCESS_UPLINK_CC, proxy_payload)
 
     print(
-        f"send {args.case_name}: seq={args.sequence} route_type={route_type} "
-        f"route_version={args.route_version} waypoints=[{pretty_waypoints(waypoints)}]"
+        f"prepare {args.case_name}: seq={args.sequence} route_type={route_type} "
+        f"route_version={args.route_version} waypoints=[{pretty_waypoints(waypoints)}] "
+        f"transport={args.transport}"
     )
-    send_packet(packet, args.host, args.port)
+
+    if args.transport == "udp":
+        packet = build_command_packet(UPLINK_APP_PROCESS_UPLINK_CC, proxy_payload)
+        send_packet(packet, args.host, args.port)
+    else:
+        print(build_lora_uplink_frame(args.sequence, route_payload))
     return 0
 
 
