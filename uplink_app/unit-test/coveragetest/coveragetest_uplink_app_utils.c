@@ -197,6 +197,27 @@ void Test_UPLINK_APP_UpdateStatusTelemetry(void)
     UtAssert_INT32_EQ(UPLINK_APP_Data.StatusTlm.LastRollbackReason, 0);
 }
 
+void Test_UPLINK_APP_LoadState_NoFile(void)
+{
+    /* File does not exist — LoadState must return silently without modifying state */
+    UPLINK_APP_Data.AcceptedCount        = 0;
+    UPLINK_APP_Data.LastAcceptedSequence = 0;
+
+    UPLINK_APP_LoadState();
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.AcceptedCount, 0);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastAcceptedSequence, 0);
+}
+
+void Test_UPLINK_APP_SaveState_NoDir(void)
+{
+    /* /cf/ does not exist in test env — SaveState must return silently */
+    UPLINK_APP_Data.LastAcceptedSequence = 99;
+    UPLINK_APP_SaveState();
+    /* No crash and state unchanged */
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastAcceptedSequence, 99);
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(UPLINK_APP_ValidateProxyCommand);
@@ -205,4 +226,6 @@ void UtTest_Setup(void)
     ADD_TEST(UPLINK_APP_ResolveRouteTarget);
     ADD_TEST(UPLINK_APP_ReportHousekeeping);
     ADD_TEST(UPLINK_APP_UpdateStatusTelemetry);
+    ADD_TEST(UPLINK_APP_LoadState_NoFile);
+    ADD_TEST(UPLINK_APP_SaveState_NoDir);
 }

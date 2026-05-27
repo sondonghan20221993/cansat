@@ -7,6 +7,7 @@
 #define UPLINK_APP_PROTOTYPE_PERIOD_MS  1000
 #define UPLINK_APP_PROTOCOL_VERSION     1
 #define UPLINK_APP_MAX_PAYLOAD_LENGTH   196
+#define UPLINK_APP_STATE_FILE_PATH      "/cf/uplink_app_state.bin"
 
 #endif
 

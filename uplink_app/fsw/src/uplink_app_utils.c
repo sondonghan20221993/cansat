@@ -1,9 +1,20 @@
 #include "uplink_app_utils.h"
 #include "uplink_app_eventids.h"
 
+#include <fcntl.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
+
+#define UPLINK_APP_STATE_MAGIC 0x55504C4BU  /* "UPLK" */
+
+typedef struct
+{
+    uint32 Magic;
+    uint32 LastAcceptedSequence;
+    uint32 Checksum;
+} UPLINK_APP_PersistentState_t;
 
 static uint32 UPLINK_APP_GetTimeMs(void)
 {
@@ -274,6 +285,85 @@ bool UPLINK_APP_ForwardRecoveryCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
 
     CFE_SB_TimeStampMsg(CFE_MSG_PTR(RecoveryTlm.TelemetryHeader));
     return (CFE_SB_TransmitMsg(CFE_MSG_PTR(RecoveryTlm.TelemetryHeader), true) == CFE_SUCCESS);
+}
+
+bool UPLINK_APP_ForwardConfigCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
+{
+    UPLINK_APP_ConfigCmdTlm_t ConfigTlm;
+    bool                      Ok;
+
+    UPLINK_APP_Data.ConfigPendingState = UPLINK_APP_CONFIG_PENDING;
+
+    memset(&ConfigTlm, 0, sizeof(ConfigTlm));
+    CFE_MSG_Init(CFE_MSG_PTR(ConfigTlm.TelemetryHeader), CFE_SB_ValueToMsgId(CONFIG_CMD_MID),
+                 sizeof(ConfigTlm));
+
+    ConfigTlm.Seq            = UPLINK_APP_Data.SequenceCounter + 1U;
+    ConfigTlm.TimestampMs    = UPLINK_APP_Data.LastRxTimeMs;
+    ConfigTlm.SourceSequence = Cmd->Sequence;
+    ConfigTlm.PayloadLength  = Cmd->PayloadLength;
+    memcpy(ConfigTlm.Payload, Cmd->Payload, Cmd->PayloadLength);
+
+    CFE_SB_TimeStampMsg(CFE_MSG_PTR(ConfigTlm.TelemetryHeader));
+    Ok = (CFE_SB_TransmitMsg(CFE_MSG_PTR(ConfigTlm.TelemetryHeader), true) == CFE_SUCCESS);
+
+    UPLINK_APP_Data.ConfigPendingState = Ok ? UPLINK_APP_CONFIG_IDLE : UPLINK_APP_CONFIG_REJECTED;
+    UPLINK_APP_Data.LastConfigResult   = (uint8)(!Ok);
+    return Ok;
+}
+
+void UPLINK_APP_LoadState(void)
+{
+    UPLINK_APP_PersistentState_t State;
+    int                          Fd;
+    ssize_t                      ReadRc;
+
+    Fd = open(UPLINK_APP_STATE_FILE_PATH, O_RDONLY);
+    if (Fd < 0)
+    {
+        return;
+    }
+
+    ReadRc = read(Fd, &State, sizeof(State));
+    close(Fd);
+
+    if (ReadRc != (ssize_t)sizeof(State))
+    {
+        return;
+    }
+    if (State.Magic != UPLINK_APP_STATE_MAGIC)
+    {
+        return;
+    }
+    if (State.Checksum != (State.Magic + State.LastAcceptedSequence))
+    {
+        return;
+    }
+
+    UPLINK_APP_Data.LastAcceptedSequence = State.LastAcceptedSequence;
+    UPLINK_APP_Data.AcceptedCount        = 1;
+
+    CFE_EVS_SendEvent(UPLINK_APP_STARTUP_EID, CFE_EVS_EventType_INFORMATION,
+                      "UPLINK_APP: restored persistent state seq=%lu",
+                      (unsigned long)State.LastAcceptedSequence);
+}
+
+void UPLINK_APP_SaveState(void)
+{
+    UPLINK_APP_PersistentState_t State;
+    int                          Fd;
+
+    State.Magic               = UPLINK_APP_STATE_MAGIC;
+    State.LastAcceptedSequence = UPLINK_APP_Data.LastAcceptedSequence;
+    State.Checksum            = State.Magic + State.LastAcceptedSequence;
+
+    Fd = open(UPLINK_APP_STATE_FILE_PATH, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (Fd < 0)
+    {
+        return;
+    }
+    write(Fd, &State, sizeof(State));
+    close(Fd);
 }
 
 bool UPLINK_APP_ForwardViewpointCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)

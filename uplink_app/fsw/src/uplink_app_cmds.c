@@ -152,10 +152,27 @@ void UPLINK_APP_ProcessUplink(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
             return;
         }
     }
+    else if (Cmd->CommandClass == UPLINK_APP_CLASS_CONFIG)
+    {
+        if (!UPLINK_APP_ForwardConfigCommand(Cmd))
+        {
+            UPLINK_APP_Data.ErrCounter++;
+            UPLINK_APP_Data.RoutingFailureCount++;
+            UPLINK_APP_Data.LastCommandResult = UPLINK_APP_RESULT_FAILED;
+            UPLINK_APP_Data.LastRouteTarget   = (uint8)RouteTarget;
+            UPLINK_APP_Data.LinkState         = UPLINK_APP_LINK_DEGRADED;
+            CFE_EVS_SendEvent(UPLINK_APP_COMMAND_ERR_EID, CFE_EVS_EventType_ERROR,
+                              "UPLINK_APP: failed to forward config command seq=%u",
+                              (unsigned int)Cmd->Sequence);
+            UPLINK_APP_UpdateStatusTelemetry(0);
+            return;
+        }
+    }
 
     UPLINK_APP_Data.CmdCounter++;
     UPLINK_APP_Data.AcceptedCount++;
     UPLINK_APP_Data.LastAcceptedSequence = Cmd->Sequence;
+    UPLINK_APP_SaveState();
     UPLINK_APP_Data.LastCommandResult = UPLINK_APP_RESULT_ROUTED;
     UPLINK_APP_Data.LastRouteTarget   = (uint8)RouteTarget;
     UPLINK_APP_Data.LinkState         = UPLINK_APP_LINK_NOMINAL;

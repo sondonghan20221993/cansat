@@ -65,3 +65,37 @@ void UPLINK_APP_UpdateStatusTelemetry(uint32 NowMs)
     UT_GenStub_AddParam(UPLINK_APP_UpdateStatusTelemetry, uint32, NowMs);
     UT_GenStub_Execute(UPLINK_APP_UpdateStatusTelemetry, Basic, NULL);
 }
+
+bool UPLINK_APP_ForwardRecoveryCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
+{
+    UT_GenStub_SetupReturnBuffer(UPLINK_APP_ForwardRecoveryCommand, bool);
+    UT_GenStub_AddParam(UPLINK_APP_ForwardRecoveryCommand, const UPLINK_APP_ProcessUplinkCmd_t *, Cmd);
+    UT_GenStub_Execute(UPLINK_APP_ForwardRecoveryCommand, Basic, NULL);
+    return UT_GenStub_GetReturnValue(UPLINK_APP_ForwardRecoveryCommand, bool);
+}
+
+bool UPLINK_APP_ForwardViewpointCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
+{
+    UT_GenStub_SetupReturnBuffer(UPLINK_APP_ForwardViewpointCommand, bool);
+    UT_GenStub_AddParam(UPLINK_APP_ForwardViewpointCommand, const UPLINK_APP_ProcessUplinkCmd_t *, Cmd);
+    UT_GenStub_Execute(UPLINK_APP_ForwardViewpointCommand, Basic, NULL);
+    return UT_GenStub_GetReturnValue(UPLINK_APP_ForwardViewpointCommand, bool);
+}
+
+bool UPLINK_APP_ForwardConfigCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
+{
+    UT_GenStub_SetupReturnBuffer(UPLINK_APP_ForwardConfigCommand, bool);
+    UT_GenStub_AddParam(UPLINK_APP_ForwardConfigCommand, const UPLINK_APP_ProcessUplinkCmd_t *, Cmd);
+    UT_GenStub_Execute(UPLINK_APP_ForwardConfigCommand, Basic, NULL);
+    return UT_GenStub_GetReturnValue(UPLINK_APP_ForwardConfigCommand, bool);
+}
+
+void UPLINK_APP_LoadState(void)
+{
+    UT_GenStub_Execute(UPLINK_APP_LoadState, Basic, NULL);
+}
+
+void UPLINK_APP_SaveState(void)
+{
+    UT_GenStub_Execute(UPLINK_APP_SaveState, Basic, NULL);
+}

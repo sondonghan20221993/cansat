@@ -8,6 +8,7 @@
 #define ROUTE_UPDATE_MID      0x190B
 #define RECOVERY_CMD_MID      0x190C
 #define VIEWPOINT_CMD_MID     0x190D
+#define CONFIG_CMD_MID        0x190E
 
 #endif
 

@@ -96,6 +96,7 @@ CFE_Status_t UPLINK_APP_Init(void)
     }
 
     UPLINK_APP_Data.Valid = 1;
+    UPLINK_APP_LoadState();
 
     CFE_EVS_SendEvent(UPLINK_APP_STARTUP_EID, CFE_EVS_EventType_INFORMATION,
                       "UPLINK_APP Initialized");

@@ -57,6 +57,9 @@ bool         UPLINK_APP_PublishRouteUpdate(const UPLINK_APP_ProcessUplinkCmd_t *
                                            const UPLINK_APP_RouteUpdatePayload_t *Payload);
 bool         UPLINK_APP_ForwardRecoveryCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd);
 bool         UPLINK_APP_ForwardViewpointCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd);
+bool         UPLINK_APP_ForwardConfigCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd);
+void         UPLINK_APP_LoadState(void);
+void         UPLINK_APP_SaveState(void);
 
 #endif
 
