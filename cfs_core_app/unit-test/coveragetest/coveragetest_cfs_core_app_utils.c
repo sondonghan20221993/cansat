@@ -276,6 +276,55 @@ void Test_CFS_CORE_APP_ProcessStateMessage_BridgeHk(void)
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.BridgeState.LastErrorCode, 9);
 }
 
+void Test_CFS_CORE_APP_UpdateHealth_NominalStabilization(void)
+{
+    uint32 NowMs = 20000;
+
+    /* Fully healthy setup */
+    CFS_CORE_APP_Data.AttitudeState.Received        = true;
+    CFS_CORE_APP_Data.AttitudeState.TimestampMs     = NowMs - 100;
+    CFS_CORE_APP_Data.AttitudeState.Valid           = 1;
+    CFS_CORE_APP_Data.LocalState.Received           = true;
+    CFS_CORE_APP_Data.LocalState.TimestampMs        = NowMs - 100;
+    CFS_CORE_APP_Data.LocalState.Valid              = 1;
+    CFS_CORE_APP_Data.GpsState.Received             = true;
+    CFS_CORE_APP_Data.GpsState.TimestampMs          = NowMs - 100;
+    CFS_CORE_APP_Data.GpsState.Valid                = 1;
+    CFS_CORE_APP_Data.EkfState.Received             = true;
+    CFS_CORE_APP_Data.EkfState.TimestampMs          = NowMs - 100;
+    CFS_CORE_APP_Data.EkfState.Valid                = 1;
+    CFS_CORE_APP_Data.BridgeState.Received          = true;
+    CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = NowMs - 100;
+
+    /* Simulate LastHealthState = DEGRADED (coming from a fault) */
+    CFS_CORE_APP_Data.LastHealthState = CFS_CORE_APP_HEALTH_DEGRADED;
+
+    /* First call after fault clears: still DEGRADED (stabilizing) */
+    CFS_CORE_APP_UpdateHealth(NowMs, true);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_DEGRADED);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.FaultCode,   CFS_CORE_APP_FAULT_NONE);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.NominalEligibleSince,        (int32)NowMs);
+
+    /* 5 s later: still stabilizing */
+    CFS_CORE_APP_Data.AttitudeState.TimestampMs     = NowMs + 5000 - 100;
+    CFS_CORE_APP_Data.LocalState.TimestampMs        = NowMs + 5000 - 100;
+    CFS_CORE_APP_Data.GpsState.TimestampMs          = NowMs + 5000 - 100;
+    CFS_CORE_APP_Data.EkfState.TimestampMs          = NowMs + 5000 - 100;
+    CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = NowMs + 5000 - 100;
+    CFS_CORE_APP_UpdateHealth(NowMs + 5000, true);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_DEGRADED);
+
+    /* 10 s later: stable enough, transition to NOMINAL */
+    CFS_CORE_APP_Data.AttitudeState.TimestampMs     = NowMs + 10001 - 100;
+    CFS_CORE_APP_Data.LocalState.TimestampMs        = NowMs + 10001 - 100;
+    CFS_CORE_APP_Data.GpsState.TimestampMs          = NowMs + 10001 - 100;
+    CFS_CORE_APP_Data.EkfState.TimestampMs          = NowMs + 10001 - 100;
+    CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = NowMs + 10001 - 100;
+    CFS_CORE_APP_UpdateHealth(NowMs + 10001, true);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_NOMINAL);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.NominalEligibleSince,        0);
+}
+
 void Test_CFS_CORE_APP_UpdateHealth_InputStatus(void)
 {
     uint32 NowMs = 5000;
@@ -388,6 +437,7 @@ void UtTest_Setup(void)
     ADD_TEST(CFS_CORE_APP_UpdateHealth_EkfInvalid);
     ADD_TEST(CFS_CORE_APP_UpdateHealth_LocalTimeout);
     ADD_TEST(CFS_CORE_APP_UpdateHealth_AttitudeTimeout);
+    ADD_TEST(CFS_CORE_APP_UpdateHealth_NominalStabilization);
     ADD_TEST(CFS_CORE_APP_UpdateHealth_InputStatus);
     ADD_TEST(CFS_CORE_APP_UpdateHealth_HealthTransition);
     ADD_TEST(CFS_CORE_APP_ProcessStateMessage_RouteUpdate);

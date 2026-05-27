@@ -212,38 +212,65 @@ void CFS_CORE_APP_UpdateHealth(uint32 NowMs, bool ForcePublish)
 
     if (BridgeTimedOut)
     {
+        CFS_CORE_APP_Data.NominalEligibleSince = 0;
         Tlm->HealthState       = CFS_CORE_APP_HEALTH_RECOVERY;
         Tlm->FaultCode         = CFS_CORE_APP_FAULT_BRIDGE_TIMEOUT;
         Tlm->RecoveryRequested = 1;
     }
     else if (EkfTimedOut)
     {
+        CFS_CORE_APP_Data.NominalEligibleSince = 0;
         Tlm->HealthState       = CFS_CORE_APP_HEALTH_DEGRADED;
         Tlm->FaultCode         = CFS_CORE_APP_FAULT_EKF_INVALID;
         Tlm->RecoveryRequested = 0;
     }
     else if (LocalTimedOut)
     {
+        CFS_CORE_APP_Data.NominalEligibleSince = 0;
         Tlm->HealthState       = CFS_CORE_APP_HEALTH_DEGRADED;
         Tlm->FaultCode         = CFS_CORE_APP_FAULT_LOCAL_TIMEOUT;
         Tlm->RecoveryRequested = 0;
     }
     else if (AttitudeTimedOut)
     {
+        CFS_CORE_APP_Data.NominalEligibleSince = 0;
         Tlm->HealthState       = CFS_CORE_APP_HEALTH_DEGRADED;
         Tlm->FaultCode         = CFS_CORE_APP_FAULT_ATTITUDE_TIMEOUT;
         Tlm->RecoveryRequested = 0;
     }
     else if (GpsUnavailable)
     {
+        CFS_CORE_APP_Data.NominalEligibleSince = 0;
         Tlm->HealthState       = CFS_CORE_APP_HEALTH_DEGRADED;
         Tlm->FaultCode         = CFS_CORE_APP_FAULT_GPS_STALE;
         Tlm->RecoveryRequested = 0;
     }
-    else
+    else if (CFS_CORE_APP_Data.LastHealthState == CFS_CORE_APP_HEALTH_NOMINAL)
     {
+        /* Already nominal: stay nominal immediately, no timer needed */
+        CFS_CORE_APP_Data.NominalEligibleSince = 0;
         Tlm->HealthState       = CFS_CORE_APP_HEALTH_NOMINAL;
         Tlm->FaultCode         = CFS_CORE_APP_FAULT_NONE;
+        Tlm->RecoveryRequested = 0;
+    }
+    else
+    {
+        /* Recovering from non-nominal: require 10 s of consecutive clear conditions */
+        if (CFS_CORE_APP_Data.NominalEligibleSince == 0)
+        {
+            CFS_CORE_APP_Data.NominalEligibleSince = NowMs;
+        }
+        if ((NowMs - CFS_CORE_APP_Data.NominalEligibleSince) >= CFS_CORE_APP_NOMINAL_STABILITY_MS)
+        {
+            CFS_CORE_APP_Data.NominalEligibleSince = 0;
+            Tlm->HealthState = CFS_CORE_APP_HEALTH_NOMINAL;
+            Tlm->FaultCode   = CFS_CORE_APP_FAULT_NONE;
+        }
+        else
+        {
+            Tlm->HealthState = CFS_CORE_APP_HEALTH_DEGRADED;
+            Tlm->FaultCode   = CFS_CORE_APP_FAULT_NONE;
+        }
         Tlm->RecoveryRequested = 0;
     }
 
