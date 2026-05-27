@@ -276,6 +276,24 @@ bool UPLINK_APP_ForwardRecoveryCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
     return (CFE_SB_TransmitMsg(CFE_MSG_PTR(RecoveryTlm.TelemetryHeader), true) == CFE_SUCCESS);
 }
 
+bool UPLINK_APP_ForwardViewpointCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
+{
+    UPLINK_APP_ViewpointCmdTlm_t ViewpointTlm;
+
+    memset(&ViewpointTlm, 0, sizeof(ViewpointTlm));
+    CFE_MSG_Init(CFE_MSG_PTR(ViewpointTlm.TelemetryHeader), CFE_SB_ValueToMsgId(VIEWPOINT_CMD_MID),
+                 sizeof(ViewpointTlm));
+
+    ViewpointTlm.Seq            = UPLINK_APP_Data.SequenceCounter + 1U;
+    ViewpointTlm.TimestampMs    = UPLINK_APP_Data.LastRxTimeMs;
+    ViewpointTlm.SourceSequence = Cmd->Sequence;
+    ViewpointTlm.PayloadLength  = Cmd->PayloadLength;
+    memcpy(ViewpointTlm.Payload, Cmd->Payload, Cmd->PayloadLength);
+
+    CFE_SB_TimeStampMsg(CFE_MSG_PTR(ViewpointTlm.TelemetryHeader));
+    return (CFE_SB_TransmitMsg(CFE_MSG_PTR(ViewpointTlm.TelemetryHeader), true) == CFE_SUCCESS);
+}
+
 UPLINK_APP_RouteTarget_t UPLINK_APP_ResolveRouteTarget(uint8 CommandClass)
 {
     switch (CommandClass)

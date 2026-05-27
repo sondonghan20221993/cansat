@@ -219,6 +219,47 @@ void Test_UPLINK_APP_ProcessUplink_RecoveryForwardFail(void)
     UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_FAILED);
 }
 
+void Test_UPLINK_APP_ProcessUplink_ViewpointAccept(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_VIEWPOINT;
+    TestMsg.PayloadLength = 4;
+    TestMsg.Sequence      = 30;
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ForwardViewpointCommand), true);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.AcceptedCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_ROUTED);
+}
+
+void Test_UPLINK_APP_ProcessUplink_ViewpointForwardFail(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_VIEWPOINT;
+    TestMsg.PayloadLength = 4;
+    TestMsg.Sequence      = 31;
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ForwardViewpointCommand), false);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.ErrCounter, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.RoutingFailureCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_FAILED);
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(UPLINK_APP_Noop);
@@ -232,4 +273,6 @@ void UtTest_Setup(void)
     ADD_TEST(UPLINK_APP_ProcessUplink_RoutePublishFail);
     ADD_TEST(UPLINK_APP_ProcessUplink_RecoveryAccept);
     ADD_TEST(UPLINK_APP_ProcessUplink_RecoveryForwardFail);
+    ADD_TEST(UPLINK_APP_ProcessUplink_ViewpointAccept);
+    ADD_TEST(UPLINK_APP_ProcessUplink_ViewpointForwardFail);
 }
