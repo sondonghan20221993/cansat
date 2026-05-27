@@ -47,7 +47,7 @@ class LoraUplinkBridgeParsingTest(unittest.TestCase):
             parse_frame_line("python3 tools/uplink_route_update_sender.py route-good")
 
     def test_parse_frame_line_rejects_oversize_payload(self) -> None:
-        payload_hex = ("AA" * 193).upper()
+        payload_hex = ("AA" * 197).upper()
         frame_line = build_frame_line(payload_hex, sequence=9)
 
         with self.assertRaisesRegex(ValueError, "payload too large"):
