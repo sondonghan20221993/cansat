@@ -29,6 +29,12 @@
 아래에 설명된 광범위한 미션 앱 세트는 아직 완전히 구현되지 않았습니다.
 저장소. 이 사양은 후속 구현을 위한 대상 계약입니다.
 
+이 초안에서 별도 구현체가 확정되지 않은 공통 기능은 다음 임시 기준을 따른다.
+
+- `recovery authority`: 별도 health/safety app이 정의되기 전까지 `cfs_core_app`이 담당한다.
+- 내부 mission MID timestamp 기준: 별도 절대 시간 정책이 확정되기 전까지 `CFE_TIME` 기반 mission elapsed millisecond를 사용한다.
+- persistent storage backend: 별도 저장소 백엔드가 확정되기 전까지 Raspberry Pi 파일 시스템의 atomic record write를 기준 구현으로 간주한다.
+
 ## 3. 플랫폼 경계 모델
 
 임무 센서와 비행 제어 하드웨어는 MicoAir H743 V2 비행 컨트롤러 보드에 물리적으로 연결된다. Raspberry Pi는 cFS 호스트이자 비행 컨트롤러와 지상국 사이의 통신 브리지 역할을 수행한다. 기본 FC-Raspberry Pi 텔레메트리 경로는 MAVLink 메시지를 전달하는 UART 링크이다.
@@ -87,6 +93,8 @@ MID 계약을 정의했습니다. 앱은 다른 앱이 소유한 앱을 직접 �
 | `downlink_app` | Software Bus에서 승인된 임무 상태 및 텔레메트리 MID를 수집하고, downlink packet을 구성하여 지상국으로 전송한다. MAVLink를 직접 파싱하거나 상태 유효성을 평가하지 않는다. | `DOWNLINK_STATUS_MID` | `IMU_STATE_MID`, `GPS_STATE_MID`, `EKF_STATE_MID`, `SYSTEM_HEALTH_MID`, 승인된 텔레메트리 MID |
 | `uplink_app` | 지상국 명령을 수신하고 업링크 패킷을 검증한 뒤, 승인된 런타임 설정, 경로 수정, viewpoint, 복구 명령을 임무 앱으로 전달한다. | `UPLINK_STATUS_MID` | `UPLINK_CMD_MID` 또는 승인된 전송 입력 |
 
+별도 recovery authority 앱이 정의되기 전까지 `cfs_core_app`은 시스템 수준 복구 판단과 복구 요청 집계를 담당하는 recovery authority로 간주한다. 본 문서에서 "복구 권한" 또는 "recovery authority"에 요청한다고 기술된 경우, 현재 기준 구현 대상은 `cfs_core_app`이다.
+
 ## 5. MID 계약 규칙
 
 모든 임무 MID에는 문서화된 소유자, 생산자, 소비자 목록이 있어야 합니다.
@@ -108,6 +116,13 @@ MID 계약을 정의했습니다. 앱은 다른 앱이 소유한 앱을 직접 �
 시간 또는 단조로운 플랫폼 시계. `cfs_core_app`은(는) 결합하거나 비교할 수 없습니다.
 시간 기준이나 시간 유효성을 알 수 없는 입력입니다.
 
+현재 기준 시간 정책:
+
+- 모든 내부 mission MID의 `Timestamp`는 `CFE_TIME` 기반 mission elapsed millisecond를 사용한다.
+- `TimeValid=true`는 생산자가 해당 값을 위 기준으로 채웠고 로컬 시간 취득 오류가 없을 때만 설정한다.
+- GPS 시간, Unix 시간 또는 기타 절대 시간 기준은 별도 payload 필드로 병행 보고할 수 있으나, `cfs_core_app`의 기본 freshness/ordering 검증은 mission elapsed millisecond를 기준으로 수행한다.
+- 다른 시간 기준을 사용하는 입력은 변환 규칙이 정의되기 전까지 `cfs_core_app` freshness 판단의 직접 입력으로 사용할 수 없다.
+
 ### 5.1 MID 계약 테이블 템플릿
 
 각 임무 MID는 이전에 다음 계약 필드를 사용하여 지정됩니다.
@@ -128,7 +143,22 @@ MID 계약을 정의했습니다. 앱은 다른 앱이 소유한 앱을 직접 �
 | 시퀀스 규칙 | 카운터 증가 및 줄 바꿈 동작 |
 
 완전한 MID별 계약 테이블은 각 앱을 구현하기 전에 채워져야 한다.
-완료될 때까지 MID 계약의 미정 항목은 섹션 17에서 추적한다.
+앱별 MID 계약 테이블은 각 앱 구현 전에 채워야 하며, baseline MID 값은 Section 17.1을 따른다.
+
+### 5.1.1 Baseline MID 계약 테이블 (8개 MID)
+
+아래 표는 현재 구현 기준에서 즉시 검증 가능한 baseline 계약이다. 각 앱 구현은 본 표를 계약 원본으로 사용한다.
+
+| MID 이름 | 소유자 앱 | 생산자 | 소비자 | 명령 MID | 출판률 | 페이로드 레이아웃 | 유효성 규칙 | 오류 동작 | 시간 기준 | 시퀀스 규칙 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `IMU_STATE_MID` (`0x1900`) | `mavlink_bridge_app` | `mavlink_bridge_app` | `cfs_core_app`, `downlink_app` | `MAVLINK_BRIDGE_APP_CMD_MID` (`0x18A0`) | 20 Hz target, timeout 시 상태 갱신 이벤트 publish | Section 6.1 | MAVLink `ATTITUDE` 기반 필수 필드 파싱 성공, `TimeValid=true`, 데이터 범위 검사 통과 | 파싱 실패/timeout 시 `Valid=false`, `HealthState=DEGRADED 또는 LOST`, 오류 코드 반영 | `CFE_TIME` mission elapsed ms | 생산자 로컬 단조 증가, wrap 허용, 역행/중복은 소비자가 stale로 처리 |
+| `GPS_STATE_MID` (`0x1901`) | `mavlink_bridge_app` | `mavlink_bridge_app` | `cfs_core_app`, `downlink_app` | `MAVLINK_BRIDGE_APP_CMD_MID` (`0x18A0`) | 5 Hz target, timeout 시 상태 갱신 이벤트 publish | Section 6.2 | MAVLink `GPS_RAW_INT` 기반 필수 필드 파싱 성공, fix/type 정책 통과 시 `Valid=true` | fix 미달/timeout 시 `Valid=false` 또는 `DEGRADED`, 오류 코드 반영 | `CFE_TIME` mission elapsed ms | 생산자 로컬 단조 증가, wrap 허용 |
+| `EKF_STATE_MID` (`0x1902`) | `mavlink_bridge_app` | `mavlink_bridge_app` | `cfs_core_app`, `downlink_app` | `MAVLINK_BRIDGE_APP_CMD_MID` (`0x18A0`) | 10 Hz target, 상태 변화 시 즉시 publish | Section 6.3 | `EKF_STATUS_REPORT` 기반 필수 상태 플래그 파싱 성공 | EKF invalid/stale 시 `Valid=false`, `DEGRADED_EKF` 계열 FaultCode 반영 | `CFE_TIME` mission elapsed ms | 생산자 로컬 단조 증가, wrap 허용 |
+| `BRIDGE_STATUS_MID` (`0x1903`) | `mavlink_bridge_app` | `mavlink_bridge_app` | `cfs_core_app`, `downlink_app` | `MAVLINK_BRIDGE_APP_CMD_MID` (`0x18A0`) | 1 Hz periodic + 링크 상태 변화 이벤트 | Section 6.4 | 링크 상태 평가 주기 내 필수 카운터/상태 필드 갱신 | open/reopen 실패, parser error 누적, timeout 발생 시 상태 저하와 FaultCode 게시 | `CFE_TIME` mission elapsed ms | 생산자 로컬 단조 증가, wrap 허용 |
+| `SYSTEM_HEALTH_MID` (`0x1904`) | `cfs_core_app` | `cfs_core_app` | `downlink_app`, 운영자 모니터링 소비자 | `CFS_CORE_APP_CMD_MID` (`0x18C0`) | 1 Hz periodic + 상태 전이 이벤트 | Section 6.5 | 필수 입력(IMU/GPS/EKF/BRIDGE) freshness/유효성 규칙 통과 | 입력 부족 시 `CFS_DEGRADED` 또는 `CFS_RECOVERY` 게시, FaultCode로 원인 구분 | `CFE_TIME` mission elapsed ms | 생산자 로컬 단조 증가, wrap 허용 |
+| `DOWNLINK_STATUS_MID` (`0x1905`) | `downlink_app` (`lora_fc_downlink_app`) | `downlink_app` | `cfs_core_app`, 운영자 모니터링 소비자 | `DOWNLINK_APP_CMD_MID` (`0x18B0`), `DOWNLINK_APP_SEND_HK_MID` (`0x18B1`) | 1 Hz periodic + 송신 결과 이벤트 | Section 6.6 | downlink 처리 루프가 상태 필드와 카운터를 최신으로 유지 | 송신 실패 시 오류 카운터 증가, `DEGRADED` 상태와 마지막 오류 코드 게시 | `CFE_TIME` mission elapsed ms | 생산자 로컬 단조 증가, wrap 허용 |
+| `UPLINK_STATUS_MID` (`0x190A`) | `uplink_app` | `uplink_app` | `cfs_core_app`, 운영자 모니터링 소비자 | `UPLINK_APP_CMD_MID` (`0x18D0`) | 1 Hz periodic + 명령 처리 결과 이벤트 | Section 18.7 | 프레임 검증/라우팅 처리 결과를 상태 필드에 반영 | CRC/길이/인증/시퀀스 실패 시 reject 카운터와 오류 코드 게시 | `CFE_TIME` mission elapsed ms | 수락된 uplink command sequence는 단조 증가, 회귀/중복 거부 |
+| `ROUTE_UPDATE_MID` (`0x190B`) | `cfs_core_app` | `uplink_app`(입력 생산), `cfs_core_app`(cache 반영 상태 생산) | `cfs_core_app`(입력 소비), 임무 경로 소비자 앱 | `UPLINK_APP_CMD_MID` (`0x18D0`) ingress, 내부 route 반영 인터페이스 | 이벤트 기반(유효 route update 수락 시) | Section 18.5.2 route payload + Section 6.5 연계 상태 | waypoint 개수, 필드 범위, route version/sequence, CRC/길이 검증 통과 | 검증 실패 시 `uplink_app`에서 거부, `UPLINK_STATUS_MID`에 원인 게시, 기존 active route 유지 | `CFE_TIME` mission elapsed ms | route update sequence는 소스별 단조 증가, 회귀/중복은 거부 |
 
 ### 5.2 시간 기준 유효성 정책
 
@@ -154,8 +184,7 @@ MID 계약을 정의했습니다. 앱은 다른 앱이 소유한 앱을 직접 �
 현지 주문 및 연령 확인이 필요합니다. GPS 시간 또는 다른 절대 시간 기준
 임무 정책에 따라 절대적인 시기가 필요한 경우에만 필요합니다.
 
-최종 시간 기준 선택 및 유효성 규칙은 사전에 정의되어야 한다.
-`cfs_core_app` 유효성 검사 정책 관련 미정 항목은 섹션 17에서 추적한다.
+시간 기준 선택 및 유효성 규칙은 구현 전에 정의되어야 한다. 현재 기준 시간 정책은 Section 17.8에서 고정하며, `cfs_core_app` 유효성 검사 구현은 그 기준을 따라야 한다.
 
 ## 6. 최소 페이로드 후보
 
@@ -241,6 +270,11 @@ MID 계약을 정의했습니다. 앱은 다른 앱이 소유한 앱을 직접 �
 - 마지막 전송 오류 코드입니다.
 - 오류 코드.
 
+기준 publish rate:
+
+- `DOWNLINK_STATUS_MID`: 1 Hz periodic publish를 기본값으로 한다.
+- 상태 전이 또는 전송 오류 burst가 발생한 경우 추가 event-driven publish를 허용한다.
+
 ## 7. 런타임 변경 가능 매개변수
 
 런타임 변경은 세 가지 메커니즘으로 구분됩니다.
@@ -257,8 +291,7 @@ MID 계약을 정의했습니다. 앱은 다른 앱이 소유한 앱을 직접 �
 
 각 앱은 지상 또는 시스템 명령을 수신하기 위한 명령 MID를 정의해야 합니다.
 명령 라우팅은 명령 권한 부여가 완료되기 전에 정의되어야 합니다.
-앱별 명령 MID가 확정될 때까지 명령 라우팅 관련 미정 항목은
-섹션 17에서 추적한다.
+앱별 명령 MID와 명령 라우팅 정책의 baseline은 Section 17.1, Section 17.6, Section 17.7에서 고정한다.
 
 런타임 변경 가능 예:
 
@@ -316,8 +349,7 @@ MID 계약을 정의했습니다. 앱은 다른 앱이 소유한 앱을 직접 �
 센서 앱은 Pi/cFS 호스트 재설정, 비행 컨트롤러를 직접 트리거해서는 안 됩니다.
 단일 하드웨어 오류에 대한 재설정 또는 센서 전원 주기. 센서 앱은 다음과 같습니다
 먼저 유효하지 않거나 성능이 저하되었거나 손실되었거나 실패한 상태를 게시합니다. Raspberry Pi/cFS 측
-복구 결정은 `cfs_core_app`과 같은 복구 기관에서 내려야 합니다.
-또는 전용 건강/안전 앱. 비행 컨트롤러에 영향을 미치는 회복은
+복구 결정은 recovery authority가 내려야 한다. 현재 기준 recovery authority는 `cfs_core_app`이다. 별도 health/safety app이 도입되기 전까지 본 문서의 복구 요청 대상은 모두 `cfs_core_app`으로 해석한다. 비행 컨트롤러에 영향을 미치는 회복은
 이 사양에서 정의한 기본 권한을 벗어났습니다.
 
 ## 10. 하드웨어 오류 응답
@@ -339,6 +371,23 @@ MID 계약을 정의했습니다. 앱은 다른 앱이 소유한 앱을 직접 �
 - `mavlink_bridge_app`: FC 전송 시간 초과, 파서 오류 버스트 감지 또는
   잘못된 MAVLink 프레임 시퀀스; 성능이 저하되거나 손실된 게시 `BRIDGE_STATUS_MID`
   재시도 임계값 이후에 통신 경로 복구를 요청합니다.
+
+### 10.1 `mavlink_bridge_app` transport 책임 경계
+
+`mavlink_bridge_app`과 그 하위 transport 계층의 책임은 `uplink_app`과 동일한 수준으로 분리되어야 한다.
+
+| 항목 | transport 계층 책임 | `mavlink_bridge_app` 책임 |
+| --- | --- | --- |
+| UART open/reopen | 필수 | 아님 |
+| raw byte framing 및 parser feed | 필수 | 아님 |
+| MAVLink frame CRC/checksum | 필수 | 아님 |
+| raw frame length/sequence parse | 필수 | 아님 |
+| MAVLink message ID 허용 여부 판단 | 아님 | 필수 |
+| mission MID 변환 | 아님 | 필수 |
+| FC stream timeout/quality 판단 | 아님 | 필수 |
+| Software Bus publish 및 상태 보고 | 아님 | 필수 |
+
+이 경계는 Section 18.4.4의 uplink transport 경계와 대칭이어야 하며, 한쪽만 transport 책임을 상세히 정의하고 다른 쪽을 생략해서는 안 된다.
 ## 11. 복구 한도 및 에스컬레이션 정책
 
 cFS는 고정된 재시도, 다시 시작 또는 재부팅 타이밍 값을 정의하지 않습니다. 회복
@@ -539,6 +588,14 @@ Raspberry Pi/cFS 호스트 수가 재설정되면 재부팅 루프가 감지됩�
 
 수동 카운터 삭제에는 명시적인 명령 승인이 필요합니다.
 
+window 기반 제한과 카운터 재설정의 상호작용 규칙:
+
+- 안정 기간 충족만으로 모든 window 기반 카운터가 즉시 삭제되는 것은 아니다.
+- 각 카운터는 자신의 관측 window가 만료되고, 동시에 해당 안정 조건이 충족되었을 때만 재설정될 수 있다.
+- 예를 들어 `600초 내 3회 앱 재시작` 제한은 마지막 관련 재시작 시각으로부터 600초 window가 닫히기 전까지 유지된다.
+- 30초 안정 조건은 다음 window를 새로 시작할 수 있는 최소 조건일 뿐, 아직 닫히지 않은 기존 window를 소급 삭제하지 않는다.
+- 카운터가 재설정되면 다음 관련 fault event가 새 window의 시작점이 된다.
+
 ## 12. 지속 상태 및 재부팅 복구
 
 지속 상태는 임무 상태, 오류 및 복구 카운터로 제한됩니다.
@@ -570,6 +627,13 @@ Raspberry Pi/cFS 호스트 수가 재설정되면 재부팅 루프가 감지됩�
 
 모든 영구 기록에는 검증을 위한 충분한 무결성 메타데이터가 포함되어야 합니다.
 버전, 크기, CRC/체크섬, 타임스탬프, 생성 카운터 등이 있습니다.
+
+현재 기준 저장소 백엔드:
+
+- persistent state는 Raspberry Pi 파일 시스템에 record 단위로 저장한다.
+- 각 record write는 replace 또는 rename 기반 atomic write를 사용해야 한다.
+- 저장 빈도는 event-driven update를 기본으로 하며, 고속 sensor sample은 저장 대상이 아니다.
+- 다른 백엔드로 교체하더라도 본 문서의 record integrity field와 reboot recovery contract를 유지해야 한다.
 
 ## 13. 활성/보류 구성 모델
 
@@ -657,6 +721,16 @@ FC, 모터 또는 액추에이터 명령 및 비행 제어 매개변수
 최종 앱별 상태 테이블은 명령 승인이 이루어지기 전에 정의되어야 합니다.
 최종 확정되었으며 섹션 17에서 추적됩니다.
 
+`CFS_DEGRADED`는 최상위 상태로 유지하되, 테스트와 운용 판단을 위해 최소한 다음 세부 원인을 `FaultCode` 또는 동등한 세부 필드로 구분해야 한다.
+
+- `DEGRADED_BRIDGE`
+- `DEGRADED_GPS`
+- `DEGRADED_EKF`
+- `DEGRADED_LINK`
+- `DEGRADED_APP`
+
+즉 상태 기계는 단일 `CFS_DEGRADED`를 유지할 수 있지만, 테스트 기대 결과와 운용자 판단은 세부 결함 원인까지 관찰 가능해야 한다.
+
 ## 16. 테스트 요구 사항
 
 각 앱은 다음을 지원하거나 테스트할 수 있어야 합니다.
@@ -679,9 +753,9 @@ FC, 모터 또는 액추에이터 명령 및 비행 제어 매개변수
 | 기능 | 입력 | 기대 결과 | 검증 방법 |
 | --- | --- | --- | --- |
 | `mavlink_bridge_app` MAVLink 수신 | UART 기반 `ATTITUDE`, `GPS_RAW_INT`, `EKF_STATUS_REPORT` 입력 | 해당 MID가 정상 publish되고 `BRIDGE_STATUS_MID`가 갱신된다. | 수신 로그, Software Bus subscribe 결과, HK 카운터 확인 |
-| `mavlink_bridge_app` 오류 처리 | 잘못된 길이, CRC 오류, 순서 오류, timeout | invalid frame이 폐기되고 링크 상태가 성능 저하 또는 손실로 반영된다. | fault code, discard count, 상태 MID 확인 |
-| `cfs_core_app` 상태 종합 | 정상 IMU/GPS/EKF/bridge 입력 | `SYSTEM_HEALTH_MID`가 정상 상태로 게시된다. | health 상태 필드와 sequence 증가 확인 |
-| `cfs_core_app` 복구 판단 | bridge timeout, EKF invalid, GPS stale | 성능 저하 또는 복구 필요 상태가 게시되고 필요한 복구 정책이 요청된다. | health 상태, fault code, recovery request 로그 확인 |
+| `mavlink_bridge_app` 오류 처리 | 잘못된 길이, CRC 오류, 순서 오류, timeout | invalid frame이 폐기되고 링크 상태가 성능 저하 또는 손실로 반영된다. | `BRIDGE_STATUS_MID`의 `FaultCode`, discard count, 상태 MID 확인 |
+| `cfs_core_app` 상태 종합 | 정상 IMU/GPS/EKF/bridge 입력 | `SYSTEM_HEALTH_MID`가 정상 상태로 게시된다. | health 상태 필드, `FaultCode=FAULT_NONE`, sequence 증가 확인 |
+| `cfs_core_app` 복구 판단 | bridge timeout, EKF invalid, GPS stale | 성능 저하 또는 복구 필요 상태가 게시되고 필요한 복구 정책이 요청된다. | health 상태와 함께 `FaultCode=DEGRADED_BRIDGE`, `DEGRADED_EKF`, `DEGRADED_GPS` 중 해당 값, recovery request 로그 확인 |
 | `downlink_app` 패킷 구성 | 승인된 상태 MID 입력 | downlink packet이 생성되고 송신 카운터와 마지막 송신 시각이 갱신된다. | 송신 로그, `DOWNLINK_STATUS_MID`, HK 확인 |
 | `downlink_app` 송신 오류 처리 | LoRa 또는 지상국 송신 실패 | 송신 오류 수가 증가하고 오류 상태가 유지된다. | error count, last fault code 확인 |
 | `uplink_app` 설정 반영 | 유효한 runtime configuration 명령 | pending 검증 후 active 설정이 갱신된다. | 설정 상태, sequence, 적용 로그 확인 |
@@ -702,36 +776,137 @@ FC, 모터 또는 액추에이터 명령 및 비행 제어 매개변수
 | 통신 장애 후 복구 | FC-UART 링크 또는 LoRa 송신을 일시적으로 차단한 뒤 복구한다. | 시스템 상태가 성능 저하 또는 복구 필요 상태로 전이되었다가, 링크 복구 후 정상 상태로 돌아온다. |
 | 앱 재시작 후 지속 상태 복원 | 앱을 재시작하거나 소프트 재부팅을 수행한다. | 필요한 persistent state와 active 설정이 정책에 맞게 복원된다. |
 
-## 17. 미해결 항목
+## 17. 기준 결정 사항
 
-- 최종 MID 숫자 할당.
-- 최종 타임스탬프 기준 및 단위.
-- 페이로드 유형 정밀도 및 엔디안 정책.
-- 앱 시작 순서, 우선순위 및 스택 크기.
-- 각 앱에 대한 SCH 기반 및 앱 로컬 기간 제어입니다.
-- 지속적인 스토리지 백엔드 및 쓰기 예산.
-- 복구 권한 구현: `cfs_core_app`, 건강/안전 앱 또는
-  기존 cFS 앱 통합.
-- 정확한 명령 권한 부여 및 테이블 유효성 검사 규칙.
-- 승인된 명령을 포함한 최종 `uplink_app` 명령 라우팅 계약
-  클래스, 대상별 명령 MID 매핑 및 `UPLINK_STATUS_MID` 페이로드.
-- 소유자, 생산자, 소비자를 포함하여 앱별 완전한 MID 계약 테이블
-  명령 MID, 게시 속도, 페이로드 레이아웃, 유효성 규칙 및 오류
-  행동.
-- 앱별 명령 MID 및 명령 라우팅 정책을 정의합니다.
-- 다음을 포함하여 임무 입력에 대한 시간 기준 및 시간 유효성 규칙을 정의합니다.
-  `cfs_core_app`에 의해 알려진 것으로 간주되는 시간 기준의 최소 조건입니다.
-- 어떤 앱이 실행되고, 정지되고, 정지되는지를 포함하여 상태별 앱 작동 정책을 정의합니다.
-  `CFS_NOMINAL`, `CFS_DEGRADED`, `CFS_RECOVERY`에 잘못된 출력을 게시하고
-  최소 보고 시작. `SHUTDOWN`은(는) 지시된 절차로 유지됩니다.
-- 시퀀스 처리, 시간 초과에 대한 앱 수준 정확성 속성 정의
-  처리, 복구 동작, 구성 활성화, 롤백 및 재부팅 루프
-  방지.
-- 재시도 간격, 재시도 제한, 하트비트에 대한 최종 숫자 복구 상수
-  기간, 감시 시간 초과 및 재부팅 루프 창은 이후에 확인됩니다.
-  하드웨어 테스트.
-- 향후 임무 페이로드 경로에 대한 하드웨어 연결 토폴로지 정의.
-- 확인된 토폴로지에 따라 해당 경로의 복구 정책 갱신.
+이 섹션은 본 문서의 현재 기준값과 정책을 고정한다. 이후 구현은 아래 결정을 기본 계약으로 사용해야 하며, 변경이 필요할 경우 해당 섹션을 직접 수정해야 한다.
+
+### 17.1 MID 및 명령 MID 기준값
+
+현재 기준 MID는 다음과 같이 고정한다.
+
+| 항목 | 값 |
+| --- | --- |
+| `MAVLINK_BRIDGE_APP_CMD_MID` | `0x18A0` |
+| `MAVLINK_BRIDGE_APP_SEND_HK_MID` | `0x18A1` |
+| `DOWNLINK_APP_CMD_MID` | `0x18B0` |
+| `DOWNLINK_APP_SEND_HK_MID` | `0x18B1` |
+| `CFS_CORE_APP_CMD_MID` | `0x18C0` |
+| `CFS_CORE_APP_SEND_HK_MID` | `0x18C1` |
+| `UPLINK_APP_CMD_MID` | `0x18D0` |
+| `UPLINK_APP_SEND_HK_MID` | `0x18D1` |
+| `SYSTEM_HEALTH_MID` | `0x1904` |
+| `UPLINK_STATUS_MID` | `0x190A` |
+| `ROUTE_UPDATE_MID` | `0x190B` |
+
+`DOWNLINK_STATUS_MID`는 현재 기준으로 `0x1905`를 사용한다.
+
+현재 코드베이스의 `lora_fc_downlink_app`은 cFS topic-id 기반 매핑(`DEFAULT_LORA_FC_DOWNLINK_APP_MISSION_CMD_TOPICID`, `...SEND_HK_TOPICID`)을 사용한다. 해당 topic-id 매핑은 본 섹션의 `0x18B0/0x18B1` baseline과 동등한 명령 ingress 의미를 가져야 하며, 플랫폼 설정 시 값 충돌이 없도록 동일 baseline으로 유지해야 한다.
+
+본 문서에서 `UPLINK_CMD_MID`라는 일반 표현은 현재 구현 기준 `UPLINK_APP_CMD_MID`와 동일한 명령 ingress MID를 의미한다. 별도 uplink command gateway MID를 두지 않는 한 두 용어를 동의어로 사용한다.
+
+### 17.2 payload 정밀도 및 엔디안 정책
+
+- cFS 내부 mission payload의 부동소수점 필드는 `IEEE-754 32-bit float`를 사용한다.
+- cFS 내부 구조체 직렬화는 Raspberry Pi host endianness에 맞춘 little-endian을 기본값으로 한다.
+- transport-specific ASCII 또는 hex frame은 엔디안에 독립적인 canonical text 표현을 사용한다.
+- 새 binary transport를 추가할 경우 별도 엔디안 변환 규칙을 명시해야 하며, 명시하지 않으면 little-endian을 사용한다.
+
+### 17.3 앱 시작 순서, 우선순위, 스택
+
+기준 startup 순서는 다음과 같다.
+
+1. `mav_bridge_app`
+2. `cfs_core_app`
+3. `uplink_app`
+4. `lora_fc_downlink_app`
+
+기준 우선순위 정책:
+
+- `mav_bridge_app`와 `cfs_core_app`은 downlink/uplink 앱보다 높은 우선순위를 가져야 한다.
+- `uplink_app`은 `lora_fc_downlink_app`와 같거나 더 높은 우선순위를 가져야 한다.
+- 스택 크기는 각 앱의 현재 cFS sample baseline을 사용하되, parser 또는 route validation 확장으로 인해 오버플로우 위험이 확인되면 그 앱만 상향 조정한다.
+
+### 17.4 앱 기간 제어 기준
+
+- `mavlink_bridge_app`: app-local polling loop를 사용한다.
+- `cfs_core_app`: event-driven 입력 처리와 1 Hz health publish를 병행한다.
+- `uplink_app`: event-driven command 처리와 1 Hz status publish를 사용한다.
+- `lora_fc_downlink_app`: subscribed state message 기반 event-driven packet compose를 사용하고, status/HK는 1 Hz 기준을 따른다.
+
+SCH 기반 제어가 추가되더라도 위 publish rate와 event-driven 계약을 깨뜨려서는 안 된다.
+
+### 17.5 명령 권한 부여 기준
+
+기준 권한 수준은 다음과 같이 고정한다.
+
+| 권한 수준 | 허용 명령 |
+| --- | --- |
+| Level 1 | NOOP, HK request, diagnostic read-only, 상태 조회 |
+| Level 2 | route update, viewpoint update, runtime configuration |
+| Level 3 | recovery command, mode command, counter management |
+
+Level 3 명령은 명시적 운용자 승인과 request token 검증을 모두 만족해야 한다.
+
+이 표는 권한 수준 체계와 명령 클래스별 기본 권한 수준을 고정한다. 개별 function code 또는 세부 command code와 Level 간의 1:1 매핑은 각 앱 command dictionary 구현 시 본 표를 따라 채워야 한다.
+
+### 17.6 `uplink_app` 명령 라우팅 기준
+
+| 명령 클래스 | 기본 대상 |
+| --- | --- |
+| runtime configuration | 대상 앱 설정 인터페이스 또는 `cfs_core_app` |
+| route update | `cfs_core_app` mission route consumer |
+| viewpoint update | `cfs_core_app` 또는 후속 planner consumer |
+| recovery command | `cfs_core_app` 또는 대상 bridge/app component |
+| mode command | `cfs_core_app` |
+| diagnostic command | 대상 앱 diagnostic interface |
+| counter management | `cfs_core_app` 또는 대상 앱 |
+
+### 17.7 앱별 command interface 기준
+
+- `mavlink_bridge_app`의 외부 승인 command는 `NOOP`, `RESET_COUNTERS`, `SEND_HK`로 제한한다.
+- `cfs_core_app`의 외부 승인 command는 `NOOP`, `RESET_COUNTERS`, `SEND_HK`로 제한한다.
+- `uplink_app`의 외부 승인 command는 `NOOP`, `RESET_COUNTERS`, `SEND_HK`, `PROCESS_UPLINK`를 포함한다.
+- `lora_fc_downlink_app`의 외부 승인 command는 `NOOP`, `RESET_COUNTERS`, `SEND_HK`로 제한한다.
+
+### 17.8 시간 기준 유지 정책
+
+- 현재 기준 시간축은 `mission elapsed millisecond`로 고정한다.
+- 하드웨어 테스트 이후에도 절대 시간 기준을 기본값으로 승격하지 않는다. 절대 시간은 필요 시 보조 필드로만 추가한다.
+
+### 17.9 상태별 앱 운영 정책 확정
+
+- `CFS_NOMINAL`: 모든 기준 앱 활성
+- `CFS_DEGRADED`: 모든 기준 앱 활성, 단 정상 상태가 필요한 명령만 차단
+- `CFS_RECOVERY`: `cfs_core_app`와 필수 bridge/status path 유지, 구성 변경과 mode 변경 차단
+- 최소 보고 시작: `cfs_core_app`, 필수 bridge/status publish, 오류 보고만 유지
+
+### 17.10 시퀀스 및 정확성 기준
+
+- 모든 mission state payload는 단조 증가 `SequenceCounter`를 사용한다.
+- `uplink_app` command sequence는 strict monotonic increase를 기본 정책으로 사용한다.
+- 동일 sequence 또는 감소한 sequence는 replay로 거부한다.
+- wraparound는 baseline 구현에서 지원하지 않으며, wraparound가 필요하면 boot boundary와 함께 별도 정책을 추가해야 한다.
+
+### 17.11 복구 상수 기준값
+
+- link/parser soft retry interval: `5 s`
+- soft retry max count: `3`
+- critical app restart interval: `60 s`
+- critical app restart max count: 앱당 `3`
+- watchdog service period: `1 s`
+- watchdog timeout: `30 s`
+- reboot loop detection window: `30 s`
+- app restart abuse window: `600 s`
+
+### 17.12 하드웨어 연결 토폴로지 기준
+
+기준 하드웨어 토폴로지는 다음과 같다.
+
+- FC -> Raspberry Pi: UART MAVLink
+- Ground uplink -> Raspberry Pi: LoRa 또는 동등한 승인된 transport, host-side bridge를 통해 표준 uplink envelope으로 변환
+- Raspberry Pi -> Ground downlink: LoRa 또는 동등한 승인된 downlink transport
+
+이 baseline에 포함되지 않은 미래 payload path는 현재 스펙 범위 밖으로 두며, 추가 시 별도 섹션으로 정의한다.
 
 ## 18. `uplink_app` 사양
 
@@ -742,6 +917,14 @@ FC, 모터 또는 액추에이터 명령 및 비행 제어 매개변수
 `uplink_app`은 지상국 기원 명령이 cFS mission app layer로 진입하는 유일한 승인 경로이다. 다른 앱은 raw ground command를 직접 수신해서는 안 된다.
 
 `uplink_app`은 경로 수정 명령을 제외한 FC 직접 제어 명령을 발행해서는 안 된다. 여기서 FC 직접 제어 명령에는 비행 모드 변경, FC-level mission 변경, 모터 또는 액추에이터 제어, FC-level 파라미터 변경이 포함되며, 이러한 명령은 Section 3의 기본 플랫폼 경계 정책에서 금지된다. 경로 수정 명령은 비행체가 따라갈 임무 경로에 영향을 줄 수 있는 예외적인 명령 클래스이지만, `uplink_app`이 이를 직접적인 자세 제어, 모터 제어, 또는 FC 내부 제어 명령으로 실행하는 것은 아니다. `uplink_app`은 수신된 경로 정보를 검증한 뒤 상위 임무 계층 또는 경로 관리 계층에 전달하는 역할만 수행하며, FC 안전 정책을 우회해서는 안 된다.
+
+route update의 downstream 경계는 다음과 같이 고정한다.
+
+- `uplink_app`은 route update를 검증된 mission-layer route segment로만 변환한다.
+- 현재 기준 route consumer는 `cfs_core_app` 또는 그가 소유한 mission route cache/interface이다.
+- 이 문서 범위에서 route update 이후 FC 반영은 "mission layer가 자체 안전 정책과 승인 경계를 거쳐 수행하는 별도 단계"로 정의한다.
+- `uplink_app`과 `cfs_core_app`은 FC-level mission upload, FC mode change, actuator command를 직접 수행해서는 안 된다.
+- FC 반영 경로가 이후 정의되더라도, 그것은 별도 mission execution contract로 문서화되어야 하며 본 `uplink_app` 예외 규정에 암묵적으로 포함되지 않는다.
 
 ### 18.2 승인된 명령 클래스
 
@@ -831,6 +1014,258 @@ FC, 모터 또는 액추에이터 명령 및 비행 제어 매개변수
 - 마지막 viewpoint update 처리 결과
 
 이 상태는 HK 또는 `UPLINK_STATUS_MID`를 통해 검증 가능해야 한다.
+
+#### 18.4.3 공통 명령 envelope 계약
+
+`uplink_app`이 소비하는 내부 표준 uplink command envelope은 최소한 다음 필드를 포함해야 한다.
+
+| 필드 | 형식 | 의미 | 검증 규칙 |
+| --- | --- | --- | --- |
+| `version` | `uint8` | uplink protocol version | 현재 지원 버전과 일치해야 한다. |
+| `command_class` | `uint8` | 명령 클래스 식별자 | Section 18.2의 승인된 클래스 중 하나여야 한다. |
+| `payload_length` | `uint8` 또는 동등한 길이 필드 | payload 실제 길이 | 선언 길이와 실제 길이가 일치해야 하며, 최대 payload 길이를 초과해서는 안 된다. |
+| `flags` | `uint8` | 전송 또는 처리 옵션 | 정의되지 않은 비트는 `0`이어야 한다. |
+| `sequence` | `uint16` 또는 동등한 단조 증가 시퀀스 | replay/duplicate 탐지용 식별자 | 허용된 시퀀스 정책을 만족해야 한다. |
+| `target_id` | `uint8` 또는 동등한 대상 식별자 | 대상 앱 또는 대상 기능 식별자 | 해당 `command_class`에서 허용된 대상 집합에 포함되어야 한다. |
+| `payload` | 가변 길이 byte array | 클래스별 데이터 | 클래스별 payload 계약과 일치해야 한다. |
+
+`target_id`가 wire format에 독립 필드로 존재하지 않는 경우, `command_class`와 `payload` 내부의 첫 필드 조합으로 대상 기능을 판별할 수 있다. 그러나 구현은 입력 계약 문서에 대상 식별 방식이 명시되어 있지 않은 payload를 수락해서는 안 된다.
+
+`uplink_app`은 transport-specific raw frame을 직접 표준 envelope으로 간주해서는 안 된다. LoRa ASCII frame, UDP mock frame, 또는 동등한 승인된 transport-specific 입력은 먼저 transport 계층에서 framing/CRC를 처리한 뒤 표준 envelope으로 변환되어야 한다.
+
+#### 18.4.4 transport 계층과 `uplink_app` 책임 경계
+
+transport 계층과 `uplink_app`의 책임은 다음과 같이 분리되어야 한다.
+
+| 항목 | transport 계층 책임 | `uplink_app` 책임 |
+| --- | --- | --- |
+| serial open/reopen | 필수 | 아님 |
+| LoRa ASCII framing | 필수 | 아님 |
+| raw frame CRC 또는 checksum | 필수 | 아님 |
+| raw frame length/field parse | 필수 | 아님 |
+| 표준 envelope version 확인 | 가능 | 필수 |
+| class 허용 여부 판단 | 아님 | 필수 |
+| replay/duplicate 방지 | 권장 | 필수 |
+| payload semantic validation | 아님 | 필수 |
+| cFS 상태/권한 정책 판단 | 아님 | 필수 |
+| 대상 앱 라우팅 및 상태 보고 | 아님 | 필수 |
+
+transport 계층이 replay 또는 duplicate frame을 선행 폐기하더라도, `uplink_app`은 마지막으로 승인된 시퀀스 또는 동등한 replay 보호 상태를 자체적으로 유지해야 한다. 이중 보호는 transport 교체나 bypass test path에서도 동일한 안전 정책을 보장하기 위함이다.
+
+#### 18.4.5 명령 클래스별 계약 개요
+
+각 명령 클래스는 최소한 다음 계약 요소를 문서화해야 한다.
+
+| 명령 클래스 | payload 정의 상태 | 최소 출력 계약 | 현재 구현 우선순위 |
+| --- | --- | --- | --- |
+| runtime configuration | 필수 | pending buffer 또는 대상 앱 설정 인터페이스 | 높음 |
+| route update | 필수 | 검증된 route segment 구조 또는 `ROUTE_UPDATE_MID` | 구현 우선 완료 |
+| viewpoint update | 필수 | 검증된 viewpoint 구조 또는 대상 planner 입력 | 높음 |
+| recovery command | 필수 | 대상 앱 또는 `cfs_core_app`로의 recovery request | 높음 |
+| mode command | 필수 | 모드 전이 요청 또는 거부 결과 | 중간 |
+| diagnostic command | 필수 | 진단 실행 또는 진단 설정 반영 결과 | 중간 |
+| counter management | 필수 | 허용된 카운터 reset 요청 결과 | 중간 |
+
+payload 정의 상태가 `필수`인 클래스는 payload 필드, 길이, 값 범위, 허용 상태, reject code를 모두 명시하기 전까지 구현 완료로 간주해서는 안 된다.
+
+#### 18.4.6 명령 클래스별 입력/출력 계약
+
+##### 18.4.6.1 runtime configuration
+
+runtime configuration payload는 최소한 다음 필드를 포함해야 한다.
+
+| 필드 | 형식 | 의미 | 검증 규칙 |
+| --- | --- | --- | --- |
+| `config_scope` | `uint8` | 대상 앱 또는 전역 범위 | 승인된 대상만 허용 |
+| `config_version` | `uint8` | 구성 payload 버전 | 현재 지원 버전과 일치 |
+| `parameter_id` | `uint16` 또는 동등한 식별자 | 변경 대상 파라미터 | 승인된 파라미터 집합에 포함 |
+| `value_type` | `uint8` | 값 형식 | 대상 파라미터 타입과 일치 |
+| `value_length` | `uint8` 또는 `uint16` | 값 길이 | 선언 길이와 실제 길이 일치 |
+| `value` | 가변 길이 byte array | 새 값 | 범위, 단위, 상태 호환성 충족 |
+
+출력 계약:
+
+- 유효한 payload는 대상 앱의 pending buffer 또는 동등한 설정 인터페이스에 전달되어야 한다.
+- `uplink_app`은 active configuration을 직접 덮어쓰지 않아야 한다.
+- 설정 반영 결과는 `pending`, `accepted`, `rejected`, `rolled_back` 중 하나로 `UPLINK_STATUS_MID`에 반영되어야 한다.
+
+거부 조건:
+
+- 알 수 없는 `parameter_id`
+- 허용 범위 초과
+- 대상 앱 상태와 비호환
+- 체크섬 또는 CRC 검증 실패
+- 권한 부족
+
+##### 18.4.6.2 route update
+
+route update payload는 최소한 다음 필드를 포함해야 한다.
+
+| 필드 | 형식 | 의미 | 검증 규칙 |
+| --- | --- | --- | --- |
+| `route_type` | `uint8` | `mission_extension` 또는 `landing` | 승인된 route type만 허용 |
+| `route_version` | `uint8` | payload 버전 | 현재 지원 버전과 일치 |
+| `waypoint_count` | `uint8` | waypoint 개수 | `1` 이상 최대 waypoint 제한 이하 |
+| `waypoints` | waypoint 배열 | route segment 좌표 | finite, flyable area, altitude, segment distance 조건 충족 |
+
+출력 계약:
+
+- 유효한 payload는 mission layer가 직접 사용할 수 있는 검증된 route segment 구조로 변환되어야 한다.
+- 최소 출력 필드는 `route_type`, `route_version`, `waypoint_count`, waypoint 배열이다.
+- 현재 구현에서 내부 bus message를 사용하는 경우, 그 message는 raw payload copy가 아니라 검증된 구조 표현이어야 한다.
+
+거부 조건:
+
+- payload 길이 불일치
+- waypoint 수 위반
+- 좌표가 finite가 아님
+- 비행 가능 영역 위반
+- 고도 제약 위반
+- 인접 waypoint 거리 제약 위반
+
+##### 18.4.6.3 viewpoint update
+
+viewpoint payload는 최소한 다음 필드를 포함해야 한다.
+
+| 필드 | 형식 | 의미 | 검증 규칙 |
+| --- | --- | --- | --- |
+| `viewpoint_type` | `uint8` | absolute, relative, track-point 등 승인된 타입 | 승인된 타입만 허용 |
+| `viewpoint_version` | `uint8` | payload 버전 | 현재 지원 버전과 일치 |
+| `position_frame` | `uint8` | 좌표 기준 프레임 | 승인된 frame만 허용 |
+| `position` | `float x,y,z` 또는 동등한 구조 | 목표 위치 | finite, 영역 제약 충족 |
+| `orientation` | yaw/pitch 또는 동등한 구조 | 시점 방향 | 각도 범위 제약 충족 |
+| `hold_time_ms` | `uint32` | 유지 시간 | 허용 범위 내 |
+
+출력 계약:
+
+- 유효한 viewpoint는 planner 또는 mission layer가 소비 가능한 내부 viewpoint 구조로 변환되어야 한다.
+- route update와 동일하게 raw payload byte array를 직접 재사용해서는 안 된다.
+
+거부 조건:
+
+- 필수 필드 누락
+- 좌표 또는 각도 범위 위반
+- route planner가 지원하지 않는 `viewpoint_type`
+- 현재 cFS 상태와 비호환
+
+##### 18.4.6.4 recovery command
+
+recovery payload는 최소한 다음 필드를 포함해야 한다.
+
+| 필드 | 형식 | 의미 | 검증 규칙 |
+| --- | --- | --- | --- |
+| `recovery_action` | `uint8` | parser reset, serial reconnect, app restart request 등 | 승인된 action만 허용 |
+| `target_component` | `uint8` | 대상 앱 또는 전송 계층 | 승인된 대상만 허용 |
+| `reason_code` | `uint8` 또는 `uint16` | 운용자 요청 사유 | 정의된 코드 또는 `0` |
+| `request_token` | `uint16` 또는 `uint32` | 요청 상관 식별자 | replay 정책과 양립 가능해야 함 |
+
+출력 계약:
+
+- `uplink_app` 자체 자원에 국한된 action만 로컬에서 처리할 수 있다.
+- 그 외 action은 대상 앱 또는 `cfs_core_app`로 전달되어야 한다.
+- `UPLINK_STATUS_MID`는 `전달 성공`과 `실행 성공`을 구분할 수 있어야 한다.
+
+거부 조건:
+
+- 승인되지 않은 `recovery_action`
+- 대상 컴포넌트 불일치
+- 현재 상태에서 금지된 recovery action
+- 권한 부족
+
+##### 18.4.6.5 mode command
+
+mode payload는 최소한 다음 필드를 포함해야 한다.
+
+| 필드 | 형식 | 의미 | 검증 규칙 |
+| --- | --- | --- | --- |
+| `mode_action` | `uint8` | recovery mode enter/exit 등 | 승인된 action만 허용 |
+| `requested_state` | `uint8` | 목표 상태 | 승인된 상태 집합에 포함 |
+| `request_token` | `uint16` 또는 `uint32` | 상관 식별자 | replay 정책과 양립 가능해야 함 |
+
+출력 계약:
+
+- mode command는 직접 모드 전이를 수행하지 않고, mode authority로 전달되어야 한다.
+- `uplink_app`은 허용 여부와 전달 결과만 기록한다.
+
+거부 조건:
+
+- 현재 cFS 상태에서 허용되지 않는 전이
+- 권한 부족
+- 승인되지 않은 목표 상태
+
+##### 18.4.6.6 diagnostic command
+
+diagnostic payload는 최소한 다음 필드를 포함해야 한다.
+
+| 필드 | 형식 | 의미 | 검증 규칙 |
+| --- | --- | --- | --- |
+| `diag_action` | `uint8` | log level change, capture enable/disable 등 | 승인된 action만 허용 |
+| `diag_target` | `uint8` | 대상 앱 또는 하위 모듈 | 승인된 대상만 허용 |
+| `diag_value` | 가변 길이 | action 인자 | action별 형식과 범위 충족 |
+
+출력 계약:
+
+- 유효한 diagnostic command는 즉시 실행되거나 대상 앱의 diagnostic interface로 전달되어야 한다.
+- 진단 명령은 pending buffer를 요구하지 않는다.
+
+거부 조건:
+
+- 승인되지 않은 action
+- payload 형식 불일치
+- 현재 상태에서 금지된 진단 동작
+
+##### 18.4.6.7 counter management
+
+counter management payload는 최소한 다음 필드를 포함해야 한다.
+
+| 필드 | 형식 | 의미 | 검증 규칙 |
+| --- | --- | --- | --- |
+| `counter_scope` | `uint8` | 대상 앱 또는 전역 범위 | 승인된 범위만 허용 |
+| `counter_action` | `uint8` | reset 또는 동등한 관리 동작 | 승인된 action만 허용 |
+| `confirm_code` | `uint16` 또는 동등한 확인 필드 | 파괴적 관리 동작 확인 | 정책상 요구되면 반드시 일치 |
+
+출력 계약:
+
+- 승인된 경우에만 대상 앱 또는 `cfs_core_app` 카운터 관리 인터페이스로 전달한다.
+- 결과는 `UPLINK_STATUS_MID`에 명시적으로 반영되어야 한다.
+
+거부 조건:
+
+- 확인 코드 불일치
+- 권한 부족
+- 최소 보고 시작 상태에서 금지된 범위
+
+#### 18.4.7 명령 클래스별 라우팅 대상
+
+각 명령 클래스는 최소한 다음 라우팅 기본값을 가져야 한다.
+
+| 명령 클래스 | 기본 라우팅 대상 | 비고 |
+| --- | --- | --- |
+| runtime configuration | 대상 앱 설정 인터페이스 또는 `cfs_core_app` | active 적용은 대상 앱 경계에서 수행 |
+| route update | mission layer route consumer | 현재 구현은 내부 route update message 사용 가능 |
+| viewpoint update | planner 또는 mission layer viewpoint consumer | route update와 분리된 target 유지 |
+| recovery command | 대상 앱 또는 `cfs_core_app` | action별 대상 허용 집합 필요 |
+| mode command | `cfs_core_app` 또는 mode authority | 직접 상태 전이 금지 |
+| diagnostic command | 대상 앱 diagnostic interface | 즉시 실행 가능 |
+| counter management | 대상 앱 또는 `cfs_core_app` | destructive action 승인 필요 |
+
+구현은 `command_class`만으로 모든 라우팅을 고정해서는 안 되며, 필요한 경우 `target_id` 또는 payload 내부 대상 식별자를 함께 사용해야 한다.
+
+#### 18.4.8 명령 클래스별 최소 테스트 케이스
+
+각 명령 클래스는 최소한 다음 테스트 케이스를 가져야 한다.
+
+| 명령 클래스 | 필수 정상 케이스 | 필수 오류 케이스 |
+| --- | --- | --- |
+| runtime configuration | 범위 내 설정 1건 수락 및 pending 반영 | 범위 오류, 버전 오류, CRC 오류, 대상 상태 비호환 |
+| route update | 유효한 `mission_extension`, 유효한 `landing` | 길이 오류, altitude 오류, distance 오류, replay |
+| viewpoint update | 유효한 viewpoint 1건 수락 | 좌표 오류, orientation 오류, 타입 미지원 |
+| recovery command | 승인된 parser reset 또는 restart request 전달 | 권한 부족, 대상 불일치, 상태 비호환 |
+| mode command | 허용 상태 전이 요청 전달 | 금지된 상태 전이, 권한 부족 |
+| diagnostic command | 승인된 log level 또는 capture toggle | action 미지원, payload 형식 오류 |
+| counter management | 승인된 counter reset 전달 | 확인 코드 오류, 권한 부족 |
+
+이 테스트 케이스는 unit test 또는 mock transport runtime test 중 하나 이상으로 검증되어야 하며, 파괴적이거나 상태 의존적인 케이스는 runtime test 전에 명시적으로 격리되어야 한다.
 
 ### 18.5 구성 명령 처리
 
@@ -942,18 +1377,20 @@ cFS 상태 및 운영자 인증 수준은 전환을 허용합니다. `uplink_app
 - 마지막 구성 활성화 결과.
 - 해당되는 경우 마지막 롤백 이유입니다.
 
+기준 publish rate:
+
+- `UPLINK_STATUS_MID`: 1 Hz periodic publish를 기본값으로 한다.
+- 명령 수락/거부, replay reject, routing failure, transport state transition 발생 시 추가 event-driven publish를 허용한다.
+
 ### 18.8 업링크 전송 경계
 
-`uplink_app`은(는) 승인된 호스트로부터 업링크 패킷을 수신하는 역할을 담당한다.
-운송 입력. 전송은 LoRa 직렬, 지상국 무선 링크,
-또는 다른 승인된 채널.
+`uplink_app`은(는) 승인된 호스트로부터 전달된 표준 uplink envelope을 소비하는 역할을 담당한다. transport-specific 입력은 LoRa 직렬, 지상국 무선 링크, 또는 다른 승인된 채널일 수 있으나, Section 18.4.4의 transport 계층이 이를 표준 envelope으로 변환한 뒤 `uplink_app`에 전달해야 한다.
 
 `uplink_app` 운송 책임:
 
-- 업링크 전송 엔드포인트를 열고 유지합니다.
-- 수신 패킷을 파싱하고 프레임 유효성을 검사한다.
-- 전송 수준 오류를 감지한다: timeout, disconnect, parse error.
-- 오류 발생 후 전송 수준 재연결을 시도합니다.
+- transport 계층이 보고한 업링크 연결 상태를 소비하고 상태 보고에 반영한다.
+- 전달된 표준 envelope의 version, class, replay, payload semantic validation을 수행한다.
+- transport 계층 또는 bridge 구성요소에 parser reset 또는 reconnect 요청을 전달할 수 있다.
 - `UPLINK_STATUS_MID`을(를) 통해 전송 상태를 보고합니다.
 
 `uplink_app`은 다운링크 텔레메트리 경로에 대한 최종 링크 상태를 분류하지 않습니다.
@@ -983,6 +1420,8 @@ downlink 텔레메트리 상태는 `downlink_app`의 책임이며
 | 전송 시간 초과 또는 연결 끊김 | 전송 끝점 다시 열기 | 5초 | 3 | 업링크를 `LOST`로 표시; 복구 권한 평가 요청 |
 | 반복되는 라우팅 실패 | `cfs_core_app`에 보고 | 장애 이벤트당 | 3 | 라우팅 경로를 사용할 수 없는 경우 `CFS_DEGRADED`로 전이 |
 
+이 표는 Section 11.1의 시스템 수준 복구 한계를 `uplink_app`에 적용한 앱별 세부 규칙이다. `uplink_app` 전용 제한이 Section 11의 상위 규칙과 충돌할 경우, Section 11의 recovery authority 정책을 우선하고 본 표는 해당 앱의 로컬 선행 동작을 정의하는 것으로 해석한다.
+
 ### 18.10 상태별 운영 정책
 
 | cFS 상태 | `uplink_app` 행동 |
@@ -994,14 +1433,12 @@ downlink 텔레메트리 상태는 `downlink_app`의 책임이며
 
 ### 18.11 `uplink_app`에 대한 미해결 항목
 
-- 최종 `UPLINK_CMD_MID` 숫자 할당.
-- 최종 `UPLINK_STATUS_MID` 숫자 할당 및 출판 비율.
-- 업링크 전송 유형과 물리 인터페이스 정의.
-- 명령별 인증 수준 테이블.
-- 시퀀스 번호 창 크기 및 재생 감지 정책.
-- 정확한 명령 라우팅 테이블: 대상 앱 MID 매핑에 대한 명령 코드입니다.
-- 상태별 허용 명령 클래스 표는 명령 안전 사양 이후에 확정되었습니다.
-- 업링크 패킷 형식과 버전 정책.
+현재 baseline 구현에서 추가로 세분화가 필요한 항목은 다음과 같다.
+
+- 명령 클래스별 기본 권한 수준은 Section 17.5에서 고정했으며, 개별 command code별 권한 매핑 표만 추가로 작성하면 된다.
+- 시퀀스 번호 정책은 strict monotonic increase로 고정했으며, wraparound 허용 여부와 허용 시간 창은 추가 확장 시에만 세분화한다.
+- 명령 라우팅은 Section 17.6과 Section 18.4.7에서 baseline target을 고정했으며, 세부 command code별 MID 매핑 표만 추가하면 된다.
+- 업링크 packet 형식과 version 정책은 Section 18.4.3의 envelope과 현재 `version=1` 기준을 사용한다.
 
 ### 18.12 추가 고려사항
 
@@ -1015,7 +1452,7 @@ downlink 텔레메트리 상태는 `downlink_app`의 책임이며
 - 통신 복구 후 명령 폭주: queue limit, priority, stale drop 외에 burst rate limit, old command purge, 중복 route update 정리 정책을 고려해야 한다.
 - 반복 재시작 또는 반복 복구 실패: recovery escalation과 minimum-reporting mode 외에 재시작 횟수 창, operator intervention 필요 조건, 최종 fail-safe 상태를 고려해야 한다.
 - 시간 무효 상태: `TimeValid=false`일 때 어떤 명령은 제한하고 어떤 명령은 허용할지, route update를 포함한 상태 의존 명령 제한을 고려해야 한다.
-- 부분 장애 상태 정의: `CFS_DEGRADED`를 단일 상태로만 두지 않고, GPS/EKF/bridge/link 저하와 같은 부분 장애 유형을 구분할 필요가 있는지 검토해야 한다.
+- 부분 장애 상태 정의: Section 15의 `DEGRADED_*` fault code 구분을 유지하되, 필요한 경우 세부 fault code 집합만 확장한다.
 - persistent state integrity: boot counter, command sequence cache, route cache, active configuration 저장본의 checksum 또는 CRC 오류 처리 정책을 고려해야 한다.
 - route/config 적용 원자성: route update 또는 configuration 변경이 일부만 적용된 상태로 남지 않도록 atomic apply 또는 rollback 필요성을 고려해야 한다.
 - 복구 중 허용 명령: `CFS_RECOVERY` 또는 최소 보고 상태에서 허용되는 명령 클래스의 최소 집합을 별도로 검토해야 한다.

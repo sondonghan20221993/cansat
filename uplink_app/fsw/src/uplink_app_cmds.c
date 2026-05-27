@@ -2,6 +2,16 @@
 #include "uplink_app_eventids.h"
 #include "uplink_app_utils.h"
 
+static bool UPLINK_APP_IsSequenceAccepted(uint16 Sequence)
+{
+    if (UPLINK_APP_Data.AcceptedCount == 0U)
+    {
+        return true;
+    }
+
+    return (Sequence > UPLINK_APP_Data.LastAcceptedSequence);
+}
+
 void UPLINK_APP_Noop(const UPLINK_APP_NoopCmd_t *Cmd)
 {
     (void)Cmd;
@@ -17,6 +27,7 @@ void UPLINK_APP_ResetCounters(const UPLINK_APP_ResetCountersCmd_t *Cmd)
     UPLINK_APP_Data.AcceptedCount       = 0;
     UPLINK_APP_Data.RejectedCount       = 0;
     UPLINK_APP_Data.RoutingFailureCount = 0;
+    UPLINK_APP_Data.LastAcceptedSequence = 0;
     UPLINK_APP_Data.LastCommandCode     = 0;
     UPLINK_APP_Data.LastCommandResult   = UPLINK_APP_RESULT_NONE;
     UPLINK_APP_Data.LastRouteTarget     = UPLINK_APP_ROUTE_NONE;
@@ -36,6 +47,19 @@ void UPLINK_APP_ProcessUplink(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
 
     UPLINK_APP_Data.LastRxTimeMs    = (uint32)TimeMs;
     UPLINK_APP_Data.LastCommandCode = Cmd->CommandClass;
+
+    if (!UPLINK_APP_IsSequenceAccepted(Cmd->Sequence))
+    {
+        UPLINK_APP_Data.ErrCounter++;
+        UPLINK_APP_Data.RejectedCount++;
+        UPLINK_APP_Data.LastCommandResult = UPLINK_APP_RESULT_REJECT_SEQUENCE;
+        UPLINK_APP_Data.LinkState         = UPLINK_APP_LINK_DEGRADED;
+        CFE_EVS_SendEvent(UPLINK_APP_COMMAND_ERR_EID, CFE_EVS_EventType_ERROR,
+                          "UPLINK_APP: uplink proxy rejected replay seq=%u last=%u",
+                          (unsigned int)Cmd->Sequence, (unsigned int)UPLINK_APP_Data.LastAcceptedSequence);
+        UPLINK_APP_UpdateStatusTelemetry(0);
+        return;
+    }
 
     if (!UPLINK_APP_ValidateProxyCommand(Cmd, &Result))
     {
@@ -98,6 +122,7 @@ void UPLINK_APP_ProcessUplink(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
 
     UPLINK_APP_Data.CmdCounter++;
     UPLINK_APP_Data.AcceptedCount++;
+    UPLINK_APP_Data.LastAcceptedSequence = Cmd->Sequence;
     UPLINK_APP_Data.LastCommandResult = UPLINK_APP_RESULT_ROUTED;
     UPLINK_APP_Data.LastRouteTarget   = (uint8)RouteTarget;
     UPLINK_APP_Data.LinkState         = UPLINK_APP_LINK_NOMINAL;

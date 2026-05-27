@@ -32,6 +32,7 @@ void Test_UPLINK_APP_ResetCounters(void)
     UtAssert_INT32_EQ(UPLINK_APP_Data.AcceptedCount, 0);
     UtAssert_INT32_EQ(UPLINK_APP_Data.RejectedCount, 0);
     UtAssert_INT32_EQ(UPLINK_APP_Data.RoutingFailureCount, 0);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastAcceptedSequence, 0);
 }
 
 void Test_UPLINK_APP_ProcessUplink_Accept(void)
@@ -50,7 +51,29 @@ void Test_UPLINK_APP_ProcessUplink_Accept(void)
     UPLINK_APP_ProcessUplink(&TestMsg);
 
     UtAssert_INT32_EQ(UPLINK_APP_Data.AcceptedCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastAcceptedSequence, 10);
     UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_ROUTED);
+}
+
+void Test_UPLINK_APP_ProcessUplink_RejectSequenceReplay(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_CONFIG;
+    TestMsg.PayloadLength = 0;
+    TestMsg.Sequence      = 10;
+
+    UPLINK_APP_Data.AcceptedCount        = 1;
+    UPLINK_APP_Data.LastAcceptedSequence = 10;
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.ErrCounter, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.RejectedCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_REJECT_SEQUENCE);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LinkState, UPLINK_APP_LINK_DEGRADED);
 }
 
 void Test_UPLINK_APP_ProcessUplink_Reject(void)
@@ -161,6 +184,7 @@ void UtTest_Setup(void)
     ADD_TEST(UPLINK_APP_Noop);
     ADD_TEST(UPLINK_APP_ResetCounters);
     ADD_TEST(UPLINK_APP_ProcessUplink_Accept);
+    ADD_TEST(UPLINK_APP_ProcessUplink_RejectSequenceReplay);
     ADD_TEST(UPLINK_APP_ProcessUplink_Reject);
     ADD_TEST(UPLINK_APP_ProcessUplink_RouteMiss);
     ADD_TEST(UPLINK_APP_ProcessUplink_RouteUpdate);
