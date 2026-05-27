@@ -132,6 +132,33 @@
 - `cfs_core_app` route cache 반영
 - 잘못된 route payload reject
 
+### `lora_uplink_bridge` 모듈 시험
+
+테스트 위치:
+- [tests/test_lora_uplink_bridge.py](/C:/Users/sdh97/Documents/GitHub/cfs-telemetry-app/tests/test_lora_uplink_bridge.py)
+
+구현된 테스트:
+
+| 테스트 이름 | 검증 내용 |
+| --- | --- |
+| `test_parse_frame_line_accepts_valid_frame` | canonical `UP,...` 프레임이 정상 파싱되고 version, class, sequence, payload length가 추출되는지 확인 |
+| `test_parse_frame_line_rejects_crc_mismatch` | CRC가 틀린 프레임이 거부되는지 확인 |
+| `test_parse_frame_line_rejects_invalid_format` | 프레임 형식이 아닌 일반 문자열 입력이 거부되는지 확인 |
+| `test_parse_frame_line_rejects_oversize_payload` | `192` byte를 초과하는 payload가 거부되는지 확인 |
+| `test_build_process_uplink_payload_rejects_wrong_version` | 지원하지 않는 protocol version이 `PROCESS_UPLINK` payload로 변환되기 전에 거부되는지 확인 |
+| `test_process_line_forwards_valid_frame_once` | 정상 프레임이 단 한 번 UDP 전송되고 accept count가 증가하는지 확인 |
+| `test_process_line_rejects_sequence_regression` | 동일 sequence 재입력이 replay로 거부되는지 확인 |
+| `test_process_line_allows_sequence_regression_when_disabled` | strict sequence 검사를 비활성화하면 동일 sequence도 통과하는지 확인 |
+| `test_process_line_rejects_non_frame_text` | `stdin` 또는 serial 입력에 프레임이 아닌 텍스트가 들어와도 전송 없이 reject 처리되는지 확인 |
+
+이 시험으로 현재 확인된 것:
+- uplink frame 형식 검증
+- CRC 검증
+- payload 길이 검증
+- protocol version 검증
+- sequence replay reject
+- UDP forwarding 여부
+
 ### PC 수신 시험
 
 시험 목적:
@@ -191,8 +218,8 @@
 
 현재 문서에 정의됐지만 아직 unit test 또는 런타임 시험으로 충분히 보강되지 않은 항목:
 
-- `uplink_app` CRC 검사
-- `uplink_app` sequence 증가/중복/replay 검사
+- `uplink_app` 내부 C 경로 기준 CRC 검사
+- `uplink_app` 내부 C 경로 기준 sequence 증가/중복/replay 검사
 - `uplink_app` 권한 수준 검사
 - `uplink_app` viewpoint payload 상세 검증
 - `lora_fc_downlink_app` mock sink 기반 송신 성공/실패 시험

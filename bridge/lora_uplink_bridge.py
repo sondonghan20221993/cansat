@@ -7,7 +7,10 @@ import time
 from dataclasses import dataclass
 from typing import Optional
 
-import serial
+try:
+    import serial
+except ModuleNotFoundError:  # pragma: no cover - exercised in environments without pyserial
+    serial = None
 
 
 DEFAULT_SERIAL_PATH = "/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0"
@@ -170,6 +173,8 @@ class Bridge:
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     def open_serial(self) -> None:
+        if serial is None:
+            raise RuntimeError("pyserial is required for serial mode")
         self.serial_port = serial.Serial(
             self.serial_path,
             self.baudrate,
@@ -181,6 +186,9 @@ class Bridge:
         while self.serial_port is None:
             try:
                 self.open_serial()
+            except RuntimeError as exc:
+                print(f"serial support unavailable: {exc}", flush=True)
+                raise
             except serial.SerialException as exc:
                 print(f"serial open failed: {exc}", flush=True)
                 time.sleep(1.0)
