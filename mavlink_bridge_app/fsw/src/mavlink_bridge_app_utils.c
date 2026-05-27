@@ -570,6 +570,13 @@ static void MAVLINK_BRIDGE_APP_ServiceLoRa(void)
             return;
         }
 
+        {
+            int LoRaFlags = fcntl(Fd, F_GETFL, 0);
+            if (LoRaFlags >= 0)
+            {
+                fcntl(Fd, F_SETFL, LoRaFlags & ~O_NONBLOCK);
+            }
+        }
         MAVLINK_BRIDGE_APP_Data.LoRaFd = Fd;
         CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_LINK_EID, CFE_EVS_EventType_INFORMATION,
                           "MAVLINK_BRIDGE_APP: opened LoRa path %s at %lu baud",
@@ -598,6 +605,11 @@ static void MAVLINK_BRIDGE_APP_ServiceLoRa(void)
     WriteRc = (int)write(MAVLINK_BRIDGE_APP_Data.LoRaFd, Line, (size_t)LineLen);
     if (WriteRc < 0)
     {
+        if (errno == EAGAIN || errno == EWOULDBLOCK)
+        {
+            /* TX buffer transiently full - skip this packet, port remains open */
+            return;
+        }
         CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_LINK_EID, CFE_EVS_EventType_INFORMATION,
                           "MAVLINK_BRIDGE_APP: LoRa write failed errno=%d, forcing reopen", errno);
         MAVLINK_BRIDGE_APP_CloseLoRa();
