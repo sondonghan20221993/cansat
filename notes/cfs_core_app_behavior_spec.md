@@ -226,7 +226,7 @@ The following timing constants are implemented.
 | `TimestampMs` | Current cFE time in milliseconds at publish time |
 | `LastValidInputTimestampMs` | Maximum timestamp among received attitude/local/GPS/EKF caches, or `NowMs` if none have been received |
 | `HealthState` | `NOMINAL`, `DEGRADED`, or `RECOVERY` in current implementation |
-| `FaultCode` | `NONE`, `BRIDGE_TIMEOUT`, `GPS_STALE`, or `EKF_INVALID` |
+| `FaultCode` | `NONE`, `BRIDGE_TIMEOUT`, `GPS_STALE`, `EKF_INVALID`, `LOCAL_TIMEOUT`, or `ATTITUDE_TIMEOUT` |
 | `RecoveryRequested` | `1` only for bridge-timeout condition, otherwise `0` |
 
 The current implementation zero-initializes the telemetry structure before each publish.
@@ -276,19 +276,13 @@ Output:
 - `FaultCode = CFS_CORE_APP_FAULT_BRIDGE_TIMEOUT`
 - `RecoveryRequested = 1`
 
-### 12.2 Priority 2: EKF-related unavailability
+### 12.2 Priority 2: EKF invalid or stale
 
 Condition:
 
-- EKF state expired
-- or local state expired
-- or attitude state expired
+- EKF state expired (`NowMs - EkfState.TimestampMs > 2000`, or never received)
 - or EKF `Valid == 0`
 - or EKF `Stale != 0`
-- or local `Valid == 0`
-- or local `Stale != 0`
-- or attitude `Valid == 0`
-- or attitude `Stale != 0`
 
 Output:
 
@@ -296,7 +290,31 @@ Output:
 - `FaultCode = CFS_CORE_APP_FAULT_EKF_INVALID`
 - `RecoveryRequested = 0`
 
-### 12.3 Priority 3: GPS unavailability
+### 12.3 Priority 3: Local state timeout
+
+Condition:
+
+- local state expired (`NowMs - LocalState.TimestampMs > 2000`, or never received)
+
+Output:
+
+- `HealthState = CFS_CORE_APP_HEALTH_DEGRADED`
+- `FaultCode = CFS_CORE_APP_FAULT_LOCAL_TIMEOUT`
+- `RecoveryRequested = 0`
+
+### 12.4 Priority 4: Attitude state timeout
+
+Condition:
+
+- attitude state expired (`NowMs - AttitudeState.TimestampMs > 2000`, or never received)
+
+Output:
+
+- `HealthState = CFS_CORE_APP_HEALTH_DEGRADED`
+- `FaultCode = CFS_CORE_APP_FAULT_ATTITUDE_TIMEOUT`
+- `RecoveryRequested = 0`
+
+### 12.5 Priority 5: GPS unavailability
 
 Condition:
 
@@ -310,7 +328,7 @@ Output:
 - `FaultCode = CFS_CORE_APP_FAULT_GPS_STALE`
 - `RecoveryRequested = 0`
 
-### 12.4 Priority 4: Nominal
+### 12.6 Priority 6: Nominal
 
 Condition:
 
@@ -322,7 +340,7 @@ Output:
 - `FaultCode = CFS_CORE_APP_FAULT_NONE`
 - `RecoveryRequested = 0`
 
-### 12.5 Unused enum state
+### 12.7 Unused enum state
 
 `CFS_CORE_APP_HEALTH_FAILED` is defined in message definitions but is not produced by current code.
 
@@ -371,8 +389,7 @@ Effects:
 
 ### 13.4 Local timeout
 
-`local timeout` is not represented by a dedicated fault code.
-It is folded into `FAULT_EKF_INVALID`.
+`local timeout` is represented by a dedicated fault code `FAULT_LOCAL_TIMEOUT`.
 
 `local timeout` covers:
 
@@ -382,13 +399,15 @@ It is folded into `FAULT_EKF_INVALID`.
 Effects:
 
 - produces `DEGRADED`
-- produces `FAULT_EKF_INVALID`
+- produces `FAULT_LOCAL_TIMEOUT`
 - does not set `RecoveryRequested`
+
+Note: local `Valid == 0` or `Stale != 0` is evaluated under Priority 2 (EKF-related) alongside EKF state validity.
+Local timeout (expired timestamp) is a distinct condition evaluated at Priority 3 with its own fault code.
 
 ### 13.5 Attitude timeout
 
-`attitude timeout` is not represented by a dedicated fault code.
-It is folded into `FAULT_EKF_INVALID`.
+`attitude timeout` is represented by a dedicated fault code `FAULT_ATTITUDE_TIMEOUT`.
 
 `attitude timeout` covers:
 
@@ -398,8 +417,11 @@ It is folded into `FAULT_EKF_INVALID`.
 Effects:
 
 - produces `DEGRADED`
-- produces `FAULT_EKF_INVALID`
+- produces `FAULT_ATTITUDE_TIMEOUT`
 - does not set `RecoveryRequested`
+
+Note: attitude `Valid == 0` or `Stale != 0` is evaluated under Priority 2 (EKF-related).
+Attitude timeout (expired timestamp) is a distinct condition evaluated at Priority 4 with its own fault code.
 
 ## 14. Startup, Input Loss, and Recovery Behavior
 
@@ -427,10 +449,16 @@ If inputs stop arriving:
 ### 14.3 Input restoration
 
 There is no separate recovery state machine.
-There is no hysteresis.
-There is no minimum dwell time.
 
-When fresh valid inputs are received again, the next health evaluation can return directly to `NOMINAL`.
+A 10-second stabilization timer (`CFS_CORE_APP_NOMINAL_STABILITY_MS = 10000`) is required before transitioning to `NOMINAL` from a non-NOMINAL state.
+
+When all fault conditions clear, the app enters a stabilization window:
+- during the window, `HealthState = DEGRADED`, `FaultCode = NONE`
+- after `10 s` of continuous fault-free operation, the app transitions to `NOMINAL`
+
+If a fault recurs during the stabilization window, the timer resets.
+
+If the app was already in `NOMINAL` before the non-NOMINAL episode, the timer is reset to `0` on re-entry into non-NOMINAL and restarts on the next fault-free cycle.
 
 ### 14.4 Active recovery actions
 
@@ -524,8 +552,8 @@ Review the following source locations before runtime test:
 | CORE-RUN-003 | GPS stale flag | deliver fresh bridge, attitude, local, EKF; set GPS `Stale=1` | `SYSTEM_HEALTH_MID` reports `DEGRADED`, `FAULT_GPS_STALE`, `RecoveryRequested=0` |
 | CORE-RUN-004 | GPS timeout | stop GPS updates for more than `3000 ms` while bridge and EKF-related inputs stay fresh | `SYSTEM_HEALTH_MID` reports `DEGRADED`, `FAULT_GPS_STALE` |
 | CORE-RUN-005 | EKF invalid flag | set EKF `Valid=0` with other inputs fresh | `SYSTEM_HEALTH_MID` reports `DEGRADED`, `FAULT_EKF_INVALID` |
-| CORE-RUN-006 | Local timeout | stop local-state updates for more than `2000 ms` while bridge, attitude, GPS, EKF stay fresh | `SYSTEM_HEALTH_MID` reports `DEGRADED`, `FAULT_EKF_INVALID` |
-| CORE-RUN-007 | Attitude timeout | stop attitude-state updates for more than `2000 ms` while bridge, local, GPS, EKF stay fresh | `SYSTEM_HEALTH_MID` reports `DEGRADED`, `FAULT_EKF_INVALID` |
+| CORE-RUN-006 | Local timeout | stop local-state updates for more than `2000 ms` while bridge, attitude, GPS, EKF stay fresh | `SYSTEM_HEALTH_MID` reports `DEGRADED`, `FAULT_LOCAL_TIMEOUT` |
+| CORE-RUN-007 | Attitude timeout | stop attitude-state updates for more than `2000 ms` while bridge, local, GPS, EKF stay fresh | `SYSTEM_HEALTH_MID` reports `DEGRADED`, `FAULT_ATTITUDE_TIMEOUT` |
 | CORE-RUN-008 | Priority check | force simultaneous bridge timeout and GPS stale | `SYSTEM_HEALTH_MID` reports `RECOVERY`, `FAULT_BRIDGE_TIMEOUT` |
 | CORE-RUN-009 | Recovery to nominal | after CORE-RUN-002 or CORE-RUN-003, resume fresh valid inputs | next health evaluation returns to `NOMINAL` |
 | CORE-RUN-010 | Startup warm-up | start app before first bridge HK | first health outputs may report `RECOVERY` until bridge HK arrives |
@@ -547,14 +575,17 @@ Current health-state transitions are published as telemetry and are not emitted 
 
 The following behaviors are not implemented and must not be assumed during test or operations:
 
-- dedicated fault code for local timeout
-- dedicated fault code for attitude timeout
 - `FAILED` health output state
 - sequence-gap or duplicate detection
 - timestamp-base validation
 - active restart of bridge or peer apps
-- debounce or dwell-time logic during recovery
 - persistence of last health state across app restart
+
+The following were previously listed as gaps and are now implemented:
+
+- dedicated fault code for local timeout → `FAULT_LOCAL_TIMEOUT = 4` (implemented in A2)
+- dedicated fault code for attitude timeout → `FAULT_ATTITUDE_TIMEOUT = 5` (implemented in A2)
+- debounce or dwell-time logic during recovery → 10 s `NOMINAL_STABILITY_MS` stabilization timer (implemented in A4)
 
 ## 21. System-Level Unimplemented Areas
 
