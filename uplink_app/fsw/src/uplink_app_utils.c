@@ -352,18 +352,28 @@ void UPLINK_APP_SaveState(void)
 {
     UPLINK_APP_PersistentState_t State;
     int                          Fd;
+    char                         TmpPath[sizeof(UPLINK_APP_STATE_FILE_PATH) + 4];
 
-    State.Magic               = UPLINK_APP_STATE_MAGIC;
+    State.Magic                = UPLINK_APP_STATE_MAGIC;
     State.LastAcceptedSequence = UPLINK_APP_Data.LastAcceptedSequence;
-    State.Checksum            = State.Magic + State.LastAcceptedSequence;
+    State.Checksum             = State.Magic + State.LastAcceptedSequence;
 
-    Fd = open(UPLINK_APP_STATE_FILE_PATH, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    snprintf(TmpPath, sizeof(TmpPath), "%s.tmp", UPLINK_APP_STATE_FILE_PATH);
+
+    Fd = open(TmpPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (Fd < 0)
     {
         return;
     }
-    write(Fd, &State, sizeof(State));
+
+    if (write(Fd, &State, sizeof(State)) != (ssize_t)sizeof(State))
+    {
+        close(Fd);
+        return;
+    }
+
     close(Fd);
+    rename(TmpPath, UPLINK_APP_STATE_FILE_PATH);
 }
 
 bool UPLINK_APP_ForwardViewpointCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
