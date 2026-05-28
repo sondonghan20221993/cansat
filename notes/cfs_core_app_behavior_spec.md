@@ -290,11 +290,13 @@ HK는 `CFS_CORE_APP_SEND_HK_MID_VALUE` 수신 시에만 게시된다.
 - `FaultCode = CFS_CORE_APP_FAULT_EKF_INVALID`
 - `RecoveryRequested = 0`
 
-### 12.3 우선순위 3: Local state 타임아웃
+### 12.3 우선순위 3: Local state 타임아웃 또는 무효
 
 조건:
 
 - local state 만료 (`NowMs - LocalState.TimestampMs > 2000`, 또는 수신된 적 없음)
+- 또는 local `Valid == 0`
+- 또는 local `Stale != 0`
 
 출력:
 
@@ -302,11 +304,13 @@ HK는 `CFS_CORE_APP_SEND_HK_MID_VALUE` 수신 시에만 게시된다.
 - `FaultCode = CFS_CORE_APP_FAULT_LOCAL_TIMEOUT`
 - `RecoveryRequested = 0`
 
-### 12.4 우선순위 4: Attitude state 타임아웃
+### 12.4 우선순위 4: Attitude state 타임아웃 또는 무효
 
 조건:
 
 - attitude state 만료 (`NowMs - AttitudeState.TimestampMs > 2000`, 또는 수신된 적 없음)
+- 또는 attitude `Valid == 0`
+- 또는 attitude `Stale != 0`
 
 출력:
 
@@ -402,8 +406,8 @@ HK는 `CFS_CORE_APP_SEND_HK_MID_VALUE` 수신 시에만 게시된다.
 - `FAULT_LOCAL_TIMEOUT` 생성
 - `RecoveryRequested` 미설정
 
-참고: local `Valid == 0` 또는 `Stale != 0`은 EKF 상태 유효성과 함께 우선순위 2(EKF 관련)에서 평가된다.
-Local 타임아웃(만료된 타임스탬프)은 우선순위 3에서 자체 오류 코드로 평가되는 별도 조건이다.
+참고: local `Valid == 0` 또는 `Stale != 0`은 우선순위 3에서 `FAULT_LOCAL_TIMEOUT`으로 분류된다.
+이는 EKF 우선순위(2)와 독립적으로 평가되며, 타임스탬프 만료와 동일한 조건 블록에서 처리된다.
 
 ### 13.5 Attitude 타임아웃
 
@@ -420,8 +424,8 @@ Local 타임아웃(만료된 타임스탬프)은 우선순위 3에서 자체 오
 - `FAULT_ATTITUDE_TIMEOUT` 생성
 - `RecoveryRequested` 미설정
 
-참고: attitude `Valid == 0` 또는 `Stale != 0`은 우선순위 2(EKF 관련)에서 평가된다.
-Attitude 타임아웃(만료된 타임스탬프)은 우선순위 4에서 자체 오류 코드로 평가되는 별도 조건이다.
+참고: attitude `Valid == 0` 또는 `Stale != 0`은 우선순위 4에서 `FAULT_ATTITUDE_TIMEOUT`으로 분류된다.
+이는 EKF 우선순위(2)와 독립적으로 평가되며, 타임스탬프 만료와 동일한 조건 블록에서 처리된다.
 
 ## 14. 시작, 입력 손실, 복구 동작
 
@@ -568,8 +572,8 @@ mission route와 landing route는 독립적으로 캐시된다.
 - EVS 경로 갱신 로그
 - EVS HK 로그
 
-헬스 상태 전이에 EVS만 의존하지 않는다.
-현재 헬스 상태 전이는 텔레메트리로 게시되며, 전용 EVS 전이 이벤트로 발생하지 않는다.
+헬스 상태 전이는 `SYSTEM_HEALTH_MID` 텔레메트리와 EVS 이벤트 `CFS_CORE_APP_HEALTH_TRANSITION_EID (7)` 양쪽으로 확인 가능하다.
+EVS 이벤트는 `HealthState` 값이 변경될 때마다 발생하며, 형식은 `CFS_CORE_APP: health %u->%u fault=%u` 이다.
 
 ## 20. 알려진 미구현 항목
 
@@ -586,6 +590,9 @@ mission route와 landing route는 독립적으로 캐시된다.
 - local 타임아웃 전용 오류 코드 → `FAULT_LOCAL_TIMEOUT = 4` (A2에서 구현)
 - attitude 타임아웃 전용 오류 코드 → `FAULT_ATTITUDE_TIMEOUT = 5` (A2에서 구현)
 - 복구 중 디바운스 또는 대기 시간 로직 → 10초 `NOMINAL_STABILITY_MS` 안정화 타이머 (A4에서 구현)
+- 헬스 상태 전이 EVS 이벤트 → `CFS_CORE_APP_HEALTH_TRANSITION_EID (7)` (A5에서 구현)
+- uplink_app cFS 상태 기반 라우팅 차단 → `SYSTEM_HEALTH_MID` 구독 및 §18.10 블로킹 매트릭스 (A5에서 구현)
+- uplink_app CLASS_MODE/CLASS_DIAGNOSTIC 디스패치 → `ForwardModeCommand` / `ForwardDiagnosticCommand` (A5에서 구현)
 
 ## 21. 시스템 수준 미구현 영역
 
@@ -646,36 +653,34 @@ mission route와 landing route는 독립적으로 캐시된다.
 - LoRa downlink 경로는 존재하며 전송을 시도한다
 - LoRa downlink 경로는 완전히 운용 가능한 것으로 취급하기에 아직 충분히 안정적이지 않다
 
-### 21.4 Raspberry Pi 로그에서의 헬스 상태 가시성
+### 21.4 헬스 상태 가시성 — 구현 완료
 
-`cfs_core_app` 헬스 상태 전이는 `SYSTEM_HEALTH_MID`를 통해 게시되나, 전용 EVS 전이 로그로는 발생하지 않는다.
+**[구현 완료 — A5에서 구현]**
 
-현재 상태:
-
-- Raspberry Pi 런타임 로그에는 입력 활동과 시작 이벤트가 표시된다
-- Raspberry Pi 런타임 로그에는 `cfs_core_app`의 `NOMINAL`, `DEGRADED`, `RECOVERY` 전이가 직접 표시되지 않는다
-
-의미:
-
-- 헬스 상태 검증은 현재 Open MCT 또는 `SYSTEM_HEALTH_MID`의 다른 구독자와 같은 텔레메트리 소비자에 의존한다
-- EVS 로그만으로는 현재 운용자의 직접 확인이 충분하지 않다
-
-### 21.5 오류 세부 정보 세밀도
-
-일부 오류 조건은 의도적으로 또는 비의도적으로 공통 출력으로 통합된다.
+`CFS_CORE_APP_HEALTH_TRANSITION_EID (7)` EVS 이벤트가 `cfs_core_app_utils.c`에 구현되어 있으며, `HealthState` 값이 변경될 때마다 발생한다.
+이벤트 형식: `CFS_CORE_APP: health %u->%u fault=%u`
 
 현재 상태:
 
-- `local timeout`
-- `attitude timeout`
-- `ekf invalid`
+- 헬스 상태 전이는 `SYSTEM_HEALTH_MID` 텔레메트리와 EVS 이벤트 모두로 관찰 가능하다
+- EVS 이벤트는 전이 발생 시 1회만 발생하며, 상태가 유지되는 동안 반복되지 않는다
 
-모두 다음으로 매핑된다.
+Pi 런타임 로그 노출 여부는 EVS 필터 설정에 따라 달라질 수 있다.
 
-- `HealthState = DEGRADED`
-- `FaultCode = EKF_INVALID`
+### 21.5 오류 세부 정보 세밀도 — 구현 완료
 
-의미:
+**[구현 완료 — A2에서 구현]**
 
-- 현재 출력은 추정기 관련 헬스 저하 감지에 충분하다
-- 현재 출력은 추가 텔레메트리 상관 없이 정확한 저하 원인을 구별하기에 충분하지 않다
+각 오류 조건은 별도의 `FaultCode` 값으로 구별된다.
+
+현재 매핑:
+
+| 조건 | HealthState | FaultCode |
+| --- | --- | --- |
+| Bridge 타임아웃 | RECOVERY | FAULT_BRIDGE_TIMEOUT (1) |
+| EKF 타임아웃/무효/stale | DEGRADED | FAULT_EKF_INVALID (2) |
+| Local 타임아웃/무효/stale | DEGRADED | FAULT_LOCAL_TIMEOUT (4) |
+| Attitude 타임아웃/무효/stale | DEGRADED | FAULT_ATTITUDE_TIMEOUT (5) |
+| GPS 불가용 | DEGRADED | FAULT_GPS_STALE (3) |
+
+이전 버전에서 local/attitude/EKF 조건이 모두 `FAULT_EKF_INVALID`로 통합되었던 동작은 A2에서 수정되었다.
