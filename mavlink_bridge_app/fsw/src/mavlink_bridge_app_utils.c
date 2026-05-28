@@ -1292,6 +1292,11 @@ static void MAVLINK_BRIDGE_APP_HandleFrameComplete(uint32 RxTimestampMs, uint8 C
     {
         ComputedCrc =
             MAVLINK_BRIDGE_APP_ComputeFrameCrc(&MAVLINK_BRIDGE_APP_Parser, MAVLINK_MISSION_REQUEST_CRC_EXTRA);
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_MISSION_UPLOAD_INF_EID, CFE_EVS_EventType_INFORMATION,
+                          "MAVLINK_BRIDGE_APP: rx MISSION_REQUEST len=%u crc_ok=%u state=%u",
+                          (unsigned int)MAVLINK_BRIDGE_APP_Parser.PayloadLen,
+                          (unsigned int)(ComputedCrc == ReceivedCrc),
+                          (unsigned int)MAVLINK_BRIDGE_APP_Data.MissionUploadState);
         if (ComputedCrc == ReceivedCrc && MAVLINK_BRIDGE_APP_Parser.PayloadLen >= 2U)
         {
             uint16 Seq = MAVLINK_BRIDGE_APP_ReadU16LE(&MAVLINK_BRIDGE_APP_Parser.Payload[0]);
