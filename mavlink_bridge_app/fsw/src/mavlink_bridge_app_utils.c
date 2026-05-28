@@ -60,6 +60,10 @@
 #define MAVLINK_MSG_ID_MISSION_REQUEST_LIST            43U
 #define MAVLINK_MISSION_REQUEST_LIST_CRC_EXTRA         132U
 #define MAVLINK_BRIDGE_APP_MISSION_DOWNLOAD_TIMEOUT_MS 3000U
+#define MAVLINK_MSG_ID_MISSION_REQUEST                 40U
+#define MAVLINK_MSG_ID_MISSION_ITEM                    39U
+#define MAVLINK_MISSION_REQUEST_CRC_EXTRA             230U
+#define MAVLINK_MISSION_ITEM_CRC_EXTRA                254U
 
 typedef enum
 {
@@ -345,6 +349,27 @@ static void MAVLINK_BRIDGE_APP_SendMissionItemInt(uint8 Seq)
 
     MAVLINK_BRIDGE_APP_SendMavlinkV2(MAVLINK_MSG_ID_MISSION_ITEM_INT, Payload, sizeof(Payload),
                                      MAVLINK_MISSION_ITEM_INT_CRC_EXTRA);
+}
+
+static void MAVLINK_BRIDGE_APP_SendMissionItem(uint8 Seq)
+{
+    uint8 Payload[37];
+
+    memset(Payload, 0, sizeof(Payload));
+
+    MAVLINK_BRIDGE_APP_WriteFloatLE(&Payload[16], MAVLINK_BRIDGE_APP_Data.MissionPendingX[Seq]);
+    MAVLINK_BRIDGE_APP_WriteFloatLE(&Payload[20], MAVLINK_BRIDGE_APP_Data.MissionPendingY[Seq]);
+    /* Route payload uses altitude-positive convention; LOCAL_NED z is down, so negate */
+    MAVLINK_BRIDGE_APP_WriteFloatLE(&Payload[24], -MAVLINK_BRIDGE_APP_Data.MissionPendingZ[Seq]);
+    MAVLINK_BRIDGE_APP_WriteU16LE(&Payload[28], (uint16)Seq);
+    MAVLINK_BRIDGE_APP_WriteU16LE(&Payload[30], (uint16)MAVLINK_MAV_CMD_NAV_WAYPOINT);
+    Payload[32] = MAVLINK_BRIDGE_APP_Data.TargetSystemId;
+    Payload[33] = MAVLINK_BRIDGE_APP_Data.TargetComponentId;
+    Payload[34] = (uint8)MAVLINK_MAV_FRAME_LOCAL_NED;
+    Payload[36] = 1U; /* autocontinue */
+
+    MAVLINK_BRIDGE_APP_SendMavlinkV2(MAVLINK_MSG_ID_MISSION_ITEM, Payload, sizeof(Payload),
+                                     MAVLINK_MISSION_ITEM_CRC_EXTRA);
 }
 
 void MAVLINK_BRIDGE_APP_StartMissionUpload(const MAVLINK_BRIDGE_APP_RouteUpdateMirror_t *Msg)
@@ -1229,6 +1254,26 @@ static void MAVLINK_BRIDGE_APP_HandleFrameComplete(uint32 RxTimestampMs, uint8 C
                 MAVLINK_BRIDGE_APP_Data.MissionUploadTimeoutMs =
                     RxTimestampMs + MAVLINK_BRIDGE_APP_MISSION_UPLOAD_TIMEOUT_MS;
                 MAVLINK_BRIDGE_APP_SendMissionItemInt((uint8)Seq);
+            }
+        }
+        else
+        {
+            MAVLINK_BRIDGE_APP_RecordParseError(MAVLINK_BRIDGE_ERROR_PARSE_FAIL);
+        }
+    }
+    else if (MAVLINK_BRIDGE_APP_Parser.MsgId == MAVLINK_MSG_ID_MISSION_REQUEST)
+    {
+        ComputedCrc =
+            MAVLINK_BRIDGE_APP_ComputeFrameCrc(&MAVLINK_BRIDGE_APP_Parser, MAVLINK_MISSION_REQUEST_CRC_EXTRA);
+        if (ComputedCrc == ReceivedCrc && MAVLINK_BRIDGE_APP_Parser.PayloadLen >= 2U)
+        {
+            uint16 Seq = MAVLINK_BRIDGE_APP_ReadU16LE(&MAVLINK_BRIDGE_APP_Parser.Payload[0]);
+            if (MAVLINK_BRIDGE_APP_Data.MissionUploadState == (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_ACTIVE &&
+                Seq < (uint16)MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount)
+            {
+                MAVLINK_BRIDGE_APP_Data.MissionUploadTimeoutMs =
+                    RxTimestampMs + MAVLINK_BRIDGE_APP_MISSION_UPLOAD_TIMEOUT_MS;
+                MAVLINK_BRIDGE_APP_SendMissionItem((uint8)Seq);
             }
         }
         else
