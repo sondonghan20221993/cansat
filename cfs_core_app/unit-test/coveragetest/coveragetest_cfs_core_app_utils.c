@@ -419,6 +419,108 @@ void Test_CFS_CORE_APP_UpdateHealth_HealthTransition(void)
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.LastHealthState, CFS_CORE_APP_HEALTH_DEGRADED);
 }
 
+void Test_CFS_CORE_APP_UpdateHealth_LocalInvalid(void)
+{
+    uint32 NowMs = 5000;
+
+    CFS_CORE_APP_Data.AttitudeState.Received      = true;
+    CFS_CORE_APP_Data.AttitudeState.TimestampMs   = 4900;
+    CFS_CORE_APP_Data.AttitudeState.Valid         = 1;
+    CFS_CORE_APP_Data.LocalState.Received         = true;
+    CFS_CORE_APP_Data.LocalState.TimestampMs      = 4900;
+    CFS_CORE_APP_Data.LocalState.Valid            = 0; /* invalid, fresh timestamp */
+    CFS_CORE_APP_Data.GpsState.Received           = true;
+    CFS_CORE_APP_Data.GpsState.TimestampMs        = 4800;
+    CFS_CORE_APP_Data.GpsState.Valid              = 1;
+    CFS_CORE_APP_Data.EkfState.Received           = true;
+    CFS_CORE_APP_Data.EkfState.TimestampMs        = 4900;
+    CFS_CORE_APP_Data.EkfState.Valid              = 1;
+    CFS_CORE_APP_Data.BridgeState.Received        = true;
+    CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 4900;
+
+    CFS_CORE_APP_UpdateHealth(NowMs, true);
+
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_DEGRADED);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.FaultCode, CFS_CORE_APP_FAULT_LOCAL_TIMEOUT);
+}
+
+void Test_CFS_CORE_APP_UpdateHealth_LocalStale(void)
+{
+    uint32 NowMs = 5000;
+
+    CFS_CORE_APP_Data.AttitudeState.Received      = true;
+    CFS_CORE_APP_Data.AttitudeState.TimestampMs   = 4900;
+    CFS_CORE_APP_Data.AttitudeState.Valid         = 1;
+    CFS_CORE_APP_Data.LocalState.Received         = true;
+    CFS_CORE_APP_Data.LocalState.TimestampMs      = 4900;
+    CFS_CORE_APP_Data.LocalState.Valid            = 1;
+    CFS_CORE_APP_Data.LocalState.Stale            = 1; /* stale, fresh timestamp */
+    CFS_CORE_APP_Data.GpsState.Received           = true;
+    CFS_CORE_APP_Data.GpsState.TimestampMs        = 4800;
+    CFS_CORE_APP_Data.GpsState.Valid              = 1;
+    CFS_CORE_APP_Data.EkfState.Received           = true;
+    CFS_CORE_APP_Data.EkfState.TimestampMs        = 4900;
+    CFS_CORE_APP_Data.EkfState.Valid              = 1;
+    CFS_CORE_APP_Data.BridgeState.Received        = true;
+    CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 4900;
+
+    CFS_CORE_APP_UpdateHealth(NowMs, true);
+
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_DEGRADED);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.FaultCode, CFS_CORE_APP_FAULT_LOCAL_TIMEOUT);
+}
+
+void Test_CFS_CORE_APP_UpdateHealth_AttitudeInvalid(void)
+{
+    uint32 NowMs = 5000;
+
+    CFS_CORE_APP_Data.AttitudeState.Received      = true;
+    CFS_CORE_APP_Data.AttitudeState.TimestampMs   = 4900;
+    CFS_CORE_APP_Data.AttitudeState.Valid         = 0; /* invalid, fresh timestamp */
+    CFS_CORE_APP_Data.LocalState.Received         = true;
+    CFS_CORE_APP_Data.LocalState.TimestampMs      = 4900;
+    CFS_CORE_APP_Data.LocalState.Valid            = 1;
+    CFS_CORE_APP_Data.GpsState.Received           = true;
+    CFS_CORE_APP_Data.GpsState.TimestampMs        = 4800;
+    CFS_CORE_APP_Data.GpsState.Valid              = 1;
+    CFS_CORE_APP_Data.EkfState.Received           = true;
+    CFS_CORE_APP_Data.EkfState.TimestampMs        = 4900;
+    CFS_CORE_APP_Data.EkfState.Valid              = 1;
+    CFS_CORE_APP_Data.BridgeState.Received        = true;
+    CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 4900;
+
+    CFS_CORE_APP_UpdateHealth(NowMs, true);
+
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_DEGRADED);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.FaultCode, CFS_CORE_APP_FAULT_ATTITUDE_TIMEOUT);
+}
+
+void Test_CFS_CORE_APP_UpdateHealth_AttitudeStale(void)
+{
+    uint32 NowMs = 5000;
+
+    CFS_CORE_APP_Data.AttitudeState.Received      = true;
+    CFS_CORE_APP_Data.AttitudeState.TimestampMs   = 4900;
+    CFS_CORE_APP_Data.AttitudeState.Valid         = 1;
+    CFS_CORE_APP_Data.AttitudeState.Stale         = 1; /* stale, fresh timestamp */
+    CFS_CORE_APP_Data.LocalState.Received         = true;
+    CFS_CORE_APP_Data.LocalState.TimestampMs      = 4900;
+    CFS_CORE_APP_Data.LocalState.Valid            = 1;
+    CFS_CORE_APP_Data.GpsState.Received           = true;
+    CFS_CORE_APP_Data.GpsState.TimestampMs        = 4800;
+    CFS_CORE_APP_Data.GpsState.Valid              = 1;
+    CFS_CORE_APP_Data.EkfState.Received           = true;
+    CFS_CORE_APP_Data.EkfState.TimestampMs        = 4900;
+    CFS_CORE_APP_Data.EkfState.Valid              = 1;
+    CFS_CORE_APP_Data.BridgeState.Received        = true;
+    CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 4900;
+
+    CFS_CORE_APP_UpdateHealth(NowMs, true);
+
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_DEGRADED);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.FaultCode, CFS_CORE_APP_FAULT_ATTITUDE_TIMEOUT);
+}
+
 void Test_CFS_CORE_APP_ServicePrototype(void)
 {
     CFS_CORE_APP_Data.LastPublishTimeMs = 1000;
@@ -436,7 +538,11 @@ void UtTest_Setup(void)
     ADD_TEST(CFS_CORE_APP_UpdateHealth_GpsStale);
     ADD_TEST(CFS_CORE_APP_UpdateHealth_EkfInvalid);
     ADD_TEST(CFS_CORE_APP_UpdateHealth_LocalTimeout);
+    ADD_TEST(CFS_CORE_APP_UpdateHealth_LocalInvalid);
+    ADD_TEST(CFS_CORE_APP_UpdateHealth_LocalStale);
     ADD_TEST(CFS_CORE_APP_UpdateHealth_AttitudeTimeout);
+    ADD_TEST(CFS_CORE_APP_UpdateHealth_AttitudeInvalid);
+    ADD_TEST(CFS_CORE_APP_UpdateHealth_AttitudeStale);
     ADD_TEST(CFS_CORE_APP_UpdateHealth_NominalStabilization);
     ADD_TEST(CFS_CORE_APP_UpdateHealth_InputStatus);
     ADD_TEST(CFS_CORE_APP_UpdateHealth_HealthTransition);
