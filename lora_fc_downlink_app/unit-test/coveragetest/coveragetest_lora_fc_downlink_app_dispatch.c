@@ -73,8 +73,58 @@ void Test_LORA_FC_DOWNLINK_APP_TaskPipe(void)
     LORA_FC_DOWNLINK_APP_TaskPipe((const CFE_SB_Buffer_t *)&Msg);
 }
 
+void Test_LORA_FC_DOWNLINK_APP_TaskPipe_UnknownMid(void)
+{
+    LORA_FC_DOWNLINK_APP_NoopCmd_t Msg;
+    CFE_SB_MsgId_t                 MsgId;
+
+    memset(&Msg, 0, sizeof(Msg));
+    MsgId = CFE_SB_ValueToMsgId(0x9999U);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+
+    LORA_FC_DOWNLINK_APP_TaskPipe((const CFE_SB_Buffer_t *)&Msg);
+}
+
+void Test_LORA_FC_DOWNLINK_APP_TaskPipe_InvalidCC(void)
+{
+    LORA_FC_DOWNLINK_APP_NoopCmd_t Msg;
+    CFE_SB_MsgId_t                 MsgId;
+    CFE_MSG_FcnCode_t              FcnCode;
+
+    memset(&Msg, 0, sizeof(Msg));
+    MsgId   = CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_CMD_MID);
+    FcnCode = 99;
+
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetFcnCode), &FcnCode, sizeof(FcnCode), false);
+
+    LORA_FC_DOWNLINK_APP_TaskPipe((const CFE_SB_Buffer_t *)&Msg);
+}
+
+void Test_LORA_FC_DOWNLINK_APP_TaskPipe_ResetCC(void)
+{
+    LORA_FC_DOWNLINK_APP_ResetCountersCmd_t Msg;
+    CFE_SB_MsgId_t                          MsgId;
+    CFE_MSG_Size_t                          MsgSize;
+    CFE_MSG_FcnCode_t                       FcnCode;
+
+    memset(&Msg, 0, sizeof(Msg));
+    MsgId   = CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_CMD_MID);
+    MsgSize = sizeof(Msg);
+    FcnCode = LORA_FC_DOWNLINK_APP_RESET_COUNTERS_CC;
+
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetFcnCode), &FcnCode, sizeof(FcnCode), false);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetSize), &MsgSize, sizeof(MsgSize), false);
+
+    LORA_FC_DOWNLINK_APP_TaskPipe((const CFE_SB_Buffer_t *)&Msg);
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(LORA_FC_DOWNLINK_APP_VerifyCmdLength);
     ADD_TEST(LORA_FC_DOWNLINK_APP_TaskPipe);
+    ADD_TEST(LORA_FC_DOWNLINK_APP_TaskPipe_UnknownMid);
+    ADD_TEST(LORA_FC_DOWNLINK_APP_TaskPipe_InvalidCC);
+    ADD_TEST(LORA_FC_DOWNLINK_APP_TaskPipe_ResetCC);
 }

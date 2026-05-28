@@ -47,6 +47,7 @@ void Test_UPLINK_APP_ProcessUplink_Accept(void)
 
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ForwardConfigCommand), true);
 
     UPLINK_APP_ProcessUplink(&TestMsg);
 
