@@ -56,6 +56,11 @@ typedef struct
     float     MissionPendingX[MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS];
     float     MissionPendingY[MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS];
     float     MissionPendingZ[MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS];
+    uint8     MissionDownloadState;
+    uint8     MissionDownloadSeq;
+    uint8     MissionDownloadExpectedCount;
+    uint8     MissionDownloadSpare;
+    uint32    MissionDownloadTimeoutMs;
     CFE_SB_PipeId_t CommandPipe;
     MAVLINK_BRIDGE_APP_HkTlm_t        HkTlm;
     MAVLINK_BRIDGE_APP_EkfLocalTlm_t  EkfLocalTlm;

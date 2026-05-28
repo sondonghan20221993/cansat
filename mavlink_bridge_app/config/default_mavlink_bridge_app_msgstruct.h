@@ -17,6 +17,11 @@ typedef struct
 
 typedef struct
 {
+    CFE_MSG_CommandHeader_t CommandHeader;
+} MAVLINK_BRIDGE_APP_MissionQueryCmd_t;
+
+typedef struct
+{
     CFE_MSG_TelemetryHeader_t TelemetryHeader;
     uint8                     CommandCounter;
     uint8                     CommandErrorCounter;

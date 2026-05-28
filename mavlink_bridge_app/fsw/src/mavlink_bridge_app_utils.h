@@ -10,5 +10,6 @@ void MAVLINK_BRIDGE_APP_RecordParseError(MAVLINK_BRIDGE_APP_ErrorCode_t ErrorCod
 void MAVLINK_BRIDGE_APP_ServiceSerial(void);
 void MAVLINK_BRIDGE_APP_RequestTelemetryStreams(void);
 void MAVLINK_BRIDGE_APP_StartMissionUpload(const MAVLINK_BRIDGE_APP_RouteUpdateMirror_t *Msg);
+void MAVLINK_BRIDGE_APP_MissionQuery(const MAVLINK_BRIDGE_APP_MissionQueryCmd_t *Cmd);
 
 #endif
