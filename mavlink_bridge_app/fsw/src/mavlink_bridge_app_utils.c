@@ -62,7 +62,9 @@
 #define MAVLINK_BRIDGE_APP_MISSION_DOWNLOAD_TIMEOUT_MS 3000U
 #define MAVLINK_MSG_ID_MISSION_REQUEST                 40U
 #define MAVLINK_MSG_ID_MISSION_ITEM                    39U
+#define MAVLINK_MSG_ID_MISSION_CLEAR_ALL               45U
 #define MAVLINK_MISSION_REQUEST_CRC_EXTRA             230U
+#define MAVLINK_MISSION_CLEAR_ALL_CRC_EXTRA           232U
 #define MAVLINK_MISSION_ITEM_CRC_EXTRA                254U
 
 typedef enum
@@ -310,6 +312,18 @@ static CFE_Status_t MAVLINK_BRIDGE_APP_SendMavlinkV2(uint32 MsgId, const uint8 *
     return CFE_SUCCESS;
 }
 
+static void MAVLINK_BRIDGE_APP_SendMissionClearAll(void)
+{
+    uint8 Payload[3];
+
+    Payload[0] = MAVLINK_BRIDGE_APP_Data.TargetSystemId;
+    Payload[1] = MAVLINK_BRIDGE_APP_Data.TargetComponentId;
+    Payload[2] = (uint8)MAVLINK_MISSION_TYPE_MISSION;
+
+    MAVLINK_BRIDGE_APP_SendMavlinkV2(MAVLINK_MSG_ID_MISSION_CLEAR_ALL, Payload, sizeof(Payload),
+                                     MAVLINK_MISSION_CLEAR_ALL_CRC_EXTRA);
+}
+
 static void MAVLINK_BRIDGE_APP_SendMissionCount(uint8 WpCount)
 {
     uint8 Payload[5];
@@ -406,6 +420,7 @@ void MAVLINK_BRIDGE_APP_StartMissionUpload(const MAVLINK_BRIDGE_APP_RouteUpdateM
     MAVLINK_BRIDGE_APP_Data.MissionUploadTimeoutMs =
         MAVLINK_BRIDGE_APP_GetTimeMs() + MAVLINK_BRIDGE_APP_MISSION_UPLOAD_TIMEOUT_MS;
 
+    MAVLINK_BRIDGE_APP_SendMissionClearAll();
     MAVLINK_BRIDGE_APP_SendMissionCount(MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount);
 }
 

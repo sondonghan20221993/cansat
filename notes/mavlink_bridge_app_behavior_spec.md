@@ -59,9 +59,25 @@ FC 링크가 연결되지 않은 상태에서 `ROUTE_UPDATE_MID`가 수신되면
 
 MAVLink standard MISSION upload handshake를 따른다. FC 펌웨어/설정에 따라 두 가지 경로를 모두 지원한다.
 
+### 6.0 공통 선행 단계: MISSION_CLEAR_ALL
+
+모든 업로드 경로에서 `MISSION_COUNT` 전송 전에 반드시 `MISSION_CLEAR_ALL(45)`을 먼저 전송한다.
+
+```
+mavlink_bridge_app → FC : MISSION_CLEAR_ALL (target_system, target_component, mission_type=0)
+FC → mavlink_bridge_app : MISSION_ACK       (result=ACCEPTED, 선택적)
+mavlink_bridge_app → FC : MISSION_COUNT     (count=N, ...)
+...
+```
+
+**이유**: ArduPilot은 `MISSION_CLEAR_ALL` 없이 `MISSION_COUNT`만 수신하면 응답하지 않음. `tools/mission_upload_diag.py` 실행으로 확인됨 (2026-05-28).
+
+`MISSION_CLEAR_ALL`에 대한 `MISSION_ACK` 응답은 선택적이다. ACK 없이 timeout이 발생해도 `MISSION_COUNT` 전송을 계속 진행한다.
+
 ### 6.1 INT 경로 (권장, MAVLink2 / ArduPilot 4.x+)
 
 ```
+mavlink_bridge_app → FC : MISSION_CLEAR_ALL
 mavlink_bridge_app → FC : MISSION_COUNT      (count=N, mission_type=MAV_MISSION_TYPE_MISSION)
 FC → mavlink_bridge_app : MISSION_REQUEST_INT (msg 51, seq=0)
 mavlink_bridge_app → FC : MISSION_ITEM_INT    (msg 73, seq=0, int32 좌표)
@@ -72,6 +88,7 @@ FC → mavlink_bridge_app : MISSION_ACK         (result=MAV_MISSION_ACCEPTED)
 ### 6.2 Legacy 경로 (호환, MAVLink1 / 구형 펌웨어)
 
 ```
+mavlink_bridge_app → FC : MISSION_CLEAR_ALL
 mavlink_bridge_app → FC : MISSION_COUNT   (count=N, mission_type=MAV_MISSION_TYPE_MISSION)
 FC → mavlink_bridge_app : MISSION_REQUEST  (msg 40, seq=0)
 mavlink_bridge_app → FC : MISSION_ITEM     (msg 39, seq=0, float 좌표)
