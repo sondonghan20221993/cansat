@@ -43,6 +43,21 @@
 #define MAVLINK_AUTOPILOT_INVALID             8U
 #define MAVLINK_RESULT_ACCEPTED               0U
 
+#define MAVLINK_MSG_ID_MISSION_COUNT           44U
+#define MAVLINK_MSG_ID_MISSION_REQUEST_INT     51U
+#define MAVLINK_MSG_ID_MISSION_ITEM_INT        73U
+#define MAVLINK_MSG_ID_MISSION_ACK             47U
+#define MAVLINK_MISSION_COUNT_CRC_EXTRA       221U
+#define MAVLINK_MISSION_REQUEST_INT_CRC_EXTRA 196U
+#define MAVLINK_MISSION_ITEM_INT_CRC_EXTRA     38U
+#define MAVLINK_MISSION_ACK_CRC_EXTRA         153U
+#define MAVLINK_MAV_FRAME_LOCAL_NED             1U
+#define MAVLINK_MAV_CMD_NAV_WAYPOINT           16U
+#define MAVLINK_MISSION_TYPE_MISSION            0U
+#define MAVLINK_MISSION_ACCEPTED                0U
+#define MAVLINK_BRIDGE_APP_MISSION_UPLOAD_TIMEOUT_MS 2000U
+#define MAVLINK_BRIDGE_APP_MISSION_MAX_RETRIES       3U
+
 typedef enum
 {
     MAVLINK_PARSE_WAIT_STX = 0,
@@ -286,6 +301,110 @@ static CFE_Status_t MAVLINK_BRIDGE_APP_SendMavlinkV2(uint32 MsgId, const uint8 *
     }
 
     return CFE_SUCCESS;
+}
+
+static void MAVLINK_BRIDGE_APP_SendMissionCount(uint8 WpCount)
+{
+    uint8 Payload[5];
+
+    memset(Payload, 0, sizeof(Payload));
+    MAVLINK_BRIDGE_APP_WriteU16LE(&Payload[0], (uint16)WpCount);
+    Payload[2] = MAVLINK_BRIDGE_APP_Data.TargetSystemId;
+    Payload[3] = MAVLINK_BRIDGE_APP_Data.TargetComponentId;
+    Payload[4] = (uint8)MAVLINK_MISSION_TYPE_MISSION;
+
+    MAVLINK_BRIDGE_APP_SendMavlinkV2(MAVLINK_MSG_ID_MISSION_COUNT, Payload, sizeof(Payload),
+                                     MAVLINK_MISSION_COUNT_CRC_EXTRA);
+}
+
+static void MAVLINK_BRIDGE_APP_SendMissionItemInt(uint8 Seq)
+{
+    uint8 Payload[38];
+    int32 XE4;
+    int32 YE4;
+
+    memset(Payload, 0, sizeof(Payload));
+
+    XE4 = (int32)(MAVLINK_BRIDGE_APP_Data.MissionPendingX[Seq] * 10000.0f);
+    YE4 = (int32)(MAVLINK_BRIDGE_APP_Data.MissionPendingY[Seq] * 10000.0f);
+
+    MAVLINK_BRIDGE_APP_WriteU32LE(&Payload[16], (uint32)XE4);
+    MAVLINK_BRIDGE_APP_WriteU32LE(&Payload[20], (uint32)YE4);
+    MAVLINK_BRIDGE_APP_WriteFloatLE(&Payload[24], MAVLINK_BRIDGE_APP_Data.MissionPendingZ[Seq]);
+    MAVLINK_BRIDGE_APP_WriteU16LE(&Payload[28], (uint16)Seq);
+    MAVLINK_BRIDGE_APP_WriteU16LE(&Payload[30], (uint16)MAVLINK_MAV_CMD_NAV_WAYPOINT);
+    Payload[32] = MAVLINK_BRIDGE_APP_Data.TargetSystemId;
+    Payload[33] = MAVLINK_BRIDGE_APP_Data.TargetComponentId;
+    Payload[34] = (uint8)MAVLINK_MAV_FRAME_LOCAL_NED;
+    Payload[36] = 1U; /* autocontinue */
+    Payload[37] = (uint8)MAVLINK_MISSION_TYPE_MISSION;
+
+    MAVLINK_BRIDGE_APP_SendMavlinkV2(MAVLINK_MSG_ID_MISSION_ITEM_INT, Payload, sizeof(Payload),
+                                     MAVLINK_MISSION_ITEM_INT_CRC_EXTRA);
+}
+
+void MAVLINK_BRIDGE_APP_StartMissionUpload(const MAVLINK_BRIDGE_APP_RouteUpdateMirror_t *Msg)
+{
+    uint8 i;
+
+    if (MAVLINK_BRIDGE_APP_Data.LinkState != (uint8)MAVLINK_BRIDGE_LINK_CONNECTED)
+    {
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_MISSION_UPLOAD_ERR_EID, CFE_EVS_EventType_ERROR,
+                          "MAVLINK_BRIDGE_APP: route update ignored - FC link not connected");
+        return;
+    }
+
+    MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount = Msg->WaypointCount;
+    if (MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount > (uint8)MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS)
+    {
+        MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount = (uint8)MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS;
+    }
+
+    for (i = 0U; i < MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount; i++)
+    {
+        MAVLINK_BRIDGE_APP_Data.MissionPendingX[i] = Msg->Waypoints[i].X;
+        MAVLINK_BRIDGE_APP_Data.MissionPendingY[i] = Msg->Waypoints[i].Y;
+        MAVLINK_BRIDGE_APP_Data.MissionPendingZ[i] = Msg->Waypoints[i].Z;
+    }
+
+    MAVLINK_BRIDGE_APP_Data.MissionUploadState     = (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_ACTIVE;
+    MAVLINK_BRIDGE_APP_Data.MissionUploadRetry     = 0U;
+    MAVLINK_BRIDGE_APP_Data.MissionUploadTimeoutMs =
+        MAVLINK_BRIDGE_APP_GetTimeMs() + MAVLINK_BRIDGE_APP_MISSION_UPLOAD_TIMEOUT_MS;
+
+    MAVLINK_BRIDGE_APP_SendMissionCount(MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount);
+}
+
+static void MAVLINK_BRIDGE_APP_CheckMissionUploadTimeout(uint32 NowMs)
+{
+    if (MAVLINK_BRIDGE_APP_Data.MissionUploadState != (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_ACTIVE)
+    {
+        return;
+    }
+
+    if ((int32)(NowMs - MAVLINK_BRIDGE_APP_Data.MissionUploadTimeoutMs) < 0)
+    {
+        return;
+    }
+
+    if (MAVLINK_BRIDGE_APP_Data.MissionUploadRetry < (uint8)MAVLINK_BRIDGE_APP_MISSION_MAX_RETRIES)
+    {
+        MAVLINK_BRIDGE_APP_Data.MissionUploadRetry++;
+        MAVLINK_BRIDGE_APP_Data.MissionUploadTimeoutMs = NowMs + MAVLINK_BRIDGE_APP_MISSION_UPLOAD_TIMEOUT_MS;
+        MAVLINK_BRIDGE_APP_SendMissionCount(MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount);
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_MISSION_UPLOAD_ERR_EID, CFE_EVS_EventType_ERROR,
+                          "MAVLINK_BRIDGE_APP: mission upload timeout retry=%u",
+                          (unsigned int)MAVLINK_BRIDGE_APP_Data.MissionUploadRetry);
+    }
+    else
+    {
+        MAVLINK_BRIDGE_APP_Data.MissionUploadState = (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_IDLE;
+        MAVLINK_BRIDGE_APP_Data.MissionUploadFailCount++;
+        MAVLINK_BRIDGE_APP_Data.LastUploadResult   = (uint8)MAVLINK_BRIDGE_UPLOAD_RESULT_TIMEOUT;
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_MISSION_UPLOAD_ERR_EID, CFE_EVS_EventType_ERROR,
+                          "MAVLINK_BRIDGE_APP: mission upload failed after %u retries",
+                          (unsigned int)MAVLINK_BRIDGE_APP_MISSION_MAX_RETRIES);
+    }
 }
 
 static void MAVLINK_BRIDGE_APP_SendCompanionHeartbeat(uint32 NowMs)
@@ -996,6 +1115,61 @@ static void MAVLINK_BRIDGE_APP_HandleFrameComplete(uint32 RxTimestampMs, uint8 C
             MAVLINK_BRIDGE_APP_RecordParseError(MAVLINK_BRIDGE_ERROR_PARSE_FAIL);
         }
     }
+    else if (MAVLINK_BRIDGE_APP_Parser.MsgId == MAVLINK_MSG_ID_MISSION_REQUEST_INT)
+    {
+        ComputedCrc =
+            MAVLINK_BRIDGE_APP_ComputeFrameCrc(&MAVLINK_BRIDGE_APP_Parser, MAVLINK_MISSION_REQUEST_INT_CRC_EXTRA);
+        if (ComputedCrc == ReceivedCrc && MAVLINK_BRIDGE_APP_Parser.PayloadLen >= 2U)
+        {
+            uint16 Seq = MAVLINK_BRIDGE_APP_ReadU16LE(&MAVLINK_BRIDGE_APP_Parser.Payload[0]);
+            if (MAVLINK_BRIDGE_APP_Data.MissionUploadState == (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_ACTIVE &&
+                Seq < (uint16)MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount)
+            {
+                MAVLINK_BRIDGE_APP_Data.MissionUploadTimeoutMs =
+                    RxTimestampMs + MAVLINK_BRIDGE_APP_MISSION_UPLOAD_TIMEOUT_MS;
+                MAVLINK_BRIDGE_APP_SendMissionItemInt((uint8)Seq);
+            }
+        }
+        else
+        {
+            MAVLINK_BRIDGE_APP_RecordParseError(MAVLINK_BRIDGE_ERROR_PARSE_FAIL);
+        }
+    }
+    else if (MAVLINK_BRIDGE_APP_Parser.MsgId == MAVLINK_MSG_ID_MISSION_ACK)
+    {
+        ComputedCrc =
+            MAVLINK_BRIDGE_APP_ComputeFrameCrc(&MAVLINK_BRIDGE_APP_Parser, MAVLINK_MISSION_ACK_CRC_EXTRA);
+        if (ComputedCrc == ReceivedCrc && MAVLINK_BRIDGE_APP_Parser.PayloadLen >= 3U)
+        {
+            uint8 Result = MAVLINK_BRIDGE_APP_Parser.Payload[2];
+            if (MAVLINK_BRIDGE_APP_Data.MissionUploadState == (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_ACTIVE)
+            {
+                MAVLINK_BRIDGE_APP_Data.MissionUploadState = (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_IDLE;
+                if (Result == (uint8)MAVLINK_MISSION_ACCEPTED)
+                {
+                    MAVLINK_BRIDGE_APP_Data.MissionUploadSuccessCount++;
+                    MAVLINK_BRIDGE_APP_Data.LastUploadResult        = (uint8)MAVLINK_BRIDGE_UPLOAD_RESULT_SUCCESS;
+                    MAVLINK_BRIDGE_APP_Data.LastUploadTimestampMs   = RxTimestampMs;
+                    MAVLINK_BRIDGE_APP_Data.LastUploadWaypointCount = MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount;
+                    CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_MISSION_UPLOAD_INF_EID, CFE_EVS_EventType_INFORMATION,
+                                      "MAVLINK_BRIDGE_APP: mission upload success wp_count=%u",
+                                      (unsigned int)MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount);
+                }
+                else
+                {
+                    MAVLINK_BRIDGE_APP_Data.MissionUploadFailCount++;
+                    MAVLINK_BRIDGE_APP_Data.LastUploadResult = (uint8)MAVLINK_BRIDGE_UPLOAD_RESULT_NAK;
+                    CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_MISSION_UPLOAD_ERR_EID, CFE_EVS_EventType_ERROR,
+                                      "MAVLINK_BRIDGE_APP: mission upload NAK result=%u",
+                                      (unsigned int)Result);
+                }
+            }
+        }
+        else
+        {
+            MAVLINK_BRIDGE_APP_RecordParseError(MAVLINK_BRIDGE_ERROR_PARSE_FAIL);
+        }
+    }
     else
     {
     }
@@ -1132,14 +1306,19 @@ static void MAVLINK_BRIDGE_APP_HandleReceivedBytes(const uint8 *Buffer, ssize_t 
 
 void MAVLINK_BRIDGE_APP_ReportHousekeeping(void)
 {
-    MAVLINK_BRIDGE_APP_Data.HkTlm.CommandCounter        = MAVLINK_BRIDGE_APP_Data.CmdCounter;
-    MAVLINK_BRIDGE_APP_Data.HkTlm.CommandErrorCounter   = MAVLINK_BRIDGE_APP_Data.ErrCounter;
-    MAVLINK_BRIDGE_APP_Data.HkTlm.LinkState             = MAVLINK_BRIDGE_APP_Data.LinkState;
-    MAVLINK_BRIDGE_APP_Data.HkTlm.LastErrorCode         = MAVLINK_BRIDGE_APP_Data.LastErrorCode;
-    MAVLINK_BRIDGE_APP_Data.HkTlm.BytesReceived         = MAVLINK_BRIDGE_APP_Data.BytesReceived;
-    MAVLINK_BRIDGE_APP_Data.HkTlm.ReconnectAttemptCount = MAVLINK_BRIDGE_APP_Data.ReconnectAttemptCount;
-    MAVLINK_BRIDGE_APP_Data.HkTlm.ParseErrorCount       = MAVLINK_BRIDGE_APP_Data.ParseErrorCount;
-    MAVLINK_BRIDGE_APP_Data.HkTlm.LastRxTimestampMs     = MAVLINK_BRIDGE_APP_Data.LastRxTimestampMs;
+    MAVLINK_BRIDGE_APP_Data.HkTlm.CommandCounter             = MAVLINK_BRIDGE_APP_Data.CmdCounter;
+    MAVLINK_BRIDGE_APP_Data.HkTlm.CommandErrorCounter        = MAVLINK_BRIDGE_APP_Data.ErrCounter;
+    MAVLINK_BRIDGE_APP_Data.HkTlm.LinkState                  = MAVLINK_BRIDGE_APP_Data.LinkState;
+    MAVLINK_BRIDGE_APP_Data.HkTlm.LastErrorCode              = MAVLINK_BRIDGE_APP_Data.LastErrorCode;
+    MAVLINK_BRIDGE_APP_Data.HkTlm.BytesReceived              = MAVLINK_BRIDGE_APP_Data.BytesReceived;
+    MAVLINK_BRIDGE_APP_Data.HkTlm.ReconnectAttemptCount      = MAVLINK_BRIDGE_APP_Data.ReconnectAttemptCount;
+    MAVLINK_BRIDGE_APP_Data.HkTlm.ParseErrorCount            = MAVLINK_BRIDGE_APP_Data.ParseErrorCount;
+    MAVLINK_BRIDGE_APP_Data.HkTlm.LastRxTimestampMs          = MAVLINK_BRIDGE_APP_Data.LastRxTimestampMs;
+    MAVLINK_BRIDGE_APP_Data.HkTlm.MissionUploadSuccessCount  = MAVLINK_BRIDGE_APP_Data.MissionUploadSuccessCount;
+    MAVLINK_BRIDGE_APP_Data.HkTlm.MissionUploadFailCount     = MAVLINK_BRIDGE_APP_Data.MissionUploadFailCount;
+    MAVLINK_BRIDGE_APP_Data.HkTlm.LastUploadTimestampMs      = MAVLINK_BRIDGE_APP_Data.LastUploadTimestampMs;
+    MAVLINK_BRIDGE_APP_Data.HkTlm.LastUploadWaypointCount    = MAVLINK_BRIDGE_APP_Data.LastUploadWaypointCount;
+    MAVLINK_BRIDGE_APP_Data.HkTlm.LastUploadResult           = MAVLINK_BRIDGE_APP_Data.LastUploadResult;
 
     CFE_SB_TimeStampMsg(CFE_MSG_PTR(MAVLINK_BRIDGE_APP_Data.HkTlm.TelemetryHeader));
     CFE_SB_TransmitMsg(CFE_MSG_PTR(MAVLINK_BRIDGE_APP_Data.HkTlm.TelemetryHeader), true);
@@ -1218,6 +1397,8 @@ void MAVLINK_BRIDGE_APP_ServiceSerial(void)
                           "MAVLINK_BRIDGE_APP: waiting for FC heartbeat before stream request");
         MAVLINK_BRIDGE_APP_Data.TargetDiscoveryStartMs = NowMs;
     }
+
+    MAVLINK_BRIDGE_APP_CheckMissionUploadTimeout(NowMs);
 
     SawData = false;
     while ((ReadSize = read(MAVLINK_BRIDGE_APP_Data.SerialFd, RxBuffer, sizeof(RxBuffer))) > 0)

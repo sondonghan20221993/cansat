@@ -26,6 +26,12 @@ typedef struct
     uint32                    ReconnectAttemptCount;
     uint32                    ParseErrorCount;
     uint32                    LastRxTimestampMs;
+    uint32                    MissionUploadSuccessCount;
+    uint32                    MissionUploadFailCount;
+    uint32                    LastUploadTimestampMs;
+    uint8                     LastUploadWaypointCount;
+    uint8                     LastUploadResult;
+    uint16                    HkSpare;
 } MAVLINK_BRIDGE_APP_HkTlm_t;
 
 typedef struct
@@ -89,5 +95,27 @@ typedef struct
     uint8                     Reserved;
     uint16                    Flags;
 } MAVLINK_BRIDGE_APP_EkfStatusTlm_t;
+
+#define MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS 16U
+
+typedef struct
+{
+    float X;
+    float Y;
+    float Z;
+} MAVLINK_BRIDGE_APP_WaypointMirror_t;
+
+typedef struct
+{
+    CFE_MSG_TelemetryHeader_t           TelemetryHeader;
+    uint32                              Seq;
+    uint32                              TimestampMs;
+    uint32                              SourceSequence;
+    uint8                               RouteType;
+    uint8                               RouteVersion;
+    uint8                               WaypointCount;
+    uint8                               Reserved;
+    MAVLINK_BRIDGE_APP_WaypointMirror_t Waypoints[MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS];
+} MAVLINK_BRIDGE_APP_RouteUpdateMirror_t;
 
 #endif

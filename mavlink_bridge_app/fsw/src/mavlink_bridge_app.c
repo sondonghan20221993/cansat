@@ -124,6 +124,12 @@ CFE_Status_t MAVLINK_BRIDGE_APP_Init(void)
         return Status;
     }
 
+    Status = CFE_SB_Subscribe(CFE_SB_ValueToMsgId(ROUTE_UPDATE_MID), MAVLINK_BRIDGE_APP_Data.CommandPipe);
+    if (Status != CFE_SUCCESS)
+    {
+        return Status;
+    }
+
     CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_STARTUP_EID, CFE_EVS_EventType_INFORMATION,
                       "MAVLINK_BRIDGE_APP Initialized");
 
