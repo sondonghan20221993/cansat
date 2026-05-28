@@ -57,21 +57,35 @@ FC 링크가 연결되지 않은 상태에서 `ROUTE_UPDATE_MID`가 수신되면
 
 ## 6. MAVLink MISSION 업로드 프로토콜
 
-MAVLink standard MISSION upload handshake를 따른다.
+MAVLink standard MISSION upload handshake를 따른다. FC 펌웨어/설정에 따라 두 가지 경로를 모두 지원한다.
+
+### 6.1 INT 경로 (권장, MAVLink2 / ArduPilot 4.x+)
 
 ```
-mavlink_bridge_app → FC : MISSION_COUNT  (count=N, mission_type=MAV_MISSION_TYPE_MISSION)
-FC → mavlink_bridge_app : MISSION_REQUEST_INT (seq=0)
-mavlink_bridge_app → FC : MISSION_ITEM_INT    (seq=0, ...)
-FC → mavlink_bridge_app : MISSION_REQUEST_INT (seq=1)
-mavlink_bridge_app → FC : MISSION_ITEM_INT    (seq=1, ...)
+mavlink_bridge_app → FC : MISSION_COUNT      (count=N, mission_type=MAV_MISSION_TYPE_MISSION)
+FC → mavlink_bridge_app : MISSION_REQUEST_INT (msg 51, seq=0)
+mavlink_bridge_app → FC : MISSION_ITEM_INT    (msg 73, seq=0, int32 좌표)
 ...
 FC → mavlink_bridge_app : MISSION_ACK         (result=MAV_MISSION_ACCEPTED)
 ```
 
+### 6.2 Legacy 경로 (호환, MAVLink1 / 구형 펌웨어)
+
+```
+mavlink_bridge_app → FC : MISSION_COUNT   (count=N, mission_type=MAV_MISSION_TYPE_MISSION)
+FC → mavlink_bridge_app : MISSION_REQUEST  (msg 40, seq=0)
+mavlink_bridge_app → FC : MISSION_ITEM     (msg 39, seq=0, float 좌표)
+...
+FC → mavlink_bridge_app : MISSION_ACK      (result=MAV_MISSION_ACCEPTED)
+```
+
+- `MISSION_REQUEST(40)` 수신 시 `MISSION_ITEM(39)`(float 좌표)으로 응답한다.
+- INT 경로와 Legacy 경로는 동일한 `MissionUploadState` 상태머신을 공유한다.
+- 두 경로 모두 timeout/재시도 동작은 §8과 동일하다.
+
 각 단계에서 FC 응답을 기다리며, timeout 초과 시 재시도한다.
 
-> **FC 호환성 주의**: 현재 구현은 `MAV_FRAME_LOCAL_NED` 기반 `MISSION_ITEM_INT`를 전송한다. 일부 FC 펌웨어/미션 스토어는 mission waypoint에서 local frame을 거부할 수 있다. FC가 `MISSION_ACK result != ACCEPTED`를 반환하는 경우, 해당 result 값을 기록하고 global mission frame 변환 필요 여부를 별도 진단해야 한다. §10 참조.
+> **FC 호환성 주의**: 현재 구현은 `MAV_FRAME_LOCAL_NED` 기반으로 전송한다. 일부 FC 펌웨어/미션 스토어는 local frame을 거부할 수 있다. FC가 `MISSION_ACK result != ACCEPTED`를 반환하는 경우, 해당 result 값을 기록하고 global mission frame 변환 필요 여부를 별도 진단해야 한다. §10 참조.
 
 ## 7. MISSION_ITEM_INT 필드 매핑
 
