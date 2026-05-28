@@ -239,6 +239,31 @@ MAVLINK_BRIDGE_APP: frame msgid=<id> len=<payload_len> rx_ms=<timestamp>
 - **출력 시점**: `HandleFrameComplete` 진입 직후, CRC 검증 전.
 - **주의**: 고빈도 프레임(ATTITUDE 등)에서도 출력되므로 진단 목적 외에는 제거 권장.
 
+### 14.2 미션 업로드 단독 진단 스크립트
+
+**위치**: `tools/mission_upload_diag.py`
+
+cFS 없이 Pi에서 직접 MAVLink mission upload 시퀀스를 실행하고 FC 응답을 단계별로 출력하는 진단 도구.
+
+**목적**: cFS 브리지와 MAVProxy 간 동작 차이를 비교하여 FC가 응답하지 않는 원인 규명.
+
+**실행**:
+```bash
+# cFS 종료 후
+python3 tools/mission_upload_diag.py --port /dev/serial0 --baud 57600
+```
+
+**단계별 동작**:
+1. FC heartbeat 수신 → `target_sysid`, `target_compid` 획득
+2. `MISSION_CLEAR_ALL(45)` 전송 → `MISSION_ACK` 대기
+3. `MISSION_COUNT(N)(44)` 전송 → `MISSION_REQUEST_INT(51)` 또는 `MISSION_REQUEST(40)` 대기
+4. 요청된 seq에 맞는 `MISSION_ITEM_INT(73)` 또는 `MISSION_ITEM(39)` 응답
+5. 최종 `MISSION_ACK` 수신 및 result 출력
+
+**출력 형식**: 각 단계에서 TX/RX 프레임의 msgid, payload hex 전부 출력 → cFS 브리지와 직접 비교 가능.
+
+**sysid/compid**: `255/190` (브리지와 동일)
+
 ---
 
 ## 13. 미구현 사항
