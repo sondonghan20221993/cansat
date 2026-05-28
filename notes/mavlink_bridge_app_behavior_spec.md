@@ -1,0 +1,209 @@
+# mavlink_bridge_app 동작 명세 — FC 경로 업로드
+
+## 1. 목적
+
+이 문서는 `mavlink_bridge_app`의 FC 경로 업로드 동작을 정의한다.
+코드와 정합된 명세서로, 리뷰, 통합, 테스트 수행에 활용한다.
+
+코드와 이 문서가 서로 다르면, 코드를 조사의 원본으로 취급해야 한다.
+
+## 2. 범위
+
+이 명세는 다음을 다룬다.
+
+- `ROUTE_UPDATE_MID` 수신 후 FC로 웨이포인트를 전달하는 FC MISSION 업로드 동작
+- MAVLink MISSION 업로드 핸드셰이크 프로토콜
+- MISSION_ITEM_INT 필드 매핑 (좌표계 및 z 부호 포함)
+- 타이밍, 재시도, 실패 및 성공 처리
+- MISSION_ACK ACCEPTED 의미 범위
+- HK 추가 필드
+- FC MISSION 조회 명령 (MISSION_QUERY_CC)
+- 알려진 FC 호환성 제약 (MAV_FRAME_LOCAL_NED)
+
+이 명세는 다음을 다루지 않는다.
+
+- MAVLink 수신 파싱 (ATTITUDE, GPS, EKF 등)
+- LoRa 텔레메트리 송신
+- `cfs_core_app` 경로 캐시 갱신 동작 (→ `cfs_core_app_behavior_spec.md` §7.3, §8.3, §16)
+
+## 3. 참조
+
+- Source: `mavlink_bridge_app/fsw/src/mavlink_bridge_app_utils.c` — `StartMissionUpload`, `SendMissionCount`, `SendMissionItemInt`, `HandleMissionAck`
+- Source: `mavlink_bridge_app/fsw/src/mavlink_bridge_app.c` — RouteUpdate dispatch
+- Source: `mavlink_bridge_app/fsw/src/mavlink_bridge_app.h` — `MissionPendingX/Y/Z`, `MissionUploadState`
+- 전체 MID 계약: `notes/mission_app_runtime_spec.md` §5.1.1
+- 앱 간 책임 분리: `notes/cfs_core_app_behavior_spec.md` §22
+
+## 4. 책임 분리
+
+| 단계 | 담당 앱 | 동작 |
+| --- | --- | --- |
+| 경로 명령 수신 및 검증 | `uplink_app` | `ROUTE_UPDATE_MID` 게시 |
+| 경로 캐시 저장 | `cfs_core_app` | MissionRoute / LandingRoute 갱신 |
+| FC 웨이포인트 업로드 | `mavlink_bridge_app` | MAVLink MISSION 업로드 프로토콜 수행 |
+
+`ROUTE_UPDATE_MID` (0x190B)는 `cfs_core_app`과 `mavlink_bridge_app` 모두가 구독한다. 이 MID를 publish하는 생산자(`uplink_app`)는 payload 검증뿐 아니라 FC 업로드 가능성까지 고려해야 한다.
+
+## 5. 트리거
+
+유효한 `ROUTE_UPDATE_MID` 수신 시 즉시 FC 업로드 시퀀스를 시작한다.
+
+업로드 시작 조건:
+- FC 링크가 CONNECTED 상태 (Heartbeat 수신 완료)
+
+FC 링크가 연결되지 않은 상태에서 `ROUTE_UPDATE_MID`가 수신되면 업로드를 건너뛰고 EVS 경고 이벤트를 발생시킨다.
+
+업로드 진행 중에 새 `ROUTE_UPDATE_MID`가 수신되면 현재 진행 중인 업로드를 즉시 중단하고 새 경로로 재시작한다.
+
+## 6. MAVLink MISSION 업로드 프로토콜
+
+MAVLink standard MISSION upload handshake를 따른다.
+
+```
+mavlink_bridge_app → FC : MISSION_COUNT  (count=N, mission_type=MAV_MISSION_TYPE_MISSION)
+FC → mavlink_bridge_app : MISSION_REQUEST_INT (seq=0)
+mavlink_bridge_app → FC : MISSION_ITEM_INT    (seq=0, ...)
+FC → mavlink_bridge_app : MISSION_REQUEST_INT (seq=1)
+mavlink_bridge_app → FC : MISSION_ITEM_INT    (seq=1, ...)
+...
+FC → mavlink_bridge_app : MISSION_ACK         (result=MAV_MISSION_ACCEPTED)
+```
+
+각 단계에서 FC 응답을 기다리며, timeout 초과 시 재시도한다.
+
+> **FC 호환성 주의**: 현재 구현은 `MAV_FRAME_LOCAL_NED` 기반 `MISSION_ITEM_INT`를 전송한다. 일부 FC 펌웨어/미션 스토어는 mission waypoint에서 local frame을 거부할 수 있다. FC가 `MISSION_ACK result != ACCEPTED`를 반환하는 경우, 해당 result 값을 기록하고 global mission frame 변환 필요 여부를 별도 진단해야 한다. §10 참조.
+
+## 7. MISSION_ITEM_INT 필드 매핑
+
+| MAVLink 필드 | 값 |
+| --- | --- |
+| `target_system` | FC system ID (런타임에 Heartbeat에서 획득) |
+| `target_component` | FC autopilot component ID |
+| `seq` | 웨이포인트 인덱스 (0-based) |
+| `frame` | `MAV_FRAME_LOCAL_NED` (= 1) |
+| `command` | `MAV_CMD_NAV_WAYPOINT` (= 16) |
+| `current` | 0 (첫 번째 항목도 0, SET_CURRENT_ITEM으로 별도 지정) |
+| `autocontinue` | 1 |
+| `param1..4` | 0.0 (hold time, acceptance radius 등 미사용) |
+| `x` | `(int32)(Waypoints[i].X * 10000)` — float meters → int32 (0.1mm 단위) |
+| `y` | `(int32)(Waypoints[i].Y * 10000)` — 동일 |
+| `z` | `-Waypoints[i].Z` (float meters). Route payload는 altitude-positive convention을 사용하며, LOCAL_NED z는 down-positive이므로 부호를 반전한다. |
+| `mission_type` | `MAV_MISSION_TYPE_MISSION` (= 0) |
+
+x/y는 `int32` (× 10000, 0.1mm 단위)이고, z는 `float` meters (부호 반전)임에 유의한다.
+
+## 8. 타이밍 및 재시도
+
+| 파라미터 | 값 |
+| --- | --- |
+| 단계별 응답 대기 timeout | 2000 ms |
+| 최대 재시도 횟수 | 3 |
+| 재시도 조건 | timeout 또는 예상치 못한 seq 응답 |
+| 재시도 시 재시작 위치 | MISSION_COUNT부터 전체 재시작 |
+
+## 9. 실패 및 성공 처리
+
+### 9.1 실패 처리
+
+| 실패 조건 | 처리 |
+| --- | --- |
+| FC 응답 timeout | 재시도. 최대 재시도 초과 시 업로드 실패 기록 |
+| `MISSION_ACK` result ≠ ACCEPTED | 즉시 실패 기록. 재시도 없음 |
+| 업로드 중 새 `ROUTE_UPDATE_MID` 수신 | 현재 업로드 중단 후 새 경로로 재시작 |
+| FC 링크 단절 | 업로드 중단. 링크 복구 후 자동 재시도 없음 (다음 경로 명령 대기) |
+
+업로드 실패 시:
+- EVS 오류 이벤트 발생 (`MAVLINK_BRIDGE_APP_MISSION_UPLOAD_ERR_EID`)
+- HK에 실패 카운터 증가
+- 기존 FC 미션은 변경되지 않음 (FC 측 상태 유지)
+
+### 9.2 성공 처리
+
+업로드 성공(`MISSION_ACK` = ACCEPTED) 시:
+- EVS 정보 이벤트 발생 (`MAVLINK_BRIDGE_APP_MISSION_UPLOAD_INF_EID`)
+- HK에 성공 카운터 및 마지막 업로드 타임스탬프 갱신
+
+`StartMissionUpload` 함수 진입 시에도 동일 EID로 진단 로그를 발생시킨다:
+```
+MAVLINK_BRIDGE_APP: StartMissionUpload called wp=<N> link=<state>
+```
+`link` 값: 0=DISCONNECTED, 1=CONNECTED. 이 로그는 `ROUTE_UPDATE_MID`가 실제로 dispatch 함수까지 도달했는지 확인하는 진단용이다.
+
+### 9.3 MISSION_ACK ACCEPTED 의미 범위
+
+`MISSION_ACK ACCEPTED`는 FC가 업로드 절차를 수락했음을 의미한다. 다음은 포함하지 않는다.
+
+| 항목 | 포함 여부 |
+| --- | --- |
+| FC가 mission item 수신을 수락함 | O |
+| FC 미션 저장소에 실제 반영됐는지 | 별도 조회 필요 |
+| 기체가 해당 경로를 실행함 | X |
+| AUTO 모드 전환, ARM, 미션 시작 수행 | X |
+| 현재 미션 인덱스 변경 | X |
+
+업로드 후 실제 저장 여부는 `MISSION_QUERY_CC` 또는 GCS mission list 조회로 별도 확인해야 한다.
+
+## 10. FC MISSION 조회 명세 (MISSION_QUERY_CC)
+
+cFS CMD `MAVLINK_BRIDGE_APP_CMD_MID` (0x18A0), CC=2로 트리거된다.
+
+**목적**: FC에 저장된 현재 미션 항목을 읽어 EVS 로그로 출력한다. 업로드 결과 확인용.
+
+**다운로드 프로토콜:**
+
+```
+mavlink_bridge_app → FC : MISSION_REQUEST_LIST
+FC → mavlink_bridge_app : MISSION_COUNT (count=N)
+mavlink_bridge_app → FC : MISSION_REQUEST_INT (seq=0)
+FC → mavlink_bridge_app : MISSION_ITEM_INT    (seq=0)
+...
+FC → mavlink_bridge_app : MISSION_ITEM_INT    (seq=N-1)
+mavlink_bridge_app → FC : MISSION_ACK         (MAV_MISSION_ACCEPTED)
+```
+
+**출력**: 수신된 각 waypoint를 `MAVLINK_BRIDGE_APP_MISSION_DOWNLOAD_INF_EID` EVS 이벤트로 출력한다.
+```
+[wp N] x=<val> y=<val> z=<val> cmd=<cmd>
+```
+
+**타이밍**: 단계별 응답 대기 timeout 3000 ms. 재시도 없음.
+
+**지상국 트리거**:
+```bash
+python3 tools/query_fc_mission.py <Pi_IP> 1234
+```
+
+## 11. HK 추가 필드
+
+| 필드 | 형식 | 의미 |
+| --- | --- | --- |
+| `MissionUploadSuccessCount` | `uint32` | 누적 업로드 성공 횟수 |
+| `MissionUploadFailCount` | `uint32` | 누적 업로드 실패 횟수 |
+| `LastUploadTimestampMs` | `uint32` | 마지막 성공 업로드 시각 |
+| `LastUploadWaypointCount` | `uint8` | 마지막 업로드한 웨이포인트 수 |
+| `LastUploadResult` | `uint8` | 0=없음, 1=성공, 2=timeout, 3=NAK |
+
+## 12. 알려진 FC 호환성 제약
+
+### 12.1 MAV_FRAME_LOCAL_NED 호환성
+
+현재 구현은 `MAV_FRAME_LOCAL_NED` 기반 MISSION_ITEM_INT를 전송한다.
+
+| 항목 | 내용 |
+| --- | --- |
+| frame 값 | `MAV_FRAME_LOCAL_NED` (= 1) |
+| x/y 인코딩 | float meters → int32 (× 10000, 0.1mm 단위) |
+| z 인코딩 | float meters, altitude-positive → LOCAL_NED down-positive로 부호 반전 |
+| FC 거부 가능성 | 일부 ArduPilot/PX4 설정에서 local frame mission 거부 |
+| 진단 방법 | `MISSION_ACK result` 값 기록, `LastUploadResult=3 (NAK)` 확인 |
+| 해결 방향 | global frame (`MAV_FRAME_GLOBAL_RELATIVE_ALT`) 변환 구현 필요 |
+
+FC가 `MISSION_ACK result = MAV_MISSION_UNSUPPORTED_FRAME`을 반환하면, global frame 변환 구현이 필요하다.
+
+## 13. 미구현 사항
+
+- FC 현재 미션 항목 변경 (`MAV_CMD_DO_SET_MISSION_CURRENT`)
+- Landing route 업로드
+- 업로드 완료 후 자동 미션 시작
+- mid-flight 경로 변경 안전 검사
+- Global mission frame (`MAV_FRAME_GLOBAL_RELATIVE_ALT`) 변환 및 업로드

@@ -239,15 +239,19 @@ unit-test 디렉터리 미구성. 아래 항목은 런타임/도구를 통해 �
 | `route-bad-alt` | 고도 2m 미만 route → 거부 | `invalid route update payload`, core route update 없음 |
 | `route-bad-distance` | waypoint 거리 제약 위반 → 거부 | invalid route 로그 |
 
-### FC 경로 업로드 시험 (§22)
+### FC 경로 업로드 시험 (mavlink_bridge_app_behavior_spec.md §5–§9)
 
 도구: `tools/uplink_route_update_sender.py` → cFS → FC 직렬
 
-| 시험 항목 | 검증 내용 | 기대 결과 |
-|---|---|---|
-| FC 링크 연결 상태에서 route update | mavlink_bridge_app이 MISSION_COUNT → MISSION_ITEM_INT × N → MISSION_ACK 수신 | EVS: `mission upload success wp_count=N`, HK `LastUploadResult==1` |
-| FC 링크 미연결 상태에서 route update | 업로드 무시 | EVS: `route update ignored - FC link not connected` |
-| 업로드 도중 타임아웃 (3회 재시도) | 재시도 후 실패 | EVS: `mission upload failed after 3 retries`, HK `LastUploadResult==3` |
+| ID | 시험 항목 | 검증 내용 | 기대 결과 |
+|---|---|---|---|
+| MAV-UP-001 | FC heartbeat 수신 전 route update | FC 링크 미연결 상태에서 업로드 시도 | EVS: `route update ignored - FC link not connected` |
+| MAV-UP-002 | FC heartbeat 후 route update | `StartMissionUpload` 진단 로그 확인 | EVS: `StartMissionUpload called wp=N link=1`, HK `LastUploadResult==1` |
+| MAV-UP-003 | FC가 `MISSION_REQUEST_INT` 미응답 | timeout 3회 재시도 후 실패 | EVS: `mission upload failed after 3 retries`, HK `LastUploadResult==2` |
+| MAV-UP-004 | FC가 `MISSION_ACK result != ACCEPTED` | NAK 수신 시 즉시 실패, 재시도 없음 | EVS: upload fail, HK `LastUploadResult==3` |
+| MAV-UP-005 | 업로드 후 `MISSION_QUERY_CC` 실행 | FC 저장 waypoint 조회 | EVS: `[wp 0] x=... y=... z=...` — 업로드 값과 일치 |
+| MAV-UP-006 | `MAV_FRAME_LOCAL_NED` frame 거부 | FC가 `MAV_MISSION_UNSUPPORTED_FRAME` 반환 | EVS: upload fail, `LastUploadResult==3`, result 값 기록 확인 |
+| MAV-UP-007 | z 좌표 부호 반전 확인 | route payload Z=5.0 업로드 후 MISSION_QUERY_CC | FC 저장 z=-5.0 (LOCAL_NED down) 확인 |
 
 ### FC 경로 재조회 시험 (MISSION_QUERY_CC)
 
