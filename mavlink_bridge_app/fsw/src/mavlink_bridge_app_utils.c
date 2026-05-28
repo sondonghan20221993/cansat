@@ -431,8 +431,7 @@ void MAVLINK_BRIDGE_APP_StartMissionUpload(const MAVLINK_BRIDGE_APP_RouteUpdateM
     if (MAVLINK_BRIDGE_APP_RefLatE7 == 0 && MAVLINK_BRIDGE_APP_RefLonE7 == 0)
     {
         CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_MISSION_UPLOAD_ERR_EID, CFE_EVS_EventType_ERROR,
-                          "MAVLINK_BRIDGE_APP: route update ignored - no GPS reference (GLOBAL_POSITION_INT not received)");
-        return;
+                          "MAVLINK_BRIDGE_APP: no GPS ref - uploading with (0,0) origin");
     }
 
     MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount = Msg->WaypointCount;

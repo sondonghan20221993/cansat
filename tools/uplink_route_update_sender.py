@@ -131,6 +131,7 @@ def pretty_waypoints(waypoints: Iterable[Tuple[float, float, float]]) -> str:
 
 
 def preset_case(case_name: str) -> Tuple[int, List[Tuple[float, float, float]]]:
+    # GPS 있음 케이스: bridge가 GLOBAL_POSITION_INT lat/lon 기준으로 좌표 변환
     if case_name == "route-good":
         return ROUTE_TYPE_MISSION_EXTENSION, [(0.0, -10.0, 3.0), (2.0, -10.0, 3.0)]
     if case_name == "route-landing":
@@ -139,6 +140,11 @@ def preset_case(case_name: str) -> Tuple[int, List[Tuple[float, float, float]]]:
         return ROUTE_TYPE_MISSION_EXTENSION, [(0.0, -10.0, 1.0), (2.0, -10.0, 3.0)]
     if case_name == "route-bad-distance":
         return ROUTE_TYPE_MISSION_EXTENSION, [(0.0, -10.0, 3.0), (2.01, -10.0, 3.0)]
+    # GPS 없음 케이스: bridge가 (0,0) 원점 기준으로 변환 (기능 검증 전용)
+    if case_name == "route-good-no-gps":
+        return ROUTE_TYPE_MISSION_EXTENSION, [(0.0, -10.0, 3.0), (2.0, -10.0, 3.0)]
+    if case_name == "route-landing-no-gps":
+        return ROUTE_TYPE_LANDING, [(2.0, -8.0, 4.0), (2.0, -8.0, 2.0)]
     raise ValueError(f"unknown case: {case_name}")
 
 
@@ -148,7 +154,8 @@ def main() -> int:
     )
     parser.add_argument(
         "case_name",
-        choices=["route-good", "route-landing", "route-bad-alt", "route-bad-distance"],
+        choices=["route-good", "route-landing", "route-bad-alt", "route-bad-distance",
+                 "route-good-no-gps", "route-landing-no-gps"],
         help="Preset route-update test case to send.",
     )
     parser.add_argument("--host", default="127.0.0.1")

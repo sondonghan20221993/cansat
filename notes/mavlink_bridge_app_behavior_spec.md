@@ -236,7 +236,17 @@ ArduPilot은 미션 아이템에서 `MAV_FRAME_LOCAL_NED` (= 1)을 거부한다 
 FC의 최신 `GLOBAL_POSITION_INT (msg 33)` lat/lon을 기준점(RefLat, RefLon)으로 사용한다.
 
 - 기준점은 `GLOBAL_POSITION_INT` 수신마다 갱신된다.
-- `StartMissionUpload` 호출 시 `RefLatE7 == 0 && RefLonE7 == 0`이면 업로드 거부.
+
+#### GPS 가용 여부에 따른 동작
+
+| 시나리오 | 조건 | 동작 |
+|---------|------|------|
+| **GPS 있음** | `RefLatE7 != 0 \|\| RefLonE7 != 0` | 실제 lat/lon 기준으로 변환 |
+| **GPS 없음** | `RefLatE7 == 0 && RefLonE7 == 0` | `(0, 0)` 기준으로 변환 + 경고 로그 출력 후 업로드 진행 |
+
+GPS 없음 시나리오는 기능 검증(미션 저장 여부 확인) 목적으로만 사용한다. FC는 절대 좌표 없이도 미션 아이템을 저장한다.
+
+EVS 경고: `"MAVLINK_BRIDGE_APP: no GPS ref - uploading with (0,0) origin"`
 
 #### 변환 공식
 
