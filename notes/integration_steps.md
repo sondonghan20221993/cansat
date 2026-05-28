@@ -1,5 +1,44 @@
 # Raspberry Pi 재통합 및 재설정 절차
 
+## Pi↔FC MAVLink 양방향 통신 진단
+
+> **핵심**: telemetry 수신 정상(FC→Pi) ≠ command 송신 정상(Pi→FC).
+> cFS 미션 업로드 문제가 발생하면 MAVProxy로 양방향 통신을 먼저 검증한다.
+
+### 사전 확인 (QGC/MP 파라미터)
+
+| 파라미터 | 정상값 | 의미 |
+|---------|--------|------|
+| `SERIAL4_PROTOCOL` | `2` | MAVLink2. `0`이면 FC가 RX 무시 |
+| `SERIAL4_BAUD` | `57` | 57600 baud 일치 |
+| `SERIAL4_OPTIONS` | `0` | Half-duplex 등 옵션 없음 |
+
+### MAVProxy 단독 테스트
+
+```bash
+pip install mavproxy
+mavproxy.py --master=/dev/serial0 --baudrate=57600
+```
+
+연결 후 콘솔에서:
+```
+arm throttle    # ACK 응답 오면 Pi→FC TX 정상
+disarm
+```
+
+- ACK 응답 있음 → Pi↔FC 양방향 정상. cFS 미션 업로드 문제는 브리지 코드 쪽.
+- ACK 응답 없음 → Pi TX 물리 배선 또는 FC 파라미터 문제.
+
+### 물리 배선 확인
+
+| 핀 | 연결 대상 |
+|----|---------|
+| Pi GPIO14 (TXD, Pin 8) | FC UART4 RX |
+| Pi GPIO15 (RXD, Pin 10) | FC UART4 TX |
+| GND | FC GND (공통) |
+
+---
+
 ## 개발 워크플로 (소스 수정 후 재빌드)
 
 > **모든 경로는 Raspberry Pi 기준이다.** 빌드·실행은 Pi 터미널에서 수행한다.
