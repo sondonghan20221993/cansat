@@ -1125,12 +1125,6 @@ static void MAVLINK_BRIDGE_APP_HandleFrameComplete(uint32 RxTimestampMs, uint8 C
 
     ReceivedCrc = ((uint16)CrcHigh << 8) | MAVLINK_BRIDGE_APP_Parser.CrcLow;
 
-    CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_PARSE_EID, CFE_EVS_EventType_INFORMATION,
-                      "MAVLINK_BRIDGE_APP: frame msgid=%lu len=%u rx_ms=%lu",
-                      (unsigned long)MAVLINK_BRIDGE_APP_Parser.MsgId,
-                      (unsigned int)MAVLINK_BRIDGE_APP_Parser.PayloadLen,
-                      (unsigned long)RxTimestampMs);
-
     if (MAVLINK_BRIDGE_APP_Parser.MsgId == MAVLINK_MSG_ID_HEARTBEAT)
     {
         MAVLINK_BRIDGE_APP_Data.TargetSystemId    = MAVLINK_BRIDGE_APP_Parser.SysId;
