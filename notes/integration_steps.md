@@ -19,8 +19,8 @@ cp -r ~/Desktop/cfs-telemetry-app/<app>/unit-test/ ~/Desktop/cFS_clean/apps/<app
 ### 2. cFS 재빌드 및 설치
 
 ```bash
-cd ~/Desktop/cFS_clean/build/native/default_cpu1
-make -j$(nproc)
+cd ~/Desktop/cFS_clean/build-native_std
+make native_default_cpu1-all -j$(nproc)
 
 # .so 수동 복사 (sudo make install 대체)
 cp apps/<app>/<app>.so ~/Desktop/cFS_clean/build/exe/cpu1/cf/
@@ -280,12 +280,11 @@ baseline bring-up 기준으로 아래 MID만 남긴다.
 실제 동작하는 빌드 명령은 다음과 같다.
 
 ```bash
-# 빌드 (빌드 디렉터리에서 직접 실행)
-cd ~/Desktop/cFS_clean/build/native/default_cpu1
-make -j$(nproc)
+# 빌드
+cd ~/Desktop/cFS_clean/build-native_std
+make native_default_cpu1-all -j$(nproc)
 
 # 설치 (.so 파일을 실행 디렉터리로 복사)
-# sudo make install 이 경로 문제로 실패할 경우 수동 복사:
 cp apps/mavlink_bridge_app/mav_bridge_app.so ~/Desktop/cFS_clean/build/exe/cpu1/cf/
 cp apps/uplink_app/uplink_app.so ~/Desktop/cFS_clean/build/exe/cpu1/cf/
 cp apps/cfs_core_app/cfs_core_app.so ~/Desktop/cFS_clean/build/exe/cpu1/cf/
@@ -293,8 +292,6 @@ cp apps/lora_fc_downlink_app/lora_fc_downlink_app.so ~/Desktop/cFS_clean/build/e
 ```
 
 설치 결과는 `~/Desktop/cFS_clean/build/exe/cpu1/` 아래에 생성된다.
-
-> **주의**: 구 문서에 `build-native_std/exe/cpu1` 경로가 남아 있을 수 있으나, 실제 경로는 `build/exe/cpu1`이다.
 
 ### 12. 런타임 실행
 
