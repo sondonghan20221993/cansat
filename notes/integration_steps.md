@@ -1,5 +1,51 @@
 # Raspberry Pi 재통합 및 재설정 절차
 
+## 개발 워크플로 (소스 수정 후 재빌드)
+
+소스를 수정한 뒤 cFS에 반영하는 절차. `rsync` 대신 `cp -r`을 사용한다.
+
+### 1. 소스 동기화
+
+```bash
+# fsw 소스가 변경된 경우
+cp -r ~/cfs-telemetry-app/<app>/fsw/ ~/cFS_clean/apps/<app>/fsw/
+
+# unit-test가 변경된 경우
+cp -r ~/cfs-telemetry-app/<app>/unit-test/ ~/cFS_clean/apps/<app>/unit-test/
+```
+
+### 2. cFS 재빌드 및 설치
+
+```bash
+cd ~/cFS_clean/build/native/default_cpu1
+make -j$(nproc)
+
+# .so 수동 복사 (sudo make install 대체)
+cp apps/<app>/<app>.so ~/cFS_clean/build/exe/cpu1/cf/
+```
+
+`mav_bridge_app`는 target 이름이 짧으므로:
+```bash
+cp apps/mavlink_bridge_app/mav_bridge_app.so ~/cFS_clean/build/exe/cpu1/cf/
+```
+
+### 3. unit-test 재빌드 및 실행
+
+```bash
+cd ~/cFS_clean/build-ut/native/default_cpu1/apps/<app>/unit-test
+make -j4
+./coverage-<app>-<module>-testrunner
+```
+
+### 4. Python 테스트
+
+```bash
+cd ~/cfs-telemetry-app
+.venv/bin/python -m pytest tests/ -v
+```
+
+---
+
 이 문서는 Raspberry Pi가 초기화된 뒤 `cFS`와 baseline telemetry app set을 다시 올릴 때
 필요한 절차와, 실제로 확인된 문제 및 해결 기준을 정리한다.
 
