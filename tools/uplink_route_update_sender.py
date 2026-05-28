@@ -145,6 +145,11 @@ def preset_case(case_name: str) -> Tuple[int, List[Tuple[float, float, float]]]:
         return ROUTE_TYPE_MISSION_EXTENSION, [(0.0, -10.0, 3.0), (2.0, -10.0, 3.0)]
     if case_name == "route-landing-no-gps":
         return ROUTE_TYPE_LANDING, [(2.0, -8.0, 4.0), (2.0, -8.0, 2.0)]
+    # Mission Planner 시각 검증용: 뚜렷하게 다른 좌표
+    if case_name == "route-mp-verify-a":
+        return ROUTE_TYPE_MISSION_EXTENSION, [(50.0, 30.0, 10.0), (100.0, 60.0, 15.0)]
+    if case_name == "route-mp-verify-b":
+        return ROUTE_TYPE_MISSION_EXTENSION, [(-30.0, 20.0, 5.0), (-60.0, 40.0, 8.0)]
     raise ValueError(f"unknown case: {case_name}")
 
 
@@ -155,7 +160,8 @@ def main() -> int:
     parser.add_argument(
         "case_name",
         choices=["route-good", "route-landing", "route-bad-alt", "route-bad-distance",
-                 "route-good-no-gps", "route-landing-no-gps"],
+                 "route-good-no-gps", "route-landing-no-gps",
+                 "route-mp-verify-a", "route-mp-verify-b"],
         help="Preset route-update test case to send.",
     )
     parser.add_argument("--host", default="127.0.0.1")
