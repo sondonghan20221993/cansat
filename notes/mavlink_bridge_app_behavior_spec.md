@@ -227,7 +227,48 @@ python3 tools/query_fc_mission.py <Pi_IP> 1234
 
 **이유**: ArduPilot은 미션 업로드 등 명령을 `SYSID_MYGCS`(기본값 255)로 등록된 시스템에서만 수락한다. sysid=200 등 비표준 ID를 사용하면 FC가 MISSION_COUNT를 무시하고 응답하지 않는다. MAVProxy 기본값(`source_system=255`)이 정상 동작하고 우리 브리지(sysid=200)가 무응답이었던 사례로 확인됨.
 
-### 12.1 MAV_FRAME_LOCAL_NED 호환성
+### 12.1 MAV_FRAME_LOCAL_NED → GLOBAL_RELATIVE_ALT 변환
+
+ArduPilot은 미션 아이템에서 `MAV_FRAME_LOCAL_NED` (= 1)을 거부한다 (`MISSION_ACK result=2 = MAV_MISSION_UNSUPPORTED_FRAME`). `MAV_FRAME_GLOBAL_RELATIVE_ALT` (= 3)를 사용해야 한다.
+
+#### 기준점
+
+FC의 최신 `GLOBAL_POSITION_INT (msg 33)` lat/lon을 기준점(RefLat, RefLon)으로 사용한다.
+
+- 기준점은 `GLOBAL_POSITION_INT` 수신마다 갱신된다.
+- `StartMissionUpload` 호출 시 `RefLatE7 == 0 && RefLonE7 == 0`이면 업로드 거부.
+
+#### 변환 공식
+
+```
+ref_lat_rad = RefLatE7 / 1e7 × π/180
+
+delta_lat_deg = X_m / 6371000 × (180/π)
+delta_lon_deg = Y_m / (6371000 × cos(ref_lat_rad)) × (180/π)
+
+wp_lat = RefLatE7/1e7 + delta_lat_deg   [degrees, float]
+wp_lon = RefLonE7/1e7 + delta_lon_deg   [degrees, float]
+wp_alt = Z_m                             [m, positive-up]
+```
+
+- `X_m`: route 웨이포인트 X (LOCAL_NED north 방향, meters)
+- `Y_m`: route 웨이포인트 Y (LOCAL_NED east 방향, meters)
+- `Z_m`: route 웨이포인트 Z (altitude-positive, meters)
+
+#### MISSION_ITEM 필드 변경
+
+| 필드 | 기존 | 변경 |
+|------|------|------|
+| frame | `MAV_FRAME_LOCAL_NED` (1) | `MAV_FRAME_GLOBAL_RELATIVE_ALT` (3) |
+| x | int32 (X×10000) | float (lat degrees) |
+| y | int32 (Y×10000) | float (lon degrees) |
+| z | float (−Z_m) | float (Z_m) |
+
+#### 적용 범위
+
+`MISSION_ITEM (msg 39)` 경로에만 적용. `MISSION_ITEM_INT (msg 73)` 경로는 FC가 `MISSION_REQUEST_INT (51)`를 사용할 경우 별도 처리 필요 (현재 미구현).
+
+### 12.1.1 MAV_FRAME_LOCAL_NED 호환성 (구 내용)
 
 현재 구현은 `MAV_FRAME_LOCAL_NED` 기반 MISSION_ITEM_INT를 전송한다.
 

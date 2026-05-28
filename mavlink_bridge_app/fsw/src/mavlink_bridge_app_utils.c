@@ -3,6 +3,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <math.h>
 #include <string.h>
 #include <termios.h>
 #include <unistd.h>
@@ -52,6 +53,10 @@
 #define MAVLINK_MISSION_ITEM_INT_CRC_EXTRA     38U
 #define MAVLINK_MISSION_ACK_CRC_EXTRA         153U
 #define MAVLINK_MAV_FRAME_LOCAL_NED             1U
+#define MAVLINK_MAV_FRAME_GLOBAL_RELATIVE_ALT   3U
+#define MAVLINK_EARTH_RADIUS_M              6371000.0f
+#define MAVLINK_DEG_TO_RAD                  0.01745329251994f
+#define MAVLINK_RAD_TO_DEG                  57.29577951308f
 #define MAVLINK_MAV_CMD_NAV_WAYPOINT           16U
 #define MAVLINK_MISSION_TYPE_MISSION            0U
 #define MAVLINK_MISSION_ACCEPTED                0U
@@ -369,18 +374,36 @@ static void MAVLINK_BRIDGE_APP_SendMissionItemInt(uint8 Seq)
 static void MAVLINK_BRIDGE_APP_SendMissionItem(uint8 Seq)
 {
     uint8 Payload[37];
+    float RefLatDeg;
+    float RefLonDeg;
+    float RefLatRad;
+    float DeltaLatDeg;
+    float DeltaLonDeg;
+    float WpLat;
+    float WpLon;
+    float WpAlt;
 
     memset(Payload, 0, sizeof(Payload));
 
-    MAVLINK_BRIDGE_APP_WriteFloatLE(&Payload[16], MAVLINK_BRIDGE_APP_Data.MissionPendingX[Seq]);
-    MAVLINK_BRIDGE_APP_WriteFloatLE(&Payload[20], MAVLINK_BRIDGE_APP_Data.MissionPendingY[Seq]);
-    /* Route payload uses altitude-positive convention; LOCAL_NED z is down, so negate */
-    MAVLINK_BRIDGE_APP_WriteFloatLE(&Payload[24], -MAVLINK_BRIDGE_APP_Data.MissionPendingZ[Seq]);
+    RefLatDeg  = (float)MAVLINK_BRIDGE_APP_Data.RefLatE7 / 1e7f;
+    RefLonDeg  = (float)MAVLINK_BRIDGE_APP_Data.RefLonE7 / 1e7f;
+    RefLatRad  = RefLatDeg * MAVLINK_DEG_TO_RAD;
+
+    DeltaLatDeg = MAVLINK_BRIDGE_APP_Data.MissionPendingX[Seq] / MAVLINK_EARTH_RADIUS_M * MAVLINK_RAD_TO_DEG;
+    DeltaLonDeg = MAVLINK_BRIDGE_APP_Data.MissionPendingY[Seq] / (MAVLINK_EARTH_RADIUS_M * cosf(RefLatRad)) * MAVLINK_RAD_TO_DEG;
+
+    WpLat = RefLatDeg + DeltaLatDeg;
+    WpLon = RefLonDeg + DeltaLonDeg;
+    WpAlt = MAVLINK_BRIDGE_APP_Data.MissionPendingZ[Seq];
+
+    MAVLINK_BRIDGE_APP_WriteFloatLE(&Payload[16], WpLat);
+    MAVLINK_BRIDGE_APP_WriteFloatLE(&Payload[20], WpLon);
+    MAVLINK_BRIDGE_APP_WriteFloatLE(&Payload[24], WpAlt);
     MAVLINK_BRIDGE_APP_WriteU16LE(&Payload[28], (uint16)Seq);
     MAVLINK_BRIDGE_APP_WriteU16LE(&Payload[30], (uint16)MAVLINK_MAV_CMD_NAV_WAYPOINT);
     Payload[32] = MAVLINK_BRIDGE_APP_Data.TargetSystemId;
     Payload[33] = MAVLINK_BRIDGE_APP_Data.TargetComponentId;
-    Payload[34] = (uint8)MAVLINK_MAV_FRAME_LOCAL_NED;
+    Payload[34] = (uint8)MAVLINK_MAV_FRAME_GLOBAL_RELATIVE_ALT;
     Payload[36] = 1U; /* autocontinue */
 
     MAVLINK_BRIDGE_APP_SendMavlinkV2(MAVLINK_MSG_ID_MISSION_ITEM, Payload, sizeof(Payload),
@@ -400,6 +423,13 @@ void MAVLINK_BRIDGE_APP_StartMissionUpload(const MAVLINK_BRIDGE_APP_RouteUpdateM
     {
         CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_MISSION_UPLOAD_ERR_EID, CFE_EVS_EventType_ERROR,
                           "MAVLINK_BRIDGE_APP: route update ignored - FC link not connected");
+        return;
+    }
+
+    if (MAVLINK_BRIDGE_APP_Data.RefLatE7 == 0 && MAVLINK_BRIDGE_APP_Data.RefLonE7 == 0)
+    {
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_MISSION_UPLOAD_ERR_EID, CFE_EVS_EventType_ERROR,
+                          "MAVLINK_BRIDGE_APP: route update ignored - no GPS reference (GLOBAL_POSITION_INT not received)");
         return;
     }
 
@@ -988,6 +1018,9 @@ static void MAVLINK_BRIDGE_APP_PublishGlobalPositionAsLocal(uint32 BridgeTimesta
     VxCms         = (int16)MAVLINK_BRIDGE_APP_ReadU16LE(&MAVLINK_BRIDGE_APP_Parser.Payload[20]);
     VyCms         = (int16)MAVLINK_BRIDGE_APP_ReadU16LE(&MAVLINK_BRIDGE_APP_Parser.Payload[22]);
     VzCms         = (int16)MAVLINK_BRIDGE_APP_ReadU16LE(&MAVLINK_BRIDGE_APP_Parser.Payload[24]);
+
+    MAVLINK_BRIDGE_APP_Data.RefLatE7 = MAVLINK_BRIDGE_APP_ReadI32LE(&MAVLINK_BRIDGE_APP_Parser.Payload[4]);
+    MAVLINK_BRIDGE_APP_Data.RefLonE7 = MAVLINK_BRIDGE_APP_ReadI32LE(&MAVLINK_BRIDGE_APP_Parser.Payload[8]);
 
     Tlm->TimestampMs = MAVLINK_BRIDGE_APP_ReadU32LE(&MAVLINK_BRIDGE_APP_Parser.Payload[0]);
     Tlm->Seq         = ++MAVLINK_BRIDGE_APP_Data.SequenceCounter;
