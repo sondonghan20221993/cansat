@@ -56,6 +56,7 @@
 #define MAVLINK_MISSION_TYPE_MISSION            0U
 #define MAVLINK_MISSION_ACCEPTED                0U
 #define MAVLINK_BRIDGE_APP_MISSION_UPLOAD_TIMEOUT_MS   2000U
+#define MAVLINK_BRIDGE_APP_MISSION_CLEAR_DELAY_MS       300U
 #define MAVLINK_BRIDGE_APP_MISSION_MAX_RETRIES         3U
 #define MAVLINK_MSG_ID_MISSION_REQUEST_LIST            43U
 #define MAVLINK_MISSION_REQUEST_LIST_CRC_EXTRA         132U
@@ -418,7 +419,7 @@ void MAVLINK_BRIDGE_APP_StartMissionUpload(const MAVLINK_BRIDGE_APP_RouteUpdateM
     MAVLINK_BRIDGE_APP_Data.MissionUploadState     = (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_CLEARING;
     MAVLINK_BRIDGE_APP_Data.MissionUploadRetry     = 0U;
     MAVLINK_BRIDGE_APP_Data.MissionUploadTimeoutMs =
-        MAVLINK_BRIDGE_APP_GetTimeMs() + MAVLINK_BRIDGE_APP_MISSION_UPLOAD_TIMEOUT_MS;
+        MAVLINK_BRIDGE_APP_GetTimeMs() + MAVLINK_BRIDGE_APP_MISSION_CLEAR_DELAY_MS;
 
     MAVLINK_BRIDGE_APP_SendMissionClearAll();
 }
@@ -1314,13 +1315,7 @@ static void MAVLINK_BRIDGE_APP_HandleFrameComplete(uint32 RxTimestampMs, uint8 C
         if (ComputedCrc == ReceivedCrc && MAVLINK_BRIDGE_APP_Parser.PayloadLen >= 2U)
         {
             uint8 Result = (MAVLINK_BRIDGE_APP_Parser.PayloadLen >= 3U) ? MAVLINK_BRIDGE_APP_Parser.Payload[2] : 0U;
-            if (MAVLINK_BRIDGE_APP_Data.MissionUploadState == (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_CLEARING)
-            {
-                MAVLINK_BRIDGE_APP_Data.MissionUploadState     = (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_ACTIVE;
-                MAVLINK_BRIDGE_APP_Data.MissionUploadTimeoutMs = RxTimestampMs + MAVLINK_BRIDGE_APP_MISSION_UPLOAD_TIMEOUT_MS;
-                MAVLINK_BRIDGE_APP_SendMissionCount(MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount);
-            }
-            else if (MAVLINK_BRIDGE_APP_Data.MissionUploadState == (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_ACTIVE)
+            if (MAVLINK_BRIDGE_APP_Data.MissionUploadState == (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_ACTIVE)
             {
                 MAVLINK_BRIDGE_APP_Data.MissionUploadState = (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_IDLE;
                 if (Result == (uint8)MAVLINK_MISSION_ACCEPTED)
