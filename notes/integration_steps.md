@@ -2,6 +2,8 @@
 
 ## 개발 워크플로 (소스 수정 후 재빌드)
 
+> **모든 경로는 Raspberry Pi 기준이다.** 빌드·실행은 Pi 터미널에서 수행한다.
+
 소스를 수정한 뒤 cFS에 반영하는 절차. `rsync` 대신 `cp -r`을 사용한다.
 
 ### 1. 소스 동기화
@@ -45,6 +47,8 @@ cd ~/Desktop/cfs-telemetry-app
 ```
 
 ---
+
+> **이 문서의 모든 경로(`~/Desktop/cFS_clean`, `~/Desktop/cfs-telemetry-app`)는 Raspberry Pi 기준이다.**
 
 이 문서는 Raspberry Pi가 초기화된 뒤 `cFS`와 baseline telemetry app set을 다시 올릴 때
 필요한 절차와, 실제로 확인된 문제 및 해결 기준을 정리한다.
