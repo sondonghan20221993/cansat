@@ -302,6 +302,204 @@ void Test_UPLINK_APP_ProcessUplink_ConfigForwardFail(void)
     UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_FAILED);
 }
 
+void Test_UPLINK_APP_ProcessUplink_ModeAccept(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_MODE;
+    TestMsg.PayloadLength = 3;
+    TestMsg.Sequence      = 50;
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ForwardModeCommand), true);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.AcceptedCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_ROUTED);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastAcceptedSequence, 50);
+}
+
+void Test_UPLINK_APP_ProcessUplink_ModeForwardFail(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_MODE;
+    TestMsg.PayloadLength = 3;
+    TestMsg.Sequence      = 51;
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ForwardModeCommand), false);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.ErrCounter, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.RoutingFailureCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_FAILED);
+}
+
+void Test_UPLINK_APP_ProcessUplink_DiagnosticAccept(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_DIAGNOSTIC;
+    TestMsg.PayloadLength = 3;
+    TestMsg.Sequence      = 60;
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_DOWNLINK);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ForwardDiagnosticCommand), true);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.AcceptedCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_ROUTED);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastRouteTarget, UPLINK_APP_ROUTE_DOWNLINK);
+}
+
+void Test_UPLINK_APP_ProcessUplink_DiagnosticForwardFail(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_DIAGNOSTIC;
+    TestMsg.PayloadLength = 3;
+    TestMsg.Sequence      = 61;
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_DOWNLINK);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ForwardDiagnosticCommand), false);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.ErrCounter, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.RoutingFailureCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_FAILED);
+}
+
+void Test_UPLINK_APP_ProcessUplink_BlockedDegraded(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_ROUTE_UPDATE;
+    TestMsg.PayloadLength = 8;
+    TestMsg.Sequence      = 70;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U;
+    UPLINK_APP_Data.CfsHealthState    = 1U; /* DEGRADED */
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.ErrCounter, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.RejectedCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_REJECT_STATE);
+}
+
+void Test_UPLINK_APP_ProcessUplink_BlockedRecovery(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_CONFIG;
+    TestMsg.PayloadLength = 4;
+    TestMsg.Sequence      = 71;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U;
+    UPLINK_APP_Data.CfsHealthState    = 2U; /* RECOVERY */
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.ErrCounter, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.RejectedCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_REJECT_STATE);
+}
+
+void Test_UPLINK_APP_ProcessUplink_AllowedRecoveryDiagnostic(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_DIAGNOSTIC;
+    TestMsg.PayloadLength = 3;
+    TestMsg.Sequence      = 72;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U;
+    UPLINK_APP_Data.CfsHealthState    = 2U; /* RECOVERY */
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_DOWNLINK);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ForwardDiagnosticCommand), true);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.AcceptedCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_ROUTED);
+}
+
+void Test_UPLINK_APP_ProcessUplink_BlockedFailed(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_DIAGNOSTIC;
+    TestMsg.PayloadLength = 3;
+    TestMsg.Sequence      = 73;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U;
+    UPLINK_APP_Data.CfsHealthState    = 3U; /* FAILED */
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_DOWNLINK);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.ErrCounter, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.RejectedCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_REJECT_STATE);
+}
+
+void Test_UPLINK_APP_ProcessUplink_FailOpenBeforeHealth(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_CONFIG;
+    TestMsg.PayloadLength = 4;
+    TestMsg.Sequence      = 80;
+
+    /* CfsHealthReceived remains 0 (memset above) */
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ForwardConfigCommand), true);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.AcceptedCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_ROUTED);
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(UPLINK_APP_Noop);
@@ -319,4 +517,13 @@ void UtTest_Setup(void)
     ADD_TEST(UPLINK_APP_ProcessUplink_ViewpointForwardFail);
     ADD_TEST(UPLINK_APP_ProcessUplink_ConfigAccept);
     ADD_TEST(UPLINK_APP_ProcessUplink_ConfigForwardFail);
+    ADD_TEST(UPLINK_APP_ProcessUplink_ModeAccept);
+    ADD_TEST(UPLINK_APP_ProcessUplink_ModeForwardFail);
+    ADD_TEST(UPLINK_APP_ProcessUplink_DiagnosticAccept);
+    ADD_TEST(UPLINK_APP_ProcessUplink_DiagnosticForwardFail);
+    ADD_TEST(UPLINK_APP_ProcessUplink_BlockedDegraded);
+    ADD_TEST(UPLINK_APP_ProcessUplink_BlockedRecovery);
+    ADD_TEST(UPLINK_APP_ProcessUplink_AllowedRecoveryDiagnostic);
+    ADD_TEST(UPLINK_APP_ProcessUplink_BlockedFailed);
+    ADD_TEST(UPLINK_APP_ProcessUplink_FailOpenBeforeHealth);
 }

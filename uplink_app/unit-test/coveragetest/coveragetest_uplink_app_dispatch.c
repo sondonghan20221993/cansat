@@ -29,8 +29,45 @@ void Test_UPLINK_APP_TaskPipe_SendHk(void)
     UPLINK_APP_TaskPipe(&Buffer);
 }
 
+void Test_UPLINK_APP_TaskPipe_SystemHealth(void)
+{
+    UPLINK_APP_SysHealthMirror_t HealthMsg;
+    CFE_SB_MsgId_t               MsgId;
+
+    memset(&HealthMsg, 0, sizeof(HealthMsg));
+    HealthMsg.HealthState = 1U; /* DEGRADED */
+
+    MsgId = CFE_SB_ValueToMsgId(SYSTEM_HEALTH_MID_VALUE);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+
+    UPLINK_APP_Data.CfsHealthReceived = 0;
+    UPLINK_APP_Data.CfsHealthState    = 0;
+
+    UPLINK_APP_TaskPipe((CFE_SB_Buffer_t *)&HealthMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.CfsHealthReceived, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.CfsHealthState, 1);
+}
+
+void Test_UPLINK_APP_TaskPipe_UnknownMid(void)
+{
+    CFE_SB_Buffer_t Buffer;
+    CFE_SB_MsgId_t  MsgId;
+
+    memset(&Buffer, 0, sizeof(Buffer));
+    MsgId = CFE_SB_ValueToMsgId(0x9999U);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+
+    UPLINK_APP_Data.ErrCounter = 0;
+    UPLINK_APP_TaskPipe(&Buffer);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.ErrCounter, 1);
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(UPLINK_APP_VerifyCmdLength);
     ADD_TEST(UPLINK_APP_TaskPipe_SendHk);
+    ADD_TEST(UPLINK_APP_TaskPipe_SystemHealth);
+    ADD_TEST(UPLINK_APP_TaskPipe_UnknownMid);
 }

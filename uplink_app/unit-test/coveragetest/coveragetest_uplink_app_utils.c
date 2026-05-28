@@ -218,6 +218,47 @@ void Test_UPLINK_APP_SaveState_NoDir(void)
     UtAssert_INT32_EQ(UPLINK_APP_Data.LastAcceptedSequence, 99);
 }
 
+void Test_UPLINK_APP_ForwardModeCommand(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t Cmd;
+
+    memset(&Cmd, 0, sizeof(Cmd));
+    Cmd.Sequence      = 50;
+    Cmd.PayloadLength = 3;
+    Cmd.Payload[0]    = 0x01;
+
+    UT_SetDefaultReturnValue(UT_KEY(CFE_SB_TransmitMsg), CFE_SUCCESS);
+    UtAssert_BOOL_TRUE(UPLINK_APP_ForwardModeCommand(&Cmd));
+
+    UT_SetDefaultReturnValue(UT_KEY(CFE_SB_TransmitMsg), -1);
+    UtAssert_BOOL_FALSE(UPLINK_APP_ForwardModeCommand(&Cmd));
+
+    /* zero-length payload path */
+    Cmd.PayloadLength = 0;
+    UT_SetDefaultReturnValue(UT_KEY(CFE_SB_TransmitMsg), CFE_SUCCESS);
+    UtAssert_BOOL_TRUE(UPLINK_APP_ForwardModeCommand(&Cmd));
+}
+
+void Test_UPLINK_APP_ForwardDiagnosticCommand(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t Cmd;
+
+    memset(&Cmd, 0, sizeof(Cmd));
+    Cmd.Sequence      = 60;
+    Cmd.PayloadLength = 3;
+    Cmd.Payload[0]    = 0x02;
+
+    UT_SetDefaultReturnValue(UT_KEY(CFE_SB_TransmitMsg), CFE_SUCCESS);
+    UtAssert_BOOL_TRUE(UPLINK_APP_ForwardDiagnosticCommand(&Cmd));
+
+    UT_SetDefaultReturnValue(UT_KEY(CFE_SB_TransmitMsg), -1);
+    UtAssert_BOOL_FALSE(UPLINK_APP_ForwardDiagnosticCommand(&Cmd));
+
+    Cmd.PayloadLength = 0;
+    UT_SetDefaultReturnValue(UT_KEY(CFE_SB_TransmitMsg), CFE_SUCCESS);
+    UtAssert_BOOL_TRUE(UPLINK_APP_ForwardDiagnosticCommand(&Cmd));
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(UPLINK_APP_ValidateProxyCommand);
@@ -228,4 +269,6 @@ void UtTest_Setup(void)
     ADD_TEST(UPLINK_APP_UpdateStatusTelemetry);
     ADD_TEST(UPLINK_APP_LoadState_NoFile);
     ADD_TEST(UPLINK_APP_SaveState_NoDir);
+    ADD_TEST(UPLINK_APP_ForwardModeCommand);
+    ADD_TEST(UPLINK_APP_ForwardDiagnosticCommand);
 }
