@@ -333,7 +333,8 @@ static void MAVLINK_BRIDGE_APP_SendMissionItemInt(uint8 Seq)
 
     MAVLINK_BRIDGE_APP_WriteU32LE(&Payload[16], (uint32)XE4);
     MAVLINK_BRIDGE_APP_WriteU32LE(&Payload[20], (uint32)YE4);
-    MAVLINK_BRIDGE_APP_WriteFloatLE(&Payload[24], MAVLINK_BRIDGE_APP_Data.MissionPendingZ[Seq]);
+    /* Route payload uses altitude-positive convention; LOCAL_NED z is down, so negate */
+    MAVLINK_BRIDGE_APP_WriteFloatLE(&Payload[24], -MAVLINK_BRIDGE_APP_Data.MissionPendingZ[Seq]);
     MAVLINK_BRIDGE_APP_WriteU16LE(&Payload[28], (uint16)Seq);
     MAVLINK_BRIDGE_APP_WriteU16LE(&Payload[30], (uint16)MAVLINK_MAV_CMD_NAV_WAYPOINT);
     Payload[32] = MAVLINK_BRIDGE_APP_Data.TargetSystemId;

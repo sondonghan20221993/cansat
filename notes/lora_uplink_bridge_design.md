@@ -51,7 +51,7 @@ Field rules:
 - `sequence` is an unsigned 16-bit integer
 - `flags` is an unsigned 8-bit integer
 - `payload_hex` is uppercase or lowercase hexadecimal with even length
-- decoded payload length must be between `0` and `192` bytes inclusive
+- decoded payload length must be between `0` and `196` bytes inclusive
 - `crc16_hex` is the CRC-16/CCITT-FALSE of the ASCII bytes of `UP,<version>,<command_class>,<sequence>,<flags>,<payload_hex>`
 
 ## Output Contract
@@ -80,7 +80,7 @@ The bridge shall discard the frame and continue running when any of the followin
 - non-numeric field
 - out-of-range field
 - odd-length or non-hex payload
-- payload length above `192`
+- payload length above `196`
 - CRC mismatch
 - sequence regression when strict sequence mode is enabled
 

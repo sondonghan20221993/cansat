@@ -1,35 +1,102 @@
 # cfs-telemetry-app
 
-작동 중인 cFS 통합 환경에서 추출한 `telemetry_app` 백업 저장소이다.
+Raspberry Pi에서 동작하는 cFS 기반 UAV 텔레메트리/명령 시스템이다. FC(비행제어기) MAVLink 연결, 지상국 uplink 처리, LoRa 텔레메트리 downlink를 통합한다.
 
-## 구성
+## 아키텍처 개요
 
-- `telemetry_app/`
-  - `sample_app` 기반 cFS 앱 구현
-  - HK/CMD 처리
-  - `TELEMETRY_STATUS_MID`
-  - `TELEMETRY_MONITOR_MID`
-  - `ALIVE` / `DEGRADED` / `LOST` / 복구 상태 머신
-  - 현재 구현 기준으로 정리된 단위 테스트 스캐폴딩
-- `tools/telemetry_app_e2e_sender.py`
-  - CI_LAB UDP 패스스루 기반 종단 간 검증용 보조 스크립트
-- `notes/integration_steps.md`
-  - 공식 `nasa/cFS` 작업공간에 다시 통합하기 위한 절차 메모
+```
+FC (ArduPilot)
+    ↓ UART MAVLink
+mavlink_bridge_app   →  FC_ATTITUDE_STATE_MID  (0x1906)
+                     →  FC_EKF_LOCAL_STATE_MID (0x1905)
+                     →  FC_GPS_RAW_STATE_MID   (0x1907)
+                     →  FC_EKF_STATUS_MID      (0x1908)
+                     →  MAVLINK_BRIDGE_APP_HK  (0x08A0)
+                     ←  ROUTE_UPDATE_MID       (0x190B) → FC MAVLink MISSION upload
 
-## 검증 상태
+cfs_core_app         →  SYSTEM_HEALTH_MID      (0x1904)
+                     ←  (위 FC 상태 MID 전부 구독)
 
-다음 항목은 공식 `nasa/cFS` 작업공간에서 검증되었다.
+lora_fc_downlink_app ←  FC 상태 MID + SYSTEM_HEALTH_MID
+                     →  LoRa serial downlink
 
-- 빌드 및 설치 성공
-- `telemetry_app.so` 런타임 로드
-- 운영 시작
-- 모니터 기반 종단 간 상태 전이
-- `telemetry_app` 단위 테스트 대상 빌드 및 실행
+uplink_app           ←  LoRa/UDP uplink 수신
+                     →  ROUTE_UPDATE_MID       (0x190B) → cfs_core_app + mavlink_bridge_app
 
-## 재통합 개요
+bridge/lora_uplink_bridge.py
+                     ←  LoRa serial
+                     →  UDP → uplink_app
+```
 
-1. 공식 `nasa/cFS`를 복제하거나 포크한다.
-2. `telemetry_app/`을 `apps/telemetry_app`에 복사한다.
-3. 미션 또는 샘플 정의에 `telemetry_app`을 등록한다.
-4. cFS 작업공간를 빌드하고 설치한다.
-5. `tools/telemetry_app_e2e_sender.py`로 E2E 검증을 수행한다.
+## 앱 목록
+
+| 앱 | MID 범위 | 역할 |
+| --- | --- | --- |
+| `mavlink_bridge_app` | CMD `0x18A0`, HK `0x08A0`, 게시 `0x1905-0x1908` | FC MAVLink 수신·파싱·게시, FC MISSION 업로드 (§22) |
+| `cfs_core_app` | CMD `0x18C0`, HK `0x08C0`, 게시 `0x1904` | FC 상태 종합, 헬스 판단, SYSTEM_HEALTH 게시 |
+| `uplink_app` | CMD `0x18D0`, HK `0x18D1`, 게시 `0x190A` | 지상국 명령 수신·검증·라우팅 |
+| `lora_fc_downlink_app` | CMD `0x18B0`, HK `0x18B1` | FC 상태 수집 후 LoRa 텔레메트리 전송 |
+
+## 주요 기능 구현 상태
+
+| 기능 | 상태 |
+| --- | --- |
+| FC MAVLink 수신 (ATTITUDE, LOCAL_POSITION_NED, GPS_RAW_INT, EKF_STATUS_REPORT) | 구현됨 |
+| FC UART 재연결 + stale timeout | 구현됨 |
+| LoRa 텔레메트리 downlink (serial ASCII) | 구현됨 |
+| uplink 패킷 검증 (CRC, 길이, sequence, route geometry) | 구현됨 |
+| route update → cfs_core_app 캐시 | 구현됨 |
+| route update → FC MAVLink MISSION 업로드 (§22) | 구현됨 |
+| FC MISSION 재조회 (MISSION_QUERY_CC) | 구현됨 |
+| uplink_app 지속 상태 (SaveState/LoadState, atomic write) | 구현됨 |
+| runtime configuration 전달 | 미구현 |
+
+## 디렉터리 구조
+
+```
+mavlink_bridge_app/   FC MAVLink 브리지 앱
+cfs_core_app/         상태 종합·헬스 관리 앱
+uplink_app/           지상국 uplink 처리 앱
+lora_fc_downlink_app/ LoRa 텔레메트리 downlink 앱
+bridge/               Raspberry Pi host-side 브리지 (lora_uplink_bridge.py)
+tools/                개발용 CLI 스크립트
+tests/                Python 단위 테스트 + TEST_CASES.md
+notes/                설계 문서 및 명세
+```
+
+## 빌드 및 테스트
+
+```bash
+# 소스 동기화 (WSL → cFS 빌드 트리)
+rsync -a --delete mavlink_bridge_app/ ~/cFS_clean/apps/mavlink_bridge_app/
+rsync -a --delete cfs_core_app/      ~/cFS_clean/apps/cfs_core_app/
+rsync -a --delete uplink_app/        ~/cFS_clean/apps/uplink_app/
+rsync -a --delete lora_fc_downlink_app/ ~/cFS_clean/apps/lora_fc_downlink_app/
+
+# 단위 테스트 빌드 및 실행
+cd ~/cFS_clean/build-ut
+make cfs_core_app_ut && ./coverage-cfs_core_app-testrunner
+make uplink_app_ut   && ./coverage-uplink_app-testrunner
+make lora_fc_downlink_app_ut && ./coverage-lora_fc_downlink_app-testrunner
+
+# Python 테스트
+cd ~/cfs-telemetry-app
+python3 -m pytest tests/ -v
+```
+
+## 런타임 도구
+
+```bash
+# FC mission 조회 (cFS → FC MAVLink MISSION_REQUEST_LIST)
+python3 tools/query_fc_mission.py
+
+# route update 전송 (UDP 직접 주입)
+python3 tools/uplink_route_update_sender.py --transport udp
+```
+
+## 관련 문서
+
+- `notes/mission_app_runtime_spec.md` — 전체 시스템 MID 계약 및 동작 사양
+- `notes/cfs_core_app_behavior_spec.md` — cfs_core_app 구현 기준 동작 명세
+- `notes/lora_uplink_bridge_design.md` — LoRa uplink bridge 프로토콜
+- `tests/TEST_CASES.md` — 단위 테스트 및 런타임 테스트 케이스 목록
