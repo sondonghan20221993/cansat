@@ -351,6 +351,11 @@ void MAVLINK_BRIDGE_APP_StartMissionUpload(const MAVLINK_BRIDGE_APP_RouteUpdateM
 {
     uint8 i;
 
+    CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_MISSION_UPLOAD_INF_EID, CFE_EVS_EventType_INFORMATION,
+                      "MAVLINK_BRIDGE_APP: StartMissionUpload called wp=%u link=%u",
+                      (unsigned int)Msg->WaypointCount,
+                      (unsigned int)MAVLINK_BRIDGE_APP_Data.LinkState);
+
     if (MAVLINK_BRIDGE_APP_Data.LinkState != (uint8)MAVLINK_BRIDGE_LINK_CONNECTED)
     {
         CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_MISSION_UPLOAD_ERR_EID, CFE_EVS_EventType_ERROR,

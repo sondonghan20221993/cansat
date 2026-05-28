@@ -55,4 +55,4 @@ ArduPilot 호환 비행제어기(FC)와의 MAVLink 통신을 담당하는 cFS �
 ## 동작 명세 참조
 
 - 전체 시스템 MID 계약: `notes/mission_app_runtime_spec.md` §5.1.1
-- §22 FC 업로드 프로토콜: `notes/mission_app_runtime_spec.md` §22 (예정)
+- §22 FC 업로드 프로토콜: `notes/cfs_core_app_behavior_spec.md` §22

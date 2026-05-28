@@ -691,10 +691,10 @@ Pi 런타임 로그 노출 여부는 EVS 필터 설정에 따라 달라질 수 �
 
 이전 버전에서 local/attitude/EKF 조건이 모두 `FAULT_EKF_INVALID`로 통합되었던 동작은 A2에서 수정되었다.
 
-## 22. FC 경로 업로드 명세 (미구현)
+## 22. FC 경로 업로드 명세 (구현됨)
 
 이 섹션은 `mavlink_bridge_app`이 `ROUTE_UPDATE_MID`를 수신한 후 FC 보드에 웨이포인트를 실제로 전달하는 동작을 정의한다.
-현재 이 기능은 구현되어 있지 않으며, 이 명세를 기반으로 구현한다.
+이 기능은 `mavlink_bridge_app_utils.c`의 `MAVLINK_BRIDGE_APP_SendMissionCount` / `MAVLINK_BRIDGE_APP_SendMissionItemInt` / `MAVLINK_BRIDGE_APP_HandleMissionAck` 함수로 구현되어 있다.
 
 ### 22.1 책임 분리
 
@@ -711,9 +711,10 @@ Pi 런타임 로그 노출 여부는 EVS 필터 설정에 따라 달라질 수 �
 
 업로드 시작 조건:
 - FC 링크가 CONNECTED 상태 (Heartbeat 수신 완료)
-- 이전 업로드 시퀀스가 진행 중이지 않을 것
 
 FC 링크가 연결되지 않은 상태에서 `ROUTE_UPDATE_MID`가 수신되면 업로드를 건너뛰고 EVS 경고 이벤트를 발생시킨다.
+
+업로드 진행 중에 새 `ROUTE_UPDATE_MID`가 수신되면 현재 진행 중인 업로드를 즉시 중단하고 새 경로로 재시작한다. (§22.6 참조)
 
 ### 22.3 MAVLink MISSION 업로드 프로토콜
 
@@ -777,6 +778,12 @@ FC → mavlink_bridge_app : MISSION_ACK         (result=MAV_MISSION_ACCEPTED)
 - EVS 정보 이벤트 발생 (`MAVLINK_BRIDGE_APP_MISSION_UPLOAD_INF_EID`)
 - HK에 성공 카운터 및 마지막 업로드 타임스탬프 갱신
 
+`StartMissionUpload` 함수 진입 시에도 동일 EID로 진단 로그를 발생시킨다:
+```
+MAVLINK_BRIDGE_APP: StartMissionUpload called wp=<N> link=<state>
+```
+`link` 값: 0=DISCONNECTED, 1=CONNECTED. 이 로그는 `ROUTE_UPDATE_MID`가 실제로 dispatch 함수까지 도달했는지 확인하는 진단용이다.
+
 ### 22.8 HK 추가 필드
 
 `mavlink_bridge_app` HK 텔레메트리에 다음 필드를 추가한다.
@@ -795,3 +802,35 @@ FC → mavlink_bridge_app : MISSION_ACK         (result=MAV_MISSION_ACCEPTED)
 - Landing route 업로드 (별도 mission_type 또는 rally points 사용 검토 필요)
 - 업로드 완료 후 자동 미션 시작
 - 지상에서 이미 진행 중인 미션에 대한 mid-flight 경로 변경 안전 검사
+
+### 22.10 FC 미션 조회 명령 (MISSION_QUERY_CC, 구현됨)
+
+cFS CMD `MAVLINK_BRIDGE_APP_CMD_MID` (0x18A0), CC=2 (`MISSION_QUERY_CC`)로 트리거된다.
+
+**목적**: FC에 저장된 현재 미션 항목을 읽어 EVS 로그로 출력한다. 지상에서 업로드 결과 확인용.
+
+**다운로드 프로토콜:**
+
+```
+mavlink_bridge_app → FC : MISSION_REQUEST_LIST
+FC → mavlink_bridge_app : MISSION_COUNT (count=N)
+mavlink_bridge_app → FC : MISSION_REQUEST_INT (seq=0)
+FC → mavlink_bridge_app : MISSION_ITEM_INT    (seq=0)
+mavlink_bridge_app → FC : MISSION_REQUEST_INT (seq=1)
+...
+FC → mavlink_bridge_app : MISSION_ITEM_INT    (seq=N-1)
+mavlink_bridge_app → FC : MISSION_ACK         (MAV_MISSION_ACCEPTED)
+```
+
+**출력**: 수신된 각 waypoint를 `MAVLINK_BRIDGE_APP_MISSION_DOWNLOAD_INF_EID` EVS 이벤트로 출력한다.
+```
+[wp N] x=<val> y=<val> z=<val> cmd=<cmd>
+```
+
+**타이밍**: 단계별 응답 대기 timeout 3000 ms. 재시도 없음.
+
+**지상국 트리거 방법**:
+```bash
+python3 tools/query_fc_mission.py <Pi_IP> 1234
+```
+`tools/query_fc_mission.py`가 CC=2 CCSDS 패킷을 UDP 1234로 직접 전송한다.

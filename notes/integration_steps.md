@@ -142,12 +142,12 @@ hostname -I
 
 ### 2. `cFS` 작업공간 준비
 
-작업 경로는 `~/Desktop/cFS_clean`를 기준으로 한다.
+작업 경로는 `~/cFS_clean`를 기준으로 한다.
 
 ```bash
-cd ~/Desktop
+cd ~
 git clone --recurse-submodules https://github.com/nasa/cFS.git cFS_clean
-cd ~/Desktop/cFS_clean
+cd ~/cFS_clean
 git submodule update --init --recursive
 ```
 
@@ -227,23 +227,32 @@ baseline bring-up 기준으로 아래 MID만 남긴다.
 
 ### 11. 빌드와 설치
 
-다음 명령만 사용한다.
+실제 동작하는 빌드 명령은 다음과 같다.
 
 ```bash
-make native_std.prep SIMULATION=native
-make native_std.compile SIMULATION=native
-make native_std.install SIMULATION=native
+# 빌드 (빌드 디렉터리에서 직접 실행)
+cd ~/cFS_clean/build/native/default_cpu1
+make -j$(nproc)
+
+# 설치 (.so 파일을 실행 디렉터리로 복사)
+# sudo make install 이 경로 문제로 실패할 경우 수동 복사:
+cp apps/mavlink_bridge_app/mav_bridge_app.so ~/cFS_clean/build/exe/cpu1/cf/
+cp apps/uplink_app/uplink_app.so ~/cFS_clean/build/exe/cpu1/cf/
+cp apps/cfs_core_app/cfs_core_app.so ~/cFS_clean/build/exe/cpu1/cf/
+cp apps/lora_fc_downlink_app/lora_fc_downlink_app.so ~/cFS_clean/build/exe/cpu1/cf/
 ```
 
-설치 결과는 기본적으로 `build-native_std/exe/cpu1` 아래에 생성된다.
+설치 결과는 `~/cFS_clean/build/exe/cpu1/` 아래에 생성된다.
+
+> **주의**: 구 문서에 `build-native_std/exe/cpu1` 경로가 남아 있을 수 있으나, 실제 경로는 `build/exe/cpu1`이다.
 
 ### 12. 런타임 실행
 
 실행은 반드시 `cpu1` 디렉터리 안에서 한다.
 
 ```bash
-cd ~/Desktop/cFS_clean/build-native_std/exe/cpu1
-./core-cpu1
+cd ~/cFS_clean/build/exe/cpu1
+sudo ./core-cpu1
 ```
 
 기대 결과:
@@ -279,7 +288,7 @@ FC 연결 후에는 다음을 검증한다.
 bridge log 확인 예:
 
 ```bash
-cd ~/Desktop/cFS_clean/build-native_std/exe/cpu1
+cd ~/cFS_clean/build/exe/cpu1
 ./core-cpu1 2>&1 | tee /tmp/core-cpu1.log
 grep -n "unsupported msgid\|frame msgid\|ATTITUDE decoded\|LOCAL_POSITION_NED decoded\|GLOBAL_POSITION_INT mapped\|GPS_RAW_INT decoded\|EKF_STATUS_REPORT decoded" /tmp/core-cpu1.log
 ```
@@ -287,7 +296,7 @@ grep -n "unsupported msgid\|frame msgid\|ATTITUDE decoded\|LOCAL_POSITION_NED de
 raw UART 확인 예:
 
 ```bash
-python3 ~/Desktop/cfs-telemetry-app/bridge/mavlink_uart_bridge.py
+python3 ~/cfs-telemetry-app/bridge/mavlink_uart_bridge.py
 ```
 
 판정 기준:
@@ -305,7 +314,7 @@ python3 ~/Desktop/cfs-telemetry-app/bridge/mavlink_uart_bridge.py
 Pi에서 `cpu1` 로그를 파일로 저장하면서 실행한다.
 
 ```bash
-cd ~/Desktop/cFS_clean/build-native_std/exe/cpu1
+cd ~/cFS_clean/build/exe/cpu1
 sudo ./core-cpu1 2>&1 | tee /tmp/core-cpu1.log
 ```
 
