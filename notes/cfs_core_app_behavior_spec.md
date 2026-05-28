@@ -690,3 +690,108 @@ Pi 런타임 로그 노출 여부는 EVS 필터 설정에 따라 달라질 수 �
 | GPS 불가용 | DEGRADED | FAULT_GPS_STALE (3) |
 
 이전 버전에서 local/attitude/EKF 조건이 모두 `FAULT_EKF_INVALID`로 통합되었던 동작은 A2에서 수정되었다.
+
+## 22. FC 경로 업로드 명세 (미구현)
+
+이 섹션은 `mavlink_bridge_app`이 `ROUTE_UPDATE_MID`를 수신한 후 FC 보드에 웨이포인트를 실제로 전달하는 동작을 정의한다.
+현재 이 기능은 구현되어 있지 않으며, 이 명세를 기반으로 구현한다.
+
+### 22.1 책임 분리
+
+| 단계 | 담당 앱 | 동작 |
+| --- | --- | --- |
+| 경로 명령 수신 및 검증 | `uplink_app` | ROUTE_UPDATE_MID 게시 |
+| 경로 캐시 저장 | `cfs_core_app` | MissionRoute / LandingRoute 갱신 |
+| FC 웨이포인트 업로드 | `mavlink_bridge_app` | MAVLink MISSION 업로드 프로토콜 수행 |
+
+### 22.2 트리거
+
+`mavlink_bridge_app`이 `ROUTE_UPDATE_MID` (0x190B)를 구독한다.
+유효한 `ROUTE_UPDATE_MID` 수신 시 즉시 FC 업로드 시퀀스를 시작한다.
+
+업로드 시작 조건:
+- FC 링크가 CONNECTED 상태 (Heartbeat 수신 완료)
+- 이전 업로드 시퀀스가 진행 중이지 않을 것
+
+FC 링크가 연결되지 않은 상태에서 `ROUTE_UPDATE_MID`가 수신되면 업로드를 건너뛰고 EVS 경고 이벤트를 발생시킨다.
+
+### 22.3 MAVLink MISSION 업로드 프로토콜
+
+ArduPilot/PX4 표준 MISSION upload handshake를 따른다.
+
+```
+mavlink_bridge_app → FC : MISSION_COUNT  (count=N, mission_type=MAV_MISSION_TYPE_MISSION)
+FC → mavlink_bridge_app : MISSION_REQUEST_INT (seq=0)
+mavlink_bridge_app → FC : MISSION_ITEM_INT    (seq=0, ...)
+FC → mavlink_bridge_app : MISSION_REQUEST_INT (seq=1)
+mavlink_bridge_app → FC : MISSION_ITEM_INT    (seq=1, ...)
+...
+FC → mavlink_bridge_app : MISSION_ACK         (result=MAV_MISSION_ACCEPTED)
+```
+
+각 단계에서 FC 응답을 기다리며, timeout 초과 시 재시도한다.
+
+### 22.4 MISSION_ITEM_INT 필드 매핑
+
+| MAVLink 필드 | 값 |
+| --- | --- |
+| `target_system` | FC system ID (런타임에 Heartbeat에서 획득) |
+| `target_component` | FC autopilot component ID |
+| `seq` | 웨이포인트 인덱스 (0-based) |
+| `frame` | `MAV_FRAME_LOCAL_NED` (= 1) |
+| `command` | `MAV_CMD_NAV_WAYPOINT` (= 16) |
+| `current` | 0 (첫 번째 항목도 0, SET_CURRENT_ITEM으로 별도 지정) |
+| `autocontinue` | 1 |
+| `param1..4` | 0.0 (hold time, acceptance radius 등 미사용) |
+| `x` | `Waypoints[i].X * 1e4` (m → int32, 0.1mm 단위) |
+| `y` | `Waypoints[i].Y * 1e4` |
+| `z` | `Waypoints[i].Z * 1e4` |
+| `mission_type` | `MAV_MISSION_TYPE_MISSION` (= 0) |
+
+### 22.5 타이밍 및 재시도
+
+| 파라미터 | 값 |
+| --- | --- |
+| 단계별 응답 대기 timeout | 2000 ms |
+| 최대 재시도 횟수 | 3 |
+| 재시도 조건 | timeout 또는 예상치 못한 seq 응답 |
+| 재시도 시 재시작 위치 | MISSION_COUNT부터 전체 재시작 |
+
+### 22.6 실패 처리
+
+| 실패 조건 | 처리 |
+| --- | --- |
+| FC 응답 timeout | 재시도. 최대 재시도 초과 시 업로드 실패 기록 |
+| `MISSION_ACK` result ≠ ACCEPTED | 즉시 실패 기록. 재시도 없음 |
+| 업로드 중 새 `ROUTE_UPDATE_MID` 수신 | 현재 업로드 중단 후 새 경로로 재시작 |
+| FC 링크 단절 | 업로드 중단. 링크 복구 후 자동 재시도 없음 (다음 경로 명령 대기) |
+
+업로드 실패 시:
+- EVS 오류 이벤트 발생 (`MAVLINK_BRIDGE_APP_MISSION_UPLOAD_ERR_EID`)
+- HK에 실패 카운터 증가
+- 기존 FC 미션은 변경되지 않음 (FC 측 상태 유지)
+
+### 22.7 성공 처리
+
+업로드 성공(`MISSION_ACK` = ACCEPTED) 시:
+- EVS 정보 이벤트 발생 (`MAVLINK_BRIDGE_APP_MISSION_UPLOAD_INF_EID`)
+- HK에 성공 카운터 및 마지막 업로드 타임스탬프 갱신
+
+### 22.8 HK 추가 필드
+
+`mavlink_bridge_app` HK 텔레메트리에 다음 필드를 추가한다.
+
+| 필드 | 형식 | 의미 |
+| --- | --- | --- |
+| `MissionUploadSuccessCount` | `uint32` | 누적 업로드 성공 횟수 |
+| `MissionUploadFailCount` | `uint32` | 누적 업로드 실패 횟수 |
+| `LastUploadTimestampMs` | `uint32` | 마지막 성공 업로드 시각 |
+| `LastUploadWaypointCount` | `uint8` | 마지막 업로드한 웨이포인트 수 |
+| `LastUploadResult` | `uint8` | 0=없음, 1=성공, 2=timeout, 3=NAK |
+
+### 22.9 미구현 사항 (이 명세 범위 외)
+
+- FC 현재 미션 항목 변경 (`MAV_CMD_DO_SET_MISSION_CURRENT`)
+- Landing route 업로드 (별도 mission_type 또는 rally points 사용 검토 필요)
+- 업로드 완료 후 자동 미션 시작
+- 지상에서 이미 진행 중인 미션에 대한 mid-flight 경로 변경 안전 검사
