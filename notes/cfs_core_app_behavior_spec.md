@@ -634,24 +634,30 @@ EVS 이벤트는 `HealthState` 값이 변경될 때마다 발생하며, 형식�
 - route-update 테스트는 현재 지원된다
 - 출력 주기 또는 타임아웃 변경 테스트는 현재 구현된 운용 기능으로 지원되지 않는다
 
-### 21.3 LoRa downlink 안정성
+### 21.3 LoRa downlink 안정성 — C1에서 수정
 
-`mavlink_bridge_app`의 LoRa downlink 출력은 현재 런타임 조건에서 아직 안정적이지 않다.
+**[수정 완료 — C1에서 구현]**
 
-확인된 런타임 증상:
+`mavlink_bridge_app`의 LoRa downlink write 안정성 문제는 C1 커밋에서 수정되었다.
 
-- 반복적인 `LoRa write failed errno=11, forcing reopen`
+수정 전 증상 (구 동작):
 
-관련 구현 동작:
+- 반복적인 `LoRa write failed errno=11 (EAGAIN), forcing reopen`
+- 일시적 backpressure와 지속적 링크 오류가 구별되지 않음
 
-- LoRa 포트는 `O_NONBLOCK`으로 열린다
-- 단일 `write()` 실패 시 즉시 닫기 및 재열기가 트리거된다
-- 일시적 backpressure와 지속적 링크 오류가 구별되지 않는다
+현재 구현 동작:
+
+- LoRa 포트는 `O_NONBLOCK`으로 열기 시도 (open() 블로킹 방지)
+- 열기 성공 후 `fcntl(F_SETFL, LoRaFlags & ~O_NONBLOCK)`으로 블로킹 모드로 전환
+- 블로킹 모드이므로 `write()` 는 EAGAIN을 반환하지 않음
+- `write()` 가 `EAGAIN` / `EWOULDBLOCK` 을 반환하면: 패킷 skip, 포트 유지 (reopen 없음)
+- 그 외 `write()` 오류: EVS 로그 후 포트 닫기 및 재열기
 
 의미:
 
-- LoRa downlink 경로는 존재하며 전송을 시도한다
-- LoRa downlink 경로는 완전히 운용 가능한 것으로 취급하기에 아직 충분히 안정적이지 않다
+- 일시적 backpressure → packet skip, 포트 재열기 없음
+- 지속적 링크 오류 → 포트 재열기 트리거
+- 두 경우가 명확히 구별된다
 
 ### 21.4 헬스 상태 가시성 — 구현 완료
 
