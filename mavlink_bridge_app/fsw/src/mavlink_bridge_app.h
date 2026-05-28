@@ -42,8 +42,6 @@ typedef struct
     uint8     LinkState;
     uint8     LastErrorCode;
     uint16    Spare;
-    int32     RefLatE7;
-    int32     RefLonE7;
     uint8     MissionUploadState;
     uint8     MissionUploadRetry;
     uint8     MissionUploadWpCount;

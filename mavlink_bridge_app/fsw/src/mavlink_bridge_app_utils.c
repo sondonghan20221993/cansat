@@ -106,7 +106,9 @@ typedef struct
 } MAVLINK_BRIDGE_APP_ParserContext_t;
 
 static MAVLINK_BRIDGE_APP_ParserContext_t MAVLINK_BRIDGE_APP_Parser;
-static uint8 MAVLINK_BRIDGE_APP_TxSequence;
+static uint8  MAVLINK_BRIDGE_APP_TxSequence;
+static int32  MAVLINK_BRIDGE_APP_RefLatE7;
+static int32  MAVLINK_BRIDGE_APP_RefLonE7;
 
 static bool MAVLINK_BRIDGE_APP_ShouldLogDecoded(uint32 Sequence)
 {
@@ -385,8 +387,8 @@ static void MAVLINK_BRIDGE_APP_SendMissionItem(uint8 Seq)
 
     memset(Payload, 0, sizeof(Payload));
 
-    RefLatDeg  = (float)MAVLINK_BRIDGE_APP_Data.RefLatE7 / 1e7f;
-    RefLonDeg  = (float)MAVLINK_BRIDGE_APP_Data.RefLonE7 / 1e7f;
+    RefLatDeg  = (float)MAVLINK_BRIDGE_APP_RefLatE7 / 1e7f;
+    RefLonDeg  = (float)MAVLINK_BRIDGE_APP_RefLonE7 / 1e7f;
     RefLatRad  = RefLatDeg * MAVLINK_DEG_TO_RAD;
 
     DeltaLatDeg = MAVLINK_BRIDGE_APP_Data.MissionPendingX[Seq] / MAVLINK_EARTH_RADIUS_M * MAVLINK_RAD_TO_DEG;
@@ -426,7 +428,7 @@ void MAVLINK_BRIDGE_APP_StartMissionUpload(const MAVLINK_BRIDGE_APP_RouteUpdateM
         return;
     }
 
-    if (MAVLINK_BRIDGE_APP_Data.RefLatE7 == 0 && MAVLINK_BRIDGE_APP_Data.RefLonE7 == 0)
+    if (MAVLINK_BRIDGE_APP_RefLatE7 == 0 && MAVLINK_BRIDGE_APP_RefLonE7 == 0)
     {
         CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_MISSION_UPLOAD_ERR_EID, CFE_EVS_EventType_ERROR,
                           "MAVLINK_BRIDGE_APP: route update ignored - no GPS reference (GLOBAL_POSITION_INT not received)");
@@ -1019,8 +1021,8 @@ static void MAVLINK_BRIDGE_APP_PublishGlobalPositionAsLocal(uint32 BridgeTimesta
     VyCms         = (int16)MAVLINK_BRIDGE_APP_ReadU16LE(&MAVLINK_BRIDGE_APP_Parser.Payload[22]);
     VzCms         = (int16)MAVLINK_BRIDGE_APP_ReadU16LE(&MAVLINK_BRIDGE_APP_Parser.Payload[24]);
 
-    MAVLINK_BRIDGE_APP_Data.RefLatE7 = MAVLINK_BRIDGE_APP_ReadI32LE(&MAVLINK_BRIDGE_APP_Parser.Payload[4]);
-    MAVLINK_BRIDGE_APP_Data.RefLonE7 = MAVLINK_BRIDGE_APP_ReadI32LE(&MAVLINK_BRIDGE_APP_Parser.Payload[8]);
+    MAVLINK_BRIDGE_APP_RefLatE7 = MAVLINK_BRIDGE_APP_ReadI32LE(&MAVLINK_BRIDGE_APP_Parser.Payload[4]);
+    MAVLINK_BRIDGE_APP_RefLonE7 = MAVLINK_BRIDGE_APP_ReadI32LE(&MAVLINK_BRIDGE_APP_Parser.Payload[8]);
 
     Tlm->TimestampMs = MAVLINK_BRIDGE_APP_ReadU32LE(&MAVLINK_BRIDGE_APP_Parser.Payload[0]);
     Tlm->Seq         = ++MAVLINK_BRIDGE_APP_Data.SequenceCounter;
