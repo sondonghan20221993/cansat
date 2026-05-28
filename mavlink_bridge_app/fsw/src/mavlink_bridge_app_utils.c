@@ -1638,7 +1638,8 @@ void MAVLINK_BRIDGE_APP_ServiceSerial(void)
 
     MAVLINK_BRIDGE_APP_SendCompanionHeartbeat(NowMs);
     if (MAVLINK_BRIDGE_APP_Data.TargetSystemId != 0U &&
-        (NowMs - MAVLINK_BRIDGE_APP_Data.LastStreamRequestMs) >= MAVLINK_BRIDGE_APP_STREAM_REQUEST_RETRY_MS)
+        (NowMs - MAVLINK_BRIDGE_APP_Data.LastStreamRequestMs) >= MAVLINK_BRIDGE_APP_STREAM_REQUEST_RETRY_MS &&
+        MAVLINK_BRIDGE_APP_Data.MissionUploadState == (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_IDLE)
     {
         MAVLINK_BRIDGE_APP_Data.StreamRequestPending = 1;
         MAVLINK_BRIDGE_APP_RequestTelemetryStreams();
