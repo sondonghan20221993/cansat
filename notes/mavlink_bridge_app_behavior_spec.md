@@ -200,6 +200,22 @@ python3 tools/query_fc_mission.py <Pi_IP> 1234
 
 FC가 `MISSION_ACK result = MAV_MISSION_UNSUPPORTED_FRAME`을 반환하면, global frame 변환 구현이 필요하다.
 
+## 14. 진단 로그
+
+### 14.1 수신 프레임 로그
+
+수신된 모든 MAVLink 프레임 완료 시점에 `MAVLINK_BRIDGE_APP_PARSE_EID` INFORMATION 이벤트를 발생시킨다.
+
+```
+MAVLINK_BRIDGE_APP: frame msgid=<id> len=<payload_len> rx_ms=<timestamp>
+```
+
+- **목적**: FC가 어떤 msgid로 응답하는지 진단. 특히 미션 업로드 시 `MISSION_REQUEST_INT (51)` 대신 legacy `MISSION_REQUEST (40)` 응답 여부 확인.
+- **출력 시점**: `HandleFrameComplete` 진입 직후, CRC 검증 전.
+- **주의**: 고빈도 프레임(ATTITUDE 등)에서도 출력되므로 진단 목적 외에는 제거 권장.
+
+---
+
 ## 13. 미구현 사항
 
 - FC 현재 미션 항목 변경 (`MAV_CMD_DO_SET_MISSION_CURRENT`)
