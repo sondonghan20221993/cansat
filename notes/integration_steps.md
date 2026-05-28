@@ -23,12 +23,12 @@ cd ~/Desktop/cFS_clean/build-native_std
 make native_default_cpu1-all -j$(nproc)
 
 # .so 수동 복사 (sudo make install 대체)
-cp apps/<app>/<app>.so ~/Desktop/cFS_clean/build/exe/cpu1/cf/
+cp ~/Desktop/cFS_clean/build-native_std/native/default_cpu1/apps/<app>/<app>.so ~/Desktop/cFS_clean/build-native_std/exe/cpu1/cf/
 ```
 
 `mav_bridge_app`는 target 이름이 짧으므로:
 ```bash
-cp apps/mavlink_bridge_app/mav_bridge_app.so ~/Desktop/cFS_clean/build/exe/cpu1/cf/
+cp apps/mavlink_bridge_app/mav_bridge_app.so ~/Desktop/cFS_clean/build-native_std/exe/cpu1/cf/
 ```
 
 ### 3. unit-test 재빌드 및 실행
@@ -285,20 +285,20 @@ cd ~/Desktop/cFS_clean/build-native_std
 make native_default_cpu1-all -j$(nproc)
 
 # 설치 (.so 파일을 실행 디렉터리로 복사)
-cp apps/mavlink_bridge_app/mav_bridge_app.so ~/Desktop/cFS_clean/build/exe/cpu1/cf/
-cp apps/uplink_app/uplink_app.so ~/Desktop/cFS_clean/build/exe/cpu1/cf/
-cp apps/cfs_core_app/cfs_core_app.so ~/Desktop/cFS_clean/build/exe/cpu1/cf/
-cp apps/lora_fc_downlink_app/lora_fc_downlink_app.so ~/Desktop/cFS_clean/build/exe/cpu1/cf/
+cp ~/Desktop/cFS_clean/build-native_std/native/default_cpu1/apps/mavlink_bridge_app/mav_bridge_app.so ~/Desktop/cFS_clean/build-native_std/exe/cpu1/cf/
+cp ~/Desktop/cFS_clean/build-native_std/native/default_cpu1/apps/uplink_app/uplink_app.so ~/Desktop/cFS_clean/build-native_std/exe/cpu1/cf/
+cp ~/Desktop/cFS_clean/build-native_std/native/default_cpu1/apps/cfs_core_app/cfs_core_app.so ~/Desktop/cFS_clean/build-native_std/exe/cpu1/cf/
+cp ~/Desktop/cFS_clean/build-native_std/native/default_cpu1/apps/lora_fc_downlink_app/lora_fc_downlink_app.so ~/Desktop/cFS_clean/build-native_std/exe/cpu1/cf/
 ```
 
-설치 결과는 `~/Desktop/cFS_clean/build/exe/cpu1/` 아래에 생성된다.
+설치 결과는 `~/Desktop/cFS_clean/build-native_std/exe/cpu1/` 아래에 생성된다.
 
 ### 12. 런타임 실행
 
 실행은 반드시 `cpu1` 디렉터리 안에서 한다.
 
 ```bash
-cd ~/Desktop/cFS_clean/build/exe/cpu1
+cd ~/Desktop/cFS_clean/build-native_std/exe/cpu1
 sudo ./core-cpu1
 ```
 
@@ -335,7 +335,7 @@ FC 연결 후에는 다음을 검증한다.
 bridge log 확인 예:
 
 ```bash
-cd ~/Desktop/cFS_clean/build/exe/cpu1
+cd ~/Desktop/cFS_clean/build-native_std/exe/cpu1
 ./core-cpu1 2>&1 | tee /tmp/core-cpu1.log
 grep -n "unsupported msgid\|frame msgid\|ATTITUDE decoded\|LOCAL_POSITION_NED decoded\|GLOBAL_POSITION_INT mapped\|GPS_RAW_INT decoded\|EKF_STATUS_REPORT decoded" /tmp/core-cpu1.log
 ```
@@ -361,7 +361,7 @@ python3 ~/Desktop/cfs-telemetry-app/bridge/mavlink_uart_bridge.py
 Pi에서 `cpu1` 로그를 파일로 저장하면서 실행한다.
 
 ```bash
-cd ~/Desktop/cFS_clean/build/exe/cpu1
+cd ~/Desktop/cFS_clean/build-native_std/exe/cpu1
 sudo ./core-cpu1 2>&1 | tee /tmp/core-cpu1.log
 ```
 
