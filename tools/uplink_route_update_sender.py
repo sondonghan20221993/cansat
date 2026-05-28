@@ -151,6 +151,12 @@ def preset_case(case_name: str) -> Tuple[int, List[Tuple[float, float, float]]]:
         return ROUTE_TYPE_MISSION_EXTENSION, [(0.0, 10.0, 4.0), (2.0, 10.0, 4.0)]
     if case_name == "route-mp-verify-b":
         return ROUTE_TYPE_MISSION_EXTENSION, [(-20.0, 20.0, 5.0), (-18.0, 20.0, 5.0)]
+    if case_name == "route-mp-verify-c":
+        return ROUTE_TYPE_MISSION_EXTENSION, [(10.0, -10.0, 3.0), (12.0, -10.0, 3.0), (14.0, -10.0, 3.0)]
+    if case_name == "route-mp-verify-d":
+        return ROUTE_TYPE_MISSION_EXTENSION, [(-10.0, -20.0, 6.0), (-8.0, -20.0, 6.0), (-6.0, -20.0, 6.0), (-4.0, -20.0, 6.0)]
+    if case_name == "route-mp-verify-e":
+        return ROUTE_TYPE_MISSION_EXTENSION, [(5.0, 0.0, 5.0), (7.0, 0.0, 5.0), (9.0, 0.0, 5.0), (11.0, 0.0, 5.0), (13.0, 0.0, 5.0)]
     raise ValueError(f"unknown case: {case_name}")
 
 
@@ -162,7 +168,7 @@ def main() -> int:
         "case_name",
         choices=["route-good", "route-landing", "route-bad-alt", "route-bad-distance",
                  "route-good-no-gps", "route-landing-no-gps",
-                 "route-mp-verify-a", "route-mp-verify-b"],
+                 "route-mp-verify-a", "route-mp-verify-b", "route-mp-verify-c", "route-mp-verify-d", "route-mp-verify-e"],
         help="Preset route-update test case to send.",
     )
     parser.add_argument("--host", default="127.0.0.1")
