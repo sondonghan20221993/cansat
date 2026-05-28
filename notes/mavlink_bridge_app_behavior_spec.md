@@ -199,6 +199,17 @@ python3 tools/query_fc_mission.py <Pi_IP> 1234
 
 ## 12. 알려진 FC 호환성 제약
 
+### 12.0 MAVLink System ID
+
+브리지의 MAVLink system ID는 `255`(표준 GCS ID)를 사용해야 한다.
+
+| 항목 | 값 |
+|------|-----|
+| `MAVLINK_BRIDGE_APP_SYSTEM_ID` | `255` |
+| `MAVLINK_BRIDGE_APP_COMPONENT_ID` | `190` |
+
+**이유**: ArduPilot은 미션 업로드 등 명령을 `SYSID_MYGCS`(기본값 255)로 등록된 시스템에서만 수락한다. sysid=200 등 비표준 ID를 사용하면 FC가 MISSION_COUNT를 무시하고 응답하지 않는다. MAVProxy 기본값(`source_system=255`)이 정상 동작하고 우리 브리지(sysid=200)가 무응답이었던 사례로 확인됨.
+
 ### 12.1 MAV_FRAME_LOCAL_NED 호환성
 
 현재 구현은 `MAV_FRAME_LOCAL_NED` 기반 MISSION_ITEM_INT를 전송한다.
