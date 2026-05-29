@@ -16,6 +16,22 @@ typedef struct
 typedef struct
 {
     CFE_MSG_TelemetryHeader_t TelemetryHeader;
+    uint32                    TimestampMs;
+    uint32                    Seq;
+    uint8                     Valid;
+    uint8                     Stale;
+    uint8                     ErrorCode;
+    uint8                     FixType;
+    uint8                     SatellitesVisible;
+    uint8                     Reserved;
+    int32                     LatE7;
+    int32                     LonE7;
+    int32                     AltMm;
+} LORA_FC_DOWNLINK_APP_GpsRawTlm_t;
+
+typedef struct
+{
+    CFE_MSG_TelemetryHeader_t TelemetryHeader;
     uint32                    Seq;
     uint32                    TimestampMs;
     uint32                    LastValidInputTimestampMs;
@@ -80,10 +96,14 @@ void LORA_FC_DOWNLINK_APP_ProcessInputMessage(const CFE_SB_Buffer_t *sb_buf_ptr)
     }
     else if (CFE_SB_MsgIdToValue(msg_id) == LORA_FC_DOWNLINK_APP_FC_GPS_RAW_STATE_MID_VALUE)
     {
-        const LORA_FC_DOWNLINK_APP_GenericStateTlm_t *Msg =
-            (const LORA_FC_DOWNLINK_APP_GenericStateTlm_t *)&sb_buf_ptr->Msg;
+        const LORA_FC_DOWNLINK_APP_GpsRawTlm_t *Msg =
+            (const LORA_FC_DOWNLINK_APP_GpsRawTlm_t *)&sb_buf_ptr->Msg;
         LORA_FC_DOWNLINK_APP_Data.LastGpsTimestampMs = Msg->TimestampMs;
         LORA_FC_DOWNLINK_APP_Data.GpsValid           = Msg->Valid;
+        LORA_FC_DOWNLINK_APP_Data.GpsLatE7           = Msg->LatE7;
+        LORA_FC_DOWNLINK_APP_Data.GpsLonE7           = Msg->LonE7;
+        LORA_FC_DOWNLINK_APP_Data.GpsAltMm           = Msg->AltMm;
+        LORA_FC_DOWNLINK_APP_Data.GpsFixType         = Msg->FixType;
         LORA_FC_DOWNLINK_APP_Data.PacketType         = LORA_FC_DOWNLINK_APP_FC_STATE_PACKET_TYPE;
     }
     else if (CFE_SB_MsgIdToValue(msg_id) == LORA_FC_DOWNLINK_APP_FC_EKF_STATUS_MID_VALUE)
@@ -100,6 +120,7 @@ void LORA_FC_DOWNLINK_APP_ProcessInputMessage(const CFE_SB_Buffer_t *sb_buf_ptr)
             (const LORA_FC_DOWNLINK_APP_SystemHealthMirror_t *)&sb_buf_ptr->Msg;
         LORA_FC_DOWNLINK_APP_Data.LastSystemHealthTimestampMs = Msg->TimestampMs;
         LORA_FC_DOWNLINK_APP_Data.SystemHealthState           = Msg->HealthState;
+        LORA_FC_DOWNLINK_APP_Data.SystemHealthFaultCode       = Msg->FaultCode;
         LORA_FC_DOWNLINK_APP_Data.PacketType                  = LORA_FC_DOWNLINK_APP_SYSTEM_HEALTH_PACKET_TYPE;
     }
 

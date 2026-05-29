@@ -14,6 +14,22 @@ typedef struct
 typedef struct
 {
     CFE_MSG_TelemetryHeader_t TelemetryHeader;
+    uint32                    TimestampMs;
+    uint32                    Seq;
+    uint8                     Valid;
+    uint8                     Stale;
+    uint8                     ErrorCode;
+    uint8                     FixType;
+    uint8                     SatellitesVisible;
+    uint8                     Reserved;
+    int32                     LatE7;
+    int32                     LonE7;
+    int32                     AltMm;
+} TEST_LORA_FC_DOWNLINK_APP_GpsRawTlm_t;
+
+typedef struct
+{
+    CFE_MSG_TelemetryHeader_t TelemetryHeader;
     uint32                    Seq;
     uint32                    TimestampMs;
     uint32                    LastValidInputTimestampMs;
@@ -76,12 +92,14 @@ void Test_LORA_FC_DOWNLINK_APP_ProcessInputMessage(void)
                  CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_SYSTEM_HEALTH_MID_VALUE), sizeof(*Health));
     Health->TimestampMs = 2222;
     Health->HealthState = 3;
+    Health->FaultCode   = 2;
     MsgId = CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_SYSTEM_HEALTH_MID_VALUE);
     UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
     LORA_FC_DOWNLINK_APP_ProcessInputMessage(Buffer);
 
     UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.LastSystemHealthTimestampMs, 2222);
     UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.SystemHealthState, 3);
+    UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.SystemHealthFaultCode, 2);
     UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.DownlinkCount, 2);
 
     memset(Storage, 0, sizeof(Storage));
@@ -99,18 +117,33 @@ void Test_LORA_FC_DOWNLINK_APP_ProcessInputMessage(void)
     UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.LocalValid, 1);
 
     memset(Storage, 0, sizeof(Storage));
-    Buffer = (CFE_SB_Buffer_t *)Storage;
-    Attitude = (TEST_LORA_FC_DOWNLINK_APP_GenericStateTlm_t *)Storage;
-    CFE_MSG_Init(CFE_MSG_PTR(Attitude->TelemetryHeader),
-                 CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_FC_GPS_RAW_STATE_MID_VALUE), sizeof(*Attitude));
-    Attitude->TimestampMs = 4444;
-    Attitude->Valid       = 1;
-    MsgId = CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_FC_GPS_RAW_STATE_MID_VALUE);
-    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
-    LORA_FC_DOWNLINK_APP_ProcessInputMessage(Buffer);
+    {
+        uint8                                      GpsStorage[sizeof(TEST_LORA_FC_DOWNLINK_APP_GpsRawTlm_t)];
+        CFE_SB_Buffer_t                           *GpsBuffer;
+        TEST_LORA_FC_DOWNLINK_APP_GpsRawTlm_t    *Gps;
 
-    UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.LastGpsTimestampMs, 4444);
-    UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.GpsValid, 1);
+        memset(GpsStorage, 0, sizeof(GpsStorage));
+        GpsBuffer = (CFE_SB_Buffer_t *)GpsStorage;
+        Gps       = (TEST_LORA_FC_DOWNLINK_APP_GpsRawTlm_t *)GpsStorage;
+        CFE_MSG_Init(CFE_MSG_PTR(Gps->TelemetryHeader),
+                     CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_FC_GPS_RAW_STATE_MID_VALUE), sizeof(*Gps));
+        Gps->TimestampMs = 4444;
+        Gps->Valid       = 1;
+        Gps->FixType     = 3;
+        Gps->LatE7       = 374530000;
+        Gps->LonE7       = 1269850000;
+        Gps->AltMm       = 50000;
+        MsgId = CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_FC_GPS_RAW_STATE_MID_VALUE);
+        UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+        LORA_FC_DOWNLINK_APP_ProcessInputMessage(GpsBuffer);
+
+        UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.LastGpsTimestampMs, 4444);
+        UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.GpsValid, 1);
+        UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.GpsLatE7, 374530000);
+        UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.GpsLonE7, 1269850000);
+        UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.GpsAltMm, 50000);
+        UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.GpsFixType, 3);
+    }
 
     memset(Storage, 0, sizeof(Storage));
     Buffer = (CFE_SB_Buffer_t *)Storage;
