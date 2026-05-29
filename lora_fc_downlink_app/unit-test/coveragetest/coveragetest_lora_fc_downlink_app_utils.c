@@ -9,6 +9,40 @@ typedef struct
     uint8                     Stale;
     uint8                     ErrorCode;
     uint8                     Reserved;
+    float                     RollRad;
+    float                     PitchRad;
+    float                     YawRad;
+    float                     RollspeedRps;
+    float                     PitchspeedRps;
+    float                     YawspeedRps;
+} TEST_LORA_FC_DOWNLINK_APP_AttitudeTlm_t;
+
+typedef struct
+{
+    CFE_MSG_TelemetryHeader_t TelemetryHeader;
+    uint32                    TimestampMs;
+    uint32                    Seq;
+    uint8                     Valid;
+    uint8                     Stale;
+    uint8                     ErrorCode;
+    uint8                     Reserved;
+    float                     X_m;
+    float                     Y_m;
+    float                     Z_m;
+    float                     Vx_mps;
+    float                     Vy_mps;
+    float                     Vz_mps;
+} TEST_LORA_FC_DOWNLINK_APP_EkfLocalTlm_t;
+
+typedef struct
+{
+    CFE_MSG_TelemetryHeader_t TelemetryHeader;
+    uint32                    TimestampMs;
+    uint32                    Seq;
+    uint8                     Valid;
+    uint8                     Stale;
+    uint8                     ErrorCode;
+    uint8                     Reserved;
 } TEST_LORA_FC_DOWNLINK_APP_GenericStateTlm_t;
 
 typedef struct
@@ -64,25 +98,32 @@ void Test_LORA_FC_DOWNLINK_APP_ReportHousekeeping(void)
 
 void Test_LORA_FC_DOWNLINK_APP_ProcessInputMessage(void)
 {
-    uint8                                 Storage[sizeof(TEST_LORA_FC_DOWNLINK_APP_SystemHealthTlm_t)];
-    CFE_SB_Buffer_t                      *Buffer;
-    CFE_SB_MsgId_t                        MsgId;
-    TEST_LORA_FC_DOWNLINK_APP_GenericStateTlm_t *Attitude;
+    uint8                                      Storage[sizeof(TEST_LORA_FC_DOWNLINK_APP_EkfLocalTlm_t)];
+    CFE_SB_Buffer_t                           *Buffer;
+    CFE_SB_MsgId_t                             MsgId;
+    TEST_LORA_FC_DOWNLINK_APP_AttitudeTlm_t   *Attitude;
+    TEST_LORA_FC_DOWNLINK_APP_EkfLocalTlm_t   *Local;
     TEST_LORA_FC_DOWNLINK_APP_SystemHealthTlm_t *Health;
 
     memset(Storage, 0, sizeof(Storage));
     Buffer   = (CFE_SB_Buffer_t *)Storage;
-    Attitude = (TEST_LORA_FC_DOWNLINK_APP_GenericStateTlm_t *)Storage;
+    Attitude = (TEST_LORA_FC_DOWNLINK_APP_AttitudeTlm_t *)Storage;
     CFE_MSG_Init(CFE_MSG_PTR(Attitude->TelemetryHeader),
                  CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_FC_ATTITUDE_STATE_MID_VALUE), sizeof(*Attitude));
     Attitude->TimestampMs = 1111;
     Attitude->Valid       = 1;
+    Attitude->RollRad     = 0.1f;
+    Attitude->PitchRad    = 0.2f;
+    Attitude->YawRad      = 0.3f;
     MsgId = CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_FC_ATTITUDE_STATE_MID_VALUE);
     UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
     LORA_FC_DOWNLINK_APP_ProcessInputMessage(Buffer);
 
     UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.LastAttitudeTimestampMs, 1111);
     UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.AttitudeValid, 1);
+    UtAssert_True(LORA_FC_DOWNLINK_APP_Data.AttitudeRollRad == 0.1f, "AttitudeRollRad == 0.1");
+    UtAssert_True(LORA_FC_DOWNLINK_APP_Data.AttitudePitchRad == 0.2f, "AttitudePitchRad == 0.2");
+    UtAssert_True(LORA_FC_DOWNLINK_APP_Data.AttitudeYawRad == 0.3f, "AttitudeYawRad == 0.3");
     UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.DownlinkCount, 1);
 
     memset(Storage, 0, sizeof(Storage));
@@ -103,18 +144,30 @@ void Test_LORA_FC_DOWNLINK_APP_ProcessInputMessage(void)
     UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.DownlinkCount, 2);
 
     memset(Storage, 0, sizeof(Storage));
+    Local = (TEST_LORA_FC_DOWNLINK_APP_EkfLocalTlm_t *)Storage;
     Buffer = (CFE_SB_Buffer_t *)Storage;
-    Attitude = (TEST_LORA_FC_DOWNLINK_APP_GenericStateTlm_t *)Storage;
-    CFE_MSG_Init(CFE_MSG_PTR(Attitude->TelemetryHeader),
-                 CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_FC_EKF_LOCAL_STATE_MID_VALUE), sizeof(*Attitude));
-    Attitude->TimestampMs = 3333;
-    Attitude->Valid       = 1;
+    CFE_MSG_Init(CFE_MSG_PTR(Local->TelemetryHeader),
+                 CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_FC_EKF_LOCAL_STATE_MID_VALUE), sizeof(*Local));
+    Local->TimestampMs = 3333;
+    Local->Valid       = 1;
+    Local->X_m         = 1.0f;
+    Local->Y_m         = 2.0f;
+    Local->Z_m         = 3.0f;
+    Local->Vx_mps      = 0.5f;
+    Local->Vy_mps      = 0.6f;
+    Local->Vz_mps      = 0.7f;
     MsgId = CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_FC_EKF_LOCAL_STATE_MID_VALUE);
     UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
     LORA_FC_DOWNLINK_APP_ProcessInputMessage(Buffer);
 
     UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.LastLocalTimestampMs, 3333);
     UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.LocalValid, 1);
+    UtAssert_True(LORA_FC_DOWNLINK_APP_Data.LocalX_m == 1.0f, "LocalX_m == 1.0");
+    UtAssert_True(LORA_FC_DOWNLINK_APP_Data.LocalY_m == 2.0f, "LocalY_m == 2.0");
+    UtAssert_True(LORA_FC_DOWNLINK_APP_Data.LocalZ_m == 3.0f, "LocalZ_m == 3.0");
+    UtAssert_True(LORA_FC_DOWNLINK_APP_Data.LocalVx_mps == 0.5f, "LocalVx_mps == 0.5");
+    UtAssert_True(LORA_FC_DOWNLINK_APP_Data.LocalVy_mps == 0.6f, "LocalVy_mps == 0.6");
+    UtAssert_True(LORA_FC_DOWNLINK_APP_Data.LocalVz_mps == 0.7f, "LocalVz_mps == 0.7");
 
     memset(Storage, 0, sizeof(Storage));
     {
@@ -146,8 +199,8 @@ void Test_LORA_FC_DOWNLINK_APP_ProcessInputMessage(void)
     }
 
     memset(Storage, 0, sizeof(Storage));
+    Attitude = (TEST_LORA_FC_DOWNLINK_APP_AttitudeTlm_t *)Storage;
     Buffer = (CFE_SB_Buffer_t *)Storage;
-    Attitude = (TEST_LORA_FC_DOWNLINK_APP_GenericStateTlm_t *)Storage;
     CFE_MSG_Init(CFE_MSG_PTR(Attitude->TelemetryHeader),
                  CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_FC_EKF_STATUS_MID_VALUE), sizeof(*Attitude));
     Attitude->TimestampMs = 5555;

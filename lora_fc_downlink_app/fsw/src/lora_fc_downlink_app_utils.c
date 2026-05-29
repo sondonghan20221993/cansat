@@ -2,6 +2,12 @@
 #include "lora_fc_downlink_app.h"
 #include "lora_fc_downlink_app_eventids.h"
 
+#include <errno.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <termios.h>
+#include <unistd.h>
+
 typedef struct
 {
     CFE_MSG_TelemetryHeader_t TelemetryHeader;
@@ -11,7 +17,30 @@ typedef struct
     uint8                     Stale;
     uint8                     ErrorCode;
     uint8                     Reserved;
-} LORA_FC_DOWNLINK_APP_GenericStateTlm_t;
+    float                     RollRad;
+    float                     PitchRad;
+    float                     YawRad;
+    float                     RollspeedRps;
+    float                     PitchspeedRps;
+    float                     YawspeedRps;
+} LORA_FC_DOWNLINK_APP_AttitudeTlm_t;
+
+typedef struct
+{
+    CFE_MSG_TelemetryHeader_t TelemetryHeader;
+    uint32                    TimestampMs;
+    uint32                    Seq;
+    uint8                     Valid;
+    uint8                     Stale;
+    uint8                     ErrorCode;
+    uint8                     Reserved;
+    float                     X_m;
+    float                     Y_m;
+    float                     Z_m;
+    float                     Vx_mps;
+    float                     Vy_mps;
+    float                     Vz_mps;
+} LORA_FC_DOWNLINK_APP_EkfLocalTlm_t;
 
 typedef struct
 {
@@ -40,6 +69,114 @@ typedef struct
     uint8                     RecoveryRequested;
     uint8                     Reserved;
 } LORA_FC_DOWNLINK_APP_SystemHealthMirror_t;
+
+static void LORA_FC_DOWNLINK_APP_ServiceLoRa(void)
+{
+    int            Fd;
+    int            WriteRc;
+    struct termios Tio;
+    char           Line[256];
+    int            LineLen;
+    speed_t        BaudConstant = B57600;
+
+    if (LORA_FC_DOWNLINK_APP_Data.LoRaFd < 0)
+    {
+        Fd = open(LORA_FC_DOWNLINK_APP_LORA_SERIAL_PATH, O_WRONLY | O_NOCTTY | O_NONBLOCK);
+        if (Fd < 0)
+        {
+            return;
+        }
+
+        if (tcgetattr(Fd, &Tio) != 0)
+        {
+            close(Fd);
+            return;
+        }
+
+        Tio.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON);
+        Tio.c_oflag &= ~OPOST;
+        Tio.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
+        Tio.c_cflag &= ~(CSIZE | PARENB);
+        Tio.c_cflag |= CS8 | CLOCAL | CREAD;
+#ifdef CRTSCTS
+        Tio.c_cflag &= ~CRTSCTS;
+#endif
+        Tio.c_cc[VMIN]  = 0;
+        Tio.c_cc[VTIME] = 0;
+        cfsetispeed(&Tio, BaudConstant);
+        cfsetospeed(&Tio, BaudConstant);
+
+        if (tcsetattr(Fd, TCSANOW, &Tio) != 0)
+        {
+            close(Fd);
+            return;
+        }
+
+        {
+            int Flags = fcntl(Fd, F_GETFL, 0);
+            if (Flags >= 0)
+            {
+                fcntl(Fd, F_SETFL, Flags & ~O_NONBLOCK);
+            }
+        }
+
+        LORA_FC_DOWNLINK_APP_Data.LoRaFd = Fd;
+        CFE_EVS_SendEvent(LORA_FC_DOWNLINK_APP_INIT_INF_EID, CFE_EVS_EventType_INFORMATION,
+                          "LORA_FC_DOWNLINK_APP: opened LoRa %s at %u baud",
+                          LORA_FC_DOWNLINK_APP_LORA_SERIAL_PATH, LORA_FC_DOWNLINK_APP_LORA_BAUDRATE);
+    }
+
+    if (LORA_FC_DOWNLINK_APP_Data.PacketType == LORA_FC_DOWNLINK_APP_SYSTEM_HEALTH_PACKET_TYPE)
+    {
+        LineLen = snprintf(Line, sizeof(Line), "SH,%lu,%lu,%u,%u\n",
+                           (unsigned long)(++LORA_FC_DOWNLINK_APP_Data.LoRaTxCount),
+                           (unsigned long)LORA_FC_DOWNLINK_APP_Data.LastSystemHealthTimestampMs,
+                           (unsigned int)LORA_FC_DOWNLINK_APP_Data.SystemHealthState,
+                           (unsigned int)LORA_FC_DOWNLINK_APP_Data.SystemHealthFaultCode);
+    }
+    else if (LORA_FC_DOWNLINK_APP_Data.AttitudeValid && LORA_FC_DOWNLINK_APP_Data.LocalValid)
+    {
+        LineLen = snprintf(Line, sizeof(Line),
+                           "FC,%lu,%lu,%.6f,%.6f,%.6f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%ld,%ld,%ld,%u\n",
+                           (unsigned long)(++LORA_FC_DOWNLINK_APP_Data.LoRaTxCount),
+                           (unsigned long)LORA_FC_DOWNLINK_APP_Data.LastAttitudeTimestampMs,
+                           (double)LORA_FC_DOWNLINK_APP_Data.AttitudeRollRad,
+                           (double)LORA_FC_DOWNLINK_APP_Data.AttitudePitchRad,
+                           (double)LORA_FC_DOWNLINK_APP_Data.AttitudeYawRad,
+                           (double)LORA_FC_DOWNLINK_APP_Data.LocalX_m,
+                           (double)LORA_FC_DOWNLINK_APP_Data.LocalY_m,
+                           (double)LORA_FC_DOWNLINK_APP_Data.LocalZ_m,
+                           (double)LORA_FC_DOWNLINK_APP_Data.LocalVx_mps,
+                           (double)LORA_FC_DOWNLINK_APP_Data.LocalVy_mps,
+                           (double)LORA_FC_DOWNLINK_APP_Data.LocalVz_mps,
+                           (long)LORA_FC_DOWNLINK_APP_Data.GpsLatE7,
+                           (long)LORA_FC_DOWNLINK_APP_Data.GpsLonE7,
+                           (long)LORA_FC_DOWNLINK_APP_Data.GpsAltMm,
+                           (unsigned int)LORA_FC_DOWNLINK_APP_Data.GpsFixType);
+    }
+    else
+    {
+        return;
+    }
+
+    if (LineLen <= 0)
+    {
+        return;
+    }
+
+    WriteRc = (int)write(LORA_FC_DOWNLINK_APP_Data.LoRaFd, Line, (size_t)LineLen);
+    if (WriteRc < 0)
+    {
+        if (errno == EAGAIN || errno == EWOULDBLOCK)
+        {
+            return;
+        }
+        CFE_EVS_SendEvent(LORA_FC_DOWNLINK_APP_PIPE_ERR_EID, CFE_EVS_EventType_ERROR,
+                          "LORA_FC_DOWNLINK_APP: LoRa write failed errno=%d, forcing reopen", errno);
+        close(LORA_FC_DOWNLINK_APP_Data.LoRaFd);
+        LORA_FC_DOWNLINK_APP_Data.LoRaFd = -1;
+    }
+}
 
 void LORA_FC_DOWNLINK_APP_ReportHousekeeping(void)
 {
@@ -80,18 +217,27 @@ void LORA_FC_DOWNLINK_APP_ProcessInputMessage(const CFE_SB_Buffer_t *sb_buf_ptr)
 
     if (CFE_SB_MsgIdToValue(msg_id) == LORA_FC_DOWNLINK_APP_FC_ATTITUDE_STATE_MID_VALUE)
     {
-        const LORA_FC_DOWNLINK_APP_GenericStateTlm_t *Msg =
-            (const LORA_FC_DOWNLINK_APP_GenericStateTlm_t *)&sb_buf_ptr->Msg;
+        const LORA_FC_DOWNLINK_APP_AttitudeTlm_t *Msg =
+            (const LORA_FC_DOWNLINK_APP_AttitudeTlm_t *)&sb_buf_ptr->Msg;
         LORA_FC_DOWNLINK_APP_Data.LastAttitudeTimestampMs = Msg->TimestampMs;
         LORA_FC_DOWNLINK_APP_Data.AttitudeValid           = Msg->Valid;
+        LORA_FC_DOWNLINK_APP_Data.AttitudeRollRad         = Msg->RollRad;
+        LORA_FC_DOWNLINK_APP_Data.AttitudePitchRad        = Msg->PitchRad;
+        LORA_FC_DOWNLINK_APP_Data.AttitudeYawRad          = Msg->YawRad;
         LORA_FC_DOWNLINK_APP_Data.PacketType              = LORA_FC_DOWNLINK_APP_FC_STATE_PACKET_TYPE;
     }
     else if (CFE_SB_MsgIdToValue(msg_id) == LORA_FC_DOWNLINK_APP_FC_EKF_LOCAL_STATE_MID_VALUE)
     {
-        const LORA_FC_DOWNLINK_APP_GenericStateTlm_t *Msg =
-            (const LORA_FC_DOWNLINK_APP_GenericStateTlm_t *)&sb_buf_ptr->Msg;
+        const LORA_FC_DOWNLINK_APP_EkfLocalTlm_t *Msg =
+            (const LORA_FC_DOWNLINK_APP_EkfLocalTlm_t *)&sb_buf_ptr->Msg;
         LORA_FC_DOWNLINK_APP_Data.LastLocalTimestampMs = Msg->TimestampMs;
         LORA_FC_DOWNLINK_APP_Data.LocalValid           = Msg->Valid;
+        LORA_FC_DOWNLINK_APP_Data.LocalX_m             = Msg->X_m;
+        LORA_FC_DOWNLINK_APP_Data.LocalY_m             = Msg->Y_m;
+        LORA_FC_DOWNLINK_APP_Data.LocalZ_m             = Msg->Z_m;
+        LORA_FC_DOWNLINK_APP_Data.LocalVx_mps          = Msg->Vx_mps;
+        LORA_FC_DOWNLINK_APP_Data.LocalVy_mps          = Msg->Vy_mps;
+        LORA_FC_DOWNLINK_APP_Data.LocalVz_mps          = Msg->Vz_mps;
         LORA_FC_DOWNLINK_APP_Data.PacketType           = LORA_FC_DOWNLINK_APP_FC_STATE_PACKET_TYPE;
     }
     else if (CFE_SB_MsgIdToValue(msg_id) == LORA_FC_DOWNLINK_APP_FC_GPS_RAW_STATE_MID_VALUE)
@@ -108,8 +254,8 @@ void LORA_FC_DOWNLINK_APP_ProcessInputMessage(const CFE_SB_Buffer_t *sb_buf_ptr)
     }
     else if (CFE_SB_MsgIdToValue(msg_id) == LORA_FC_DOWNLINK_APP_FC_EKF_STATUS_MID_VALUE)
     {
-        const LORA_FC_DOWNLINK_APP_GenericStateTlm_t *Msg =
-            (const LORA_FC_DOWNLINK_APP_GenericStateTlm_t *)&sb_buf_ptr->Msg;
+        const LORA_FC_DOWNLINK_APP_AttitudeTlm_t *Msg =
+            (const LORA_FC_DOWNLINK_APP_AttitudeTlm_t *)&sb_buf_ptr->Msg;
         LORA_FC_DOWNLINK_APP_Data.LastEkfTimestampMs = Msg->TimestampMs;
         LORA_FC_DOWNLINK_APP_Data.EkfValid           = Msg->Valid;
         LORA_FC_DOWNLINK_APP_Data.PacketType         = LORA_FC_DOWNLINK_APP_FC_STATE_PACKET_TYPE;
@@ -125,4 +271,5 @@ void LORA_FC_DOWNLINK_APP_ProcessInputMessage(const CFE_SB_Buffer_t *sb_buf_ptr)
     }
 
     LORA_FC_DOWNLINK_APP_Data.DownlinkCount++;
+    LORA_FC_DOWNLINK_APP_ServiceLoRa();
 }

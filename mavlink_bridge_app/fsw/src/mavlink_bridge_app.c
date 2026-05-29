@@ -57,7 +57,6 @@ CFE_Status_t MAVLINK_BRIDGE_APP_Init(void)
     MAVLINK_BRIDGE_APP_Data.LinkState           = MAVLINK_BRIDGE_LINK_DISCONNECTED;
     MAVLINK_BRIDGE_APP_Data.ReconnectIntervalMs = MAVLINK_BRIDGE_APP_RECONNECT_INTERVAL_MS;
     MAVLINK_BRIDGE_APP_Data.SerialFd            = -1;
-    MAVLINK_BRIDGE_APP_Data.LoRaFd              = -1;
 
     Status = CFE_EVS_Register(NULL, 0, CFE_EVS_EventFilter_BINARY);
     if (Status != CFE_SUCCESS)

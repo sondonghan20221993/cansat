@@ -221,14 +221,6 @@ static void MAVLINK_BRIDGE_APP_CloseSerial(void)
     }
 }
 
-static void MAVLINK_BRIDGE_APP_CloseLoRa(void)
-{
-    if (MAVLINK_BRIDGE_APP_Data.LoRaFd >= 0)
-    {
-        close(MAVLINK_BRIDGE_APP_Data.LoRaFd);
-        MAVLINK_BRIDGE_APP_Data.LoRaFd = -1;
-    }
-}
 
 static void MAVLINK_BRIDGE_APP_WriteU16LE(uint8 *Data, uint16 Value)
 {
@@ -814,105 +806,6 @@ static CFE_Status_t MAVLINK_BRIDGE_APP_OpenSerial(void)
     return CFE_SUCCESS;
 }
 
-static void MAVLINK_BRIDGE_APP_ServiceLoRa(void)
-{
-    int            Fd;
-    int            WriteRc;
-    struct termios Tio;
-    speed_t        BaudConstant;
-    char           Line[256];
-    int            LineLen;
-
-    if (!MAVLINK_BRIDGE_APP_Data.AttitudeTlm.Valid || !MAVLINK_BRIDGE_APP_Data.EkfLocalTlm.Valid)
-    {
-        return;
-    }
-
-    if (!MAVLINK_BRIDGE_APP_GetBaudConstant(MAVLINK_BRIDGE_APP_LORA_BAUDRATE, &BaudConstant))
-    {
-        return;
-    }
-
-    if (MAVLINK_BRIDGE_APP_Data.LoRaFd < 0)
-    {
-        Fd = open(MAVLINK_BRIDGE_APP_LORA_SERIAL_PATH, O_WRONLY | O_NOCTTY | O_NONBLOCK);
-        if (Fd < 0)
-        {
-            return;
-        }
-
-        if (tcgetattr(Fd, &Tio) != 0)
-        {
-            close(Fd);
-            return;
-        }
-
-        Tio.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON);
-        Tio.c_oflag &= ~OPOST;
-        Tio.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
-        Tio.c_cflag &= ~(CSIZE | PARENB);
-        Tio.c_cflag |= CS8;
-        Tio.c_cflag |= (CLOCAL | CREAD);
-#ifdef CRTSCTS
-        Tio.c_cflag &= ~CRTSCTS;
-#endif
-        Tio.c_cc[VMIN]  = 0;
-        Tio.c_cc[VTIME] = 0;
-        cfsetispeed(&Tio, BaudConstant);
-        cfsetospeed(&Tio, BaudConstant);
-
-        if (tcsetattr(Fd, TCSANOW, &Tio) != 0)
-        {
-            close(Fd);
-            return;
-        }
-
-        {
-            int LoRaFlags = fcntl(Fd, F_GETFL, 0);
-            if (LoRaFlags >= 0)
-            {
-                fcntl(Fd, F_SETFL, LoRaFlags & ~O_NONBLOCK);
-            }
-        }
-        MAVLINK_BRIDGE_APP_Data.LoRaFd = Fd;
-        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_LINK_EID, CFE_EVS_EventType_INFORMATION,
-                          "MAVLINK_BRIDGE_APP: opened LoRa path %s at %lu baud",
-                          MAVLINK_BRIDGE_APP_LORA_SERIAL_PATH, (unsigned long)MAVLINK_BRIDGE_APP_LORA_BAUDRATE);
-    }
-
-    LineLen = snprintf(Line, sizeof(Line),
-                       "FC,%lu,%lu,%.6f,%.6f,%.6f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n",
-                       (unsigned long)(++MAVLINK_BRIDGE_APP_Data.LoRaTxCount),
-                       (unsigned long)MAVLINK_BRIDGE_APP_Data.AttitudeTlm.TimestampMs,
-                       (double)MAVLINK_BRIDGE_APP_Data.AttitudeTlm.RollRad,
-                       (double)MAVLINK_BRIDGE_APP_Data.AttitudeTlm.PitchRad,
-                       (double)MAVLINK_BRIDGE_APP_Data.AttitudeTlm.YawRad,
-                       (double)MAVLINK_BRIDGE_APP_Data.EkfLocalTlm.X_m,
-                       (double)MAVLINK_BRIDGE_APP_Data.EkfLocalTlm.Y_m,
-                       (double)MAVLINK_BRIDGE_APP_Data.EkfLocalTlm.Z_m,
-                       (double)MAVLINK_BRIDGE_APP_Data.EkfLocalTlm.Vx_mps,
-                       (double)MAVLINK_BRIDGE_APP_Data.EkfLocalTlm.Vy_mps,
-                       (double)MAVLINK_BRIDGE_APP_Data.EkfLocalTlm.Vz_mps);
-
-    if (LineLen <= 0)
-    {
-        return;
-    }
-
-    WriteRc = (int)write(MAVLINK_BRIDGE_APP_Data.LoRaFd, Line, (size_t)LineLen);
-    if (WriteRc < 0)
-    {
-        if (errno == EAGAIN || errno == EWOULDBLOCK)
-        {
-            /* TX buffer transiently full - skip this packet, port remains open */
-            return;
-        }
-        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_LINK_EID, CFE_EVS_EventType_INFORMATION,
-                          "MAVLINK_BRIDGE_APP: LoRa write failed errno=%d, forcing reopen", errno);
-        MAVLINK_BRIDGE_APP_CloseLoRa();
-    }
-}
-
 static void MAVLINK_BRIDGE_APP_PublishAttitude(uint32 BridgeTimestampMs)
 {
     MAVLINK_BRIDGE_APP_AttitudeTlm_t *Tlm;
@@ -943,7 +836,6 @@ static void MAVLINK_BRIDGE_APP_PublishAttitude(uint32 BridgeTimestampMs)
 
     CFE_SB_TimeStampMsg(CFE_MSG_PTR(Tlm->TelemetryHeader));
     CFE_SB_TransmitMsg(CFE_MSG_PTR(Tlm->TelemetryHeader), true);
-    MAVLINK_BRIDGE_APP_ServiceLoRa();
 
     if (MAVLINK_BRIDGE_APP_ShouldLogDecoded(Tlm->Seq))
     {
@@ -985,7 +877,6 @@ static void MAVLINK_BRIDGE_APP_PublishEkfLocal(uint32 BridgeTimestampMs)
 
     CFE_SB_TimeStampMsg(CFE_MSG_PTR(Tlm->TelemetryHeader));
     CFE_SB_TransmitMsg(CFE_MSG_PTR(Tlm->TelemetryHeader), true);
-    MAVLINK_BRIDGE_APP_ServiceLoRa();
 
     if (MAVLINK_BRIDGE_APP_ShouldLogDecoded(Tlm->Seq))
     {
@@ -1039,7 +930,6 @@ static void MAVLINK_BRIDGE_APP_PublishGlobalPositionAsLocal(uint32 BridgeTimesta
 
     CFE_SB_TimeStampMsg(CFE_MSG_PTR(Tlm->TelemetryHeader));
     CFE_SB_TransmitMsg(CFE_MSG_PTR(Tlm->TelemetryHeader), true);
-    MAVLINK_BRIDGE_APP_ServiceLoRa();
 
     if (MAVLINK_BRIDGE_APP_ShouldLogDecoded(Tlm->Seq))
     {

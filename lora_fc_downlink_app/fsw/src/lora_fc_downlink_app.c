@@ -55,6 +55,7 @@ CFE_Status_t LORA_FC_DOWNLINK_APP_Init(void)
 
     LORA_FC_DOWNLINK_APP_Data.RunStatus = CFE_ES_RunStatus_APP_RUN;
     LORA_FC_DOWNLINK_APP_Data.PacketType = LORA_FC_DOWNLINK_APP_FC_STATE_PACKET_TYPE;
+    LORA_FC_DOWNLINK_APP_Data.LoRaFd = -1;
 
     CFE_ES_WriteToSysLog("LORA_FC_DOWNLINK_APP: before EVS register\n");
     status = CFE_EVS_Register(NULL, 0, CFE_EVS_EventFilter_BINARY);

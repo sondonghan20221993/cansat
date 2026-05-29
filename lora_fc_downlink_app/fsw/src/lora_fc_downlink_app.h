@@ -27,6 +27,17 @@ typedef struct
     uint32                          LastGpsTimestampMs;
     uint32                          LastEkfTimestampMs;
     uint32                          LastSystemHealthTimestampMs;
+    int                             LoRaFd;
+    uint32                          LoRaTxCount;
+    float                           AttitudeRollRad;
+    float                           AttitudePitchRad;
+    float                           AttitudeYawRad;
+    float                           LocalX_m;
+    float                           LocalY_m;
+    float                           LocalZ_m;
+    float                           LocalVx_mps;
+    float                           LocalVy_mps;
+    float                           LocalVz_mps;
     int32                           GpsLatE7;
     int32                           GpsLonE7;
     int32                           GpsAltMm;

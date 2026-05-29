@@ -33,8 +33,6 @@ typedef struct
     uint32    ParseErrorCount;
     uint32    BytesReceived;
     int32     SerialFd;
-    int32     LoRaFd;
-    uint32    LoRaTxCount;
     uint8     TargetSystemId;
     uint8     TargetComponentId;
     uint8     StreamRequestPending;
