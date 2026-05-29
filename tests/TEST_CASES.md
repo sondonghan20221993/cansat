@@ -18,8 +18,8 @@
 | 앱 | 테스트 수 | assertion 수 | 마지막 확인 |
 |---|---|---|---|
 | `cfs_core_app` | 21 | 67 | 2026-05-28 |
-| `uplink_app` | 37 | 60 | 2026-05-29 |
-| `lora_fc_downlink_app` | 12 | 34 | 2026-05-29 |
+| `uplink_app` | 46 | 93 | 2026-05-29 |
+| `lora_fc_downlink_app` | 13 | 45 | 2026-05-29 |
 | `mavlink_bridge_app` | 없음 (unit-test 미구성) | — | — |
 
 ---
