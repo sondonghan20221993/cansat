@@ -835,9 +835,56 @@ FC, 모터 또는 액추에이터 명령 및 비행 제어 매개변수
 
 `DOWNLINK_STATUS_MID`는 현재 구현되지 않았다. `lora_fc_downlink_app`은 별도 status MID를 publish하지 않으며 HK만 publish한다. `0x1905`는 `FC_EKF_LOCAL_STATE_MID`로 할당되어 있으므로 `DOWNLINK_STATUS_MID`에 사용할 수 없다.
 
+#### lora_fc_downlink_app LoRa 송신/수신 동작 (구현 완료)
+
+`lora_fc_downlink_app`은 SB에서 FC 상태를 구독하고 LoRa serial로 직접 전송하며, 지상국 HB를 수신하여 링크 상태를 관리한다.
+
+**캐시 필드 (ProcessInputMessage 갱신):**
+- ATTITUDE: RollRad, PitchRad, YawRad
+- EKF_LOCAL: X_m, Y_m, Z_m, Vx_mps, Vy_mps, Vz_mps
+- GPS_RAW: LatE7, LonE7, AltMm, FixType
+- SYSTEM_HEALTH: HealthState, FaultCode
+
+**LoRa 송신 패킷 (ServiceLoRa, SB 수신마다 호출):**
+
+| PacketType | 형식 | 조건 |
+| --- | --- | --- |
+| 1 (FC State) | `FC,count,ts,roll,pitch,yaw,x,y,z,vx,vy,vz,lat_e7,lon_e7,alt_mm,fix_type\n` | AttitudeValid && LocalValid |
+| 2 (SH) | `SH,count,ts,health_state,fault_code\n` | SYSTEM_HEALTH 수신 시 |
+
+**LoRa HB 수신 (ServiceLoRaRead, SB 수신마다 호출):**
+- LoRa serial에서 1바이트씩 읽어 줄 단위 누적
+- `HB`, `HB,seq`, `HB,node,seq,tx_ms,sensor_ok,crc16` 형식 파싱
+- HB 수신 성공 시 `HbLastRxMs`, `HbLinkValid=1` 갱신
+
+**LoRa serial 설정:** `LORA_FC_DOWNLINK_APP_LORA_SERIAL_PATH`, baud `57600`, O_RDWR, blocking 모드.
+
+`bridge/lora_telemetry_bridge.py` Python 프로세스는 이 앱으로 대체된다.
+
 현재 코드베이스의 `lora_fc_downlink_app`은 cFS topic-id 기반 매핑(`DEFAULT_LORA_FC_DOWNLINK_APP_MISSION_CMD_TOPICID`, `...SEND_HK_TOPICID`)을 사용한다. 해당 topic-id 매핑은 본 섹션의 `0x18B0/0x18B1` baseline과 동등한 명령 ingress 의미를 가져야 하며, 플랫폼 설정 시 값 충돌이 없도록 동일 baseline으로 유지해야 한다.
 
 본 문서에서 `UPLINK_CMD_MID`라는 일반 표현은 현재 구현 기준 `UPLINK_APP_CMD_MID`와 동일한 명령 ingress MID를 의미한다. 별도 uplink command gateway MID를 두지 않는 한 두 용어를 동의어로 사용한다.
+
+#### uplink_app LoRa serial 직접 수신 동작 (구현 완료)
+
+`uplink_app`은 `ServicePrototype()` 호출마다 `ServiceLoRa()`를 통해 LoRa serial에서 UP 프레임을 직접 읽어 처리한다.
+
+**UP 프레임 형식:**
+```
+UP,<version>,<command_class>,<sequence>,<flags>,<payload_hex>,<crc16_hex>
+```
+
+**검증 단계 (ParseLoRaFrame):**
+1. CRC16-CCITT 검증 (`UP,ver,class,seq,flags,payload_hex` 부분)
+2. hex 디코딩 유효성
+3. payload 길이 ≤ 196바이트
+4. sequence 단조 증가 (`LoRaSeqInitialized` 이후)
+
+**검증 통과 시:** `UPLINK_APP_ProcessUplink()` 직접 호출 — UDP 경로와 동일한 처리 흐름.
+
+**LoRa serial 설정:** `UPLINK_APP_LORA_SERIAL_PATH`, baud `57600`, O_RDONLY, blocking 모드.
+
+`bridge/lora_uplink_bridge.py` Python 프로세스는 이 경로로 대체된다.
 
 ### 17.2 payload 정밀도 및 엔디안 정책
 

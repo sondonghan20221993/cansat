@@ -18,8 +18,8 @@
 | 앱 | 테스트 수 | assertion 수 | 마지막 확인 |
 |---|---|---|---|
 | `cfs_core_app` | 21 | 67 | 2026-05-28 |
-| `uplink_app` | 37 | 143 | 2026-05-28 |
-| `lora_fc_downlink_app` | 12 | 44 | 2026-05-28 |
+| `uplink_app` | 37 | 60 | 2026-05-29 |
+| `lora_fc_downlink_app` | 12 | 34 | 2026-05-29 |
 | `mavlink_bridge_app` | 없음 (unit-test 미구성) | — | — |
 
 ---
@@ -185,7 +185,7 @@
 | 테스트 이름 | 검증 내용 |
 |---|---|
 | `LORA_FC_DOWNLINK_APP_ReportHousekeeping` | HK payload에 downlink count, valid flag, health state 반영 |
-| `LORA_FC_DOWNLINK_APP_ProcessInputMessage` | attitude/local/gps/ekf/system health 입력별 timestamp/valid/downlink count/packet type 갱신 |
+| `LORA_FC_DOWNLINK_APP_ProcessInputMessage` | attitude(roll/pitch/yaw float 캐시), local(x/y/z/vx/vy/vz float 캐시), gps(LatE7/LonE7/AltMm/FixType), ekf, system health(HealthState/FaultCode) 입력별 캐시 갱신 확인 |
 
 ---
 
@@ -275,9 +275,22 @@ python3 tools/query_fc_mission.py [cFS_host_ip]
 | 시험 항목 | 판정 기준 |
 |---|---|
 | 30초 이상 연속 수신 | 공백 없이 프레임 도착 |
-| 자세 변화 반영 | FC 자세 변경 시 PC 수신 값 변화 |
-| FAIL-PI-IN | Pi에서 bridge 입력 없음 → FC 또는 bridge 입력 단계 문제 |
+| 자세 변화 반영 | FC 자세 변경 시 PC 수신 roll/pitch/yaw 값 변화 |
+| GPS 좌표 수신 | FC GPS 패킷 수신 시 `FC,...,lat_e7,lon_e7,alt_mm,fix_type` 포함 확인 |
+| SH 패킷 수신 | `SYSTEM_HEALTH_MID` 수신 시 `SH,count,ts,health,fault` 형식 확인 |
+| HB 링크 상태 갱신 | 지상국에서 `HB,1,1,1000,1,<crc>` 전송 시 `HbLinkValid=1` HK 확인 |
+| FAIL-PI-IN | Pi에서 bridge 입력 없음 → FC 또는 serial 입력 단계 문제 |
 | FAIL-DOWNLINK | Pi 수신 정상, PC 수신 없음 → publish~LoRa 구간 문제 |
+
+### LoRa uplink 직접 수신 시험 (uplink_app ServiceLoRa)
+
+시험 목적: LoRa serial → uplink_app → cFS SB 경로 검증 (Python bridge 없이)
+
+| 시험 항목 | 검증 내용 | 기대 결과 |
+|---|---|---|
+| 정상 UP 프레임 수신 | `lora_uplink_bridge.py --transport lora-serial` 전송 | `UPLINK_APP: routed uplink class=2 seq=N` EVS 확인 |
+| CRC 오류 프레임 | 임의 변조 후 전송 | `LoRa frame parse failed` EVS, route update 없음 |
+| sequence 역행 | 동일 seq 재전송 | `LoRa seq regression` EVS, route update 없음 |
 
 ---
 
@@ -286,7 +299,10 @@ python3 tools/query_fc_mission.py [cFS_host_ip]
 | 항목 | 비고 |
 |---|---|
 | `mavlink_bridge_app` unit test | unit-test 디렉터리 미구성 |
-| `uplink_app` CRC 검사 C 경로 | Python 테스트에서만 검증됨 |
+| `uplink_app` LoRa serial read C 경로 단위테스트 | `ServiceLoRa()`/`ParseLoRaFrame()` static — serial stub 필요 |
+| `uplink_app` CRC16 C 구현 단위테스트 | `UPLINK_APP_CRC16()` static — 현재 테스트 없음 |
 | `uplink_app` viewpoint payload 상세 검증 | 파서는 있으나 테스트 없음 |
-| `lora_fc_downlink_app` 실제 LoRa 송신 검증 | 하드웨어 필요 |
-| §21.2 Config 명령 end-to-end | 설계 미완 |
+| `lora_fc_downlink_app` LoRa 송신/수신 단위테스트 | `ServiceLoRa()`/`ServiceLoRaRead()` static, open()/write()/read() stub 필요 |
+| `lora_fc_downlink_app` HB 파싱 단위테스트 | `ParseHb()` static — 현재 테스트 없음 |
+| `lora_fc_downlink_app` 실제 LoRa 하드웨어 검증 | Pi에서 실물 연결 필요 |
+| §21.3 Config 명령 end-to-end | 설계 미완 |

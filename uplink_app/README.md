@@ -29,22 +29,45 @@
 - 마지막으로 수락된 uplink sequence 번호를 파일로 저장 (atomic tmp+rename)
 - 재시작 후 이전 sequence 기반 replay 방어 복원
 
-## 입력 프레임 (transport 계층)
+## 입력 경로
 
-`bridge/lora_uplink_bridge.py`가 LoRa serial ASCII 프레임을 CCSDS UDP 패킷으로 변환해 UDP 1234로 전달한다.
+### UDP 경로 (CI_LAB)
+`bridge/lora_uplink_bridge.py` 또는 `tools/uplink_route_update_sender.py --transport udp`가 CCSDS UDP 패킷을 UDP 1234로 전달한다.
 
+### LoRa serial 직접 경로 (ServiceLoRa)
+`ServicePrototype()` 호출마다 `ServiceLoRa()`가 LoRa serial에서 직접 UP 프레임을 읽어 `ProcessUplink()`를 내부 호출한다.
+
+- serial 경로: `UPLINK_APP_LORA_SERIAL_PATH` (config, 기본값: CP2102 USB-UART)
+- Baud: `UPLINK_APP_LORA_BAUDRATE` (기본 57600)
+- open 모드: `O_RDONLY | O_NOCTTY | O_NONBLOCK` → 열기 후 blocking 전환
+
+UP 프레임 형식:
 ```
 UP,<version>,<command_class>,<sequence>,<flags>,<payload_hex>,<crc16_hex>
 ```
 
-payload 최대 길이: **196바이트**
+검증 항목:
+- CRC16-CCITT (`UP,version,class,seq,flags,payload_hex` 부분에 대한 CRC)
+- hex 디코딩 유효성
+- payload 길이 ≤ 196바이트
+- sequence 단조 증가 (regression 거부)
+
+검증 통과 시 `UPLINK_APP_ProcessUplink()` 직접 호출 → 기존 UDP 경로와 동일한 처리 흐름.
+
+`bridge/lora_uplink_bridge.py` Python 프로세스는 이 경로가 활성화되면 불필요하다.
 
 ## 미구현
 
 - runtime configuration 명령의 대상 앱 실제 전달 (수신·검증만 됨)
 - viewpoint update downstream 처리
 
+## Python bridge 대체 현황
+
+| 구 Python 프로세스 | 현 cFS 구현 |
+| --- | --- |
+| `bridge/lora_uplink_bridge.py` | 이 앱 `ServiceLoRa()` 직접 처리 |
+
 ## 동작 명세 참조
 
 - uplink 전체 계약: `notes/mission_app_runtime_spec.md` §18
-- LoRa bridge 프로토콜: `notes/lora_uplink_bridge_design.md`
+- LoRa bridge 프로토콜(참고): `notes/lora_uplink_bridge_design.md`

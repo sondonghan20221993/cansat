@@ -23,8 +23,17 @@
 이 명세는 다음을 다루지 않는다.
 
 - MAVLink 수신 파싱 (ATTITUDE, GPS, EKF 등)
-- LoRa 텔레메트리 송신
+- LoRa 텔레메트리 송신 (→ `lora_fc_downlink_app` 담당, 아래 §2.1 참조)
 - `cfs_core_app` 경로 캐시 갱신 동작 (→ `cfs_core_app_behavior_spec.md` §7.3, §8.3, §16)
+
+### 2.1 LoRa 텔레메트리 송신 이관
+
+`mavlink_bridge_app`은 과거에 `ServiceLoRa()` 함수를 통해 LoRa serial write를 직접 수행했으나, 이 기능은 `lora_fc_downlink_app`으로 이관되었다.
+
+현재 `mavlink_bridge_app`의 LoRa 관련 책임:
+- LoRa serial 접근 없음
+- `LoRaFd`, `LoRaTxCount` 필드 없음
+- FC 상태(ATTITUDE, EKF_LOCAL 등)를 SB publish하면 `lora_fc_downlink_app`이 구독하여 LoRa로 전송
 
 ## 3. 참조
 
