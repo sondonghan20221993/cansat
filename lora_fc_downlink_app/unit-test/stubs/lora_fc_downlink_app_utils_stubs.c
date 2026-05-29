@@ -12,10 +12,3 @@ void LORA_FC_DOWNLINK_APP_ProcessInputMessage(const CFE_SB_Buffer_t *sb_buf_ptr)
     UT_GenStub_Execute(LORA_FC_DOWNLINK_APP_ProcessInputMessage, Basic, NULL);
 }
 
-bool LORA_FC_DOWNLINK_APP_ParseHb(const char *Line)
-{
-    UT_GenStub_SetupReturnBuffer(LORA_FC_DOWNLINK_APP_ParseHb, bool);
-    UT_GenStub_AddParam(LORA_FC_DOWNLINK_APP_ParseHb, const char *, Line);
-    UT_GenStub_Execute(LORA_FC_DOWNLINK_APP_ParseHb, Basic, NULL);
-    return UT_GenStub_GetReturnValue(LORA_FC_DOWNLINK_APP_ParseHb, bool);
-}

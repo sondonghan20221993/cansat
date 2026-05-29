@@ -91,7 +91,7 @@ static uint16 LORA_FC_DOWNLINK_APP_CRC16(const char *Data, size_t Len)
     return Crc;
 }
 
-bool LORA_FC_DOWNLINK_APP_ParseHb(const char *Line)
+static bool LORA_FC_DOWNLINK_APP_ParseHb(const char *Line)
 {
     /* case-insensitive prefix check for "HB" */
     if ((Line[0] != 'H' && Line[0] != 'h') || (Line[1] != 'B' && Line[1] != 'b'))
