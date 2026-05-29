@@ -59,8 +59,11 @@
 
 업로드 시작 조건:
 - FC 링크가 CONNECTED 상태 (Heartbeat 수신 완료)
+- FC가 ARMED 상태가 아님 (`IsArmed == 0`)
 
-FC 링크가 연결되지 않은 상태에서 `ROUTE_UPDATE_MID`가 수신되면 업로드를 건너뛰고 EVS 경고 이벤트를 발생시킨다.
+FC 링크가 연결되지 않은 상태에서 `ROUTE_UPDATE_MID`가 수신되면 업로드를 건너뛰고 EVS 오류 이벤트를 발생시킨다.
+
+FC가 ARMED 상태이면 업로드를 수행하지 않고 `MAVLINK_BRIDGE_APP_ARMED_WARN_EID` (EID 12) EVS 경고를 발생시킨다. ARMED 여부는 FC Heartbeat의 `base_mode` bit7 (0x80)으로 판단한다.
 
 업로드 진행 중에 새 `ROUTE_UPDATE_MID`가 수신되면 현재 진행 중인 업로드를 즉시 중단하고 새 경로로 재시작한다.
 
@@ -79,7 +82,7 @@ mavlink_bridge_app → FC : MISSION_COUNT     (count=N, ...)
 ...
 ```
 
-**이유**: ArduPilot은 `MISSION_CLEAR_ALL` 없이 `MISSION_COUNT`만 수신하면 응답하지 않음. `tools/mission_upload_diag.py` 실행으로 확인됨 (2026-05-28).
+**이유**: 현재 테스트한 ArduPilot 환경에서 `MISSION_CLEAR_ALL` 없이 `MISSION_COUNT`만 전송했을 때 FC 응답이 확인되지 않았다 (`tools/mission_upload_diag.py`, 2026-05-28). 따라서 현재 구현은 호환성 확보를 위해 `MISSION_COUNT` 전에 반드시 `MISSION_CLEAR_ALL`을 전송한다.
 
 `MISSION_CLEAR_ALL`에 대한 `MISSION_ACK` 응답은 선택적이다. ACK 없이 timeout이 발생해도 `MISSION_COUNT` 전송을 계속 진행한다.
 
@@ -111,7 +114,11 @@ FC → mavlink_bridge_app : MISSION_ACK      (result=MAV_MISSION_ACCEPTED)
 
 각 단계에서 FC 응답을 기다리며, timeout 초과 시 재시도한다.
 
-> **FC 호환성 주의**: 현재 구현은 `MAV_FRAME_LOCAL_NED` 기반으로 전송한다. 일부 FC 펌웨어/미션 스토어는 local frame을 거부할 수 있다. FC가 `MISSION_ACK result != ACCEPTED`를 반환하는 경우, 해당 result 값을 기록하고 global mission frame 변환 필요 여부를 별도 진단해야 한다. §10 참조.
+> **FC 호환성 주의**: 두 경로는 서로 다른 frame을 사용한다.
+> - **INT 경로 (msg 73)**: `MAV_FRAME_LOCAL_NED` (= 1). x/y는 int32 (×10000, 0.1mm 단위), z는 float (부호 반전).
+> - **Legacy 경로 (msg 39)**: `MAV_FRAME_GLOBAL_RELATIVE_ALT` (= 3). GPS 기준점(RefLatE7/RefLonE7)을 사용해 local x/y를 lat/lon으로 변환. §12.1 참조.
+>
+> FC가 INT 경로에서 `MISSION_ACK result = MAV_MISSION_UNSUPPORTED_FRAME`을 반환하면, INT 경로에도 global frame 변환 적용이 필요하다.
 
 ## 7. MISSION_ITEM_INT 필드 매핑
 
@@ -155,7 +162,7 @@ x/y는 `int32` (× 10000, 0.1mm 단위)이고, z는 `float` meters (부호 반�
 업로드 실패 시:
 - EVS 오류 이벤트 발생 (`MAVLINK_BRIDGE_APP_MISSION_UPLOAD_ERR_EID`)
 - HK에 실패 카운터 증가
-- 기존 FC 미션은 변경되지 않음 (FC 측 상태 유지)
+- **기존 FC 미션 보존은 보장하지 않음**: 업로드 시작 시 `MISSION_CLEAR_ALL`이 이미 FC에 전송되었을 수 있으므로, timeout 또는 NAK 발생 시 FC 미션이 지워진 상태일 수 있다. 실제 FC 저장 상태는 `MISSION_QUERY_CC` 또는 GCS mission list 조회로 확인해야 한다.
 
 ### 9.2 성공 처리
 
@@ -287,20 +294,14 @@ wp_alt = Z_m                             [m, positive-up]
 
 `MISSION_ITEM (msg 39)` 경로에만 적용. `MISSION_ITEM_INT (msg 73)` 경로는 FC가 `MISSION_REQUEST_INT (51)`를 사용할 경우 별도 처리 필요 (현재 미구현).
 
-### 12.1.1 MAV_FRAME_LOCAL_NED 호환성 (구 내용)
+### 12.1.1 경로별 frame 및 좌표 인코딩 현황
 
-현재 구현은 `MAV_FRAME_LOCAL_NED` 기반 MISSION_ITEM_INT를 전송한다.
+| 경로 | MAVLink 메시지 | frame | x/y 인코딩 | z 인코딩 |
+| --- | --- | --- | --- | --- |
+| **INT 경로** | MISSION_ITEM_INT (73) | `MAV_FRAME_LOCAL_NED` (1) | float meters → int32 (× 10000, 0.1mm) | float meters, 부호 반전 (down-positive) |
+| **Legacy 경로** | MISSION_ITEM (39) | `MAV_FRAME_GLOBAL_RELATIVE_ALT` (3) | GPS 기준점 기반 lat/lon 변환 (§12.1 공식) | float meters, altitude-positive |
 
-| 항목 | 내용 |
-| --- | --- |
-| frame 값 | `MAV_FRAME_LOCAL_NED` (= 1) |
-| x/y 인코딩 | float meters → int32 (× 10000, 0.1mm 단위) |
-| z 인코딩 | float meters, altitude-positive → LOCAL_NED down-positive로 부호 반전 |
-| FC 거부 가능성 | 일부 ArduPilot/PX4 설정에서 local frame mission 거부 |
-| 진단 방법 | `MISSION_ACK result` 값 기록, `LastUploadResult=3 (NAK)` 확인 |
-| 해결 방향 | global frame (`MAV_FRAME_GLOBAL_RELATIVE_ALT`) 변환 구현 필요 |
-
-FC가 `MISSION_ACK result = MAV_MISSION_UNSUPPORTED_FRAME`을 반환하면, global frame 변환 구현이 필요하다.
+INT 경로에서 FC가 `MISSION_ACK result = MAV_MISSION_UNSUPPORTED_FRAME`을 반환하면 INT 경로에도 global frame 변환 적용이 필요하다 (현재 미구현).
 
 ## 14. 진단 로그
 
@@ -348,5 +349,9 @@ python3 tools/mission_upload_diag.py --port /dev/serial0 --baud 57600
 - FC 현재 미션 항목 변경 (`MAV_CMD_DO_SET_MISSION_CURRENT`)
 - Landing route 업로드
 - 업로드 완료 후 자동 미션 시작
-- mid-flight 경로 변경 안전 검사
+- INT 경로 (msg 73)에서 `MAV_FRAME_GLOBAL_RELATIVE_ALT` 변환
+
+다음 항목은 구현 완료되었다:
+
+- mid-flight 경로 변경 안전 검사 → FC ARMED 상태 시 업로드 차단 구현 (`UpdateFromHeartbeat`, `IsArmed` 필드, `MAVLINK_BRIDGE_APP_ARMED_WARN_EID`)
 - Global mission frame (`MAV_FRAME_GLOBAL_RELATIVE_ALT`) 변환 및 업로드

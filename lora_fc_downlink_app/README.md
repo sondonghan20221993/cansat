@@ -41,6 +41,8 @@ write 오류:
 - `EAGAIN/EWOULDBLOCK`: packet skip, 포트 유지
 - 그 외: EVS 로그 후 포트 close + 재열기 대기
 
+> **주의 — blocking write 지연**: LoRa FD는 open 후 `fcntl(F_SETFL, Flags & ~O_NONBLOCK)`으로 blocking 모드로 전환된다. `ServiceLoRa()`는 SB 메시지 처리 경로(`ProcessInputMessage`)에서 호출되므로, LoRa write가 장시간 block되면 앱의 SB 처리 루프 전체가 지연될 수 있다. 운용상 write timeout 정책이 필요하면 별도 요구사항으로 정의해야 한다.
+
 ### 지상국 HB 수신 (ServiceLoRaRead)
 SB 메시지 수신마다 `ServiceLoRaRead()`를 호출하여 LoRa serial에서 1바이트씩 읽어 줄 단위로 누적한다.
 
@@ -59,7 +61,7 @@ FC,<count>,<ts_ms>,<roll_rad>,<pitch_rad>,<yaw_rad>,<x_m>,<y_m>,<z_m>,<vx_mps>,<
 
 | 필드 | 형식 | 출처 |
 | --- | --- | --- |
-| count | uint (LoRaTxCount++) | 내부 카운터 |
+| count | uint (`LoRaTxCount++`) | LoRa ASCII 패킷 생성 시마다 증가 (실제 write 시도 횟수) |
 | ts_ms | uint | AttitudeTlm.TimestampMs |
 | roll/pitch/yaw_rad | %.6f | AttitudeTlm |
 | x/y/z_m | %.3f | EkfLocalTlm |
@@ -75,10 +77,19 @@ SH,<count>,<ts_ms>,<health_state>,<fault_code>\n
 
 | 필드 | 형식 | 출처 |
 | --- | --- | --- |
-| count | uint (LoRaTxCount++) | 내부 카운터 |
+| count | uint (`LoRaTxCount++`) | LoRa ASCII 패킷 생성 시마다 증가 |
 | ts_ms | uint | SystemHealthMirror.TimestampMs |
 | health_state | uint (0=NOMINAL, 1=DEGRADED, 2=RECOVERY) | SystemHealthMirror |
 | fault_code | uint | SystemHealthMirror.FaultCode |
+
+## 카운터 필드 의미
+
+| 필드 | 증가 시점 | 의미 |
+| --- | --- | --- |
+| `LoRaTxCount` | `ServiceLoRa()`에서 패킷 문자열 생성 시 | LoRa ASCII 패킷 생성 횟수 (write 성공 여부 무관) |
+| `DownlinkCount` | `ProcessInputMessage()` 진입 시마다 | SB 입력 메시지 처리 횟수 (LoRa 전송 여부 무관) |
+
+`LoRaTxCount ≤ DownlinkCount`: AttitudeValid/LocalValid 조건 불충족 시 패킷이 생성되지 않아 LoRaTxCount가 더 작을 수 있다.
 
 ## Python bridge 대체 현황
 

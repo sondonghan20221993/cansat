@@ -58,7 +58,10 @@ mavlink_bridge_app/   FC MAVLink 브리지 앱
 cfs_core_app/         상태 종합·헬스 관리 앱
 uplink_app/           지상국 uplink 처리 앱
 lora_fc_downlink_app/ LoRa 텔레메트리 downlink 앱
-bridge/               Raspberry Pi host-side 브리지 (lora_uplink_bridge.py)
+bridge/               Raspberry Pi host-side 브리지
+                        lora_uplink_bridge.py     — 현행 (uplink_app이 내장할 때까지 사용)
+                        lora_telemetry_bridge.py  — [deprecated] lora_fc_downlink_app으로 대체됨
+                        mavlink_uart_bridge.py    — [deprecated] mavlink_bridge_app으로 대체됨
 tools/                개발용 CLI 스크립트
 tests/                Python 단위 테스트 + TEST_CASES.md
 notes/                설계 문서 및 명세
