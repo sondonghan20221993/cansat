@@ -1,15 +1,24 @@
 # 테스트 케이스 정리
 
-이 문서는 `cfs-telemetry-app` 저장소에 구현된 unit test와 런타임 시험 항목을 정리한다.
+이 문서는 `cfs-telemetry-app` 저장소의 테스트 계획, 구현 현황, 미구현 항목을 정리한다.
 
-목적:
-- 어떤 테스트가 이미 구현됐는지 한눈에 확인한다.
-- 각 테스트가 무엇을 검증하는지 명시한다.
-- 통합 테스트 또는 하드웨어 연동 시험 설계 시 기준 문서로 사용한다.
+## 테스트 레이어 구조
 
-주의:
-- 실제 요구사항과 시험 범위의 기준은 `notes/cfs_core_app_behavior_spec.md` 및 `notes/mission_app_runtime_spec.md`다.
-- 하드웨어 미연결 시험은 내부 계약 검증까지만 포함하며, 실제 FC mission 반영 및 LoRa 물리 송신은 포함하지 않는다.
+| 레이어 | 도구 | 목적 | 작성 시점 |
+|---|---|---|---|
+| **단위테스트** | cFS coverage test (C) | 공개 API 기준 함수 수준 검증 | 기능 구현 시 함께 |
+| **통합테스트** | Python pytest (`tests/`) | 큰 기능 완성 시 end-to-end 흐름 검증 | 기능 단위 완성 시 |
+| **런타임 시험** | 실물/도구 직접 실행 | 하드웨어 연동 최종 검증 | Pi 연결 환경에서 |
+
+**단위테스트 원칙:**
+- 기능 구현과 동시에 작성
+- 공개 API만 호출 (static 함수 노출 금지)
+- 하드웨어 의존 없음
+
+**통합테스트 원칙:**
+- 큰 기능(LoRa 포팅, bridge 경로 등) 완성 시 작성
+- Python pytest + UDP mock 기반
+- 실제 serial 없이 검증 가능한 범위까지
 
 ---
 
@@ -18,8 +27,8 @@
 | 앱 | 테스트 수 | assertion 수 | 마지막 확인 |
 |---|---|---|---|
 | `cfs_core_app` | 21 | 67 | 2026-05-28 |
-| `uplink_app` | 46 | 93 | 2026-05-29 |
-| `lora_fc_downlink_app` | 13 | 45 | 2026-05-29 |
+| `uplink_app` | 37 | 60 | 2026-05-29 |
+| `lora_fc_downlink_app` | 12 | 34 | 2026-05-29 |
 | `mavlink_bridge_app` | 없음 (unit-test 미구성) | — | — |
 
 ---
@@ -294,15 +303,51 @@ python3 tools/query_fc_mission.py [cFS_host_ip]
 
 ---
 
+---
+
+## 통합테스트 계획 (pytest, `tests/`)
+
+큰 기능 완성 시 추가한다. 하드웨어 없이 UDP mock으로 검증 가능한 범위까지 커버한다.
+
+### 구현 완료 — 기존
+
+| 파일 | 검증 범위 | 상태 |
+|---|---|---|
+| `test_lora_uplink_bridge.py` | Python lora_uplink_bridge.py 프레임 파싱/CRC/seq/UDP 전송 | ✓ 구현 |
+| `test_uplink_route_update_sender.py` | route update sender serial/LoRa 전송 경로 | ✓ 구현 |
+
+### 계획 — 신규 (미구현)
+
+| 파일 | 검증 범위 | 트리거 조건 |
+|---|---|---|
+| `test_uplink_lora_frame.py` | UP 프레임 CRC16 계산, 정상/오류/seq regression, payload 길이 | uplink_app LoRa serial read 완성 |
+| `test_lora_fc_downlink_packet.py` | FC/SH 패킷 포맷 (`FC,count,ts,...` / `SH,count,ts,...`), GPS 좌표 포함 여부 | lora_fc_downlink_app LoRa write 완성 |
+| `test_hb_parse.py` | HB 프레임 파싱 정상/CRC 오류/sensor_ok=0/빈 줄/잘못된 prefix | lora_fc_downlink_app HB read 완성 |
+
+### 통합테스트 흐름 예시
+
+```
+test_uplink_lora_frame.py:
+  UP 프레임 생성(CRC 포함) → lora_uplink_bridge.py parse_frame_line() → 검증
+
+test_lora_fc_downlink_packet.py:
+  mock SB 메시지 → PacketType 선택 로직 → FC/SH 패킷 문자열 형식 검증
+
+test_hb_parse.py:
+  HB 문자열 입력 → lora_telemetry_bridge.py parse_heartbeat_line() → 결과 검증
+```
+
+---
+
 ## 미구현/미검증 항목
 
 | 항목 | 비고 |
 |---|---|
 | `mavlink_bridge_app` unit test | unit-test 디렉터리 미구성 |
-| `uplink_app` LoRa serial read C 경로 단위테스트 | `ServiceLoRa()`/`ParseLoRaFrame()` static — serial stub 필요 |
-| `uplink_app` CRC16 C 구현 단위테스트 | `UPLINK_APP_CRC16()` static — 현재 테스트 없음 |
+| `uplink_app` LoRa serial read C 경로 단위테스트 | `ServiceLoRa()`/`ParseLoRaFrame()` static — 통합테스트로 대체 |
+| `uplink_app` CRC16 C 구현 | `UPLINK_APP_CRC16()` static — `test_uplink_lora_frame.py`로 검증 예정 |
 | `uplink_app` viewpoint payload 상세 검증 | 파서는 있으나 테스트 없음 |
-| `lora_fc_downlink_app` LoRa 송신/수신 단위테스트 | `ServiceLoRa()`/`ServiceLoRaRead()` static, open()/write()/read() stub 필요 |
-| `lora_fc_downlink_app` HB 파싱 단위테스트 | `ParseHb()` static — 현재 테스트 없음 |
+| `lora_fc_downlink_app` LoRa 송신/수신 단위테스트 | static 함수 — `test_lora_fc_downlink_packet.py`로 검증 예정 |
+| `lora_fc_downlink_app` HB 파싱 단위테스트 | static 함수 — `test_hb_parse.py`로 검증 예정 |
 | `lora_fc_downlink_app` 실제 LoRa 하드웨어 검증 | Pi에서 실물 연결 필요 |
 | §21.3 Config 명령 end-to-end | 설계 미완 |
