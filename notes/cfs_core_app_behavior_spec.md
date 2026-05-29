@@ -549,18 +549,19 @@ mission route와 landing route는 독립적으로 캐시된다.
 
 ### 19.2 런타임 검증 매트릭스
 
-| ID | 시나리오 | 자극 | 기대 출력 |
-| --- | --- | --- | --- |
-| CORE-RUN-001 | 정상 | bridge HK와 모든 FC 상태가 `Valid=1`, `Stale=0`으로 신선하게 도착 | `SYSTEM_HEALTH_MID`가 `NOMINAL`, `FAULT_NONE`, `RecoveryRequested=0` 보고 |
-| CORE-RUN-002 | Bridge 타임아웃 | bridge HK 갱신을 `3000 ms` 이상 중단 | `SYSTEM_HEALTH_MID`가 `RECOVERY`, `FAULT_BRIDGE_TIMEOUT`, `RecoveryRequested=1` 보고 |
-| CORE-RUN-003 | GPS stale 플래그 | 신선한 bridge, attitude, local, EKF 전달; GPS `Stale=1` 설정 | `SYSTEM_HEALTH_MID`가 `DEGRADED`, `FAULT_GPS_STALE`, `RecoveryRequested=0` 보고 |
-| CORE-RUN-004 | GPS 타임아웃 | bridge와 EKF 관련 입력은 신선하게 유지하면서 GPS 갱신을 `3000 ms` 이상 중단 | `SYSTEM_HEALTH_MID`가 `DEGRADED`, `FAULT_GPS_STALE` 보고 |
-| CORE-RUN-005 | EKF invalid 플래그 | 다른 입력은 신선하게 유지하면서 EKF `Valid=0` 설정 | `SYSTEM_HEALTH_MID`가 `DEGRADED`, `FAULT_EKF_INVALID` 보고 |
-| CORE-RUN-006 | Local 타임아웃 | bridge, attitude, GPS, EKF는 신선하게 유지하면서 local-state 갱신을 `2000 ms` 이상 중단 | `SYSTEM_HEALTH_MID`가 `DEGRADED`, `FAULT_LOCAL_TIMEOUT` 보고 |
-| CORE-RUN-007 | Attitude 타임아웃 | bridge, local, GPS, EKF는 신선하게 유지하면서 attitude-state 갱신을 `2000 ms` 이상 중단 | `SYSTEM_HEALTH_MID`가 `DEGRADED`, `FAULT_ATTITUDE_TIMEOUT` 보고 |
-| CORE-RUN-008 | 우선순위 확인 | bridge 타임아웃과 GPS stale를 동시에 강제 | `SYSTEM_HEALTH_MID`가 `RECOVERY`, `FAULT_BRIDGE_TIMEOUT` 보고 |
-| CORE-RUN-009 | 복구 후 정상 | CORE-RUN-002 또는 CORE-RUN-003 이후 신선한 유효 입력 재개 | 다음 헬스 평가 시 `NOMINAL` 복귀 |
-| CORE-RUN-010 | 시작 워밍업 | 첫 번째 bridge HK 이전에 앱 시작 | bridge HK 도착 전까지 첫 헬스 출력에서 `RECOVERY` 보고 가능 |
+| ID | 시나리오 | 자극 | 기대 출력 | 검증 도구 |
+| --- | --- | --- | --- | --- |
+| CORE-RUN-001 | 정상 | bridge HK와 모든 FC 상태가 `Valid=1`, `Stale=0`으로 신선하게 도착 | `SYSTEM_HEALTH_MID`가 `NOMINAL`, `FAULT_NONE`, `RecoveryRequested=0` 보고 | §21.2 route-mp-verify-a 또는 CI_LAB + uplink_app |
+| CORE-RUN-002 | Bridge 타임아웃 | bridge HK 갱신을 `3000 ms` 이상 중단 | `SYSTEM_HEALTH_MID`가 `RECOVERY`, `FAULT_BRIDGE_TIMEOUT`, `RecoveryRequested=1` 보고 | 직접 시뮬레이션 또는 CI_LAB 정지 |
+| CORE-RUN-003 | GPS stale 플래그 | 신선한 bridge, attitude, local, EKF 전달; GPS `Stale=1` 설정 | `SYSTEM_HEALTH_MID`가 `DEGRADED`, `FAULT_GPS_STALE`, `RecoveryRequested=0` 보고 | 직접 시뮬레이션 |
+| CORE-RUN-004 | GPS 타임아웃 | bridge와 EKF 관련 입력은 신선하게 유지하면서 GPS 갱신을 `3000 ms` 이상 중단 | `SYSTEM_HEALTH_MID`가 `DEGRADED`, `FAULT_GPS_STALE` 보고 | 직접 시뮬레이션 |
+| CORE-RUN-005 | EKF invalid 플래그 | 다른 입력은 신선하게 유지하면서 EKF `Valid=0` 설정 | `SYSTEM_HEALTH_MID`가 `DEGRADED`, `FAULT_EKF_INVALID` 보고 | 직접 시뮬레이션 |
+| CORE-RUN-006 | Local 타임아웃 | bridge, attitude, GPS, EKF는 신선하게 유지하면서 local-state 갱신을 `2000 ms` 이상 중단 | `SYSTEM_HEALTH_MID`가 `DEGRADED`, `FAULT_LOCAL_TIMEOUT` 보고 | 직접 시뮬레이션 |
+| CORE-RUN-007 | Attitude 타임아웃 | bridge, local, GPS, EKF는 신선하게 유지하면서 attitude-state 갱신을 `2000 ms` 이상 중단 | `SYSTEM_HEALTH_MID`가 `DEGRADED`, `FAULT_ATTITUDE_TIMEOUT` 보고 | 직접 시뮬레이션 |
+| CORE-RUN-008 | 우선순위 확인 | bridge 타임아웃과 GPS stale를 동시에 강제 | `SYSTEM_HEALTH_MID`가 `RECOVERY`, `FAULT_BRIDGE_TIMEOUT` 보고 | 직접 시뮬레이션 |
+| CORE-RUN-009 | 복구 후 정상 | CORE-RUN-002 또는 CORE-RUN-003 이후 신선한 유효 입력 재개 | 다음 헬스 평가 시 `NOMINAL` 복귀 | 직접 시뮬레이션 |
+| CORE-RUN-010 | 시작 워밍업 | 첫 번째 bridge HK 이전에 앱 시작 | bridge HK 도착 전까지 첫 헬스 출력에서 `RECOVERY` 보고 가능 | 직접 시뮬레이션 |
+| CORE-RUN-011 | 경로 업로드 검증 | `tools/uplink_route_update_sender.py` UDP 전송 (§21.2 route-mp-verify-a~e 예제) | Mission Planner에서 FC 웨이포인트 로드 확인 | `uplink_route_update_sender.py route-mp-verify-a --host <ip> --port 1234` |
 
 ### 19.3 로그 및 텔레메트리 관찰 지점
 
@@ -638,17 +639,23 @@ Mission Planner에서 경로 업로드 결과 검증용 사전정의 경로 예�
 
 ### 21.3 런타임 구성 적용 경로
 
-`UPLINK_APP_CLASS_CONFIG`는 인식된 명령 클래스이나, 게시 주기, 타임아웃 값 등 mission-app 런타임 파라미터에 구성 페이로드를 실제로 적용하는 구현은 확인되지 않았다.
+`UPLINK_APP_CLASS_CONFIG`는 인식되는 명령 클래스이며, uplink_app 측에서는 검증, 라우팅, 포워드까지 완전 구현되어 있다. 그러나 수신 측 앱(`cfs_core_app`, `telemetry_app` 등)에서 페이로드를 디코딩하여 활성 설정을 실제로 갱신하는 구현은 확인되지 않았다.
 
-현재 상태:
+구현 상태:
 
-- config 클래스 수락은 명령 검증 수준에서 존재한다
-- config 페이로드를 디코딩하여 `cfs_core_app`, `telemetry_app` 또는 다른 mission 앱의 활성 설정을 갱신하는 end-to-end 구현은 확인되지 않았다
+**uplink_app 측 (완료):**
+- `UPLINK_APP_ValidateProxyCommand()`: CLASS_CONFIG 검증
+- `UPLINK_APP_ResolveRouteTarget()`: CLASS_CONFIG → UPLINK_APP_ROUTE_CORE 라우팅
+- `UPLINK_APP_ForwardConfigCommand()`: CONFIG_CMD_MID로 SB publish (uplink_app_utils.c:290)
+- `uplink_app_cmds.c:189`: dispatch 로직 구현
+
+**수신 측 앱 (미구현):**
+- config 페이로드를 디코딩하여 `cfs_core_app`, `telemetry_app` 또는 다른 mission 앱의 활성 설정(게시 주기, 타임아웃 값 등)을 갱신하는 구현 없음
 
 의미:
 
 - route-update 테스트는 현재 지원된다
-- 출력 주기 또는 타임아웃 변경 테스트는 현재 구현된 운용 기능으로 지원되지 않는다
+- 출력 주기 또는 타임아웃 변경 테스트는 현재 구현된 운용 기능으로 지원되지 않는다 (uplink_app까지 전달되지만 수신 측 처리 없음)
 
 ### 21.4 LoRa downlink 안정성 — C1에서 수정
 
@@ -675,7 +682,7 @@ Mission Planner에서 경로 업로드 결과 검증용 사전정의 경로 예�
 - 지속적 링크 오류 → 포트 재열기 트리거
 - 두 경우가 명확히 구별된다
 
-### 21.4 헬스 상태 가시성 — 구현 완료
+### 21.5 헬스 상태 가시성 — 구현 완료
 
 **[구현 완료 — A5에서 구현]**
 
@@ -689,7 +696,7 @@ Mission Planner에서 경로 업로드 결과 검증용 사전정의 경로 예�
 
 Pi 런타임 로그 노출 여부는 EVS 필터 설정에 따라 달라질 수 있다.
 
-### 21.5 오류 세부 정보 세밀도 — 구현 완료
+### 21.6 오류 세부 정보 세밀도 — 구현 완료
 
 **[구현 완료 — A2에서 구현]**
 
