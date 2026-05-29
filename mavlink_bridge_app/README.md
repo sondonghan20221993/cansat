@@ -27,8 +27,9 @@ ArduPilot 호환 비행제어기(FC)와의 MAVLink 통신을 담당하는 cFS �
 ### FC MISSION 업로드 (§22, ROUTE_UPDATE_MID → FC)
 - `ROUTE_UPDATE_MID` 수신 시 MAVLink MISSION upload 프로토콜 시작
 - 프로토콜: `MISSION_COUNT` → FC의 `MISSION_REQUEST_INT` 대기 → `MISSION_ITEM_INT` 전송 × N → `MISSION_ACK` 수신
-- 좌표 인코딩: x/y = `int32(meters × 10000)`, z = `float` meters (LOCAL_NED 변환 포함)
-- 프레임: `MAV_FRAME_LOCAL_NED`, 명령: `MAV_CMD_NAV_WAYPOINT`
+- 좌표 인코딩 (INT 경로): x/y = `int32(meters × 10000)`, z = `float` meters (부호 반전), 프레임 `MAV_FRAME_LOCAL_NED`
+- 좌표 인코딩 (Legacy 경로): GPS 기준점 기반 lat/lon 변환, 프레임 `MAV_FRAME_GLOBAL_RELATIVE_ALT`
+- 명령: `MAV_CMD_NAV_WAYPOINT`
 - timeout 2000ms, retry 최대 3회
 - `MISSION_ACK accepted` 수신 시 success 카운터 및 HK 반영
 
@@ -38,10 +39,12 @@ ArduPilot 호환 비행제어기(FC)와의 MAVLink 통신을 담당하는 cFS �
 - 수신된 waypoint를 EVS 이벤트로 출력: `[wp N] x=... y=... z=... cmd=...`
 - timeout 3000ms
 
-### LoRa 텔레메트리 송신
-- ATTITUDE + LOCAL_POSITION_NED 수신 시 LoRa 시리얼 포트로 ASCII 텔레메트리 전송
-- 형식: `FC,<seq>,<timestamp_ms>,<roll>,<pitch>,<yaw>,<x>,<y>,<z>,<vx>,<vy>,<vz>`
-- EAGAIN 시 skip (재연결 없음), 일반 write 오류 시 포트 재열기
+### FC ARMED 상태 감지
+- FC `HEARTBEAT` 수신 시 `base_mode` bit7 (0x80)으로 ARMED 여부 판단
+- `IsArmed`, `FcBaseMode`, `FcSystemStatus` 필드에 갱신
+- FC가 ARMED 상태이면 mission upload를 차단하고 `MAVLINK_BRIDGE_APP_ARMED_WARN_EID (12)` EVS 경고 발생
+
+> **LoRa 텔레메트리 송신은 이 앱에서 담당하지 않는다.** FC 상태를 SB에 게시하면 `lora_fc_downlink_app`이 구독하여 LoRa로 전송한다. (`notes/mavlink_bridge_app_behavior_spec.md` §2.1 참조)
 
 ## 설정 파일
 
@@ -50,7 +53,7 @@ ArduPilot 호환 비행제어기(FC)와의 MAVLink 통신을 담당하는 cFS �
 | `config/default_mavlink_bridge_app_interface_cfg_values.h` | CMD MID, HK MID, FC state MID 값 |
 | `config/default_mavlink_bridge_app_msgid_values.h` | HK TLM MID, ROUTE_UPDATE_MID |
 | `config/default_mavlink_bridge_app_fcncode_values.h` | NOOP=0, RESET_COUNTERS=1, MISSION_QUERY_CC=2 |
-| `config/default_mavlink_bridge_app_internal_cfg_values.h` | SERIAL_PATH, BAUDRATE, LORA_PATH, timeout 값 |
+| `config/default_mavlink_bridge_app_internal_cfg_values.h` | SERIAL_PATH, BAUDRATE, timeout 값 |
 
 ## 동작 명세 참조
 
