@@ -226,7 +226,35 @@ mavlink_bridge_app → FC : MISSION_ACK         (MAV_MISSION_ACCEPTED)
 python3 tools/query_fc_mission.py <Pi_IP> 1234
 ```
 
-## 11. HK 추가 필드
+## 11. FC HEARTBEAT 파싱
+
+`HEARTBEAT (msg 0)` 수신 시 다음을 처리한다.
+
+1. `TargetSystemId`, `TargetComponentId` 획득 (이후 모든 MAVLink 메시지에 사용)
+2. `LastRxTimestampMs` 갱신
+3. `LinkState` → CONNECTED 전환
+4. `UpdateFromHeartbeat(Payload[6], Payload[7])` 호출
+
+### 11.1 UpdateFromHeartbeat
+
+`HEARTBEAT` payload 필드:
+
+| Byte | 필드 | 값 |
+| --- | --- | --- |
+| `[6]` | `base_mode` | MAV_MODE_FLAG bitmask |
+| `[7]` | `system_status` | MAV_STATE enum |
+
+`UpdateFromHeartbeat(BaseMode, SystemStatus)` 동작:
+
+| 필드 | 갱신 값 |
+| --- | --- |
+| `FcBaseMode` | `BaseMode` 그대로 저장 |
+| `FcSystemStatus` | `SystemStatus` 그대로 저장 |
+| `IsArmed` | `(BaseMode & 0x80) ? 1 : 0` — bit7 = `MAV_MODE_FLAG_SAFETY_ARMED` |
+
+`IsArmed == 1`이면 `StartMissionUpload()`가 업로드를 차단하고 `MAVLINK_BRIDGE_APP_ARMED_WARN_EID (12)` EVS 경고를 발생시킨다.
+
+## 12. HK 추가 필드 (미션 업로드 + FC 상태)
 
 | 필드 | 형식 | 의미 |
 | --- | --- | --- |
@@ -235,10 +263,13 @@ python3 tools/query_fc_mission.py <Pi_IP> 1234
 | `LastUploadTimestampMs` | `uint32` | 마지막 성공 업로드 시각 |
 | `LastUploadWaypointCount` | `uint8` | 마지막 업로드한 웨이포인트 수 |
 | `LastUploadResult` | `uint8` | 0=없음, 1=성공, 2=timeout, 3=NAK |
+| `FcBaseMode` | `uint8` | 마지막 수신 HEARTBEAT base_mode |
+| `FcSystemStatus` | `uint8` | 마지막 수신 HEARTBEAT system_status |
+| `IsArmed` | `uint8` | 0=DISARMED, 1=ARMED (base_mode bit7 기준) |
 
-## 12. 알려진 FC 호환성 제약
+## 13. 알려진 FC 호환성 제약
 
-### 12.0 MAVLink System ID
+### 13.0 MAVLink System ID
 
 브리지의 MAVLink system ID는 `255`(표준 GCS ID)를 사용해야 한다.
 
@@ -249,7 +280,7 @@ python3 tools/query_fc_mission.py <Pi_IP> 1234
 
 **이유**: ArduPilot은 미션 업로드 등 명령을 `SYSID_MYGCS`(기본값 255)로 등록된 시스템에서만 수락한다. sysid=200 등 비표준 ID를 사용하면 FC가 MISSION_COUNT를 무시하고 응답하지 않는다. MAVProxy 기본값(`source_system=255`)이 정상 동작하고 우리 브리지(sysid=200)가 무응답이었던 사례로 확인됨.
 
-### 12.1 MAV_FRAME_LOCAL_NED → GLOBAL_RELATIVE_ALT 변환
+### 13.1 MAV_FRAME_LOCAL_NED → GLOBAL_RELATIVE_ALT 변환
 
 ArduPilot은 미션 아이템에서 `MAV_FRAME_LOCAL_NED` (= 1)을 거부한다 (`MISSION_ACK result=2 = MAV_MISSION_UNSUPPORTED_FRAME`). `MAV_FRAME_GLOBAL_RELATIVE_ALT` (= 3)를 사용해야 한다.
 
@@ -300,7 +331,7 @@ wp_alt = Z_m                             [m, positive-up]
 
 `MISSION_ITEM (msg 39)` 경로에만 적용. `MISSION_ITEM_INT (msg 73)` 경로는 FC가 `MISSION_REQUEST_INT (51)`를 사용할 경우 별도 처리 필요 (현재 미구현).
 
-### 12.1.1 경로별 frame 및 좌표 인코딩 현황
+### 13.1.1 경로별 frame 및 좌표 인코딩 현황
 
 | 경로 | MAVLink 메시지 | frame | x/y 인코딩 | z 인코딩 |
 | --- | --- | --- | --- | --- |
@@ -350,7 +381,7 @@ python3 tools/mission_upload_diag.py --port /dev/serial0 --baud 57600
 
 ---
 
-## 13. 미구현 사항
+## 15. 미구현 사항
 
 - FC 현재 미션 항목 변경 (`MAV_CMD_DO_SET_MISSION_CURRENT`)
 - Landing route 업로드
