@@ -20,3 +20,7 @@ add_cfe_app(mav_bridge_app ${APP_SRC_FILES})
 
 target_include_directories(mav_bridge_app PUBLIC fsw/inc)
 target_link_libraries(mav_bridge_app m)
+
+if(ENABLE_UNIT_TESTS)
+    add_subdirectory(unit-test)
+endif()

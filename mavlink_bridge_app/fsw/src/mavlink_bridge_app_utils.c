@@ -420,6 +420,14 @@ void MAVLINK_BRIDGE_APP_StartMissionUpload(const MAVLINK_BRIDGE_APP_RouteUpdateM
         return;
     }
 
+    if (MAVLINK_BRIDGE_APP_Data.IsArmed)
+    {
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_ARMED_WARN_EID, CFE_EVS_EventType_ERROR,
+                          "MAVLINK_BRIDGE_APP: mission upload while FC ARMED - base_mode=0x%02X",
+                          (unsigned int)MAVLINK_BRIDGE_APP_Data.FcBaseMode);
+        return;
+    }
+
     if (MAVLINK_BRIDGE_APP_RefLatE7 == 0 && MAVLINK_BRIDGE_APP_RefLonE7 == 0)
     {
         CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_MISSION_UPLOAD_ERR_EID, CFE_EVS_EventType_ERROR,
@@ -1055,6 +1063,12 @@ static void MAVLINK_BRIDGE_APP_HandleFrameComplete(uint32 RxTimestampMs, uint8 C
         MAVLINK_BRIDGE_APP_Data.TargetComponentId = MAVLINK_BRIDGE_APP_Parser.CompId;
         MAVLINK_BRIDGE_APP_Data.LastRxTimestampMs = RxTimestampMs;
         MAVLINK_BRIDGE_APP_SetLinkState(MAVLINK_BRIDGE_LINK_CONNECTED);
+        if (MAVLINK_BRIDGE_APP_Parser.PayloadLen >= MAVLINK_MSG_ID_HEARTBEAT_LEN)
+        {
+            MAVLINK_BRIDGE_APP_UpdateFromHeartbeat(
+                MAVLINK_BRIDGE_APP_Parser.Payload[6],
+                MAVLINK_BRIDGE_APP_Parser.Payload[7]);
+        }
     }
     else if (MAVLINK_BRIDGE_APP_Parser.MsgId == MAVLINK_MSG_ID_COMMAND_ACK)
     {
@@ -1603,4 +1617,11 @@ void MAVLINK_BRIDGE_APP_ServiceSerial(void)
     CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_LINK_EID, CFE_EVS_EventType_INFORMATION,
                       "MAVLINK_BRIDGE_APP: serial read failed errno=%d, forcing reconnect", errno);
     MAVLINK_BRIDGE_APP_CloseSerial();
+}
+
+void MAVLINK_BRIDGE_APP_UpdateFromHeartbeat(uint8 BaseMode, uint8 SystemStatus)
+{
+    MAVLINK_BRIDGE_APP_Data.FcBaseMode     = BaseMode;
+    MAVLINK_BRIDGE_APP_Data.FcSystemStatus = SystemStatus;
+    MAVLINK_BRIDGE_APP_Data.IsArmed        = (BaseMode & 0x80U) ? 1U : 0U;
 }

@@ -59,6 +59,10 @@ typedef struct
     uint8     MissionDownloadExpectedCount;
     uint8     MissionDownloadSpare;
     uint32    MissionDownloadTimeoutMs;
+    uint8     FcBaseMode;
+    uint8     FcSystemStatus;
+    uint8     IsArmed;
+    uint8     FcStatePad;
     CFE_SB_PipeId_t CommandPipe;
     MAVLINK_BRIDGE_APP_HkTlm_t        HkTlm;
     MAVLINK_BRIDGE_APP_EkfLocalTlm_t  EkfLocalTlm;
@@ -74,5 +78,6 @@ CFE_Status_t MAVLINK_BRIDGE_APP_Init(void);
 void         MAVLINK_BRIDGE_APP_ReportHousekeeping(void);
 bool         MAVLINK_BRIDGE_APP_VerifyCmdLength(const CFE_MSG_Message_t *MsgPtr, size_t ExpectedLength);
 void         MAVLINK_BRIDGE_APP_ServiceSerial(void);
+void         MAVLINK_BRIDGE_APP_UpdateFromHeartbeat(uint8 BaseMode, uint8 SystemStatus);
 
 #endif
