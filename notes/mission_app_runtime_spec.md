@@ -811,6 +811,28 @@ FC, 모터 또는 액추에이터 명령 및 비행 제어 매개변수
 | 통신 장애 후 복구 | FC-UART 링크 또는 LoRa 송신을 일시적으로 차단한 뒤 복구한다. | 시스템 상태가 성능 저하 또는 복구 필요 상태로 전이되었다가, 링크 복구 후 정상 상태로 돌아온다. |
 | 앱 재시작 후 지속 상태 복원 | 앱을 재시작하거나 소프트 재부팅을 수행한다. | 필요한 persistent state와 active 설정이 정책에 맞게 복원된다. |
 
+### 16.3 자동화 pytest 통합테스트 계획
+
+`tests/TEST_CASES.md`에 상세 TC가 정의되어 있다. 레이어 구분:
+
+**그룹 A — Python 동등 구현 (cFS 불필요, 구현 완료):**
+
+| 파일 | 검증 범위 |
+| --- | --- |
+| `tests/test_hb_parse.py` | LORA-HB-001~010, REC-005 — HB 프레임 파싱/CRC/seq/prefix |
+| `tests/test_uplink_lora_frame.py` | LORA-UP-003~011, CFS-CMD-001~008, REC-006~008 — UP 프레임 파싱, cFS 패킷 필드 |
+| `tests/test_lora_fc_downlink_packet.py` | LORA-FRAME-001~008 — FC/SH 패킷 포맷, GPS 포함, seq 단조 |
+
+**그룹 B — cFS 실행 + mock (cFS 빌드 필요, 미구현):**
+
+| 파일 | 검증 범위 | 방법 |
+| --- | --- | --- |
+| `tests/test_uplink_e2e.py` | uplink_app C 경로 seq regression, ProcessUplink 실제 흐름 | cFS 실행 후 UDP 전송 → EVS 로그 확인 |
+| `tests/test_lora_fc_downlink_e2e.py` | ServiceLoRa() 실제 LoRa 출력, LORA-FC-006~007 | SB mock → cFS 실행 → PTY serial 캡처 |
+| `tests/test_rec_serial.py` | REC-001~004 serial 장애/재연결 | PTY close/reopen 시뮬레이션 |
+
+그룹 B 실행: `pytest -m cfs_required` (cFS 빌드 및 native 실행 환경 필요)
+
 ## 17. 기준 결정 사항
 
 이 섹션은 본 문서의 현재 기준값과 정책을 고정한다. 이후 구현은 아래 결정을 기본 계약으로 사용해야 하며, 변경이 필요할 경우 해당 섹션을 직접 수정해야 한다.

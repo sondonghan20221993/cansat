@@ -436,20 +436,31 @@ python3 tools/query_fc_mission.py [cFS_host_ip]
 
 큰 기능 완성 시 추가한다. 하드웨어 없이 Python bridge 동등 로직으로 검증한다.
 
-### 구현 완료
+### 그룹 A — Python 동등 구현 (cFS 불필요)
 
 | 파일 | 검증 TC | 상태 |
 |---|---|---|
-| `test_lora_uplink_bridge.py` | LORA-UP-014, UDP-001~005 일부 | ✓ |
-| `test_uplink_route_update_sender.py` | route update sender 전송 경로 | ✓ |
+| `test_lora_uplink_bridge.py` | LORA-UP-014, UDP 일부 | ✓ 구현 |
+| `test_uplink_route_update_sender.py` | route update sender 전송 경로 | ✓ 구현 |
+| `test_uplink_lora_frame.py` | LORA-UP-003~011, CFS-CMD-001~008, REC-006~008 | ✓ 구현 |
+| `test_lora_fc_downlink_packet.py` | LORA-FRAME-001~008 | ✓ 구현 |
+| `test_hb_parse.py` | LORA-HB-001~010, REC-005 | ✓ 구현 |
 
-### 계획 (미구현)
+### 그룹 B — cFS 실행 + mock (cFS 필요, PTY/UDP)
 
-| 파일 | 검증 TC | 트리거 |
-|---|---|---|
-| `test_uplink_lora_frame.py` | LORA-UP-001~013, CFS-CMD-001~008, REC-006~008 | uplink_app LoRa serial read 완성 ✓ |
-| `test_lora_fc_downlink_packet.py` | LORA-FRAME-001~008 | lora_fc_downlink_app LoRa write 완성 ✓ |
-| `test_hb_parse.py` | LORA-HB-001~010, REC-005 | lora_fc_downlink_app HB read 완성 ✓ |
+cFS 프로세스가 실행 중인 상태에서 UDP 또는 PTY mock serial로 입력을 넣고
+EVS 로그/HK/serial 출력으로 결과를 검증한다.
+
+| 파일 | 검증 TC | 방법 | 상태 |
+|---|---|---|---|
+| `test_uplink_e2e.py` | LORA-UP seq regression C 경로, REC-008 C 검증 | UDP → cFS → EVS 로그 확인 | 미구현 |
+| `test_lora_fc_downlink_e2e.py` | LORA-FRAME C 실제 출력, LORA-FC-006~007 | SB mock → cFS → PTY serial 캡처 | 미구현 |
+| `test_rec_serial.py` | REC-001~004 장애/복구 | PTY close/reopen 시뮬레이션 | 미구현 |
+
+**B 그룹 실행 조건:**
+- cFS 빌드 완료 (`build/` 또는 `cFS_clean/build/`)
+- `pytest --cfs` 또는 별도 마커로 A와 분리 실행
+- Pi 환경 또는 Linux native 실행 환경 필요
 
 ---
 
