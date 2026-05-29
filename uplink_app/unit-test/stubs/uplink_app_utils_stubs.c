@@ -66,6 +66,11 @@ void UPLINK_APP_UpdateStatusTelemetry(uint32 NowMs)
     UT_GenStub_Execute(UPLINK_APP_UpdateStatusTelemetry, Basic, NULL);
 }
 
+void UPLINK_APP_ServiceLoRa(void)
+{
+    UT_GenStub_Execute(UPLINK_APP_ServiceLoRa, Basic, NULL);
+}
+
 bool UPLINK_APP_ForwardRecoveryCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
 {
     UT_GenStub_SetupReturnBuffer(UPLINK_APP_ForwardRecoveryCommand, bool);

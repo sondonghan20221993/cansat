@@ -1,10 +1,12 @@
 #include "uplink_app_utils.h"
 #include "uplink_app_eventids.h"
 
+#include <errno.h>
 #include <fcntl.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include <termios.h>
 #include <unistd.h>
 
 #define UPLINK_APP_STATE_MAGIC 0x55504C4BU  /* "UPLK" */
@@ -455,9 +457,215 @@ UPLINK_APP_RouteTarget_t UPLINK_APP_ResolveRouteTarget(uint8 CommandClass)
     }
 }
 
+static uint16 UPLINK_APP_CRC16(const uint8 *Data, uint16 Len)
+{
+    uint16 Crc = 0xFFFF;
+    uint16 i;
+    uint8  j;
+
+    for (i = 0; i < Len; i++)
+    {
+        Crc ^= (uint16)Data[i] << 8;
+        for (j = 0; j < 8; j++)
+        {
+            if (Crc & 0x8000)
+                Crc = (Crc << 1) ^ 0x1021;
+            else
+                Crc <<= 1;
+        }
+    }
+    return Crc;
+}
+
+static int UPLINK_APP_HexNibble(char C)
+{
+    if (C >= '0' && C <= '9') return C - '0';
+    if (C >= 'a' && C <= 'f') return C - 'a' + 10;
+    if (C >= 'A' && C <= 'F') return C - 'A' + 10;
+    return -1;
+}
+
+static bool UPLINK_APP_ParseLoRaFrame(const char *Line, UPLINK_APP_ProcessUplinkCmd_t *Out)
+{
+    char   VersionStr[8], ClassStr[8], SeqStr[8], FlagsStr[8];
+    char   PayloadHex[UPLINK_APP_MAX_PAYLOAD_LENGTH * 2 + 2];
+    char   CrcStr[8];
+    char   Canonical[640];
+    int    CanonLen;
+    uint16 ExpectedCrc;
+    uint16 ActualCrc;
+    uint16 Seq;
+    uint8  Version, CommandClass, Flags;
+    uint8  Payload[UPLINK_APP_MAX_PAYLOAD_LENGTH];
+    uint16 PayloadLen;
+    uint16 HexLen;
+    uint16 i;
+
+    if (Line[0] != 'U' || Line[1] != 'P' || Line[2] != ',')
+    {
+        return false;
+    }
+
+    if (sscanf(Line + 3, "%7[^,],%7[^,],%7[^,],%7[^,],%[^,],%7s",
+               VersionStr, ClassStr, SeqStr, FlagsStr, PayloadHex, CrcStr) != 6)
+    {
+        return false;
+    }
+
+    Version      = (uint8)strtoul(VersionStr, NULL, 0);
+    CommandClass = (uint8)strtoul(ClassStr, NULL, 0);
+    Seq          = (uint16)strtoul(SeqStr, NULL, 0);
+    Flags        = (uint8)strtoul(FlagsStr, NULL, 0);
+    ExpectedCrc  = (uint16)strtoul(CrcStr, NULL, 16);
+
+    CanonLen = snprintf(Canonical, sizeof(Canonical), "UP,%s,%s,%s,%s,%s",
+                        VersionStr, ClassStr, SeqStr, FlagsStr, PayloadHex);
+    if (CanonLen <= 0 || (uint16)CanonLen >= sizeof(Canonical))
+    {
+        return false;
+    }
+
+    ActualCrc = UPLINK_APP_CRC16((const uint8 *)Canonical, (uint16)CanonLen);
+    if (ActualCrc != ExpectedCrc)
+    {
+        return false;
+    }
+
+    HexLen = (uint16)strlen(PayloadHex);
+    if (HexLen % 2 != 0 || HexLen / 2 > UPLINK_APP_MAX_PAYLOAD_LENGTH)
+    {
+        return false;
+    }
+
+    PayloadLen = HexLen / 2;
+    for (i = 0; i < PayloadLen; i++)
+    {
+        int Hi = UPLINK_APP_HexNibble(PayloadHex[i * 2]);
+        int Lo = UPLINK_APP_HexNibble(PayloadHex[i * 2 + 1]);
+        if (Hi < 0 || Lo < 0)
+        {
+            return false;
+        }
+        Payload[i] = (uint8)((Hi << 4) | Lo);
+    }
+
+    memset(Out, 0, sizeof(*Out));
+    CFE_MSG_Init(CFE_MSG_PTR(Out->CommandHeader),
+                 CFE_SB_ValueToMsgId(UPLINK_APP_CMD_MID_VALUE),
+                 sizeof(*Out));
+    Out->Version      = Version;
+    Out->CommandClass = CommandClass;
+    Out->PayloadLength = (uint8)PayloadLen;
+    Out->Flags        = Flags;
+    Out->Sequence     = Seq;
+    memcpy(Out->Payload, Payload, PayloadLen);
+
+    return true;
+}
+
+void UPLINK_APP_ServiceLoRa(void)
+{
+    ssize_t                       Rc;
+    char                          C;
+    UPLINK_APP_ProcessUplinkCmd_t Cmd;
+
+    if (UPLINK_APP_Data.LoRaFd < 0)
+    {
+        int            Fd;
+        struct termios Tio;
+        speed_t        Baud = B57600;
+
+        Fd = open(UPLINK_APP_LORA_SERIAL_PATH, O_RDONLY | O_NOCTTY | O_NONBLOCK);
+        if (Fd < 0)
+        {
+            return;
+        }
+
+        if (tcgetattr(Fd, &Tio) != 0)
+        {
+            close(Fd);
+            return;
+        }
+
+        Tio.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON);
+        Tio.c_oflag &= ~OPOST;
+        Tio.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
+        Tio.c_cflag &= ~(CSIZE | PARENB);
+        Tio.c_cflag |= CS8 | CLOCAL | CREAD;
+#ifdef CRTSCTS
+        Tio.c_cflag &= ~CRTSCTS;
+#endif
+        Tio.c_cc[VMIN]  = 0;
+        Tio.c_cc[VTIME] = 0;
+        cfsetispeed(&Tio, Baud);
+        cfsetospeed(&Tio, Baud);
+
+        if (tcsetattr(Fd, TCSANOW, &Tio) != 0)
+        {
+            close(Fd);
+            return;
+        }
+
+        {
+            int Flags = fcntl(Fd, F_GETFL, 0);
+            if (Flags >= 0)
+            {
+                fcntl(Fd, F_SETFL, Flags & ~O_NONBLOCK);
+            }
+        }
+
+        UPLINK_APP_Data.LoRaFd = Fd;
+        CFE_EVS_SendEvent(UPLINK_APP_PUBLISH_EID, CFE_EVS_EventType_INFORMATION,
+                          "UPLINK_APP: opened LoRa serial %s", UPLINK_APP_LORA_SERIAL_PATH);
+    }
+
+    Rc = read(UPLINK_APP_Data.LoRaFd, &C, 1);
+    if (Rc <= 0)
+    {
+        return;
+    }
+
+    if (UPLINK_APP_Data.LoRaReadLen < sizeof(UPLINK_APP_Data.LoRaReadBuf) - 1)
+    {
+        UPLINK_APP_Data.LoRaReadBuf[UPLINK_APP_Data.LoRaReadLen++] = C;
+    }
+
+    if (C != '\n')
+    {
+        return;
+    }
+
+    UPLINK_APP_Data.LoRaReadBuf[UPLINK_APP_Data.LoRaReadLen] = '\0';
+    UPLINK_APP_Data.LoRaReadLen = 0;
+
+    if (!UPLINK_APP_ParseLoRaFrame(UPLINK_APP_Data.LoRaReadBuf, &Cmd))
+    {
+        CFE_EVS_SendEvent(UPLINK_APP_COMMAND_ERR_EID, CFE_EVS_EventType_ERROR,
+                          "UPLINK_APP: LoRa frame parse failed: %.40s", UPLINK_APP_Data.LoRaReadBuf);
+        return;
+    }
+
+    /* sequence regression check */
+    if (UPLINK_APP_Data.LoRaSeqInitialized &&
+        Cmd.Sequence <= UPLINK_APP_Data.LastLoRaSeq)
+    {
+        CFE_EVS_SendEvent(UPLINK_APP_COMMAND_ERR_EID, CFE_EVS_EventType_ERROR,
+                          "UPLINK_APP: LoRa seq regression seq=%u last=%u",
+                          (unsigned int)Cmd.Sequence, (unsigned int)UPLINK_APP_Data.LastLoRaSeq);
+        return;
+    }
+
+    UPLINK_APP_Data.LastLoRaSeq          = Cmd.Sequence;
+    UPLINK_APP_Data.LoRaSeqInitialized   = 1;
+
+    UPLINK_APP_ProcessUplink(&Cmd);
+}
+
 void UPLINK_APP_ServicePrototype(void)
 {
     uint32                NowMs;
+
+    UPLINK_APP_ServiceLoRa();
 
     NowMs = UPLINK_APP_GetTimeMs();
     if ((NowMs - UPLINK_APP_Data.LastPublishTimeMs) < UPLINK_APP_PROTOTYPE_PERIOD_MS)
