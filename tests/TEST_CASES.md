@@ -305,37 +305,151 @@ python3 tools/query_fc_mission.py [cFS_host_ip]
 
 ---
 
+## TC 분류 — 단위테스트 vs 통합테스트 vs 런타임
+
+### 분류 기준
+
+| 구분 | 조건 |
+|---|---|
+| **단위테스트** | 공개 C API로 직접 호출 가능, 하드웨어 불필요 |
+| **통합테스트** | static 함수 또는 Python bridge 로직 검증, pytest + mock |
+| **런타임 시험** | 하드웨어(Pi/FC/LoRa) 또는 실제 serial 필요 |
+
+---
+
+### LORA-HB (HB 파싱)
+
+| TC ID | 항목 | 분류 | 파일 |
+|---|---|---|---|
+| LORA-HB-001 | `HB` 단순 수신 | 통합 | `test_hb_parse.py` |
+| LORA-HB-002 | canonical HB 정상 수신 | 통합 | `test_hb_parse.py` |
+| LORA-HB-003 | CRC 불일치 거부 | 통합 | `test_hb_parse.py` |
+| LORA-HB-004 | sensor_ok=0 거부 | 통합 | `test_hb_parse.py` |
+| LORA-HB-005 | seq 증가 허용 | 통합 | `test_hb_parse.py` |
+| LORA-HB-006 | seq 역행 거부 | 통합 | `test_hb_parse.py` |
+| LORA-HB-007 | 빈 줄 무시 | 통합 | `test_hb_parse.py` |
+| LORA-HB-008 | 잘못된 prefix 거부 | 통합 | `test_hb_parse.py` |
+| LORA-HB-009 | 필드 개수 부족 거부 | 통합 | `test_hb_parse.py` |
+| LORA-HB-010 | 숫자 필드 오류 거부 | 통합 | `test_hb_parse.py` |
+
+> `ParseHb()` static → Python `lora_telemetry_bridge.py`의 `parse_heartbeat_line()` 동등 로직으로 검증
+
+---
+
+### LORA-UP (UP 프레임 파싱)
+
+| TC ID | 항목 | 분류 | 파일 |
+|---|---|---|---|
+| LORA-UP-001 | 정상 UP 프레임 파싱 | 통합 | `test_uplink_lora_frame.py` |
+| LORA-UP-002 | CRC 불일치 거부 | 통합 | `test_uplink_lora_frame.py` |
+| LORA-UP-003 | version 불일치 거부 | 통합 | `test_uplink_lora_frame.py` |
+| LORA-UP-004 | command_class 범위 초과 거부 | 통합 | `test_uplink_lora_frame.py` |
+| LORA-UP-005 | sequence 범위 초과 거부 | 통합 | `test_uplink_lora_frame.py` |
+| LORA-UP-006 | flags 범위 초과 거부 | 통합 | `test_uplink_lora_frame.py` |
+| LORA-UP-007 | payload hex 홀수 길이 거부 | 통합 | `test_uplink_lora_frame.py` |
+| LORA-UP-008 | payload hex 비정상 문자 거부 | 통합 | `test_uplink_lora_frame.py` |
+| LORA-UP-009 | payload 196 byte 최대 허용 | 통합 | `test_uplink_lora_frame.py` |
+| LORA-UP-010 | payload 197 byte 초과 거부 | 통합 | `test_uplink_lora_frame.py` |
+| LORA-UP-011 | seq 증가 허용 | 통합 | `test_uplink_lora_frame.py` |
+| LORA-UP-012 | seq 동일 거부 | 통합 | `test_uplink_lora_frame.py` |
+| LORA-UP-013 | seq 역행 거부 | 통합 | `test_uplink_lora_frame.py` |
+| LORA-UP-014 | allow_seq_regression 옵션 | 통합 | `test_lora_uplink_bridge.py` (기존) |
+
+> `ParseLoRaFrame()` / `CRC16()` static → Python `lora_uplink_bridge.py`의 `parse_frame_line()` 동등 로직으로 검증
+
+---
+
+### CFS-CMD (command packet 생성)
+
+| TC ID | 항목 | 분류 | 파일 |
+|---|---|---|---|
+| CFS-CMD-001 | command MID 반영 | 통합 | `test_uplink_lora_frame.py` |
+| CFS-CMD-002 | function code 반영 | 통합 | `test_uplink_lora_frame.py` |
+| CFS-CMD-003 | checksum 계산 | 통합 | `test_uplink_lora_frame.py` |
+| CFS-CMD-004 | PayloadLength 저장 | 통합 | `test_uplink_lora_frame.py` |
+| CFS-CMD-005 | payload 0 padding | 통합 | `test_uplink_lora_frame.py` |
+| CFS-CMD-006~008 | class/seq/flags 필드 전달 | 통합 | `test_uplink_lora_frame.py` |
+
+---
+
+### UDP-* (UDP 전송)
+
+| TC ID | 항목 | 분류 | 파일 |
+|---|---|---|---|
+| UDP-001~005 | UDP 전송 경로, host/port 변경 | 통합 | `test_lora_uplink_bridge.py` (기존 확장) |
+
+---
+
+### MAV-* (MAVLink 수신/캐시)
+
+| TC ID | 항목 | 분류 | 비고 |
+|---|---|---|---|
+| MAV-001~009 | HEARTBEAT/ATTITUDE/GPS/EKF 캐시, serial 오류 | 런타임 | `mavlink_bridge_app` unit-test 미구성, 하드웨어 필요 |
+
+---
+
+### LORA-FC-* (lora_fc_downlink_app 캐시)
+
+| TC ID | 항목 | 분류 | 파일/비고 |
+|---|---|---|---|
+| LORA-FC-001 | HEARTBEAT 캐시 | 단위 | 해당 없음 (별도 HEARTBEAT MID 없음) |
+| LORA-FC-002 | ATTITUDE float 캐시 | 단위 | `coveragetest_lora_fc_downlink_app_utils.c` ✓ 구현 |
+| LORA-FC-003 | GPS 좌표 캐시 | 단위 | `coveragetest_lora_fc_downlink_app_utils.c` ✓ 구현 |
+| LORA-FC-004 | SYSTEM_HEALTH FaultCode 캐시 | 단위 | `coveragetest_lora_fc_downlink_app_utils.c` ✓ 구현 |
+| LORA-FC-005 | stale flag 처리 | 단위 | 미구현 (cfs_core_app에서 처리, downlink_app은 Valid만 캐시) |
+| LORA-FC-006 | 일부 메시지만 수신 시 partial valid | 단위 | `ProcessInputMessage` 기반 추가 가능 |
+| LORA-FC-007 | invalid GPS (fix 없음) | 단위 | `ProcessInputMessage` 기반 추가 가능 |
+| LORA-FC-008 | SB pipe timeout 시 앱 alive | 단위 | main loop 테스트 — 미구현 |
+
+---
+
+### LORA-FRAME-* (LoRa 패킷 포맷)
+
+| TC ID | 항목 | 분류 | 파일 |
+|---|---|---|---|
+| LORA-FRAME-001 | FC 상태 패킷 포맷 | 통합 | `test_lora_fc_downlink_packet.py` |
+| LORA-FRAME-002 | GPS 포함 여부 | 통합 | `test_lora_fc_downlink_packet.py` |
+| LORA-FRAME-003 | GPS invalid 처리 | 통합 | `test_lora_fc_downlink_packet.py` |
+| LORA-FRAME-004 | stale GPS 처리 | 통합 | `test_lora_fc_downlink_packet.py` |
+| LORA-FRAME-005 | SH 패킷 포맷 | 통합 | `test_lora_fc_downlink_packet.py` |
+| LORA-FRAME-006 | seq 단조 증가 | 통합 | `test_lora_fc_downlink_packet.py` |
+| LORA-FRAME-007 | timestamp 필드 포함 | 통합 | `test_lora_fc_downlink_packet.py` |
+| LORA-FRAME-008 | AttitudeValid=0 시 FC 패킷 미전송 | 통합 | `test_lora_fc_downlink_packet.py` |
+
+> `ServiceLoRa()` static → Python에서 패킷 포맷 규칙 직접 검증
+
+---
+
+### REC-* (장애/복구)
+
+| TC ID | 항목 | 분류 | 비고 |
+|---|---|---|---|
+| REC-001~002 | LoRa serial open 실패/disconnect | 런타임 | 하드웨어 또는 mock serial 필요 |
+| REC-003~004 | FC serial open 실패/heartbeat 끊김 | 런타임 | 하드웨어 필요 |
+| REC-005 | LoRa HB 끊김 | 통합 | `test_hb_parse.py` (timeout 시뮬레이션) |
+| REC-006~007 | malformed/초과 frame 폭주 | 통합 | `test_uplink_lora_frame.py` / `test_hb_parse.py` |
+| REC-008 | seq regression 반복 | 통합 | `test_uplink_lora_frame.py` |
+
+---
+
 ## 통합테스트 계획 (pytest, `tests/`)
 
-큰 기능 완성 시 추가한다. 하드웨어 없이 UDP mock으로 검증 가능한 범위까지 커버한다.
+큰 기능 완성 시 추가한다. 하드웨어 없이 Python bridge 동등 로직으로 검증한다.
 
-### 구현 완료 — 기존
+### 구현 완료
 
-| 파일 | 검증 범위 | 상태 |
+| 파일 | 검증 TC | 상태 |
 |---|---|---|
-| `test_lora_uplink_bridge.py` | Python lora_uplink_bridge.py 프레임 파싱/CRC/seq/UDP 전송 | ✓ 구현 |
-| `test_uplink_route_update_sender.py` | route update sender serial/LoRa 전송 경로 | ✓ 구현 |
+| `test_lora_uplink_bridge.py` | LORA-UP-014, UDP-001~005 일부 | ✓ |
+| `test_uplink_route_update_sender.py` | route update sender 전송 경로 | ✓ |
 
-### 계획 — 신규 (미구현)
+### 계획 (미구현)
 
-| 파일 | 검증 범위 | 트리거 조건 |
+| 파일 | 검증 TC | 트리거 |
 |---|---|---|
-| `test_uplink_lora_frame.py` | UP 프레임 CRC16 계산, 정상/오류/seq regression, payload 길이 | uplink_app LoRa serial read 완성 |
-| `test_lora_fc_downlink_packet.py` | FC/SH 패킷 포맷 (`FC,count,ts,...` / `SH,count,ts,...`), GPS 좌표 포함 여부 | lora_fc_downlink_app LoRa write 완성 |
-| `test_hb_parse.py` | HB 프레임 파싱 정상/CRC 오류/sensor_ok=0/빈 줄/잘못된 prefix | lora_fc_downlink_app HB read 완성 |
-
-### 통합테스트 흐름 예시
-
-```
-test_uplink_lora_frame.py:
-  UP 프레임 생성(CRC 포함) → lora_uplink_bridge.py parse_frame_line() → 검증
-
-test_lora_fc_downlink_packet.py:
-  mock SB 메시지 → PacketType 선택 로직 → FC/SH 패킷 문자열 형식 검증
-
-test_hb_parse.py:
-  HB 문자열 입력 → lora_telemetry_bridge.py parse_heartbeat_line() → 결과 검증
-```
+| `test_uplink_lora_frame.py` | LORA-UP-001~013, CFS-CMD-001~008, REC-006~008 | uplink_app LoRa serial read 완성 ✓ |
+| `test_lora_fc_downlink_packet.py` | LORA-FRAME-001~008 | lora_fc_downlink_app LoRa write 완성 ✓ |
+| `test_hb_parse.py` | LORA-HB-001~010, REC-005 | lora_fc_downlink_app HB read 완성 ✓ |
 
 ---
 
