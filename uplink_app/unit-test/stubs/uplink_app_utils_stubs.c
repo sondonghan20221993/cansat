@@ -71,6 +71,24 @@ void UPLINK_APP_ServiceLoRa(void)
     UT_GenStub_Execute(UPLINK_APP_ServiceLoRa, Basic, NULL);
 }
 
+uint16 UPLINK_APP_CRC16(const uint8 *Data, uint16 Len)
+{
+    UT_GenStub_SetupReturnBuffer(UPLINK_APP_CRC16, uint16);
+    UT_GenStub_AddParam(UPLINK_APP_CRC16, const uint8 *, Data);
+    UT_GenStub_AddParam(UPLINK_APP_CRC16, uint16, Len);
+    UT_GenStub_Execute(UPLINK_APP_CRC16, Basic, NULL);
+    return UT_GenStub_GetReturnValue(UPLINK_APP_CRC16, uint16);
+}
+
+bool UPLINK_APP_ParseLoRaFrame(const char *Line, UPLINK_APP_ProcessUplinkCmd_t *Out)
+{
+    UT_GenStub_SetupReturnBuffer(UPLINK_APP_ParseLoRaFrame, bool);
+    UT_GenStub_AddParam(UPLINK_APP_ParseLoRaFrame, const char *, Line);
+    UT_GenStub_AddParam(UPLINK_APP_ParseLoRaFrame, UPLINK_APP_ProcessUplinkCmd_t *, Out);
+    UT_GenStub_Execute(UPLINK_APP_ParseLoRaFrame, Basic, NULL);
+    return UT_GenStub_GetReturnValue(UPLINK_APP_ParseLoRaFrame, bool);
+}
+
 bool UPLINK_APP_ForwardRecoveryCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
 {
     UT_GenStub_SetupReturnBuffer(UPLINK_APP_ForwardRecoveryCommand, bool);

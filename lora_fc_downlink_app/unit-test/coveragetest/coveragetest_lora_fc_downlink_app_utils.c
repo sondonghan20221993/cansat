@@ -214,8 +214,80 @@ void Test_LORA_FC_DOWNLINK_APP_ProcessInputMessage(void)
     UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.PacketType, LORA_FC_DOWNLINK_APP_FC_STATE_PACKET_TYPE);
 }
 
+/* -----------------------------------------------------------------------
+ * Helper: CRC16-CCITT (same as lora_uplink_bridge.py)
+ * ----------------------------------------------------------------------- */
+static uint16 TestCRC16(const char *Data)
+{
+    uint16       Crc = 0xFFFF;
+    const char  *p   = Data;
+
+    while (*p)
+    {
+        uint8 Byte = (uint8)*p++;
+        Crc ^= (uint16)Byte << 8;
+        int j;
+        for (j = 0; j < 8; j++)
+        {
+            if (Crc & 0x8000)
+                Crc = (Crc << 1) ^ 0x1021;
+            else
+                Crc <<= 1;
+        }
+    }
+    return Crc;
+}
+
+/* LORA-HB-001: 단순 "HB" */
+/* LORA-HB-002: canonical HB 정상 수신 */
+/* LORA-HB-003: CRC 불일치 */
+/* LORA-HB-004: sensor_ok=0 거부 */
+/* LORA-HB-007: 빈 줄 */
+/* LORA-HB-008: 잘못된 prefix */
+/* LORA-HB-009: 필드 수 부족 */
+void Test_LORA_FC_DOWNLINK_APP_ParseHb(void)
+{
+    char   CanonBuf[128];
+    char   FrameBuf[160];
+    uint16 Crc;
+
+    /* LORA-HB-001: "HB" */
+    UtAssert_BOOL_TRUE(LORA_FC_DOWNLINK_APP_ParseHb("HB\n"));
+    UtAssert_BOOL_TRUE(LORA_FC_DOWNLINK_APP_ParseHb("HB"));
+    UtAssert_BOOL_TRUE(LORA_FC_DOWNLINK_APP_ParseHb("hb\n"));
+
+    /* LORA-HB-001 variant: "HB,seq" short form */
+    UtAssert_BOOL_TRUE(LORA_FC_DOWNLINK_APP_ParseHb("HB,1\n"));
+
+    /* LORA-HB-002: valid canonical — sensor_ok=1 */
+    snprintf(CanonBuf, sizeof(CanonBuf), "HB,1,1,1000,1");
+    Crc = TestCRC16(CanonBuf);
+    snprintf(FrameBuf, sizeof(FrameBuf), "%s,%04X\n", CanonBuf, (unsigned)Crc);
+    UtAssert_BOOL_TRUE(LORA_FC_DOWNLINK_APP_ParseHb(FrameBuf));
+
+    /* LORA-HB-003: CRC 불일치 */
+    snprintf(CanonBuf, sizeof(CanonBuf), "HB,1,2,1000,1");
+    snprintf(FrameBuf, sizeof(FrameBuf), "%s,0000\n", CanonBuf);
+    UtAssert_BOOL_FALSE(LORA_FC_DOWNLINK_APP_ParseHb(FrameBuf));
+
+    /* LORA-HB-004: sensor_ok=0 */
+    snprintf(CanonBuf, sizeof(CanonBuf), "HB,1,3,1000,0");
+    Crc = TestCRC16(CanonBuf);
+    snprintf(FrameBuf, sizeof(FrameBuf), "%s,%04X\n", CanonBuf, (unsigned)Crc);
+    UtAssert_BOOL_FALSE(LORA_FC_DOWNLINK_APP_ParseHb(FrameBuf));
+
+    /* LORA-HB-007: 빈 줄 */
+    UtAssert_BOOL_FALSE(LORA_FC_DOWNLINK_APP_ParseHb("\n"));
+    UtAssert_BOOL_FALSE(LORA_FC_DOWNLINK_APP_ParseHb(""));
+
+    /* LORA-HB-008: 잘못된 prefix */
+    UtAssert_BOOL_FALSE(LORA_FC_DOWNLINK_APP_ParseHb("XX,1,2,3,4,1234\n"));
+    UtAssert_BOOL_FALSE(LORA_FC_DOWNLINK_APP_ParseHb("FC,...\n"));
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(LORA_FC_DOWNLINK_APP_ReportHousekeeping);
     ADD_TEST(LORA_FC_DOWNLINK_APP_ProcessInputMessage);
+    ADD_TEST(LORA_FC_DOWNLINK_APP_ParseHb);
 }

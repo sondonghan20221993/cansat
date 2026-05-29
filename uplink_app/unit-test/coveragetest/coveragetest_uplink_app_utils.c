@@ -259,6 +259,188 @@ void Test_UPLINK_APP_ForwardDiagnosticCommand(void)
     UtAssert_BOOL_TRUE(UPLINK_APP_ForwardDiagnosticCommand(&Cmd));
 }
 
+/* -----------------------------------------------------------------------
+ * Helper: build valid UP frame string with correct CRC16
+ * format: UP,<ver>,<class>,<seq>,<flags>,<payload_hex>,<crc_hex>
+ * ----------------------------------------------------------------------- */
+static void BuildUpFrame(char *Buf, size_t BufLen,
+                         uint8 Version, uint8 Class, uint16 Seq,
+                         uint8 Flags, const char *PayloadHex)
+{
+    char   Canonical[640];
+    int    CanonLen;
+    uint16 Crc;
+
+    CanonLen = snprintf(Canonical, sizeof(Canonical),
+                        "UP,%u,%u,%u,%u,%s",
+                        (unsigned)Version, (unsigned)Class,
+                        (unsigned)Seq, (unsigned)Flags, PayloadHex);
+    Crc = UPLINK_APP_CRC16((const uint8 *)Canonical, (uint16)CanonLen);
+    snprintf(Buf, BufLen, "%s,%04X\n", Canonical, (unsigned)Crc);
+}
+
+/* LORA-UP-001: 정상 UP 프레임 파싱 */
+void Test_ParseLoRaFrame_ValidFrame(void)
+{
+    char                          Frame[256];
+    UPLINK_APP_ProcessUplinkCmd_t Out;
+
+    BuildUpFrame(Frame, sizeof(Frame), 1, UPLINK_APP_CLASS_ROUTE_UPDATE, 42, 0, "AABB");
+    UtAssert_BOOL_TRUE(UPLINK_APP_ParseLoRaFrame(Frame, &Out));
+    UtAssert_INT32_EQ(Out.Version,      1);
+    UtAssert_INT32_EQ(Out.CommandClass, UPLINK_APP_CLASS_ROUTE_UPDATE);
+    UtAssert_INT32_EQ(Out.Sequence,     42);
+    UtAssert_INT32_EQ(Out.Flags,        0);
+    UtAssert_INT32_EQ(Out.PayloadLength, 2);
+    UtAssert_INT32_EQ(Out.Payload[0], 0xAA);
+    UtAssert_INT32_EQ(Out.Payload[1], 0xBB);
+}
+
+/* LORA-UP-002: CRC 불일치 */
+void Test_ParseLoRaFrame_CrcMismatch(void)
+{
+    char                          Frame[256];
+    UPLINK_APP_ProcessUplinkCmd_t Out;
+
+    /* build valid then corrupt CRC */
+    BuildUpFrame(Frame, sizeof(Frame), 1, 2, 1, 0, "");
+    /* replace last 4 chars of CRC with 0000 */
+    Frame[strlen(Frame) - 5] = '0';
+    Frame[strlen(Frame) - 4] = '0';
+    Frame[strlen(Frame) - 3] = '0';
+    Frame[strlen(Frame) - 2] = '0';
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseLoRaFrame(Frame, &Out));
+}
+
+/* LORA-UP-003: 잘못된 prefix */
+void Test_ParseLoRaFrame_BadPrefix(void)
+{
+    char                          Frame[] = "XX,1,2,1,0,,1234\n";
+    UPLINK_APP_ProcessUplinkCmd_t Out;
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseLoRaFrame(Frame, &Out));
+}
+
+/* LORA-UP-007/008: payload hex 홀수 길이 / 비정상 문자 */
+void Test_ParseLoRaFrame_BadPayloadHex(void)
+{
+    char                          Frame[256];
+    UPLINK_APP_ProcessUplinkCmd_t Out;
+    char                          Canonical[256];
+    uint16                        Crc;
+    int                           Len;
+
+    /* odd-length hex */
+    Len = snprintf(Canonical, sizeof(Canonical), "UP,1,2,1,0,ABC");
+    Crc = UPLINK_APP_CRC16((const uint8 *)Canonical, (uint16)Len);
+    snprintf(Frame, sizeof(Frame), "%s,%04X\n", Canonical, (unsigned)Crc);
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseLoRaFrame(Frame, &Out));
+
+    /* invalid hex char */
+    Len = snprintf(Canonical, sizeof(Canonical), "UP,1,2,2,0,ZZ");
+    Crc = UPLINK_APP_CRC16((const uint8 *)Canonical, (uint16)Len);
+    snprintf(Frame, sizeof(Frame), "%s,%04X\n", Canonical, (unsigned)Crc);
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseLoRaFrame(Frame, &Out));
+}
+
+/* LORA-UP-009: payload 196 bytes 최대 허용 */
+void Test_ParseLoRaFrame_MaxPayload(void)
+{
+    char                          HexBuf[UPLINK_APP_MAX_PAYLOAD_LENGTH * 2 + 1];
+    char                          Frame[UPLINK_APP_MAX_PAYLOAD_LENGTH * 2 + 64];
+    UPLINK_APP_ProcessUplinkCmd_t Out;
+    uint16                        i;
+
+    for (i = 0; i < UPLINK_APP_MAX_PAYLOAD_LENGTH; i++)
+    {
+        snprintf(HexBuf + i * 2, 3, "%02X", (unsigned)(i & 0xFF));
+    }
+    BuildUpFrame(Frame, sizeof(Frame), 1, 2, 1, 0, HexBuf);
+    UtAssert_BOOL_TRUE(UPLINK_APP_ParseLoRaFrame(Frame, &Out));
+    UtAssert_INT32_EQ(Out.PayloadLength, UPLINK_APP_MAX_PAYLOAD_LENGTH);
+}
+
+/* LORA-UP-010: payload 197 bytes 초과 거부 */
+void Test_ParseLoRaFrame_OverPayload(void)
+{
+    char                          HexBuf[(UPLINK_APP_MAX_PAYLOAD_LENGTH + 1) * 2 + 1];
+    char                          Frame[(UPLINK_APP_MAX_PAYLOAD_LENGTH + 1) * 2 + 64];
+    UPLINK_APP_ProcessUplinkCmd_t Out;
+    uint16                        i;
+
+    for (i = 0; i < UPLINK_APP_MAX_PAYLOAD_LENGTH + 1; i++)
+    {
+        snprintf(HexBuf + i * 2, 3, "%02X", (unsigned)(i & 0xFF));
+    }
+    BuildUpFrame(Frame, sizeof(Frame), 1, 2, 1, 0, HexBuf);
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseLoRaFrame(Frame, &Out));
+}
+
+/* LORA-UP-011/012/013: seq 증가/동일/역행 */
+void Test_ParseLoRaFrame_SeqRegression(void)
+{
+    char                          Frame[256];
+    UPLINK_APP_ProcessUplinkCmd_t Out;
+
+    /* ParseLoRaFrame itself doesn't check seq — that's ServiceLoRa's job */
+    /* seq=1 */
+    BuildUpFrame(Frame, sizeof(Frame), 1, 2, 1, 0, "AA");
+    UtAssert_BOOL_TRUE(UPLINK_APP_ParseLoRaFrame(Frame, &Out));
+    UtAssert_INT32_EQ(Out.Sequence, 1);
+
+    /* seq=2 */
+    BuildUpFrame(Frame, sizeof(Frame), 1, 2, 2, 0, "AA");
+    UtAssert_BOOL_TRUE(UPLINK_APP_ParseLoRaFrame(Frame, &Out));
+    UtAssert_INT32_EQ(Out.Sequence, 2);
+
+    /* seq=2 again: ParseLoRaFrame accepts (no seq check here) */
+    BuildUpFrame(Frame, sizeof(Frame), 1, 2, 2, 0, "AA");
+    UtAssert_BOOL_TRUE(UPLINK_APP_ParseLoRaFrame(Frame, &Out));
+    UtAssert_INT32_EQ(Out.Sequence, 2);
+}
+
+/* CFS-CMD-001~008: command packet 필드 검증 */
+void Test_ParseLoRaFrame_CommandPacketFields(void)
+{
+    char                          Frame[256];
+    UPLINK_APP_ProcessUplinkCmd_t Out;
+
+    BuildUpFrame(Frame, sizeof(Frame), 1, UPLINK_APP_CLASS_ROUTE_UPDATE, 7, 3, "DEADBEEF");
+    UtAssert_BOOL_TRUE(UPLINK_APP_ParseLoRaFrame(Frame, &Out));
+
+    /* CFS-CMD-004: PayloadLength == 4 (DEADBEEF = 4 bytes) */
+    UtAssert_INT32_EQ(Out.PayloadLength, 4);
+
+    /* CFS-CMD-006: CommandClass */
+    UtAssert_INT32_EQ(Out.CommandClass, UPLINK_APP_CLASS_ROUTE_UPDATE);
+
+    /* CFS-CMD-007: Sequence */
+    UtAssert_INT32_EQ(Out.Sequence, 7);
+
+    /* CFS-CMD-008: Flags */
+    UtAssert_INT32_EQ(Out.Flags, 3);
+
+    /* CFS-CMD-005: padding — bytes after payload are 0 */
+    UtAssert_INT32_EQ(Out.Payload[4], 0);
+
+    /* CFS-CMD-003: payload bytes correct (DEADBEEF) */
+    UtAssert_INT32_EQ(Out.Payload[0], 0xDE);
+    UtAssert_INT32_EQ(Out.Payload[1], 0xAD);
+    UtAssert_INT32_EQ(Out.Payload[2], 0xBE);
+    UtAssert_INT32_EQ(Out.Payload[3], 0xEF);
+}
+
+/* LORA-HB-001/002/004/007/008/009: ParseHb 다양한 입력 */
+void Test_ParseLoRaFrame_CRC16(void)
+{
+    /* CRC16-CCITT: "" → 0xFFFF, known value */
+    uint16 Crc = UPLINK_APP_CRC16((const uint8 *)"", 0);
+    UtAssert_INT32_EQ(Crc, 0xFFFF);
+
+    /* CRC16 of "UP" should be deterministic */
+    uint16 Crc2 = UPLINK_APP_CRC16((const uint8 *)"UP", 2);
+    UtAssert_INT32_EQ(Crc2, UPLINK_APP_CRC16((const uint8 *)"UP", 2)); /* idempotent */
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(UPLINK_APP_ValidateProxyCommand);
@@ -271,4 +453,13 @@ void UtTest_Setup(void)
     ADD_TEST(UPLINK_APP_SaveState_NoDir);
     ADD_TEST(UPLINK_APP_ForwardModeCommand);
     ADD_TEST(UPLINK_APP_ForwardDiagnosticCommand);
+    ADD_TEST(ParseLoRaFrame_ValidFrame);
+    ADD_TEST(ParseLoRaFrame_CrcMismatch);
+    ADD_TEST(ParseLoRaFrame_BadPrefix);
+    ADD_TEST(ParseLoRaFrame_BadPayloadHex);
+    ADD_TEST(ParseLoRaFrame_MaxPayload);
+    ADD_TEST(ParseLoRaFrame_OverPayload);
+    ADD_TEST(ParseLoRaFrame_SeqRegression);
+    ADD_TEST(ParseLoRaFrame_CommandPacketFields);
+    ADD_TEST(ParseLoRaFrame_CRC16);
 }

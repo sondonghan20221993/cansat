@@ -71,7 +71,27 @@ typedef struct
     uint8                     Reserved;
 } LORA_FC_DOWNLINK_APP_SystemHealthMirror_t;
 
-static bool LORA_FC_DOWNLINK_APP_ParseHb(const char *Line)
+static uint16 LORA_FC_DOWNLINK_APP_CRC16(const char *Data, size_t Len)
+{
+    uint16 Crc = 0xFFFF;
+    size_t i;
+    int    j;
+
+    for (i = 0; i < Len; i++)
+    {
+        Crc ^= (uint16)(uint8)Data[i] << 8;
+        for (j = 0; j < 8; j++)
+        {
+            if (Crc & 0x8000)
+                Crc = (Crc << 1) ^ 0x1021;
+            else
+                Crc <<= 1;
+        }
+    }
+    return Crc;
+}
+
+bool LORA_FC_DOWNLINK_APP_ParseHb(const char *Line)
 {
     /* case-insensitive prefix check for "HB" */
     if ((Line[0] != 'H' && Line[0] != 'h') || (Line[1] != 'B' && Line[1] != 'b'))
@@ -79,26 +99,45 @@ static bool LORA_FC_DOWNLINK_APP_ParseHb(const char *Line)
         return false;
     }
 
-    /* manual: "HB" or "HB,<seq>" */
+    /* manual: "HB" or short "HB\n" */
     if (Line[2] == '\0' || Line[2] == '\n' || Line[2] == '\r')
     {
         return true;
     }
 
-    /* canonical: "HB,<node>,<seq>,<tx_ms>,<sensor_ok>,<crc>" */
-    if (Line[2] == ',')
+    if (Line[2] != ',')
+    {
+        return false;
+    }
+
+    /* canonical: "HB,<node>,<seq>,<tx_ms>,<sensor_ok>,<crc>" — 6 fields */
     {
         int  node, seq, tx_ms, sensor_ok;
         char crc_hex[16];
+
         if (sscanf(Line + 3, "%d,%d,%d,%d,%15s", &node, &seq, &tx_ms, &sensor_ok, crc_hex) == 5)
         {
+            /* validate CRC: canonical string is "HB,node,seq,tx_ms,sensor_ok" */
+            char   Canonical[128];
+            size_t Len;
+            uint16 ExpectedCrc;
+            uint16 ActualCrc;
+
+            snprintf(Canonical, sizeof(Canonical), "HB,%d,%d,%d,%d", node, seq, tx_ms, sensor_ok);
+            Len         = strlen(Canonical);
+            ExpectedCrc = (uint16)strtoul(crc_hex, NULL, 16);
+            ActualCrc   = LORA_FC_DOWNLINK_APP_CRC16(Canonical, Len);
+
+            if (ActualCrc != ExpectedCrc)
+            {
+                return false;
+            }
             return sensor_ok != 0;
         }
-        /* short form: "HB,<seq>" */
-        return true;
     }
 
-    return false;
+    /* short form: "HB,<seq>" — accept without CRC */
+    return true;
 }
 
 static void LORA_FC_DOWNLINK_APP_ServiceLoRaRead(void)

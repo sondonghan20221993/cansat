@@ -457,7 +457,7 @@ UPLINK_APP_RouteTarget_t UPLINK_APP_ResolveRouteTarget(uint8 CommandClass)
     }
 }
 
-static uint16 UPLINK_APP_CRC16(const uint8 *Data, uint16 Len)
+uint16 UPLINK_APP_CRC16(const uint8 *Data, uint16 Len)
 {
     uint16 Crc = 0xFFFF;
     uint16 i;
@@ -485,7 +485,7 @@ static int UPLINK_APP_HexNibble(char C)
     return -1;
 }
 
-static bool UPLINK_APP_ParseLoRaFrame(const char *Line, UPLINK_APP_ProcessUplinkCmd_t *Out)
+bool UPLINK_APP_ParseLoRaFrame(const char *Line, UPLINK_APP_ProcessUplinkCmd_t *Out)
 {
     char   VersionStr[8], ClassStr[8], SeqStr[8], FlagsStr[8];
     char   PayloadHex[UPLINK_APP_MAX_PAYLOAD_LENGTH * 2 + 2];
