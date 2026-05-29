@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <string.h>
 #include <termios.h>
 #include <unistd.h>
 
@@ -70,6 +71,75 @@ typedef struct
     uint8                     Reserved;
 } LORA_FC_DOWNLINK_APP_SystemHealthMirror_t;
 
+static bool LORA_FC_DOWNLINK_APP_ParseHb(const char *Line)
+{
+    /* case-insensitive prefix check for "HB" */
+    if ((Line[0] != 'H' && Line[0] != 'h') || (Line[1] != 'B' && Line[1] != 'b'))
+    {
+        return false;
+    }
+
+    /* manual: "HB" or "HB,<seq>" */
+    if (Line[2] == '\0' || Line[2] == '\n' || Line[2] == '\r')
+    {
+        return true;
+    }
+
+    /* canonical: "HB,<node>,<seq>,<tx_ms>,<sensor_ok>,<crc>" */
+    if (Line[2] == ',')
+    {
+        int  node, seq, tx_ms, sensor_ok;
+        char crc_hex[16];
+        if (sscanf(Line + 3, "%d,%d,%d,%d,%15s", &node, &seq, &tx_ms, &sensor_ok, crc_hex) == 5)
+        {
+            return sensor_ok != 0;
+        }
+        /* short form: "HB,<seq>" */
+        return true;
+    }
+
+    return false;
+}
+
+static void LORA_FC_DOWNLINK_APP_ServiceLoRaRead(void)
+{
+    ssize_t rc;
+    char    c;
+
+    if (LORA_FC_DOWNLINK_APP_Data.LoRaFd < 0)
+    {
+        return;
+    }
+
+    /* read one byte at a time; accumulate into LoRaReadBuf until newline */
+    rc = read(LORA_FC_DOWNLINK_APP_Data.LoRaFd, &c, 1);
+    if (rc <= 0)
+    {
+        return;
+    }
+
+    if (LORA_FC_DOWNLINK_APP_Data.LoRaReadLen < sizeof(LORA_FC_DOWNLINK_APP_Data.LoRaReadBuf) - 1)
+    {
+        LORA_FC_DOWNLINK_APP_Data.LoRaReadBuf[LORA_FC_DOWNLINK_APP_Data.LoRaReadLen++] = c;
+    }
+
+    if (c != '\n')
+    {
+        return;
+    }
+
+    LORA_FC_DOWNLINK_APP_Data.LoRaReadBuf[LORA_FC_DOWNLINK_APP_Data.LoRaReadLen] = '\0';
+    LORA_FC_DOWNLINK_APP_Data.LoRaReadLen = 0;
+
+    if (LORA_FC_DOWNLINK_APP_ParseHb(LORA_FC_DOWNLINK_APP_Data.LoRaReadBuf))
+    {
+        CFE_TIME_SysTime_t Now   = CFE_TIME_GetTime();
+        uint32             NowMs = (uint32)(Now.Seconds * 1000U);
+        LORA_FC_DOWNLINK_APP_Data.HbLastRxMs  = NowMs;
+        LORA_FC_DOWNLINK_APP_Data.HbLinkValid = 1;
+    }
+}
+
 static void LORA_FC_DOWNLINK_APP_ServiceLoRa(void)
 {
     int            Fd;
@@ -81,7 +151,7 @@ static void LORA_FC_DOWNLINK_APP_ServiceLoRa(void)
 
     if (LORA_FC_DOWNLINK_APP_Data.LoRaFd < 0)
     {
-        Fd = open(LORA_FC_DOWNLINK_APP_LORA_SERIAL_PATH, O_WRONLY | O_NOCTTY | O_NONBLOCK);
+        Fd = open(LORA_FC_DOWNLINK_APP_LORA_SERIAL_PATH, O_RDWR | O_NOCTTY | O_NONBLOCK);
         if (Fd < 0)
         {
             return;
@@ -271,5 +341,6 @@ void LORA_FC_DOWNLINK_APP_ProcessInputMessage(const CFE_SB_Buffer_t *sb_buf_ptr)
     }
 
     LORA_FC_DOWNLINK_APP_Data.DownlinkCount++;
+    LORA_FC_DOWNLINK_APP_ServiceLoRaRead();
     LORA_FC_DOWNLINK_APP_ServiceLoRa();
 }

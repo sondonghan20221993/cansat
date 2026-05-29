@@ -29,6 +29,10 @@ typedef struct
     uint32                          LastSystemHealthTimestampMs;
     int                             LoRaFd;
     uint32                          LoRaTxCount;
+    uint32                          HbLastRxMs;
+    uint8                           HbLinkValid;
+    char                            LoRaReadBuf[256];
+    uint8                           LoRaReadLen;
     float                           AttitudeRollRad;
     float                           AttitudePitchRad;
     float                           AttitudeYawRad;
