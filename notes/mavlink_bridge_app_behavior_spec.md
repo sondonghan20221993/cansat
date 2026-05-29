@@ -65,7 +65,7 @@ FC 링크가 연결되지 않은 상태에서 `ROUTE_UPDATE_MID`가 수신되면
 
 FC가 ARMED 상태이면 업로드를 수행하지 않고 `MAVLINK_BRIDGE_APP_ARMED_WARN_EID` (EID 12) EVS 경고를 발생시킨다. ARMED 여부는 FC Heartbeat의 `base_mode` bit7 (0x80)으로 판단한다.
 
-업로드 진행 중에 새 `ROUTE_UPDATE_MID`가 수신되면 현재 진행 중인 업로드를 즉시 중단하고 새 경로로 재시작한다.
+업로드 진행 중에 새 `ROUTE_UPDATE_MID`가 수신되면 별도 cancel handshake 없이 `MissionUploadState`와 pending waypoint buffer를 새 경로로 덮어쓰고 `MISSION_CLEAR_ALL`부터 재시작한다.
 
 ## 6. MAVLink MISSION 업로드 프로토콜
 
@@ -84,7 +84,7 @@ mavlink_bridge_app → FC : MISSION_COUNT     (count=N, ...)
 
 **이유**: 현재 테스트한 ArduPilot 환경에서 `MISSION_CLEAR_ALL` 없이 `MISSION_COUNT`만 전송했을 때 FC 응답이 확인되지 않았다 (`tools/mission_upload_diag.py`, 2026-05-28). 따라서 현재 구현은 호환성 확보를 위해 `MISSION_COUNT` 전에 반드시 `MISSION_CLEAR_ALL`을 전송한다.
 
-`MISSION_CLEAR_ALL`에 대한 `MISSION_ACK` 응답은 선택적이다. ACK 없이 timeout이 발생해도 `MISSION_COUNT` 전송을 계속 진행한다.
+`MISSION_CLEAR_ALL`에 대한 ACK는 명시적으로 대기하지 않는다. 구현은 `MISSION_CLEAR_ALL` 전송 후 `MAVLINK_BRIDGE_APP_MISSION_CLEAR_DELAY_MS` (300ms) 경과 시 `MISSION_COUNT`를 전송한다.
 
 ### 6.1 INT 경로 (권장, MAVLink2 / ArduPilot 4.x+)
 
@@ -145,7 +145,7 @@ x/y는 `int32` (× 10000, 0.1mm 단위)이고, z는 `float` meters (부호 반�
 | --- | --- |
 | 단계별 응답 대기 timeout | 2000 ms |
 | 최대 재시도 횟수 | 3 |
-| 재시도 조건 | timeout 또는 예상치 못한 seq 응답 |
+| 재시도 조건 | timeout. 예상치 못한 seq 응답은 즉시 재시도하지 않고 무시되며, 이후 timeout 경로에서 재시도된다. |
 | 재시도 시 재시작 위치 | MISSION_COUNT부터 전체 재시작 |
 
 ## 9. 실패 및 성공 처리
@@ -156,7 +156,7 @@ x/y는 `int32` (× 10000, 0.1mm 단위)이고, z는 `float` meters (부호 반�
 | --- | --- |
 | FC 응답 timeout | 재시도. 최대 재시도 초과 시 업로드 실패 기록 |
 | `MISSION_ACK` result ≠ ACCEPTED | 즉시 실패 기록. 재시도 없음 |
-| 업로드 중 새 `ROUTE_UPDATE_MID` 수신 | 현재 업로드 중단 후 새 경로로 재시작 |
+| 업로드 중 새 `ROUTE_UPDATE_MID` 수신 | 별도 cancel handshake 없이 `MissionUploadState`와 pending waypoint buffer를 새 경로로 덮어쓰고 `MISSION_CLEAR_ALL`부터 재시작 |
 | FC 링크 단절 | 업로드 중단. 링크 복구 후 자동 재시도 없음 (다음 경로 명령 대기) |
 
 업로드 실패 시:
@@ -176,7 +176,13 @@ MAVLINK_BRIDGE_APP: StartMissionUpload called wp=<N> link=<state>
 ```
 `link` 값: 0=DISCONNECTED, 1=CONNECTED. 이 로그는 `ROUTE_UPDATE_MID`가 실제로 dispatch 함수까지 도달했는지 확인하는 진단용이다.
 
-### 9.3 MISSION_ACK ACCEPTED 의미 범위
+### 9.3 MISSION_ACK result 파싱
+
+`MISSION_ACK` (msg 47) payload에서 result는 `Payload[2]` (type 필드)로 읽는다. payload 길이가 3 미만이면 result = 0 (ACCEPTED)로 처리한다.
+
+MAVLink MISSION_ACK 필드 순서: `[0]` target_system, `[1]` target_component, `[2]` type (= result), `[3]` mission_type.
+
+### 9.4 MISSION_ACK ACCEPTED 의미 범위
 
 `MISSION_ACK ACCEPTED`는 FC가 업로드 절차를 수락했음을 의미한다. 다음은 포함하지 않는다.
 
