@@ -84,6 +84,10 @@ def build_process_uplink_payload(frame: ParsedUplinkFrame) -> bytes:
     if len(frame.payload) > MAX_PAYLOAD_LENGTH:
         raise ValueError(f"payload too large: {len(frame.payload)} > {MAX_PAYLOAD_LENGTH}")
 
+    crc_input = struct.pack("<BBBBH", frame.version, frame.command_class,
+                            len(frame.payload), frame.flags, frame.sequence) + frame.payload
+    checksum = crc16_ccitt(crc_input)
+
     fixed_payload = frame.payload + bytes(MAX_PAYLOAD_LENGTH - len(frame.payload))
     return struct.pack(
         "<BBBBHH",
@@ -92,7 +96,7 @@ def build_process_uplink_payload(frame: ParsedUplinkFrame) -> bytes:
         len(frame.payload),
         frame.flags,
         frame.sequence,
-        0,
+        checksum,
     ) + fixed_payload
 
 

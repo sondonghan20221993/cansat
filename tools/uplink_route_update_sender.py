@@ -79,6 +79,10 @@ def build_process_uplink_payload(
             f"route payload too large: {len(proxy_payload)} > {UPLINK_APP_MAX_PAYLOAD_LENGTH}"
         )
 
+    crc_input = struct.pack("<BBBBH", version, command_class,
+                            len(proxy_payload), flags, sequence) + proxy_payload
+    checksum = crc16_ccitt(crc_input)
+
     fixed_payload = proxy_payload + bytes(UPLINK_APP_MAX_PAYLOAD_LENGTH - len(proxy_payload))
 
     return struct.pack(
@@ -88,7 +92,7 @@ def build_process_uplink_payload(
         len(proxy_payload),
         flags,
         sequence,
-        0,
+        checksum,
     ) + fixed_payload
 
 
