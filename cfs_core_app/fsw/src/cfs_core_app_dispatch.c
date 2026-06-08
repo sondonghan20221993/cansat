@@ -1,5 +1,6 @@
 #include "cfs_core_app_dispatch.h"
 #include "cfs_core_app_cmds.h"
+#include "cfs_core_app_utils.h"
 #include "cfs_core_app_eventids.h"
 #include "cfs_core_app_fcncodes.h"
 
@@ -32,6 +33,18 @@ void CFS_CORE_APP_TaskPipe(CFE_SB_Buffer_t *SBBufPtr)
         CFE_SB_MsgIdToValue(MsgId) == ROUTE_UPDATE_MID)
     {
         CFS_CORE_APP_ProcessStateMessage(SBBufPtr);
+        return;
+    }
+
+    if (CFE_SB_MsgIdToValue(MsgId) == CONFIG_CMD_MID)
+    {
+        CFS_CORE_APP_ProcessConfigCommand((const CFS_CORE_APP_ConfigCmdTlm_t *)SBBufPtr);
+        return;
+    }
+
+    if (CFE_SB_MsgIdToValue(MsgId) == VIEWPOINT_CMD_MID)
+    {
+        CFS_CORE_APP_ProcessViewpointCommand((const CFS_CORE_APP_ViewpointCmdTlm_t *)SBBufPtr);
         return;
     }
 

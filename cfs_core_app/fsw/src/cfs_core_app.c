@@ -55,6 +55,14 @@ CFE_Status_t CFS_CORE_APP_Init(void)
 
     memset(&CFS_CORE_APP_Data, 0, sizeof(CFS_CORE_APP_Data));
     CFS_CORE_APP_Data.RunStatus = CFE_ES_RunStatus_APP_RUN;
+    CFS_CORE_APP_Data.ActiveConfig.AttitudeTimeoutMs = CFS_CORE_APP_ATTITUDE_TIMEOUT_MS;
+    CFS_CORE_APP_Data.ActiveConfig.LocalTimeoutMs    = CFS_CORE_APP_LOCAL_TIMEOUT_MS;
+    CFS_CORE_APP_Data.ActiveConfig.GpsTimeoutMs      = CFS_CORE_APP_GPS_TIMEOUT_MS;
+    CFS_CORE_APP_Data.ActiveConfig.EkfTimeoutMs      = CFS_CORE_APP_EKF_TIMEOUT_MS;
+    CFS_CORE_APP_Data.ActiveConfig.BridgeTimeoutMs   = CFS_CORE_APP_BRIDGE_TIMEOUT_MS;
+    CFS_CORE_APP_Data.ActiveConfig.PublishPeriodMs   = CFS_CORE_APP_PROTOTYPE_PERIOD_MS;
+    CFS_CORE_APP_Data.PendingConfig  = CFS_CORE_APP_Data.ActiveConfig;
+    CFS_CORE_APP_Data.PreviousConfig = CFS_CORE_APP_Data.ActiveConfig;
 
     Status = CFE_EVS_Register(NULL, 0, CFE_EVS_EventFilter_BINARY);
     if (Status != CFE_SUCCESS)
@@ -131,6 +139,20 @@ CFE_Status_t CFS_CORE_APP_Init(void)
     {
         return Status;
     }
+
+    Status = CFE_SB_Subscribe(CFE_SB_ValueToMsgId(CONFIG_CMD_MID), CFS_CORE_APP_Data.CommandPipe);
+    if (Status != CFE_SUCCESS)
+    {
+        return Status;
+    }
+
+    Status = CFE_SB_Subscribe(CFE_SB_ValueToMsgId(VIEWPOINT_CMD_MID), CFS_CORE_APP_Data.CommandPipe);
+    if (Status != CFE_SUCCESS)
+    {
+        return Status;
+    }
+
+    CFS_CORE_APP_LoadState();
 
     CFE_EVS_SendEvent(CFS_CORE_APP_STARTUP_EID, CFE_EVS_EventType_INFORMATION,
                       "CFS_CORE_APP Initialized");

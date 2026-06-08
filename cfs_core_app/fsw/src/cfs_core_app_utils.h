@@ -27,5 +27,10 @@ typedef struct
     uint32                    LastRxTimestampMs;
 } CFS_CORE_APP_BridgeHkMirror_t;
 
+void CFS_CORE_APP_LoadState(void);
+void CFS_CORE_APP_SaveState(void);
+void CFS_CORE_APP_ProcessConfigCommand(const CFS_CORE_APP_ConfigCmdTlm_t *Msg);
+void CFS_CORE_APP_ProcessViewpointCommand(const CFS_CORE_APP_ViewpointCmdTlm_t *Msg);
+
 #endif
 

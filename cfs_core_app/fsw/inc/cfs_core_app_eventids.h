@@ -8,6 +8,11 @@
 #define CFS_CORE_APP_PUBLISH_EID     5
 #define CFS_CORE_APP_HK_EID                6
 #define CFS_CORE_APP_HEALTH_TRANSITION_EID 7
+#define CFS_CORE_APP_SEQ_ERR_EID           8
+#define CFS_CORE_APP_TIMESTAMP_ERR_EID     9
+#define CFS_CORE_APP_BRIDGE_RESTART_EID   10
+#define CFS_CORE_APP_VIEWPOINT_EID        11
+#define CFS_CORE_APP_SEQ_GAP_EID          12
 
 #endif
 

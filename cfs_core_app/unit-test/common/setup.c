@@ -49,6 +49,15 @@ void CFS_CORE_APP_UT_Setup(void)
 {
     UT_ResetState(0);
     memset(&CFS_CORE_APP_Data, 0, sizeof(CFS_CORE_APP_Data));
+    /* ActiveConfig 기본값 초기화 */
+    CFS_CORE_APP_Data.ActiveConfig.AttitudeTimeoutMs = CFS_CORE_APP_ATTITUDE_TIMEOUT_MS;
+    CFS_CORE_APP_Data.ActiveConfig.LocalTimeoutMs    = CFS_CORE_APP_LOCAL_TIMEOUT_MS;
+    CFS_CORE_APP_Data.ActiveConfig.GpsTimeoutMs      = CFS_CORE_APP_GPS_TIMEOUT_MS;
+    CFS_CORE_APP_Data.ActiveConfig.EkfTimeoutMs      = CFS_CORE_APP_EKF_TIMEOUT_MS;
+    CFS_CORE_APP_Data.ActiveConfig.BridgeTimeoutMs   = CFS_CORE_APP_BRIDGE_TIMEOUT_MS;
+    CFS_CORE_APP_Data.ActiveConfig.PublishPeriodMs   = CFS_CORE_APP_PROTOTYPE_PERIOD_MS;
+    CFS_CORE_APP_Data.PendingConfig  = CFS_CORE_APP_Data.ActiveConfig;
+    CFS_CORE_APP_Data.PreviousConfig = CFS_CORE_APP_Data.ActiveConfig;
 }
 
 /*

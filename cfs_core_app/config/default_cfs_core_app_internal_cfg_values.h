@@ -10,7 +10,18 @@
 #define CFS_CORE_APP_GPS_TIMEOUT_MS       3000
 #define CFS_CORE_APP_EKF_TIMEOUT_MS       2000
 #define CFS_CORE_APP_BRIDGE_TIMEOUT_MS    3000
-#define CFS_CORE_APP_NOMINAL_STABILITY_MS 10000
+#define CFS_CORE_APP_NOMINAL_STABILITY_MS         10000
+#define CFS_CORE_APP_FAILED_ESCALATION_MS         30000
+#define CFS_CORE_APP_TIMESTAMP_MAX_FUTURE_MS       5000
+#define CFS_CORE_APP_BRIDGE_RESTART_INTERVAL_MS    5000
+#define CFS_CORE_APP_BRIDGE_MAX_RESTARTS              3
+#define CFS_CORE_APP_BRIDGE_APP_NAME   "mavlink_bridge_app"
+#define CFS_CORE_APP_STATE_FILE_PATH   "/cf/cfs_core_app_state.bin"
+#define CFS_CORE_APP_STATE_MAGIC       0xCF5C0A00U
+#define CFS_CORE_APP_CONFIG_VERSION    1U
+#define CFS_CORE_APP_CONFIG_SCOPE      1U   /* cfs_core_app 대상 범위 */
+#define CFS_CORE_APP_PARAM_MIN_MS      100U /* 파라미터 최솟값 100ms */
+#define CFS_CORE_APP_PARAM_MAX_MS      60000U /* 파라미터 최댓값 60s */
 
 #endif
 

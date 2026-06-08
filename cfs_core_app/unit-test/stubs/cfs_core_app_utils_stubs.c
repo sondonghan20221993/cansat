@@ -36,3 +36,25 @@ void CFS_CORE_APP_UpdateHealth(uint32 NowMs, bool ForcePublish)
     UT_GenStub_AddParam(CFS_CORE_APP_UpdateHealth, bool, ForcePublish);
     UT_GenStub_Execute(CFS_CORE_APP_UpdateHealth, Basic, NULL);
 }
+
+void CFS_CORE_APP_ProcessConfigCommand(const CFS_CORE_APP_ConfigCmdTlm_t *Msg)
+{
+    UT_GenStub_AddParam(CFS_CORE_APP_ProcessConfigCommand, const CFS_CORE_APP_ConfigCmdTlm_t *, Msg);
+    UT_GenStub_Execute(CFS_CORE_APP_ProcessConfigCommand, Basic, NULL);
+}
+
+void CFS_CORE_APP_ProcessViewpointCommand(const CFS_CORE_APP_ViewpointCmdTlm_t *Msg)
+{
+    UT_GenStub_AddParam(CFS_CORE_APP_ProcessViewpointCommand, const CFS_CORE_APP_ViewpointCmdTlm_t *, Msg);
+    UT_GenStub_Execute(CFS_CORE_APP_ProcessViewpointCommand, Basic, NULL);
+}
+
+void CFS_CORE_APP_LoadState(void)
+{
+    UT_GenStub_Execute(CFS_CORE_APP_LoadState, Basic, NULL);
+}
+
+void CFS_CORE_APP_SaveState(void)
+{
+    UT_GenStub_Execute(CFS_CORE_APP_SaveState, Basic, NULL);
+}

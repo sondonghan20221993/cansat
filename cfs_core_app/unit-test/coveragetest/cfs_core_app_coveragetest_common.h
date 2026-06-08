@@ -42,6 +42,7 @@
 #include "cfs_core_app_dispatch.h"
 #include "cfs_core_app_cmds.h"
 #include "cfs_core_app_utils.h"
+#include "cfs_core_app_fcncodes.h"
 #include "cfs_core_app_msgids.h"
 #include "cfs_core_app_msg.h"
 /*

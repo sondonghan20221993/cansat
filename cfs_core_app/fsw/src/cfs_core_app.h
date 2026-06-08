@@ -45,11 +45,39 @@ typedef struct
 
 typedef struct
 {
-    uint8                       CmdCounter;
-    uint8                       ErrCounter;
-    uint8                       LastHealthState;
-    uint8                       Reserved;
+    uint32 TimestampMs;
+    uint32 SourceSequence;
+    uint8  ViewpointType;
+    uint8  PositionFrame;
+    bool   Valid;
+    float  X;
+    float  Y;
+    float  Z;
+    float  Yaw;
+    float  Pitch;
+    uint32 HoldTimeMs;
+} CFS_CORE_APP_ViewpointCache_t;
+
+typedef struct
+{
+    uint8                           CmdCounter;
+    uint8                           ErrCounter;
+    uint8                           LastHealthState;
+    uint8                           ConfigPendingState;
+    uint8                           LastConfigResult;
+    uint8                           LastRollbackReason;
+    uint16                          ConfigReserved;
+    uint32                          ConfigGeneration;
+    CFS_CORE_APP_ConfigParams_t     ActiveConfig;
+    CFS_CORE_APP_ConfigParams_t     PendingConfig;
+    CFS_CORE_APP_ConfigParams_t     PreviousConfig;
+    uint32                      SeqRejectedCount;
+    uint32                      SeqGapCount;
+    uint32                      TimestampRejectedCount;
+    uint32                      BridgeRestartCount;
+    uint32                      NextBridgeRestartMs;
     uint32                      NominalEligibleSince;
+    uint32                      RecoveryStartMs;
     uint32                      RunStatus;
     uint32                      SequenceCounter;
     uint32                      PublishCount;
@@ -60,9 +88,10 @@ typedef struct
     CFS_CORE_APP_StateCache_t   GpsState;
     CFS_CORE_APP_StateCache_t   EkfState;
     CFS_CORE_APP_BridgeCache_t  BridgeState;
-    CFS_CORE_APP_RouteCache_t   MissionRoute;
-    CFS_CORE_APP_RouteCache_t   LandingRoute;
-    CFS_CORE_APP_HkTlm_t        HkTlm;
+    CFS_CORE_APP_RouteCache_t      MissionRoute;
+    CFS_CORE_APP_RouteCache_t      LandingRoute;
+    CFS_CORE_APP_ViewpointCache_t  ViewpointCmd;
+    CFS_CORE_APP_HkTlm_t           HkTlm;
     CFS_CORE_APP_SystemHealthTlm_t SystemHealthTlm;
 } CFS_CORE_APP_Data_t;
 

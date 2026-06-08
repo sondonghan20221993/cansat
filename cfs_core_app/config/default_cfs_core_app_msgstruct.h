@@ -82,5 +82,47 @@ typedef struct
     CFS_CORE_APP_Waypoint_t   Waypoints[CFS_CORE_APP_ROUTE_MAX_WAYPOINTS];
 } CFS_CORE_APP_RouteUpdateTlm_t;
 
+/* CONFIG_CMD_MID 수신용 — uplink_app의 UPLINK_APP_ConfigCmdTlm_t와 동일 레이아웃 */
+#define CFS_CORE_APP_CONFIG_MAX_PAYLOAD 196
+
+typedef struct
+{
+    CFE_MSG_TelemetryHeader_t TelemetryHeader;
+    uint32                    Seq;
+    uint32                    TimestampMs;
+    uint16                    SourceSequence;
+    uint8                     PayloadLength;
+    uint8                     Reserved;
+    uint8                     Payload[CFS_CORE_APP_CONFIG_MAX_PAYLOAD];
+} CFS_CORE_APP_ConfigCmdTlm_t;
+
+/* VIEWPOINT_CMD_MID 수신용 — uplink_app의 UPLINK_APP_ViewpointCmdTlm_t와 동일 레이아웃 */
+typedef struct
+{
+    CFE_MSG_TelemetryHeader_t TelemetryHeader;
+    uint32                    Seq;
+    uint32                    TimestampMs;
+    uint16                    SourceSequence;
+    uint8                     ViewpointType;
+    uint8                     PositionFrame;
+    float                     X;
+    float                     Y;
+    float                     Z;
+    float                     Yaw;
+    float                     Pitch;
+    uint32                    HoldTimeMs;
+} CFS_CORE_APP_ViewpointCmdTlm_t;
+
+/* config payload 내부 헤더 */
+typedef struct
+{
+    uint8  ConfigScope;
+    uint8  ConfigVersion;
+    uint16 ParameterId;
+    uint8  ValueType;
+    uint8  ValueLength;
+    uint16 Checksum;   /* uint16 additive sum: scope+version+param_id(2B)+value_type+value_length+value_bytes */
+} CFS_CORE_APP_ConfigPayloadHdr_t;
+
 #endif
 
