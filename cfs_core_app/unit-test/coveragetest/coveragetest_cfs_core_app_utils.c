@@ -1123,6 +1123,128 @@ void Test_CFS_CORE_APP_BridgeRestart_ResetOnRecovery(void)
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.RecoveryStartMs,     0);
 }
 
+/* 인터벌마다 RestartApp 호출 확인 — 두 번째 시도 */
+void Test_CFS_CORE_APP_BridgeRestart_SecondAttempt(void)
+{
+    uint32 NowMs    = 10000;
+    uint32 Interval = CFS_CORE_APP_BRIDGE_RESTART_INTERVAL_MS;
+
+    CFS_CORE_APP_Data.BridgeState.Received          = true;
+    CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 1000;
+    CFS_CORE_APP_Data.BridgeRestartCount            = 0;
+    CFS_CORE_APP_Data.NextBridgeRestartMs           = 0;
+    CFS_CORE_APP_Data.RecoveryStartMs               = 0;
+
+    UT_SetDefaultReturnValue(UT_KEY(CFE_ES_GetAppIDByName), CFE_SUCCESS);
+
+    /* T+0: 타이머 시작, 재시작 없음 */
+    CFS_CORE_APP_UpdateHealth(NowMs, true);
+    UtAssert_STUB_COUNT(CFE_ES_RestartApp, 0);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.BridgeRestartCount, 0);
+
+    /* T+5s: 첫 번째 재시작 */
+    CFS_CORE_APP_UpdateHealth(NowMs + Interval, true);
+    UtAssert_STUB_COUNT(CFE_ES_RestartApp, 1);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.BridgeRestartCount, 1);
+
+    /* T+10s: 두 번째 재시작 */
+    CFS_CORE_APP_UpdateHealth(NowMs + 2 * Interval, true);
+    UtAssert_STUB_COUNT(CFE_ES_RestartApp, 2);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.BridgeRestartCount, 2);
+}
+
+/* 3회 전체 소진 후 추가 호출 없음 — 순서 진행으로 확인 */
+void Test_CFS_CORE_APP_BridgeRestart_AllAttemptsExhausted(void)
+{
+    uint32 NowMs    = 10000;
+    uint32 Interval = CFS_CORE_APP_BRIDGE_RESTART_INTERVAL_MS;
+
+    CFS_CORE_APP_Data.BridgeState.Received          = true;
+    CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 1000;
+    CFS_CORE_APP_Data.BridgeRestartCount            = 0;
+    CFS_CORE_APP_Data.NextBridgeRestartMs           = 0;
+    CFS_CORE_APP_Data.RecoveryStartMs               = 0;
+
+    UT_SetDefaultReturnValue(UT_KEY(CFE_ES_GetAppIDByName), CFE_SUCCESS);
+
+    /* T+0: 타이머 시작 */
+    CFS_CORE_APP_UpdateHealth(NowMs, true);
+
+    /* T+5, 10, 15s: 1회, 2회, 3회 재시작 */
+    CFS_CORE_APP_UpdateHealth(NowMs + Interval, true);
+    CFS_CORE_APP_UpdateHealth(NowMs + 2 * Interval, true);
+    CFS_CORE_APP_UpdateHealth(NowMs + 3 * Interval, true);
+
+    UtAssert_STUB_COUNT(CFE_ES_RestartApp, (int)CFS_CORE_APP_BRIDGE_MAX_RESTARTS);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.BridgeRestartCount, (int32)CFS_CORE_APP_BRIDGE_MAX_RESTARTS);
+
+    /* T+20s: 최대치 도달 → 추가 재시작 없음 */
+    CFS_CORE_APP_UpdateHealth(NowMs + 4 * Interval, true);
+    UtAssert_STUB_COUNT(CFE_ES_RestartApp, (int)CFS_CORE_APP_BRIDGE_MAX_RESTARTS);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.BridgeRestartCount, (int32)CFS_CORE_APP_BRIDGE_MAX_RESTARTS);
+}
+
+/* 재시작 1회 후 bridge 복구 → 카운터 리셋 후 안정화 거쳐 NOMINAL */
+void Test_CFS_CORE_APP_BridgeRestart_RecoverAfterAttempt(void)
+{
+    uint32 NowMs    = 10000;
+    uint32 Interval = CFS_CORE_APP_BRIDGE_RESTART_INTERVAL_MS;
+    uint32 RecoverMs;
+    uint32 NominalMs;
+
+    CFS_CORE_APP_Data.BridgeState.Received          = true;
+    CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 1000;
+    CFS_CORE_APP_Data.BridgeRestartCount            = 0;
+    CFS_CORE_APP_Data.NextBridgeRestartMs           = 0;
+    CFS_CORE_APP_Data.RecoveryStartMs               = 0;
+    CFS_CORE_APP_Data.LastHealthState               = CFS_CORE_APP_HEALTH_NOMINAL;
+
+    UT_SetDefaultReturnValue(UT_KEY(CFE_ES_GetAppIDByName), CFE_SUCCESS);
+
+    /* T+0: RECOVERY 진입 */
+    CFS_CORE_APP_UpdateHealth(NowMs, true);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_RECOVERY);
+
+    /* T+5s: 첫 번째 재시작 시도 */
+    CFS_CORE_APP_UpdateHealth(NowMs + Interval, true);
+    UtAssert_STUB_COUNT(CFE_ES_RestartApp, 1);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.BridgeRestartCount, 1);
+
+    /* 재시작 후 bridge가 복구됨 — 모든 입력 정상 */
+    RecoverMs = NowMs + Interval + 1000;
+    CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs  = RecoverMs - 100;
+    CFS_CORE_APP_Data.AttitudeState.Received          = true;
+    CFS_CORE_APP_Data.AttitudeState.TimestampMs       = RecoverMs - 100;
+    CFS_CORE_APP_Data.AttitudeState.Valid             = 1;
+    CFS_CORE_APP_Data.LocalState.Received             = true;
+    CFS_CORE_APP_Data.LocalState.TimestampMs          = RecoverMs - 100;
+    CFS_CORE_APP_Data.LocalState.Valid                = 1;
+    CFS_CORE_APP_Data.GpsState.Received               = true;
+    CFS_CORE_APP_Data.GpsState.TimestampMs            = RecoverMs - 100;
+    CFS_CORE_APP_Data.GpsState.Valid                  = 1;
+    CFS_CORE_APP_Data.EkfState.Received               = true;
+    CFS_CORE_APP_Data.EkfState.TimestampMs            = RecoverMs - 100;
+    CFS_CORE_APP_Data.EkfState.Valid                  = 1;
+    CFS_CORE_APP_Data.LastHealthState                 = CFS_CORE_APP_HEALTH_RECOVERY;
+
+    /* 복구 직후: 카운터 리셋, 안정화 진입 → DEGRADED (fault_none) */
+    CFS_CORE_APP_UpdateHealth(RecoverMs, true);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.BridgeRestartCount, 0);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.RecoveryStartMs,    0);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_DEGRADED);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.FaultCode,   CFS_CORE_APP_FAULT_NONE);
+
+    /* 안정화 10초 경과 후: NOMINAL */
+    NominalMs = RecoverMs + CFS_CORE_APP_NOMINAL_STABILITY_MS + 1;
+    CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs  = NominalMs - 100;
+    CFS_CORE_APP_Data.AttitudeState.TimestampMs       = NominalMs - 100;
+    CFS_CORE_APP_Data.LocalState.TimestampMs          = NominalMs - 100;
+    CFS_CORE_APP_Data.GpsState.TimestampMs            = NominalMs - 100;
+    CFS_CORE_APP_Data.EkfState.TimestampMs            = NominalMs - 100;
+    CFS_CORE_APP_UpdateHealth(NominalMs, true);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_NOMINAL);
+}
+
 /* -----------------------------------------------------------------------
  * Spec §19.2 CORE-RUN-004: GPS 타임아웃 (stale 플래그 아닌 timestamp 만료)
  * ----------------------------------------------------------------------- */
@@ -1648,6 +1770,9 @@ void UtTest_Setup(void)
     ADD_TEST(CFS_CORE_APP_BridgeRestart_GetAppIdFail);
     ADD_TEST(CFS_CORE_APP_BridgeRestart_MaxReached);
     ADD_TEST(CFS_CORE_APP_BridgeRestart_ResetOnRecovery);
+    ADD_TEST(CFS_CORE_APP_BridgeRestart_SecondAttempt);
+    ADD_TEST(CFS_CORE_APP_BridgeRestart_AllAttemptsExhausted);
+    ADD_TEST(CFS_CORE_APP_BridgeRestart_RecoverAfterAttempt);
     ADD_TEST(CFS_CORE_APP_UpdateHealth_GPS_Timeout);
     ADD_TEST(CFS_CORE_APP_UpdateHealth_RecoveryToNominal);
     ADD_TEST(CFS_CORE_APP_TimestampCheck_GPS_Rejected);

@@ -86,6 +86,18 @@ The bridge shall discard the frame and continue running when any of the followin
 
 The bridge shall attempt serial reopen after serial open or read failure.
 
+## Known Limitation: RF Collision with Downlink
+
+`lora_fc_downlink_app` transmits FC and SH packets continuously on the same LoRa channel used for uplink. When the PC transmits an UP frame simultaneously, both signals collide in the air and the Pi receives a corrupted frame.
+
+```
+EVS: UPLINK_APP: LoRa frame parse failed: UP1,1,10,...  ← corrupted frame
+```
+
+This is not a software bug; it is an inherent single-channel half-duplex constraint.
+
+Mitigation: use a second LoRa module connected to a separate COM port on the PC as a dedicated uplink channel. The Pi-side bridge would open both the downlink serial device (for FC/SH RX) and the uplink serial device (for UP RX) independently.
+
 ## Bring-up Notes
 
 The existing [tools/uplink_route_update_sender.py](/C:/Users/sdh97/Documents/GitHub/cfs-telemetry-app/tools/uplink_route_update_sender.py) supports two paths:
