@@ -13,6 +13,8 @@
 #include "mavlink_bridge_app.h"
 #include "mavlink_bridge_app_dispatch.h"
 #include "mavlink_bridge_app_cmds.h"
+#include "mavlink_bridge_app_utils.h"
+#include "mavlink_bridge_app_fcncodes.h"
 #include "mavlink_bridge_app_msgids.h"
 #include "mavlink_bridge_app_msg.h"
 

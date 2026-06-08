@@ -5,5 +5,6 @@
 
 #define MAVLINK_BRIDGE_APP_HK_TLM_MID 0x08A0
 #define ROUTE_UPDATE_MID              0x190BU
+#define CONFIG_CMD_MID                0x190EU
 
 #endif

@@ -63,6 +63,14 @@ typedef struct
     uint8     FcSystemStatus;
     uint8     IsArmed;
     uint8     FcStatePad;
+    uint8                              ConfigPendingState;
+    uint8                              LastConfigResult;
+    uint8                              LastRollbackReason;
+    uint8                              ConfigReserved;
+    uint32                             ConfigGeneration;
+    MAVLINK_BRIDGE_APP_ConfigParams_t  ActiveConfig;
+    MAVLINK_BRIDGE_APP_ConfigParams_t  PendingConfig;
+    MAVLINK_BRIDGE_APP_ConfigParams_t  PreviousConfig;
     CFE_SB_PipeId_t CommandPipe;
     MAVLINK_BRIDGE_APP_HkTlm_t        HkTlm;
     MAVLINK_BRIDGE_APP_EkfLocalTlm_t  EkfLocalTlm;

@@ -10,6 +10,7 @@ include_directories(../config)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/inc)
 
 add_cfe_coverage_stubs(mav_bridge_app
+  stubs/mavlink_bridge_app_global_stubs.c
   stubs/mavlink_bridge_app_stubs.c
   stubs/mavlink_bridge_app_cmds_stubs.c
   stubs/mavlink_bridge_app_dispatch_stubs.c

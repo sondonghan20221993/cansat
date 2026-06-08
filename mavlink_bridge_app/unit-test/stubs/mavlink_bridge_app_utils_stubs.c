@@ -26,3 +26,21 @@ void MAVLINK_BRIDGE_APP_UpdateFromHeartbeat(uint8 BaseMode, uint8 SystemStatus)
     UT_GenStub_AddParam(MAVLINK_BRIDGE_APP_UpdateFromHeartbeat, uint8, SystemStatus);
     UT_GenStub_Execute(MAVLINK_BRIDGE_APP_UpdateFromHeartbeat, Basic, NULL);
 }
+
+void MAVLINK_BRIDGE_APP_ProcessConfigCommand(const MAVLINK_BRIDGE_APP_ConfigCmdTlm_t *Msg)
+{
+    UT_GenStub_AddParam(MAVLINK_BRIDGE_APP_ProcessConfigCommand, const MAVLINK_BRIDGE_APP_ConfigCmdTlm_t *, Msg);
+    UT_GenStub_Execute(MAVLINK_BRIDGE_APP_ProcessConfigCommand, Basic, NULL);
+}
+
+void MAVLINK_BRIDGE_APP_StartMissionUpload(const MAVLINK_BRIDGE_APP_RouteUpdateMirror_t *Msg)
+{
+    UT_GenStub_AddParam(MAVLINK_BRIDGE_APP_StartMissionUpload, const MAVLINK_BRIDGE_APP_RouteUpdateMirror_t *, Msg);
+    UT_GenStub_Execute(MAVLINK_BRIDGE_APP_StartMissionUpload, Basic, NULL);
+}
+
+void MAVLINK_BRIDGE_APP_MissionQuery(const MAVLINK_BRIDGE_APP_MissionQueryCmd_t *Cmd)
+{
+    UT_GenStub_AddParam(MAVLINK_BRIDGE_APP_MissionQuery, const MAVLINK_BRIDGE_APP_MissionQueryCmd_t *, Cmd);
+    UT_GenStub_Execute(MAVLINK_BRIDGE_APP_MissionQuery, Basic, NULL);
+}

@@ -58,6 +58,16 @@ CFE_Status_t MAVLINK_BRIDGE_APP_Init(void)
     MAVLINK_BRIDGE_APP_Data.ReconnectIntervalMs = MAVLINK_BRIDGE_APP_RECONNECT_INTERVAL_MS;
     MAVLINK_BRIDGE_APP_Data.SerialFd            = -1;
 
+    MAVLINK_BRIDGE_APP_Data.ActiveConfig.AttitudeIntervalUs        = MAVLINK_BRIDGE_APP_ATTITUDE_INTERVAL_US;
+    MAVLINK_BRIDGE_APP_Data.ActiveConfig.LocalPositionIntervalUs   = MAVLINK_BRIDGE_APP_LOCAL_POSITION_INTERVAL_US;
+    MAVLINK_BRIDGE_APP_Data.ActiveConfig.GlobalPositionIntervalUs  = MAVLINK_BRIDGE_APP_GLOBAL_POSITION_INTERVAL_US;
+    MAVLINK_BRIDGE_APP_Data.ActiveConfig.GpsRawIntervalUs          = MAVLINK_BRIDGE_APP_GPS_RAW_INTERVAL_US;
+    MAVLINK_BRIDGE_APP_Data.ActiveConfig.EkfStatusIntervalUs       = MAVLINK_BRIDGE_APP_EKF_STATUS_INTERVAL_US;
+    MAVLINK_BRIDGE_APP_Data.ActiveConfig.ReconnectIntervalMs       = MAVLINK_BRIDGE_APP_RECONNECT_INTERVAL_MS;
+    MAVLINK_BRIDGE_APP_Data.ActiveConfig.HeartbeatIntervalMs       = MAVLINK_BRIDGE_APP_HEARTBEAT_INTERVAL_MS;
+    MAVLINK_BRIDGE_APP_Data.PendingConfig  = MAVLINK_BRIDGE_APP_Data.ActiveConfig;
+    MAVLINK_BRIDGE_APP_Data.PreviousConfig = MAVLINK_BRIDGE_APP_Data.ActiveConfig;
+
     Status = CFE_EVS_Register(NULL, 0, CFE_EVS_EventFilter_BINARY);
     if (Status != CFE_SUCCESS)
     {
@@ -124,6 +134,12 @@ CFE_Status_t MAVLINK_BRIDGE_APP_Init(void)
     }
 
     Status = CFE_SB_Subscribe(CFE_SB_ValueToMsgId(ROUTE_UPDATE_MID), MAVLINK_BRIDGE_APP_Data.CommandPipe);
+    if (Status != CFE_SUCCESS)
+    {
+        return Status;
+    }
+
+    Status = CFE_SB_Subscribe(CFE_SB_ValueToMsgId(CONFIG_CMD_MID), MAVLINK_BRIDGE_APP_Data.CommandPipe);
     if (Status != CFE_SUCCESS)
     {
         return Status;

@@ -589,7 +589,7 @@ static void MAVLINK_BRIDGE_APP_SendCompanionHeartbeat(uint32 NowMs)
 {
     uint8 Payload[MAVLINK_MSG_ID_HEARTBEAT_LEN];
 
-    if ((NowMs - MAVLINK_BRIDGE_APP_Data.LastHeartbeatTxMs) < MAVLINK_BRIDGE_APP_HEARTBEAT_INTERVAL_MS)
+    if ((NowMs - MAVLINK_BRIDGE_APP_Data.LastHeartbeatTxMs) < MAVLINK_BRIDGE_APP_Data.ActiveConfig.HeartbeatIntervalMs)
     {
         return;
     }
@@ -636,7 +636,7 @@ void MAVLINK_BRIDGE_APP_RequestTelemetryStreams(void)
                       (unsigned int)MAVLINK_BRIDGE_APP_Data.TargetSystemId,
                       (unsigned int)MAVLINK_BRIDGE_APP_Data.TargetComponentId);
 
-    Status = MAVLINK_BRIDGE_APP_RequestMessageInterval(MAVLINK_MSG_ID_ATTITUDE, MAVLINK_BRIDGE_APP_ATTITUDE_INTERVAL_US);
+    Status = MAVLINK_BRIDGE_APP_RequestMessageInterval(MAVLINK_MSG_ID_ATTITUDE, MAVLINK_BRIDGE_APP_Data.ActiveConfig.AttitudeIntervalUs);
     if (Status != CFE_SUCCESS)
     {
         CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_STREAM_EID, CFE_EVS_EventType_ERROR,
@@ -647,7 +647,7 @@ void MAVLINK_BRIDGE_APP_RequestTelemetryStreams(void)
     }
 
     Status = MAVLINK_BRIDGE_APP_RequestMessageInterval(MAVLINK_MSG_ID_LOCAL_POSITION_NED,
-                                                       MAVLINK_BRIDGE_APP_LOCAL_POSITION_INTERVAL_US);
+                                                       MAVLINK_BRIDGE_APP_Data.ActiveConfig.LocalPositionIntervalUs);
     if (Status != CFE_SUCCESS)
     {
         CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_STREAM_EID, CFE_EVS_EventType_ERROR,
@@ -658,7 +658,7 @@ void MAVLINK_BRIDGE_APP_RequestTelemetryStreams(void)
     }
 
     Status = MAVLINK_BRIDGE_APP_RequestMessageInterval(MAVLINK_MSG_ID_GLOBAL_POSITION_INT,
-                                                       MAVLINK_BRIDGE_APP_GLOBAL_POSITION_INTERVAL_US);
+                                                       MAVLINK_BRIDGE_APP_Data.ActiveConfig.GlobalPositionIntervalUs);
     if (Status != CFE_SUCCESS)
     {
         CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_STREAM_EID, CFE_EVS_EventType_ERROR,
@@ -668,7 +668,7 @@ void MAVLINK_BRIDGE_APP_RequestTelemetryStreams(void)
         return;
     }
 
-    Status = MAVLINK_BRIDGE_APP_RequestMessageInterval(MAVLINK_MSG_ID_GPS_RAW_INT, MAVLINK_BRIDGE_APP_GPS_RAW_INTERVAL_US);
+    Status = MAVLINK_BRIDGE_APP_RequestMessageInterval(MAVLINK_MSG_ID_GPS_RAW_INT, MAVLINK_BRIDGE_APP_Data.ActiveConfig.GpsRawIntervalUs);
     if (Status != CFE_SUCCESS)
     {
         CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_STREAM_EID, CFE_EVS_EventType_ERROR,
@@ -679,7 +679,7 @@ void MAVLINK_BRIDGE_APP_RequestTelemetryStreams(void)
     }
 
     Status = MAVLINK_BRIDGE_APP_RequestMessageInterval(MAVLINK_MSG_ID_EKF_STATUS_REPORT,
-                                                       MAVLINK_BRIDGE_APP_EKF_STATUS_INTERVAL_US);
+                                                       MAVLINK_BRIDGE_APP_Data.ActiveConfig.EkfStatusIntervalUs);
     if (Status != CFE_SUCCESS)
     {
         CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_STREAM_EID, CFE_EVS_EventType_ERROR,
@@ -1490,6 +1490,170 @@ static void MAVLINK_BRIDGE_APP_HandleReceivedBytes(const uint8 *Buffer, ssize_t 
     }
 }
 
+static uint16 MAVLINK_BRIDGE_APP_ConfigChecksum(const MAVLINK_BRIDGE_APP_ConfigPayloadHdr_t *Hdr,
+                                                  const uint8 *ValueBytes, uint8 ValueLength)
+{
+    uint16 Sum = 0;
+    uint8  i;
+
+    Sum += (uint16)Hdr->ConfigScope;
+    Sum += (uint16)Hdr->ConfigVersion;
+    Sum += (uint16)(Hdr->ParameterId & 0xFFU);
+    Sum += (uint16)((Hdr->ParameterId >> 8U) & 0xFFU);
+    Sum += (uint16)Hdr->ValueType;
+    Sum += (uint16)Hdr->ValueLength;
+    for (i = 0; i < ValueLength; i++)
+    {
+        Sum += (uint16)ValueBytes[i];
+    }
+    return Sum;
+}
+
+void MAVLINK_BRIDGE_APP_ProcessConfigCommand(const MAVLINK_BRIDGE_APP_ConfigCmdTlm_t *Msg)
+{
+    const MAVLINK_BRIDGE_APP_ConfigPayloadHdr_t *Hdr;
+    uint32                                       Value;
+    MAVLINK_BRIDGE_APP_ConfigParams_t            Candidate;
+
+    /* ── 1. 기본 포맷 검증 ── */
+    if (Msg->PayloadLength < (uint8)sizeof(MAVLINK_BRIDGE_APP_ConfigPayloadHdr_t))
+    {
+        MAVLINK_BRIDGE_APP_Data.ErrCounter++;
+        MAVLINK_BRIDGE_APP_Data.ConfigPendingState = (uint8)MAVLINK_BRIDGE_CONFIG_PENDING_REJECTED;
+        MAVLINK_BRIDGE_APP_Data.LastConfigResult   = (uint8)MAVLINK_BRIDGE_CONFIG_RESULT_BAD_LENGTH;
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_COMMAND_ERR_EID, CFE_EVS_EventType_ERROR,
+                          "MAVLINK_BRIDGE_APP: config payload too short len=%u",
+                          (unsigned int)Msg->PayloadLength);
+        return;
+    }
+
+    Hdr = (const MAVLINK_BRIDGE_APP_ConfigPayloadHdr_t *)Msg->Payload;
+
+    if (Hdr->ConfigScope != MAVLINK_BRIDGE_APP_CONFIG_SCOPE)
+    {
+        /* 다른 앱 대상 scope → 조용히 무시 (거부 아님) */
+        return;
+    }
+
+    if (Hdr->ConfigVersion != MAVLINK_BRIDGE_APP_CONFIG_VERSION)
+    {
+        MAVLINK_BRIDGE_APP_Data.ErrCounter++;
+        MAVLINK_BRIDGE_APP_Data.ConfigPendingState = (uint8)MAVLINK_BRIDGE_CONFIG_PENDING_REJECTED;
+        MAVLINK_BRIDGE_APP_Data.LastConfigResult   = (uint8)MAVLINK_BRIDGE_CONFIG_RESULT_BAD_VERSION;
+        return;
+    }
+
+    if (Hdr->ValueLength != sizeof(uint32) ||
+        (uint8)(sizeof(*Hdr) + Hdr->ValueLength) > Msg->PayloadLength)
+    {
+        MAVLINK_BRIDGE_APP_Data.ErrCounter++;
+        MAVLINK_BRIDGE_APP_Data.ConfigPendingState = (uint8)MAVLINK_BRIDGE_CONFIG_PENDING_REJECTED;
+        MAVLINK_BRIDGE_APP_Data.LastConfigResult   = (uint8)MAVLINK_BRIDGE_CONFIG_RESULT_BAD_LENGTH;
+        return;
+    }
+
+    /* ── Checksum 검증 ── */
+    {
+        const uint8 *ValueBytes = Msg->Payload + sizeof(*Hdr);
+        uint16       Expected   = MAVLINK_BRIDGE_APP_ConfigChecksum(Hdr, ValueBytes, Hdr->ValueLength);
+        if (Hdr->Checksum != Expected)
+        {
+            MAVLINK_BRIDGE_APP_Data.ErrCounter++;
+            MAVLINK_BRIDGE_APP_Data.ConfigPendingState = (uint8)MAVLINK_BRIDGE_CONFIG_PENDING_REJECTED;
+            MAVLINK_BRIDGE_APP_Data.LastConfigResult   = (uint8)MAVLINK_BRIDGE_CONFIG_RESULT_BAD_CHECKSUM;
+            CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_COMMAND_ERR_EID, CFE_EVS_EventType_ERROR,
+                              "MAVLINK_BRIDGE_APP: config checksum mismatch got=0x%04X expected=0x%04X",
+                              (unsigned int)Hdr->Checksum, (unsigned int)Expected);
+            return;
+        }
+    }
+
+    memcpy(&Value, Msg->Payload + sizeof(*Hdr), sizeof(Value));
+
+    /* ── 2. PendingConfig에 새 값 기록 (ActiveConfig 기반) ── */
+    MAVLINK_BRIDGE_APP_Data.PendingConfig      = MAVLINK_BRIDGE_APP_Data.ActiveConfig;
+    MAVLINK_BRIDGE_APP_Data.ConfigPendingState = (uint8)MAVLINK_BRIDGE_CONFIG_PENDING_PENDING;
+
+    switch ((MAVLINK_BRIDGE_APP_ParamId_t)Hdr->ParameterId)
+    {
+        case MAVLINK_BRIDGE_PARAM_ATTITUDE_INTERVAL_US:
+            if (Value < MAVLINK_BRIDGE_APP_PARAM_INTERVAL_MIN_US || Value > MAVLINK_BRIDGE_APP_PARAM_INTERVAL_MAX_US)
+            { goto reject_value; }
+            MAVLINK_BRIDGE_APP_Data.PendingConfig.AttitudeIntervalUs = Value;
+            break;
+        case MAVLINK_BRIDGE_PARAM_LOCAL_POSITION_INTERVAL_US:
+            if (Value < MAVLINK_BRIDGE_APP_PARAM_INTERVAL_MIN_US || Value > MAVLINK_BRIDGE_APP_PARAM_INTERVAL_MAX_US)
+            { goto reject_value; }
+            MAVLINK_BRIDGE_APP_Data.PendingConfig.LocalPositionIntervalUs = Value;
+            break;
+        case MAVLINK_BRIDGE_PARAM_GLOBAL_POSITION_INTERVAL_US:
+            if (Value < MAVLINK_BRIDGE_APP_PARAM_INTERVAL_MIN_US || Value > MAVLINK_BRIDGE_APP_PARAM_INTERVAL_MAX_US)
+            { goto reject_value; }
+            MAVLINK_BRIDGE_APP_Data.PendingConfig.GlobalPositionIntervalUs = Value;
+            break;
+        case MAVLINK_BRIDGE_PARAM_GPS_RAW_INTERVAL_US:
+            if (Value < MAVLINK_BRIDGE_APP_PARAM_INTERVAL_MIN_US || Value > MAVLINK_BRIDGE_APP_PARAM_INTERVAL_MAX_US)
+            { goto reject_value; }
+            MAVLINK_BRIDGE_APP_Data.PendingConfig.GpsRawIntervalUs = Value;
+            break;
+        case MAVLINK_BRIDGE_PARAM_EKF_STATUS_INTERVAL_US:
+            if (Value < MAVLINK_BRIDGE_APP_PARAM_INTERVAL_MIN_US || Value > MAVLINK_BRIDGE_APP_PARAM_INTERVAL_MAX_US)
+            { goto reject_value; }
+            MAVLINK_BRIDGE_APP_Data.PendingConfig.EkfStatusIntervalUs = Value;
+            break;
+        case MAVLINK_BRIDGE_PARAM_RECONNECT_INTERVAL_MS:
+            if (Value < MAVLINK_BRIDGE_APP_PARAM_MS_MIN || Value > MAVLINK_BRIDGE_APP_PARAM_MS_MAX)
+            { goto reject_value; }
+            MAVLINK_BRIDGE_APP_Data.PendingConfig.ReconnectIntervalMs = Value;
+            break;
+        case MAVLINK_BRIDGE_PARAM_HEARTBEAT_INTERVAL_MS:
+            if (Value < MAVLINK_BRIDGE_APP_PARAM_MS_MIN || Value > MAVLINK_BRIDGE_APP_PARAM_MS_MAX)
+            { goto reject_value; }
+            MAVLINK_BRIDGE_APP_Data.PendingConfig.HeartbeatIntervalMs = Value;
+            break;
+        default:
+            MAVLINK_BRIDGE_APP_Data.ErrCounter++;
+            MAVLINK_BRIDGE_APP_Data.ConfigPendingState = (uint8)MAVLINK_BRIDGE_CONFIG_PENDING_REJECTED;
+            MAVLINK_BRIDGE_APP_Data.LastConfigResult   = (uint8)MAVLINK_BRIDGE_CONFIG_RESULT_BAD_PARAM;
+            return;
+    }
+
+    /* ── 3. PendingConfig 전체 일관성 검증 ── */
+    Candidate = MAVLINK_BRIDGE_APP_Data.PendingConfig;
+    if (Candidate.AttitudeIntervalUs       < MAVLINK_BRIDGE_APP_PARAM_INTERVAL_MIN_US ||
+        Candidate.LocalPositionIntervalUs  < MAVLINK_BRIDGE_APP_PARAM_INTERVAL_MIN_US ||
+        Candidate.GlobalPositionIntervalUs < MAVLINK_BRIDGE_APP_PARAM_INTERVAL_MIN_US ||
+        Candidate.GpsRawIntervalUs         < MAVLINK_BRIDGE_APP_PARAM_INTERVAL_MIN_US ||
+        Candidate.EkfStatusIntervalUs      < MAVLINK_BRIDGE_APP_PARAM_INTERVAL_MIN_US ||
+        Candidate.ReconnectIntervalMs      < MAVLINK_BRIDGE_APP_PARAM_MS_MIN          ||
+        Candidate.HeartbeatIntervalMs      < MAVLINK_BRIDGE_APP_PARAM_MS_MIN)
+    {
+        goto reject_value;
+    }
+
+    /* ── 4. PreviousConfig 백업 후 ActiveConfig 활성화 ── */
+    MAVLINK_BRIDGE_APP_Data.PreviousConfig     = MAVLINK_BRIDGE_APP_Data.ActiveConfig;
+    MAVLINK_BRIDGE_APP_Data.ActiveConfig       = MAVLINK_BRIDGE_APP_Data.PendingConfig;
+    MAVLINK_BRIDGE_APP_Data.ConfigGeneration++;
+    MAVLINK_BRIDGE_APP_Data.ConfigPendingState = (uint8)MAVLINK_BRIDGE_CONFIG_PENDING_IDLE;
+    MAVLINK_BRIDGE_APP_Data.LastConfigResult   = (uint8)MAVLINK_BRIDGE_CONFIG_RESULT_OK;
+    MAVLINK_BRIDGE_APP_Data.CmdCounter++;
+
+    /* 활성화 부작용: 다음 ServiceSerial 루프에서 새 interval로 FC 재요청 */
+    MAVLINK_BRIDGE_APP_Data.StreamRequestPending = 1;
+
+    CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_STREAM_EID, CFE_EVS_EventType_INFORMATION,
+                      "MAVLINK_BRIDGE_APP: config activated param=%u value=%lu gen=%lu",
+                      (unsigned int)Hdr->ParameterId, (unsigned long)Value,
+                      (unsigned long)MAVLINK_BRIDGE_APP_Data.ConfigGeneration);
+    return;
+
+reject_value:
+    MAVLINK_BRIDGE_APP_Data.ErrCounter++;
+    MAVLINK_BRIDGE_APP_Data.ConfigPendingState = (uint8)MAVLINK_BRIDGE_CONFIG_PENDING_REJECTED;
+    MAVLINK_BRIDGE_APP_Data.LastConfigResult   = (uint8)MAVLINK_BRIDGE_CONFIG_RESULT_BAD_VALUE;
+}
+
 void MAVLINK_BRIDGE_APP_ReportHousekeeping(void)
 {
     MAVLINK_BRIDGE_APP_Data.HkTlm.CommandCounter             = MAVLINK_BRIDGE_APP_Data.CmdCounter;
@@ -1551,7 +1715,7 @@ void MAVLINK_BRIDGE_APP_ServiceSerial(void)
 
     if (MAVLINK_BRIDGE_APP_Data.SerialFd < 0)
     {
-        if ((NowMs - MAVLINK_BRIDGE_APP_Data.LastReconnectAttemptMs) >= MAVLINK_BRIDGE_APP_Data.ReconnectIntervalMs)
+        if ((NowMs - MAVLINK_BRIDGE_APP_Data.LastReconnectAttemptMs) >= MAVLINK_BRIDGE_APP_Data.ActiveConfig.ReconnectIntervalMs)
         {
             MAVLINK_BRIDGE_APP_Data.LastReconnectAttemptMs = NowMs;
             MAVLINK_BRIDGE_APP_Data.ReconnectAttemptCount++;

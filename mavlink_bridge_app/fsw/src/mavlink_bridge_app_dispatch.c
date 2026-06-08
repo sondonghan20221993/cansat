@@ -4,6 +4,7 @@
 #include "mavlink_bridge_app_eventids.h"
 #include "mavlink_bridge_app_fcncodes.h"
 #include "mavlink_bridge_app_msgids.h"
+#include "mavlink_bridge_app_msg.h"
 
 void MAVLINK_BRIDGE_APP_TaskPipe(CFE_SB_Buffer_t *SBBufPtr)
 {
@@ -21,6 +22,12 @@ void MAVLINK_BRIDGE_APP_TaskPipe(CFE_SB_Buffer_t *SBBufPtr)
     if (CFE_SB_MsgId_Equal(MsgId, CFE_SB_ValueToMsgId(ROUTE_UPDATE_MID)))
     {
         MAVLINK_BRIDGE_APP_StartMissionUpload((const MAVLINK_BRIDGE_APP_RouteUpdateMirror_t *)SBBufPtr);
+        return;
+    }
+
+    if (CFE_SB_MsgId_Equal(MsgId, CFE_SB_ValueToMsgId(CONFIG_CMD_MID)))
+    {
+        MAVLINK_BRIDGE_APP_ProcessConfigCommand((const MAVLINK_BRIDGE_APP_ConfigCmdTlm_t *)SBBufPtr);
         return;
     }
 
