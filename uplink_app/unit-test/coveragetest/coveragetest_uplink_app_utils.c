@@ -14,10 +14,18 @@ void Test_UPLINK_APP_ValidateProxyCommand(void)
     Cmd.Version       = UPLINK_APP_PROTOCOL_VERSION;
     Cmd.CommandClass  = UPLINK_APP_CLASS_ROUTE_UPDATE;
     Cmd.PayloadLength = 1;
+    Cmd.Checksum      = UPLINK_APP_ComputeProxyCrc(&Cmd);
 
     UtAssert_BOOL_TRUE(UPLINK_APP_ValidateProxyCommand(&Cmd, &Result));
     UtAssert_INT32_EQ(Result, UPLINK_APP_RESULT_ACCEPT);
 
+    /* bad checksum — all other fields valid */
+    Cmd.Checksum ^= 0x5A5AU;
+    UtAssert_BOOL_FALSE(UPLINK_APP_ValidateProxyCommand(&Cmd, &Result));
+    UtAssert_INT32_EQ(Result, UPLINK_APP_RESULT_REJECT_CHECKSUM);
+    Cmd.Checksum = UPLINK_APP_ComputeProxyCrc(&Cmd);
+
+    /* bad version — short-circuits before CRC check */
     Cmd.Version = 99;
     UtAssert_BOOL_FALSE(UPLINK_APP_ValidateProxyCommand(&Cmd, &Result));
     UtAssert_INT32_EQ(Result, UPLINK_APP_RESULT_REJECT_VERSION);
@@ -259,6 +267,115 @@ void Test_UPLINK_APP_ForwardDiagnosticCommand(void)
     UtAssert_BOOL_TRUE(UPLINK_APP_ForwardDiagnosticCommand(&Cmd));
 }
 
+void Test_UPLINK_APP_ParseViewpointPayload(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t  Cmd;
+    UPLINK_APP_ViewpointPayload_t  Payload;
+    UPLINK_APP_ViewpointPayload_t *Src;
+
+    memset(&Cmd, 0, sizeof(Cmd));
+    Src = (UPLINK_APP_ViewpointPayload_t *)Cmd.Payload;
+
+    Cmd.PayloadLength       = (uint8)sizeof(UPLINK_APP_ViewpointPayload_t);
+    Src->ViewpointType      = 0;
+    Src->ViewpointVersion   = UPLINK_APP_VIEWPOINT_VERSION;
+    Src->PositionFrame      = 0;
+    Src->X                  = 0.0f;
+    Src->Y                  = 0.0f;
+    Src->Z                  = 4.0f;
+    Src->Yaw                = 0.0f;
+    Src->Pitch              = 0.0f;
+    Src->HoldTimeMs         = 0;
+    UtAssert_BOOL_TRUE(UPLINK_APP_ParseViewpointPayload(&Cmd, &Payload));
+
+    /* wrong payload size */
+    Cmd.PayloadLength = (uint8)(sizeof(UPLINK_APP_ViewpointPayload_t) - 1);
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseViewpointPayload(&Cmd, &Payload));
+    Cmd.PayloadLength = (uint8)sizeof(UPLINK_APP_ViewpointPayload_t);
+
+    /* bad version */
+    Src->ViewpointVersion = 99;
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseViewpointPayload(&Cmd, &Payload));
+    Src->ViewpointVersion = UPLINK_APP_VIEWPOINT_VERSION;
+
+    /* bad type */
+    Src->ViewpointType = UPLINK_APP_VIEWPOINT_MAX_TYPE + 1U;
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseViewpointPayload(&Cmd, &Payload));
+    Src->ViewpointType = 0;
+
+    /* bad frame */
+    Src->PositionFrame = UPLINK_APP_VIEWPOINT_MAX_FRAME + 1U;
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseViewpointPayload(&Cmd, &Payload));
+    Src->PositionFrame = 0;
+
+    /* X out of range / non-finite */
+    Src->X = UPLINK_APP_VIEWPOINT_MAX_X_M + 1.0f;
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseViewpointPayload(&Cmd, &Payload));
+    Src->X = UPLINK_APP_VIEWPOINT_MIN_X_M - 1.0f;
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseViewpointPayload(&Cmd, &Payload));
+    Src->X = INFINITY;
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseViewpointPayload(&Cmd, &Payload));
+    Src->X = 0.0f;
+
+    /* Y out of range */
+    Src->Y = UPLINK_APP_VIEWPOINT_MAX_Y_M + 1.0f;
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseViewpointPayload(&Cmd, &Payload));
+    Src->Y = 0.0f;
+
+    /* Z out of range */
+    Src->Z = UPLINK_APP_VIEWPOINT_MAX_ALT_M + 1.0f;
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseViewpointPayload(&Cmd, &Payload));
+    Src->Z = UPLINK_APP_VIEWPOINT_MIN_ALT_M - 0.5f;
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseViewpointPayload(&Cmd, &Payload));
+    Src->Z = 4.0f;
+
+    /* Yaw out of range */
+    Src->Yaw = UPLINK_APP_VIEWPOINT_MAX_YAW + 0.1f;
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseViewpointPayload(&Cmd, &Payload));
+    Src->Yaw = -(UPLINK_APP_VIEWPOINT_MAX_YAW + 0.1f);
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseViewpointPayload(&Cmd, &Payload));
+    Src->Yaw = 0.0f;
+
+    /* Pitch out of range */
+    Src->Pitch = UPLINK_APP_VIEWPOINT_MAX_PITCH + 0.1f;
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseViewpointPayload(&Cmd, &Payload));
+    Src->Pitch = 0.0f;
+
+    /* HoldTimeMs too large */
+    Src->HoldTimeMs = UPLINK_APP_VIEWPOINT_MAX_HOLD_MS + 1U;
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseViewpointPayload(&Cmd, &Payload));
+    Src->HoldTimeMs = 0;
+
+    /* boundary valid: max type and max hold */
+    Src->ViewpointType = UPLINK_APP_VIEWPOINT_MAX_TYPE;
+    Src->HoldTimeMs    = UPLINK_APP_VIEWPOINT_MAX_HOLD_MS;
+    UtAssert_BOOL_TRUE(UPLINK_APP_ParseViewpointPayload(&Cmd, &Payload));
+}
+
+void Test_UPLINK_APP_ForwardViewpointCommand(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t Cmd;
+    UPLINK_APP_ViewpointPayload_t Payload;
+
+    memset(&Cmd, 0, sizeof(Cmd));
+    memset(&Payload, 0, sizeof(Payload));
+    Cmd.Sequence          = 70;
+    Payload.ViewpointType = 0;
+    Payload.PositionFrame = 0;
+    Payload.X             = 1.0f;
+    Payload.Y             = -5.0f;
+    Payload.Z             = 3.0f;
+    Payload.Yaw           = 0.0f;
+    Payload.Pitch         = 0.0f;
+    Payload.HoldTimeMs    = 1000;
+
+    UT_SetDefaultReturnValue(UT_KEY(CFE_SB_TransmitMsg), CFE_SUCCESS);
+    UtAssert_BOOL_TRUE(UPLINK_APP_ForwardViewpointCommand(&Cmd, &Payload));
+
+    UT_SetDefaultReturnValue(UT_KEY(CFE_SB_TransmitMsg), -1);
+    UtAssert_BOOL_FALSE(UPLINK_APP_ForwardViewpointCommand(&Cmd, &Payload));
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(UPLINK_APP_ValidateProxyCommand);
@@ -271,4 +388,6 @@ void UtTest_Setup(void)
     ADD_TEST(UPLINK_APP_SaveState_NoDir);
     ADD_TEST(UPLINK_APP_ForwardModeCommand);
     ADD_TEST(UPLINK_APP_ForwardDiagnosticCommand);
+    ADD_TEST(UPLINK_APP_ParseViewpointPayload);
+    ADD_TEST(UPLINK_APP_ForwardViewpointCommand);
 }

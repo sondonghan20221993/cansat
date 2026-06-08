@@ -232,6 +232,7 @@ void Test_UPLINK_APP_ProcessUplink_ViewpointAccept(void)
 
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ParseViewpointPayload), true);
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ForwardViewpointCommand), true);
 
     UPLINK_APP_ProcessUplink(&TestMsg);
@@ -252,6 +253,7 @@ void Test_UPLINK_APP_ProcessUplink_ViewpointForwardFail(void)
 
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ParseViewpointPayload), true);
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ForwardViewpointCommand), false);
 
     UPLINK_APP_ProcessUplink(&TestMsg);
@@ -259,6 +261,27 @@ void Test_UPLINK_APP_ProcessUplink_ViewpointForwardFail(void)
     UtAssert_INT32_EQ(UPLINK_APP_Data.ErrCounter, 1);
     UtAssert_INT32_EQ(UPLINK_APP_Data.RoutingFailureCount, 1);
     UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_FAILED);
+}
+
+void Test_UPLINK_APP_ProcessUplink_ViewpointParseReject(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_VIEWPOINT;
+    TestMsg.PayloadLength = 4;
+    TestMsg.Sequence      = 32;
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ParseViewpointPayload), false);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.ErrCounter, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.RejectedCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_REJECT_VIEWPOINT);
 }
 
 void Test_UPLINK_APP_ProcessUplink_ConfigAccept(void)
@@ -387,14 +410,15 @@ void Test_UPLINK_APP_ProcessUplink_DiagnosticForwardFail(void)
     UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_FAILED);
 }
 
-void Test_UPLINK_APP_ProcessUplink_BlockedDegraded(void)
+/* DEGRADED + VIEWPOINT → 차단 */
+void Test_UPLINK_APP_ProcessUplink_BlockedDegradedViewpoint(void)
 {
     UPLINK_APP_ProcessUplinkCmd_t TestMsg;
 
     memset(&TestMsg, 0, sizeof(TestMsg));
     TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
-    TestMsg.CommandClass  = UPLINK_APP_CLASS_ROUTE_UPDATE;
-    TestMsg.PayloadLength = 8;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_VIEWPOINT;
+    TestMsg.PayloadLength = 4;
     TestMsg.Sequence      = 70;
 
     UPLINK_APP_Data.CfsHealthReceived = 1U;
@@ -408,6 +432,55 @@ void Test_UPLINK_APP_ProcessUplink_BlockedDegraded(void)
     UtAssert_INT32_EQ(UPLINK_APP_Data.ErrCounter, 1);
     UtAssert_INT32_EQ(UPLINK_APP_Data.RejectedCount, 1);
     UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_REJECT_STATE);
+}
+
+/* DEGRADED + CONFIG → 차단 */
+void Test_UPLINK_APP_ProcessUplink_BlockedDegradedConfig(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_CONFIG;
+    TestMsg.PayloadLength = 4;
+    TestMsg.Sequence      = 74;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U;
+    UPLINK_APP_Data.CfsHealthState    = 1U; /* DEGRADED */
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.ErrCounter, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.RejectedCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_REJECT_STATE);
+}
+
+/* DEGRADED + ROUTE_UPDATE → 허용 (스펙 §18.10.1) */
+void Test_UPLINK_APP_ProcessUplink_AllowedDegradedRouteUpdate(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_ROUTE_UPDATE;
+    TestMsg.PayloadLength = 8;
+    TestMsg.Sequence      = 75;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U;
+    UPLINK_APP_Data.CfsHealthState    = 1U; /* DEGRADED */
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ParseRouteUpdatePayload), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_PublishRouteUpdate), true);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.AcceptedCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_ROUTED);
 }
 
 void Test_UPLINK_APP_ProcessUplink_BlockedRecovery(void)
@@ -516,13 +589,16 @@ void UtTest_Setup(void)
     ADD_TEST(UPLINK_APP_ProcessUplink_RecoveryForwardFail);
     ADD_TEST(UPLINK_APP_ProcessUplink_ViewpointAccept);
     ADD_TEST(UPLINK_APP_ProcessUplink_ViewpointForwardFail);
+    ADD_TEST(UPLINK_APP_ProcessUplink_ViewpointParseReject);
     ADD_TEST(UPLINK_APP_ProcessUplink_ConfigAccept);
     ADD_TEST(UPLINK_APP_ProcessUplink_ConfigForwardFail);
     ADD_TEST(UPLINK_APP_ProcessUplink_ModeAccept);
     ADD_TEST(UPLINK_APP_ProcessUplink_ModeForwardFail);
     ADD_TEST(UPLINK_APP_ProcessUplink_DiagnosticAccept);
     ADD_TEST(UPLINK_APP_ProcessUplink_DiagnosticForwardFail);
-    ADD_TEST(UPLINK_APP_ProcessUplink_BlockedDegraded);
+    ADD_TEST(UPLINK_APP_ProcessUplink_BlockedDegradedViewpoint);
+    ADD_TEST(UPLINK_APP_ProcessUplink_BlockedDegradedConfig);
+    ADD_TEST(UPLINK_APP_ProcessUplink_AllowedDegradedRouteUpdate);
     ADD_TEST(UPLINK_APP_ProcessUplink_BlockedRecovery);
     ADD_TEST(UPLINK_APP_ProcessUplink_AllowedRecoveryDiagnostic);
     ADD_TEST(UPLINK_APP_ProcessUplink_BlockedFailed);

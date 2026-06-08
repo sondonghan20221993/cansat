@@ -42,6 +42,7 @@
 #include "uplink_app_dispatch.h"
 #include "uplink_app_cmds.h"
 #include "uplink_app_utils.h"
+#include "uplink_app_fcncodes.h"
 #include "uplink_app_msgids.h"
 #include "uplink_app_msg.h"
 /*

@@ -3,8 +3,9 @@
 
 #include "uplink_app.h"
 
-void UPLINK_APP_UpdateStatusTelemetry(uint32 NowMs);
-void UPLINK_APP_ServiceLoRa(void);
+void   UPLINK_APP_UpdateStatusTelemetry(uint32 NowMs);
+void   UPLINK_APP_ServiceLoRa(void);
+uint16 UPLINK_APP_ComputeProxyCrc(const UPLINK_APP_ProcessUplinkCmd_t *Cmd);
 
 #endif
 

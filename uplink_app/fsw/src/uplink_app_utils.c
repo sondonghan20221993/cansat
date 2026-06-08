@@ -9,6 +9,9 @@
 #include <termios.h>
 #include <unistd.h>
 
+static uint16 UPLINK_APP_CRC16(const uint8 *Data, uint16 Len);
+static int    UPLINK_APP_HexNibble(char C);
+
 #define UPLINK_APP_STATE_MAGIC 0x55504C4BU  /* "UPLK" */
 
 typedef struct
@@ -93,6 +96,27 @@ bool UPLINK_APP_VerifyCmdLength(const CFE_MSG_Message_t *MsgPtr, size_t Expected
     return true;
 }
 
+uint16 UPLINK_APP_ComputeProxyCrc(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
+{
+    uint8  Buf[6 + UPLINK_APP_MAX_PAYLOAD_LENGTH];
+    uint16 Len;
+
+    Buf[0] = Cmd->Version;
+    Buf[1] = Cmd->CommandClass;
+    Buf[2] = Cmd->PayloadLength;
+    Buf[3] = Cmd->Flags;
+    Buf[4] = (uint8)(Cmd->Sequence & 0xFFU);
+    Buf[5] = (uint8)(Cmd->Sequence >> 8);
+    Len    = (uint16)(6U + Cmd->PayloadLength);
+    if (Len > (uint16)sizeof(Buf))
+    {
+        Len = (uint16)sizeof(Buf);
+    }
+    memcpy(&Buf[6], Cmd->Payload, Cmd->PayloadLength);
+
+    return UPLINK_APP_CRC16(Buf, Len);
+}
+
 bool UPLINK_APP_ValidateProxyCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd, UPLINK_APP_Result_t *Result)
 {
     if (Cmd->Version != UPLINK_APP_PROTOCOL_VERSION)
@@ -127,6 +151,12 @@ bool UPLINK_APP_ValidateProxyCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd, U
         Cmd->PayloadLength == 0)
     {
         *Result = UPLINK_APP_RESULT_REJECT_LENGTH;
+        return false;
+    }
+
+    if (UPLINK_APP_ComputeProxyCrc(Cmd) != Cmd->Checksum)
+    {
+        *Result = UPLINK_APP_RESULT_REJECT_CHECKSUM;
         return false;
     }
 
@@ -420,7 +450,58 @@ void UPLINK_APP_SaveState(void)
     rename(TmpPath, UPLINK_APP_STATE_FILE_PATH);
 }
 
-bool UPLINK_APP_ForwardViewpointCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
+bool UPLINK_APP_ParseViewpointPayload(const UPLINK_APP_ProcessUplinkCmd_t *Cmd,
+                                      UPLINK_APP_ViewpointPayload_t *Payload)
+{
+    if (Cmd->PayloadLength != (uint8)sizeof(UPLINK_APP_ViewpointPayload_t))
+    {
+        return false;
+    }
+
+    memcpy(Payload, Cmd->Payload, sizeof(*Payload));
+
+    if (Payload->ViewpointVersion != UPLINK_APP_VIEWPOINT_VERSION)
+    {
+        return false;
+    }
+    if (Payload->ViewpointType > UPLINK_APP_VIEWPOINT_MAX_TYPE)
+    {
+        return false;
+    }
+    if (Payload->PositionFrame > UPLINK_APP_VIEWPOINT_MAX_FRAME)
+    {
+        return false;
+    }
+    if (!isfinite(Payload->X) || Payload->X < UPLINK_APP_VIEWPOINT_MIN_X_M || Payload->X > UPLINK_APP_VIEWPOINT_MAX_X_M)
+    {
+        return false;
+    }
+    if (!isfinite(Payload->Y) || Payload->Y < UPLINK_APP_VIEWPOINT_MIN_Y_M || Payload->Y > UPLINK_APP_VIEWPOINT_MAX_Y_M)
+    {
+        return false;
+    }
+    if (!isfinite(Payload->Z) || Payload->Z < UPLINK_APP_VIEWPOINT_MIN_ALT_M || Payload->Z > UPLINK_APP_VIEWPOINT_MAX_ALT_M)
+    {
+        return false;
+    }
+    if (!isfinite(Payload->Yaw) || Payload->Yaw < -UPLINK_APP_VIEWPOINT_MAX_YAW || Payload->Yaw > UPLINK_APP_VIEWPOINT_MAX_YAW)
+    {
+        return false;
+    }
+    if (!isfinite(Payload->Pitch) || Payload->Pitch < -UPLINK_APP_VIEWPOINT_MAX_PITCH || Payload->Pitch > UPLINK_APP_VIEWPOINT_MAX_PITCH)
+    {
+        return false;
+    }
+    if (Payload->HoldTimeMs > UPLINK_APP_VIEWPOINT_MAX_HOLD_MS)
+    {
+        return false;
+    }
+
+    return true;
+}
+
+bool UPLINK_APP_ForwardViewpointCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd,
+                                        const UPLINK_APP_ViewpointPayload_t *Payload)
 {
     UPLINK_APP_ViewpointCmdTlm_t ViewpointTlm;
 
@@ -431,8 +512,14 @@ bool UPLINK_APP_ForwardViewpointCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd
     ViewpointTlm.Seq            = UPLINK_APP_Data.SequenceCounter + 1U;
     ViewpointTlm.TimestampMs    = UPLINK_APP_Data.LastRxTimeMs;
     ViewpointTlm.SourceSequence = Cmd->Sequence;
-    ViewpointTlm.PayloadLength  = Cmd->PayloadLength;
-    memcpy(ViewpointTlm.Payload, Cmd->Payload, Cmd->PayloadLength);
+    ViewpointTlm.ViewpointType  = Payload->ViewpointType;
+    ViewpointTlm.PositionFrame  = Payload->PositionFrame;
+    ViewpointTlm.X              = Payload->X;
+    ViewpointTlm.Y              = Payload->Y;
+    ViewpointTlm.Z              = Payload->Z;
+    ViewpointTlm.Yaw            = Payload->Yaw;
+    ViewpointTlm.Pitch          = Payload->Pitch;
+    ViewpointTlm.HoldTimeMs     = Payload->HoldTimeMs;
 
     CFE_SB_TimeStampMsg(CFE_MSG_PTR(ViewpointTlm.TelemetryHeader));
     return (CFE_SB_TransmitMsg(CFE_MSG_PTR(ViewpointTlm.TelemetryHeader), true) == CFE_SUCCESS);
@@ -553,12 +640,13 @@ static bool UPLINK_APP_ParseLoRaFrame(const char *Line, UPLINK_APP_ProcessUplink
     CFE_MSG_Init(CFE_MSG_PTR(Out->CommandHeader),
                  CFE_SB_ValueToMsgId(UPLINK_APP_CMD_MID_VALUE),
                  sizeof(*Out));
-    Out->Version      = Version;
-    Out->CommandClass = CommandClass;
+    Out->Version       = Version;
+    Out->CommandClass  = CommandClass;
     Out->PayloadLength = (uint8)PayloadLen;
-    Out->Flags        = Flags;
-    Out->Sequence     = Seq;
+    Out->Flags         = Flags;
+    Out->Sequence      = Seq;
     memcpy(Out->Payload, Payload, PayloadLen);
+    Out->Checksum      = UPLINK_APP_ComputeProxyCrc(Out);
 
     return true;
 }

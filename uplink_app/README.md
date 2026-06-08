@@ -11,6 +11,8 @@
 | 게시 | `UPLINK_APP_HK_TLM_MID` | HK MID | HK 텔레메트리 |
 | 게시 | `UPLINK_STATUS_MID` | `0x190A` | uplink 처리 상태 |
 | 게시 | `ROUTE_UPDATE_MID` | `0x190B` | 검증된 route update → cfs_core_app + mavlink_bridge_app |
+| 게시 | `VIEWPOINT_CMD_MID` | `0x190D` | viewpoint 명령 relay → cfs_core_app 캐시 |
+| 게시 | `CONFIG_CMD_MID` | `0x190E` | runtime configuration relay → cfs_core_app 검증·적용 |
 
 ## 구현 기능
 
@@ -24,6 +26,14 @@
 - waypoint 개수(1..16), x/y/z finite 검사, 고도(2m..8m), 인접 waypoint 3D 거리(2m..2m) 검증
 - 검증 통과 시 `ROUTE_UPDATE_MID`로 publish → `cfs_core_app` 캐시 + `mavlink_bridge_app` FC 업로드
 - Z 좌표: 양수 = 고도(AGL), 단위 meters
+
+### viewpoint 처리
+- payload 크기(== `sizeof(UPLINK_APP_ViewpointPayload_t)`)·버전(`UPLINK_APP_VIEWPOINT_VERSION`)·타입(0–2)·frame(0=LOCAL_NED) 검증
+- X/Y ∈ [−50, 50]m, Z ∈ [2, 8]m, Yaw ∈ [−π, π], Pitch ∈ [−π/2, π/2], HoldTimeMs ≤ 30 000 범위 검사 및 finite 검사
+- 검증 통과 시 typed `UPLINK_APP_ViewpointCmdTlm_t`으로 변환 후 `VIEWPOINT_CMD_MID`로 publish → `cfs_core_app` 캐시
+
+### runtime configuration 처리
+- raw payload를 `CONFIG_CMD_MID`로 relay → `cfs_core_app`이 scope/version/param ID/checksum 검증 후 `ActiveConfig` 적용
 
 ### 지속 상태 (SaveState/LoadState)
 - 마지막으로 수락된 uplink sequence 번호를 파일로 저장 (atomic tmp+rename)
@@ -58,8 +68,7 @@ UP,<version>,<command_class>,<sequence>,<flags>,<payload_hex>,<crc16_hex>
 
 ## 미구현
 
-- runtime configuration 명령의 대상 앱 실제 전달 (수신·검증만 됨)
-- viewpoint update downstream 처리
+- **viewpoint FC 실행**: `cfs_core_app`이 viewpoint 명령을 캐시하지만, FC에 MAVLink 명령으로 전달하는 로직이 없음
 
 ## Python bridge 대체 현황
 

@@ -38,9 +38,10 @@ void UPLINK_APP_ProcessUplink(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
 {
     CFE_TIME_SysTime_t       TimeNow;
     uint64                   TimeMs;
-    UPLINK_APP_Result_t      Result;
-    UPLINK_APP_RouteTarget_t RouteTarget;
+    UPLINK_APP_Result_t           Result;
+    UPLINK_APP_RouteTarget_t      RouteTarget;
     UPLINK_APP_RouteUpdatePayload_t RoutePayload;
+    UPLINK_APP_ViewpointPayload_t ViewpointPayload;
 
     TimeNow = CFE_TIME_GetTime();
     TimeMs  = ((uint64)TimeNow.Seconds * 1000ULL) + ((uint64)TimeNow.Subseconds * 1000ULL / 0x100000000ULL);
@@ -103,10 +104,10 @@ void UPLINK_APP_ProcessUplink(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
         {
             Blocked = (Cmd->CommandClass != UPLINK_APP_CLASS_DIAGNOSTIC);
         }
-        else if (State == 1U) /* DEGRADED: block ROUTE_UPDATE + VIEWPOINT */
+        else if (State == 1U) /* DEGRADED: block VIEWPOINT + CONFIG (§18.10.1) */
         {
-            Blocked = (Cmd->CommandClass == UPLINK_APP_CLASS_ROUTE_UPDATE ||
-                       Cmd->CommandClass == UPLINK_APP_CLASS_VIEWPOINT);
+            Blocked = (Cmd->CommandClass == UPLINK_APP_CLASS_VIEWPOINT ||
+                       Cmd->CommandClass == UPLINK_APP_CLASS_CONFIG);
         }
 
         if (Blocked)
@@ -172,7 +173,20 @@ void UPLINK_APP_ProcessUplink(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
     }
     else if (Cmd->CommandClass == UPLINK_APP_CLASS_VIEWPOINT)
     {
-        if (!UPLINK_APP_ForwardViewpointCommand(Cmd))
+        if (!UPLINK_APP_ParseViewpointPayload(Cmd, &ViewpointPayload))
+        {
+            UPLINK_APP_Data.ErrCounter++;
+            UPLINK_APP_Data.RejectedCount++;
+            UPLINK_APP_Data.LastCommandResult = UPLINK_APP_RESULT_REJECT_VIEWPOINT;
+            UPLINK_APP_Data.LinkState         = UPLINK_APP_LINK_DEGRADED;
+            CFE_EVS_SendEvent(UPLINK_APP_COMMAND_ERR_EID, CFE_EVS_EventType_ERROR,
+                              "UPLINK_APP: invalid viewpoint payload seq=%u len=%u",
+                              (unsigned int)Cmd->Sequence, (unsigned int)Cmd->PayloadLength);
+            UPLINK_APP_UpdateStatusTelemetry(0);
+            return;
+        }
+
+        if (!UPLINK_APP_ForwardViewpointCommand(Cmd, &ViewpointPayload))
         {
             UPLINK_APP_Data.ErrCounter++;
             UPLINK_APP_Data.RoutingFailureCount++;

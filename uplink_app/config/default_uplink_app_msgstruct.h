@@ -24,7 +24,7 @@ typedef struct
     uint8                   PayloadLength;
     uint8                   Flags;
     uint16                  Sequence;
-    uint16                  Reserved;
+    uint16                  Checksum;
     uint8                   Payload[UPLINK_APP_MAX_PAYLOAD_LENGTH];
 } UPLINK_APP_ProcessUplinkCmd_t;
 
@@ -68,13 +68,32 @@ typedef struct
 
 typedef struct
 {
+    uint8  ViewpointType;    /* 0=absolute 1=relative 2=track */
+    uint8  ViewpointVersion; /* must == UPLINK_APP_VIEWPOINT_VERSION */
+    uint8  PositionFrame;    /* 0=LOCAL_NED */
+    uint8  Reserved;
+    float  X;
+    float  Y;
+    float  Z;
+    float  Yaw;
+    float  Pitch;
+    uint32 HoldTimeMs;
+} UPLINK_APP_ViewpointPayload_t;
+
+typedef struct
+{
     CFE_MSG_TelemetryHeader_t TelemetryHeader;
     uint32                    Seq;
     uint32                    TimestampMs;
     uint16                    SourceSequence;
-    uint8                     PayloadLength;
-    uint8                     Reserved;
-    uint8                     Payload[UPLINK_APP_MAX_PAYLOAD_LENGTH];
+    uint8                     ViewpointType;
+    uint8                     PositionFrame;
+    float                     X;
+    float                     Y;
+    float                     Z;
+    float                     Yaw;
+    float                     Pitch;
+    uint32                    HoldTimeMs;
 } UPLINK_APP_ViewpointCmdTlm_t;
 
 typedef struct

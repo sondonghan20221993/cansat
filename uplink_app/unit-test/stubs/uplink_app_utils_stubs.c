@@ -71,6 +71,14 @@ void UPLINK_APP_ServiceLoRa(void)
     UT_GenStub_Execute(UPLINK_APP_ServiceLoRa, Basic, NULL);
 }
 
+uint16 UPLINK_APP_ComputeProxyCrc(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
+{
+    UT_GenStub_SetupReturnBuffer(UPLINK_APP_ComputeProxyCrc, uint16);
+    UT_GenStub_AddParam(UPLINK_APP_ComputeProxyCrc, const UPLINK_APP_ProcessUplinkCmd_t *, Cmd);
+    UT_GenStub_Execute(UPLINK_APP_ComputeProxyCrc, Basic, NULL);
+    return UT_GenStub_GetReturnValue(UPLINK_APP_ComputeProxyCrc, uint16);
+}
+
 bool UPLINK_APP_ForwardRecoveryCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
 {
     UT_GenStub_SetupReturnBuffer(UPLINK_APP_ForwardRecoveryCommand, bool);
@@ -79,10 +87,22 @@ bool UPLINK_APP_ForwardRecoveryCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
     return UT_GenStub_GetReturnValue(UPLINK_APP_ForwardRecoveryCommand, bool);
 }
 
-bool UPLINK_APP_ForwardViewpointCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
+bool UPLINK_APP_ParseViewpointPayload(const UPLINK_APP_ProcessUplinkCmd_t *Cmd,
+                                      UPLINK_APP_ViewpointPayload_t *Payload)
+{
+    UT_GenStub_SetupReturnBuffer(UPLINK_APP_ParseViewpointPayload, bool);
+    UT_GenStub_AddParam(UPLINK_APP_ParseViewpointPayload, const UPLINK_APP_ProcessUplinkCmd_t *, Cmd);
+    UT_GenStub_AddParam(UPLINK_APP_ParseViewpointPayload, UPLINK_APP_ViewpointPayload_t *, Payload);
+    UT_GenStub_Execute(UPLINK_APP_ParseViewpointPayload, Basic, NULL);
+    return UT_GenStub_GetReturnValue(UPLINK_APP_ParseViewpointPayload, bool);
+}
+
+bool UPLINK_APP_ForwardViewpointCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd,
+                                        const UPLINK_APP_ViewpointPayload_t *Payload)
 {
     UT_GenStub_SetupReturnBuffer(UPLINK_APP_ForwardViewpointCommand, bool);
     UT_GenStub_AddParam(UPLINK_APP_ForwardViewpointCommand, const UPLINK_APP_ProcessUplinkCmd_t *, Cmd);
+    UT_GenStub_AddParam(UPLINK_APP_ForwardViewpointCommand, const UPLINK_APP_ViewpointPayload_t *, Payload);
     UT_GenStub_Execute(UPLINK_APP_ForwardViewpointCommand, Basic, NULL);
     return UT_GenStub_GetReturnValue(UPLINK_APP_ForwardViewpointCommand, bool);
 }
