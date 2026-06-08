@@ -59,6 +59,18 @@ class LoraUplinkBridgeParsingTest(unittest.TestCase):
                 ParsedUplinkFrame(version=2, command_class=2, sequence=1, flags=0, payload=b"\x01")
             )
 
+    def test_build_process_uplink_payload_sets_checksum(self) -> None:
+        import struct
+        frame = ParsedUplinkFrame(version=1, command_class=2, sequence=7, flags=0, payload=b"\xAA\xBB")
+        result = build_process_uplink_payload(frame)
+
+        # fixed header is 8 bytes: version(1)+class(1)+len(1)+flags(1)+seq(2)+checksum(2)
+        checksum_in_packet = struct.unpack_from("<H", result, 6)[0]
+        crc_input = struct.pack("<BBBBH", 1, 2, 2, 0, 7) + b"\xAA\xBB"
+        expected = crc16_ccitt(crc_input)
+        self.assertEqual(checksum_in_packet, expected)
+        self.assertNotEqual(checksum_in_packet, 0)
+
 
 class LoraUplinkBridgeBehaviorTest(unittest.TestCase):
     def setUp(self) -> None:

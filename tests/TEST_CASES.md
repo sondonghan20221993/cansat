@@ -27,9 +27,9 @@
 | 앱 | 테스트 수 | assertion 수 | 마지막 확인 |
 |---|---|---|---|
 | `cfs_core_app` | 21 | 67 | 2026-05-28 |
-| `uplink_app` | 37 | 60 | 2026-05-29 |
-| `lora_fc_downlink_app` | 12 | 34 | 2026-05-29 |
-| `mavlink_bridge_app` | 없음 (unit-test 미구성) | — | — |
+| `uplink_app` | 35 | 63+ | 2026-06-07 |
+| `lora_fc_downlink_app` | 14 | 40+ | 2026-06-07 |
+| `mavlink_bridge_app` | 25 | — | 2026-06-02 |
 
 ---
 
@@ -154,6 +154,7 @@
 | `UPLINK_APP_SaveState_NoDir` | 디렉터리 없어도 저장 시도하고 counter는 유지 |
 | `UPLINK_APP_ForwardModeCommand` | mode 명령 SB publish 성공/실패 경로 |
 | `UPLINK_APP_ForwardDiagnosticCommand` | diagnostic 명령 SB publish 성공/실패 경로 |
+| `UPLINK_APP_ForwardViewpointCommand` | viewpoint 명령 SB publish 성공/실패/zero-payload 경로 |
 
 ---
 
@@ -195,12 +196,61 @@
 |---|---|
 | `LORA_FC_DOWNLINK_APP_ReportHousekeeping` | HK payload에 downlink count, valid flag, health state 반영 |
 | `LORA_FC_DOWNLINK_APP_ProcessInputMessage` | attitude(roll/pitch/yaw float 캐시), local(x/y/z/vx/vy/vz float 캐시), gps(LatE7/LonE7/AltMm/FixType), ekf, system health(HealthState/FaultCode) 입력별 캐시 갱신 확인 |
+| `LORA_FC_DOWNLINK_APP_ProcessInputMessage_InvalidInputs` | attitude/local Valid=0 → AttitudeValid/LocalValid=0 반영 (LORA-FC-005/006) |
+| `LORA_FC_DOWNLINK_APP_ProcessInputMessage_GpsEdgeCases` | GPS Valid=0 → GpsValid=0; Valid=1+FixType=0 → GpsFixType=0 캐시 (LORA-FC-007) |
 
 ---
 
 ### `mavlink_bridge_app`
 
-unit-test 디렉터리 미구성. 아래 항목은 런타임/도구를 통해 검증한다.
+테스트 위치:
+- `mavlink_bridge_app/unit-test/coveragetest/coveragetest_mavlink_bridge_app.c`
+- `mavlink_bridge_app/unit-test/coveragetest/coveragetest_mavlink_bridge_app_cmds.c`
+- `mavlink_bridge_app/unit-test/coveragetest/coveragetest_mavlink_bridge_app_dispatch.c`
+- `mavlink_bridge_app/unit-test/coveragetest/coveragetest_mavlink_bridge_app_utils.c`
+
+#### `coveragetest_mavlink_bridge_app.c`
+
+| 테스트 이름 | 검증 내용 |
+|---|---|
+| `MAVLINK_BRIDGE_APP_Init` | 앱 초기화 성공, `RunStatus == APP_RUN`, `SerialFd == -1`, `LinkState == DISCONNECTED` |
+| `MAVLINK_BRIDGE_APP_Init_SubscribeError` | `CFE_SB_Subscribe` 실패 시 오류 반환 |
+
+#### `coveragetest_mavlink_bridge_app_cmds.c`
+
+| 테스트 이름 | 검증 내용 |
+|---|---|
+| `MAVLINK_BRIDGE_APP_Noop` | `NOOP` 처리 시 `CmdCounter` 증가 |
+| `MAVLINK_BRIDGE_APP_ResetCounters` | `CmdCounter`, `ErrCounter`, `ParseErrorCount` 초기화 |
+
+#### `coveragetest_mavlink_bridge_app_dispatch.c`
+
+| 테스트 이름 | 검증 내용 |
+|---|---|
+| `MAVLINK_BRIDGE_APP_VerifyCmdLength` | dispatch 경로 길이 검증 helper |
+| `MAVLINK_BRIDGE_APP_TaskPipe_SendHk` | `SEND_HK_MID` → `ReportHousekeeping` 호출 |
+| `MAVLINK_BRIDGE_APP_TaskPipe_RouteUpdate` | `ROUTE_UPDATE_MID` → `StartMissionUpload` 호출 |
+| `MAVLINK_BRIDGE_APP_TaskPipe_Noop` | CMD_MID + NOOP_CC → `Noop` 호출, ErrCounter 불변 |
+| `MAVLINK_BRIDGE_APP_TaskPipe_ResetCounters` | CMD_MID + RESET_COUNTERS_CC → `ResetCountersCmd` 호출 |
+| `MAVLINK_BRIDGE_APP_TaskPipe_MissionQuery` | CMD_MID + MISSION_QUERY_CC → `MissionQuery` 호출 |
+| `MAVLINK_BRIDGE_APP_TaskPipe_UnknownMid` | 알 수 없는 MID → `ErrCounter` 증가 |
+| `MAVLINK_BRIDGE_APP_TaskPipe_UnknownCC` | 알 수 없는 CC → `ErrCounter` 증가 |
+
+#### `coveragetest_mavlink_bridge_app_utils.c`
+
+| 테스트 이름 | 검증 내용 |
+|---|---|
+| `UpdateFromHeartbeat_Armed` | bit7 설정 → `IsArmed == 1` |
+| `UpdateFromHeartbeat_Disarmed` | bit7 미설정 → `IsArmed == 0` |
+| `UpdateFromHeartbeat_OtherBitsIgnored` | bit7 외 다른 비트 무시 |
+| `UpdateFromHeartbeat_StateTransition` | ARMED → DISARMED 전이 |
+| `UpdateFromHeartbeat_SystemStatus` | `FcSystemStatus` 저장 확인 |
+| `StartMissionUpload_BlockedWhenArmed` | ARMED 상태에서 업로드 차단 + `ARMED_WARN_EID` 발생 |
+| `StartMissionUpload_AllowedWhenDisarmed` | DISARMED 상태에서 업로드 → `CLEARING` 전이 |
+| `StartMissionUpload_LinkNotConnectedBeforeArmedCheck` | 링크 미연결 시 ARMED 여부 무관하게 차단 |
+| `MissionQuery_LinkNotConnected` | 링크 미연결 → `MISSION_DOWNLOAD_ERR_EID`, ErrCounter 증가 |
+| `MissionQuery_Connected` | 링크 연결 → download `WAIT_COUNT` 상태 전이, CmdCounter 증가 |
+| `MissionQuery_LengthCheckFail` | 길이 불일치 → 즉시 반환 (download 미시작) |
 
 ---
 
@@ -223,6 +273,23 @@ unit-test 디렉터리 미구성. 아래 항목은 런타임/도구를 통해 �
 | `test_process_line_rejects_sequence_regression` | 동일 sequence 재입력 → replay 거부 |
 | `test_process_line_allows_sequence_regression_when_disabled` | strict sequence 비활성화 시 동일 sequence 허용 |
 | `test_process_line_rejects_non_frame_text` | 비프레임 텍스트 입력 → 전송 없음 |
+
+### `test_uplink_config_sender.py`
+
+| 테스트 이름 | 검증 내용 |
+|---|---|
+| `ConfigChecksumTest.test_matches_c_algorithm` | config checksum이 C 구현과 동일한 값 산출 |
+| `ConfigChecksumTest.test_param_id_split_into_two_bytes` | param_id lo/hi 바이트 분리 확인 |
+| `ConfigChecksumTest.test_scope2` | SCOPE_MAVLINK_BRIDGE 범위 checksum 확인 |
+| `BuildConfigPayloadTest.test_cfs_core_publish_period` | config payload 8바이트 헤더 + 4바이트 값, checksum 검증 |
+| `BuildConfigPayloadTest.test_mavlink_bridge_attitude_interval` | SCOPE_MAVLINK_BRIDGE param 패킷 구조 |
+| `BuildProcessUplinkPayloadTest.test_class_is_config` | ProcessUplink payload의 CommandClass == CONFIG |
+| `BuildProcessUplinkPayloadTest.test_sequence_stored` | sequence 필드 정확히 저장 |
+| `BuildProcessUplinkPayloadTest.test_checksum_is_correct_crc16` | proxy CRC-16/CCITT-FALSE 검증 |
+| `BuildProcessUplinkPayloadTest.test_payload_embedded_in_fixed_area` | config payload가 고정 위치에 삽입 |
+| `BuildLoraFrameTest.test_frame_format` | LoRa UP 프레임 7개 필드, 값 확인 |
+| `BuildLoraFrameTest.test_crc_is_valid` | 프레임 CRC 유효성 확인 |
+| `BuildLoraFrameTest.test_payload_hex_matches` | hex payload가 원본 bytes와 일치 |
 
 ### `test_uplink_route_update_sender.py`
 
@@ -445,6 +512,10 @@ python3 tools/query_fc_mission.py [cFS_host_ip]
 | `test_uplink_lora_frame.py` | LORA-UP-003~011, CFS-CMD-001~008, REC-006~008 | ✓ 구현 |
 | `test_lora_fc_downlink_packet.py` | LORA-FRAME-001~008 | ✓ 구현 |
 | `test_hb_parse.py` | LORA-HB-001~010, REC-005 | ✓ 구현 |
+| `test_uplink_config_sender.py` | CONFIG payload/checksum/LoRa 프레임 빌드 (12개 테스트) | ✓ 구현 |
+| `test_mission_upload_diag.py` | MAVLink X.25 CRC, V2 프레임 빌더, ITEM_INT z부호반전, Parser 라운드트립 (25개) | ✓ 구현 |
+| `test_tools_packet_builders.py` | CFS 커맨드 XOR 체크섬, CCSDS 주헤더 구조 (9개) | ✓ 구현 |
+| `test_mavlink_uart_bridge.py` | describe_message 포맷, parse_args 기본값/커스텀 (10개) | ✓ 구현 |
 
 ### 그룹 B — cFS 실행 + mock (cFS 필요, PTY/UDP)
 
@@ -468,11 +539,10 @@ EVS 로그/HK/serial 출력으로 결과를 검증한다.
 
 | 항목 | 비고 |
 |---|---|
-| `mavlink_bridge_app` unit test | unit-test 디렉터리 미구성 |
 | `uplink_app` LoRa serial read C 경로 단위테스트 | `ServiceLoRa()`/`ParseLoRaFrame()` static — 통합테스트로 대체 |
 | `uplink_app` CRC16 C 구현 | `UPLINK_APP_CRC16()` static — `test_uplink_lora_frame.py`로 검증 예정 |
-| `uplink_app` viewpoint payload 상세 검증 | 파서는 있으나 테스트 없음 |
+| `lora_fc_downlink_app` SB timeout alive (LORA-FC-008) | main loop — static 함수, 단위테스트 불가 |
 | `lora_fc_downlink_app` LoRa 송신/수신 단위테스트 | static 함수 — `test_lora_fc_downlink_packet.py`로 검증 예정 |
 | `lora_fc_downlink_app` HB 파싱 단위테스트 | static 함수 — `test_hb_parse.py`로 검증 예정 |
 | `lora_fc_downlink_app` 실제 LoRa 하드웨어 검증 | Pi에서 실물 연결 필요 |
-| §21.3 Config 명령 end-to-end | 설계 미완 |
+| B그룹 통합테스트 실행 | cFS + PTY 환경 필요 — 구조는 있음, 현재 pytest.skip() |
