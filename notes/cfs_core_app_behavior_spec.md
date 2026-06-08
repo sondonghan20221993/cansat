@@ -580,11 +580,12 @@ EVS 이벤트는 `HealthState` 값이 변경될 때마다 발생하며, 형식�
 
 다음 동작은 구현되어 있지 않으며 테스트 또는 운용 시 가정해서는 안 된다.
 
-- `FAILED` 헬스 출력 상태
-- 시퀀스 갭 또는 중복 감지
-- 타임스탬프 기준 유효성 검사
-- bridge 또는 peer 앱의 능동적 재시작
-- 앱 재시작 후 마지막 헬스 상태 지속
+- ~~`FAILED` 헬스 출력 상태~~ → **구현 완료 (A6)**: bridge timeout이 `CFS_CORE_APP_FAILED_ESCALATION_MS` (30 s) 이상 지속 시 `RECOVERY`에서 `FAILED`로 에스컬레이션. `RecoveryStartMs` 필드로 타이머 추적. bridge 복구 시 리셋.
+- ~~시퀀스 갭 또는 중복 감지~~ → **구현 완료 (2026-06-07)**: `UpdateStateCache`에서 `Msg->Seq > Cache->Seq + 1` 조건 시 `SeqGapCount++` 및 `CFS_CORE_APP_SEQ_GAP_EID (12)` DEBUG 이벤트 발생. 캐시는 갱신됨 (거부 아님).
+- **[2026-06-07 범위 제외] viewpoint → FC MAVLink 실행**: `cfs_core_app`이 viewpoint를 `ViewpointCmd` 캐시에 저장하는 것까지만 구현. FC에 MAVLink 명령(예: `MAV_CMD_NAV_LOITER_TIME`)으로 전달하는 경로는 실시간 단일 지점 이동 임무로 분류되어 현 구현 범위에서 제외한다.
+- ~~타임스탬프 기준 유효성 검사~~ → **구현 완료 (A7)**: `TimestampMs > NowMs + CFS_CORE_APP_TIMESTAMP_MAX_FUTURE_MS` (5 s) 조건에서 거부. `TimestampRejectedCount` 카운터 및 `CFS_CORE_APP_TIMESTAMP_ERR_EID (9)` 이벤트.
+- ~~bridge 또는 peer 앱의 능동적 재시작~~ → **구현 완료 (A8)**: bridge timeout 발생 시 `CFE_ES_GetAppIDByName` + `CFE_ES_RestartApp`으로 `mavlink_bridge_app` 재시작. 인터벌 `CFS_CORE_APP_BRIDGE_RESTART_INTERVAL_MS` (5 s), 최대 `CFS_CORE_APP_BRIDGE_MAX_RESTARTS` (3회). bridge 복구 시 `BridgeRestartCount`, `NextBridgeRestartMs` 리셋. EVS `CFS_CORE_APP_BRIDGE_RESTART_EID (10)` 발생.
+- ~~앱 재시작 후 마지막 헬스 상태 지속~~ → **구현 완료 (A9)**: 헬스 상태 전이 시 `CFS_CORE_APP_SaveState()`로 `/cf/cfs_core_app_state.bin`에 원자적 저장. `Init()` 시 `CFS_CORE_APP_LoadState()`로 복원. Magic + Checksum 무결성 검증. 파일 미존재 또는 검증 실패 시 NOMINAL로 시작.
 
 다음 항목은 이전에 미구현으로 나열됐으나 현재 구현 완료되었다.
 
@@ -639,23 +640,28 @@ Mission Planner에서 경로 업로드 결과 검증용 사전정의 경로 예�
 
 ### 21.3 런타임 구성 적용 경로
 
-`UPLINK_APP_CLASS_CONFIG`는 인식되는 명령 클래스이며, uplink_app 측에서는 검증, 라우팅, 포워드까지 완전 구현되어 있다. 그러나 수신 측 앱(`cfs_core_app`, `telemetry_app` 등)에서 페이로드를 디코딩하여 활성 설정을 실제로 갱신하는 구현은 확인되지 않았다.
+**[구현 완료]**
 
-구현 상태:
+`UPLINK_APP_CLASS_CONFIG` 명령 클래스에 대한 end-to-end 경로가 완전 구현되어 있다.
 
 **uplink_app 측 (완료):**
-- `UPLINK_APP_ValidateProxyCommand()`: CLASS_CONFIG 검증
-- `UPLINK_APP_ResolveRouteTarget()`: CLASS_CONFIG → UPLINK_APP_ROUTE_CORE 라우팅
-- `UPLINK_APP_ForwardConfigCommand()`: CONFIG_CMD_MID로 SB publish (uplink_app_utils.c:290)
-- `uplink_app_cmds.c:189`: dispatch 로직 구현
+- `UPLINK_APP_ValidateProxyCommand()`: CLASS_CONFIG 검증 (CRC 포함)
+- `UPLINK_APP_ForwardConfigCommand()`: `CONFIG_CMD_MID` (0x190E)로 SB publish
 
-**수신 측 앱 (미구현):**
-- config 페이로드를 디코딩하여 `cfs_core_app`, `telemetry_app` 또는 다른 mission 앱의 활성 설정(게시 주기, 타임아웃 값 등)을 갱신하는 구현 없음
+**수신 측 앱 (완료):**
+- `cfs_core_app`: `CONFIG_CMD_MID` 구독 → `CFS_CORE_APP_ProcessConfigCommand()` 호출. scope=1, version=1, checksum 검증 후 `ActiveConfig`에 반영. 적용 파라미터: `attitude/local/gps/ekf/bridge_timeout_ms`, `publish_period_ms`.
+- `mavlink_bridge_app`: `CONFIG_CMD_MID` 구독 → `MAVLINK_BRIDGE_APP_ProcessConfigCommand()` 호출. scope=2, version=1, checksum 검증 후 `ActiveConfig`에 반영. 적용 파라미터: `attitude/local/global_position/gps_raw/ekf_status_interval_us`, `reconnect/heartbeat_interval_ms`. 활성화 직후 `StreamRequestPending=1`로 FC에 새 interval 재요청.
+- 두 앱 모두 scope 불일치 시 각자의 방식으로 무시 또는 거부.
 
-의미:
+**지상국 툴 (완료):**
+- `tools/uplink_config_sender.py`: scope/param/value를 인자로 받아 config payload를 빌드하고 UDP/LoRa-text/LoRa-serial로 전송.
+- `tests/test_uplink_config_sender.py`: checksum, payload 레이아웃, CRC16, LoRa frame 검증 12개 테스트.
 
-- route-update 테스트는 현재 지원된다
-- 출력 주기 또는 타임아웃 변경 테스트는 현재 구현된 운용 기능으로 지원되지 않는다 (uplink_app까지 전달되지만 수신 측 처리 없음)
+**사용 예:**
+```
+python tools/uplink_config_sender.py cfs_core publish_period_ms 2000 --host 127.0.0.1
+python tools/uplink_config_sender.py mavlink_bridge attitude_interval_us 50000 --transport lora-text
+```
 
 ### 21.4 LoRa downlink 안정성 — C1에서 수정
 

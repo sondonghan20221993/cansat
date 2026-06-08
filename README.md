@@ -49,7 +49,18 @@ bridge/lora_uplink_bridge.py
 | route update → FC MAVLink MISSION 업로드 (§22) | 구현됨 |
 | FC MISSION 재조회 (MISSION_QUERY_CC) | 구현됨 |
 | uplink_app 지속 상태 (SaveState/LoadState, atomic write) | 구현됨 |
-| runtime configuration 전달 | 미구현 |
+| uplink_app LoRa serial 직접 수신 (ServiceLoRa, bridge 프로세스 불필요) | 구현됨 |
+| cfs_core_app CFS_FAILED 상태 + bridge 자동 재시작 (최대 3회) | 구현됨 |
+| cfs_core_app 헬스 상태 파일 지속 (재시작 후 복원) | 구현됨 |
+| cfs_core_app 미래 타임스탬프 거부 | 구현됨 |
+| runtime configuration 전달 (uplink → cfs_core_app 검증·적용) | 구현됨 |
+| viewpoint payload 검증 (범위·finite·버전) + cfs_core_app 캐시 | 구현됨 |
+| DEGRADED 상태 CONFIG/VIEWPOINT 차단, ROUTE_UPDATE 허용 (§18.10.1) | 구현됨 |
+| 시퀀스 갭 감지 (cfs_core_app SeqGapCount, SEQ_GAP_EID) | 구현됨 |
+| landing route FC 업로드 (mavlink_bridge_app) | 범위 제외 (2026-06-08) |
+| MISSION_ITEM_INT 경로 MAV_FRAME_GLOBAL_RELATIVE_ALT 변환 | 범위 제외 (2026-06-08) |
+| 미션 업로드 후 자동 시작 (MAV_CMD_DO_SET_MISSION_CURRENT) | 범위 제외 (2026-06-08) |
+| viewpoint 수신 후 FC MAVLink 명령 실행 | 범위 제외 (2026-06-07) |
 
 ## 디렉터리 구조
 

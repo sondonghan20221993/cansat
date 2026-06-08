@@ -942,17 +942,9 @@ SCH 기반 제어가 추가되더라도 위 publish rate와 event-driven 계약�
 
 ### 17.5 명령 권한 부여 기준
 
-기준 권한 수준은 다음과 같이 고정한다.
+**[범위 외 — 미구현 및 미정의]**
 
-| 권한 수준 | 허용 명령 |
-| --- | --- |
-| Level 1 | NOOP, HK request, diagnostic read-only, 상태 조회 |
-| Level 2 | route update, viewpoint update, runtime configuration |
-| Level 3 | recovery command, mode command, counter management |
-
-Level 3 명령은 명시적 운용자 승인과 request token 검증을 모두 만족해야 한다.
-
-이 표는 권한 수준 체계와 명령 클래스별 기본 권한 수준을 고정한다. 개별 function code 또는 세부 command code와 Level 간의 1:1 매핑은 각 앱 command dictionary 구현 시 본 표를 따라 채워야 한다.
+명령 권한 레벨(Level 1/2/3) 체계는 uplink 프로토콜에 operator credential 필드가 없어 현재 구현 불가하다. 명령 허용/차단은 `uplink_app`의 health state 기반 차단 매트릭스(§18.10)만으로 수행한다. 권한 레벨 분류 및 token 검증은 uplink 프로토콜 개정 시 별도 정의한다.
 
 ### 17.6 `uplink_app` 명령 라우팅 기준
 
@@ -1548,11 +1540,28 @@ downlink 텔레메트리 상태는 `downlink_app`의 책임이며
 | `CFS_RECOVERY` | 진단 및 상태 확인 명령만 허용하고, 설정 변경 및 모드 관련 명령은 차단한다. |
 | 최소 보고 시작 | 카운터 재설정 및 진단 명령만 허용하며, 그 외 명령 클래스는 차단한다. |
 
+#### 18.10.1 명령 클래스별 상태 차단 매트릭스
+
+`CFS_DEGRADED`에서 "정상 상태가 필요한 명령"의 범위를 아래와 같이 확정한다. VIEWPOINT, CONFIG는 시스템이 정상 동작 중임을 전제하는 명령(위치 집행, 설정 변경)이므로 DEGRADED 이상의 이상 상태에서는 차단한다.
+
+| 명령 클래스 | `NOMINAL` | `DEGRADED` | `RECOVERY` | `FAILED` | 비고 |
+| --- | --- | --- | --- | --- | --- |
+| `CLASS_ROUTE_UPDATE` | ✓ 허용 | ✓ 허용 | ✗ 차단 | ✗ 차단 | **[2026-06-07] DEGRADED 차단 범위에서 제외** — 경로 갱신은 degraded 상태에서도 운용 필요성이 있어 별도 검토 예정 |
+| `CLASS_VIEWPOINT` | ✓ 허용 | ✗ 차단 | ✗ 차단 | ✗ 차단 | |
+| `CLASS_CONFIG` | ✓ 허용 | ✗ 차단 | ✗ 차단 | ✗ 차단 | |
+| `CLASS_MODE` | ✓ 허용 | ✓ 허용 | ✗ 차단 | ✗ 차단 | |
+| `CLASS_RECOVERY` | ✓ 허용 | ✓ 허용 | ✗ 차단 | ✗ 차단 | |
+| `CLASS_DIAGNOSTIC` | ✓ 허용 | ✓ 허용 | ✓ 허용 | ✗ 차단 | |
+
+헬스 수신 전(`CfsHealthReceived = 0`)에는 매트릭스를 적용하지 않고 전부 허용한다(fail-open).
+
+`CfsHealthState` 인코딩: `0 = NOMINAL`, `1 = DEGRADED`, `2 = RECOVERY`, `3 = FAILED`.
+
 ### 18.11 `uplink_app`에 대한 미해결 항목
 
 현재 baseline 구현에서 추가로 세분화가 필요한 항목은 다음과 같다.
 
-- 명령 클래스별 기본 권한 수준은 Section 17.5에서 고정했으며, 개별 command code별 권한 매핑 표만 추가로 작성하면 된다.
+- 명령 권한 레벨 체계는 §17.5에서 범위 외로 처리됨. uplink 프로토콜 개정 전까지 health state 차단 매트릭스(§18.10)가 유일한 허용/차단 기준이다.
 - 시퀀스 번호 정책은 strict monotonic increase로 고정했으며, wraparound 허용 여부와 허용 시간 창은 추가 확장 시에만 세분화한다.
 - 명령 라우팅은 Section 17.6과 Section 18.4.7에서 baseline target을 고정했으며, 세부 command code별 MID 매핑 표만 추가하면 된다.
 - 업링크 packet 형식과 version 정책은 Section 18.4.3의 envelope과 현재 `version=1` 기준을 사용한다.
@@ -1573,4 +1582,4 @@ downlink 텔레메트리 상태는 `downlink_app`의 책임이며
 - persistent state integrity: boot counter, command sequence cache, route cache, active configuration 저장본의 checksum 또는 CRC 오류 처리 정책을 고려해야 한다.
 - route/config 적용 원자성: route update 또는 configuration 변경이 일부만 적용된 상태로 남지 않도록 atomic apply 또는 rollback 필요성을 고려해야 한다.
 - 복구 중 허용 명령: `CFS_RECOVERY` 또는 최소 보고 상태에서 허용되는 명령 클래스의 최소 집합을 별도로 검토해야 한다.
-- 권한 또는 출처 검증: sequence/replay 검증과 별도로, 명령 출처와 권한 수준을 어떻게 결합할지 검토해야 한다.
+- 권한 또는 출처 검증: 권한 레벨 체계는 §17.5에서 범위 외 처리됨. uplink 프로토콜 개정 시 credential 필드 추가와 함께 별도 정의한다.
