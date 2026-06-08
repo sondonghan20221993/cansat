@@ -11,6 +11,7 @@ void LORA_FC_DOWNLINK_APP_UT_Setup(void)
 {
     UT_ResetState(0);
     memset(&LORA_FC_DOWNLINK_APP_Data, 0, sizeof(LORA_FC_DOWNLINK_APP_Data));
+    LORA_FC_DOWNLINK_APP_Data.LoRaFd = -1;
 }
 
 void LORA_FC_DOWNLINK_APP_UT_TearDown(void)

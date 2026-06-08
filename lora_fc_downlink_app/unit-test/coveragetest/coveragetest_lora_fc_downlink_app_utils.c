@@ -214,8 +214,98 @@ void Test_LORA_FC_DOWNLINK_APP_ProcessInputMessage(void)
     UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.PacketType, LORA_FC_DOWNLINK_APP_FC_STATE_PACKET_TYPE);
 }
 
+/* LORA-FC-005/006: Valid=0 입력 시 Valid 필드 0으로 캐시 */
+void Test_LORA_FC_DOWNLINK_APP_ProcessInputMessage_InvalidInputs(void)
+{
+    uint8                                      Storage[sizeof(TEST_LORA_FC_DOWNLINK_APP_EkfLocalTlm_t)];
+    CFE_SB_Buffer_t                           *Buffer;
+    CFE_SB_MsgId_t                             MsgId;
+    TEST_LORA_FC_DOWNLINK_APP_AttitudeTlm_t   *Attitude;
+    TEST_LORA_FC_DOWNLINK_APP_EkfLocalTlm_t   *Local;
+
+    /* Attitude Valid=0 → AttitudeValid=0 */
+    memset(Storage, 0, sizeof(Storage));
+    Attitude = (TEST_LORA_FC_DOWNLINK_APP_AttitudeTlm_t *)Storage;
+    Buffer   = (CFE_SB_Buffer_t *)Storage;
+    CFE_MSG_Init(CFE_MSG_PTR(Attitude->TelemetryHeader),
+                 CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_FC_ATTITUDE_STATE_MID_VALUE), sizeof(*Attitude));
+    Attitude->TimestampMs = 9000;
+    Attitude->Valid       = 0;
+    Attitude->RollRad     = 1.0f;
+    MsgId = CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_FC_ATTITUDE_STATE_MID_VALUE);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+    LORA_FC_DOWNLINK_APP_ProcessInputMessage(Buffer);
+
+    UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.AttitudeValid, 0);
+    UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.LastAttitudeTimestampMs, 9000);
+
+    /* Local Valid=0 → LocalValid=0 */
+    memset(Storage, 0, sizeof(Storage));
+    Local   = (TEST_LORA_FC_DOWNLINK_APP_EkfLocalTlm_t *)Storage;
+    Buffer  = (CFE_SB_Buffer_t *)Storage;
+    CFE_MSG_Init(CFE_MSG_PTR(Local->TelemetryHeader),
+                 CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_FC_EKF_LOCAL_STATE_MID_VALUE), sizeof(*Local));
+    Local->TimestampMs = 9001;
+    Local->Valid       = 0;
+    MsgId = CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_FC_EKF_LOCAL_STATE_MID_VALUE);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+    LORA_FC_DOWNLINK_APP_ProcessInputMessage(Buffer);
+
+    UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.LocalValid, 0);
+    UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.LastLocalTimestampMs, 9001);
+}
+
+/* LORA-FC-007: GPS Valid=0 및 FixType=0 캐시 */
+void Test_LORA_FC_DOWNLINK_APP_ProcessInputMessage_GpsEdgeCases(void)
+{
+    uint8                                   GpsStorage[sizeof(TEST_LORA_FC_DOWNLINK_APP_GpsRawTlm_t)];
+    CFE_SB_Buffer_t                        *GpsBuffer;
+    TEST_LORA_FC_DOWNLINK_APP_GpsRawTlm_t  *Gps;
+    CFE_SB_MsgId_t                          MsgId;
+
+    /* GPS Valid=0 → GpsValid=0, 좌표는 캐시 */
+    memset(GpsStorage, 0, sizeof(GpsStorage));
+    GpsBuffer = (CFE_SB_Buffer_t *)GpsStorage;
+    Gps       = (TEST_LORA_FC_DOWNLINK_APP_GpsRawTlm_t *)GpsStorage;
+    CFE_MSG_Init(CFE_MSG_PTR(Gps->TelemetryHeader),
+                 CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_FC_GPS_RAW_STATE_MID_VALUE), sizeof(*Gps));
+    Gps->TimestampMs = 7000;
+    Gps->Valid       = 0;
+    Gps->FixType     = 0;
+    Gps->LatE7       = 123456789;
+    Gps->LonE7       = 987654321;
+    Gps->AltMm       = 1000;
+    MsgId = CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_FC_GPS_RAW_STATE_MID_VALUE);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+    LORA_FC_DOWNLINK_APP_ProcessInputMessage(GpsBuffer);
+
+    UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.GpsValid, 0);
+    UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.GpsFixType, 0);
+    UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.LastGpsTimestampMs, 7000);
+
+    /* GPS Valid=1 but FixType=0 → GpsValid=1, FixType=0 그대로 캐시 */
+    memset(GpsStorage, 0, sizeof(GpsStorage));
+    Gps->TimestampMs = 7001;
+    Gps->Valid       = 1;
+    Gps->FixType     = 0;
+    Gps->LatE7       = 374530000;
+    Gps->LonE7       = 1269850000;
+    Gps->AltMm       = 50000;
+    CFE_MSG_Init(CFE_MSG_PTR(Gps->TelemetryHeader),
+                 CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_FC_GPS_RAW_STATE_MID_VALUE), sizeof(*Gps));
+    MsgId = CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_FC_GPS_RAW_STATE_MID_VALUE);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+    LORA_FC_DOWNLINK_APP_ProcessInputMessage(GpsBuffer);
+
+    UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.GpsValid, 1);
+    UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.GpsFixType, 0);
+    UtAssert_INT32_EQ(LORA_FC_DOWNLINK_APP_Data.LastGpsTimestampMs, 7001);
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(LORA_FC_DOWNLINK_APP_ReportHousekeeping);
     ADD_TEST(LORA_FC_DOWNLINK_APP_ProcessInputMessage);
+    ADD_TEST(LORA_FC_DOWNLINK_APP_ProcessInputMessage_InvalidInputs);
+    ADD_TEST(LORA_FC_DOWNLINK_APP_ProcessInputMessage_GpsEdgeCases);
 }
