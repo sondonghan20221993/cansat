@@ -1,5 +1,10 @@
 # LoRa Uplink Bridge Design
 
+> **[폐기됨]** 이 문서는 Python 프로세스(`bridge/lora_uplink_bridge.py`) 기반 LoRa uplink 브리지 설계를 기술한다.
+> 이 역할은 `lora_tdm_app` cFS 앱으로 이관되었다. `lora_tdm_app`은 LoRa serial을 독점 관리하고 TDM RX 창에서
+> UP frame을 직접 수신하여 SB를 통해 `uplink_app`(`UPLINK_APP_CMD_MID` 0x18D0)으로 전달한다.
+> 이 문서는 역사적 참고용으로만 보관한다.
+
 ## Purpose
 
 This document defines the minimum confirmed runtime path for `PC LoRa -> Raspberry Pi LoRa -> uplink_app`.

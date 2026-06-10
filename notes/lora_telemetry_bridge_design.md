@@ -2,7 +2,7 @@
 
 > **[폐기됨]** 이 문서는 `telemetry_app`을 위한 LoRa heartbeat 브리지 설계를 기술하나,
 > `telemetry_app`은 현재 시스템 기준선에 포함되어 있지 않다.
-> 실제 LoRa downlink 구현은 `lora_fc_downlink_app`이 담당하며, uplink 브리지는 `bridge/lora_uplink_bridge.py`를 참조한다.
+> 실제 LoRa downlink/uplink는 `lora_tdm_app` cFS 앱이 단독으로 담당한다(`lora_fc_downlink_app` 및 Python uplink bridge 대체).
 > 이 문서는 역사적 참고용으로만 보관한다.
 
 ## 1. 목적

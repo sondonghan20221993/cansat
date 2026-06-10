@@ -90,8 +90,8 @@ MID 계약을 정의했습니다. 앱은 다른 앱이 소유한 앱을 직접 �
 | --- | --- | --- | --- |
 | `mavlink_bridge_app` | FC가 제공하는 MAVLink 텔레메트리를 수신하고 임무 상태 필드를 추출하여 임무 상태 MID를 게시한다. | `IMU_STATE_MID`, `GPS_STATE_MID`, `EKF_STATE_MID`, `BRIDGE_STATUS_MID` | FC의 UART 기반 MAVLink 입력 |
 | `cfs_core_app` | 수신된 임무 상태를 검증하고, 상태 및 복구 정책을 관리하며, 시스템 상태를 게시한다. | `SYSTEM_HEALTH_MID` | `IMU_STATE_MID`, `GPS_STATE_MID`, `EKF_STATE_MID`, `BRIDGE_STATUS_MID`, 앱 health/status MID |
-| `downlink_app` | Software Bus에서 승인된 임무 상태 및 텔레메트리 MID를 수집하고, downlink packet을 구성하여 지상국으로 전송한다. MAVLink를 직접 파싱하거나 상태 유효성을 평가하지 않는다. | `DOWNLINK_STATUS_MID` | `IMU_STATE_MID`, `GPS_STATE_MID`, `EKF_STATE_MID`, `SYSTEM_HEALTH_MID`, 승인된 텔레메트리 MID |
-| `uplink_app` | 지상국 명령을 수신하고 업링크 패킷을 검증한 뒤, 승인된 런타임 설정, 경로 수정, viewpoint, 복구 명령을 임무 앱으로 전달한다. | `UPLINK_STATUS_MID` | `UPLINK_CMD_MID` 또는 승인된 전송 입력 |
+| `lora_tdm_app` | LoRa serial을 TDM 방식으로 독점 관리한다. 1초 주기마다 FC 상태 또는 시스템 헬스 downlink packet을 전송하고, 300 ms RX 창에서 ACK 및 UP frame을 수신한다. 수신된 UP frame은 `uplink_app`에 SB를 통해 전달한다. 링크 상태(CONNECTED/DEGRADED/DISCONNECTED)를 관리하고 HK 및 링크 상태 텔레메트리를 게시한다. | `LORA_TDM_APP_HK_TLM_MID` (`0x08E0`), `LORA_TDM_APP_LINK_STATUS_MID` (`0x190F`), `UPLINK_APP_CMD_MID` (`0x18D0`, uplink forward) | `FC_EKF_LOCAL_STATE_MID`, `FC_ATTITUDE_STATE_MID`, `FC_GPS_RAW_STATE_MID`, `FC_EKF_STATUS_MID`, `SYSTEM_HEALTH_MID` |
+| `uplink_app` | `lora_tdm_app`으로부터 SB를 통해 업링크 패킷을 수신하고 검증한 뒤, 승인된 런타임 설정, 경로 수정, viewpoint, 복구 명령을 임무 앱으로 전달한다. | `UPLINK_STATUS_MID` | `UPLINK_APP_CMD_MID` (`PROCESS_UPLINK_CC` from `lora_tdm_app`) |
 
 별도 recovery authority 앱이 정의되기 전까지 `cfs_core_app`은 시스템 수준 복구 판단과 복구 요청 집계를 담당하는 recovery authority로 간주한다. 본 문서에서 "복구 권한" 또는 "recovery authority"에 요청한다고 기술된 경우, 현재 기준 구현 대상은 `cfs_core_app`이다.
 
@@ -154,13 +154,15 @@ MID 계약을 정의했습니다. 앱은 다른 앱이 소유한 앱을 직접 �
 | MID 이름 | 값 | 소유자 앱 | 생산자 | 소비자 | 명령 MID | 출판률 | 오류 동작 | 시간 기준 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `MAVLINK_BRIDGE_APP_HK_TLM_MID` | `0x08A0` | `mavlink_bridge_app` | `mavlink_bridge_app` | `cfs_core_app` | `MAVLINK_BRIDGE_APP_CMD_MID` (`0x18A0`) | 1 Hz (HK request) | open/reopen 실패, parser error 누적, timeout 시 오류 카운터 반영 | `CFE_TIME` mission elapsed ms |
-| `FC_EKF_LOCAL_STATE_MID` | `0x1905` | `mavlink_bridge_app` | `mavlink_bridge_app` | `cfs_core_app`, `lora_fc_downlink_app` | `MAVLINK_BRIDGE_APP_CMD_MID` (`0x18A0`) | MAVLink `LOCAL_POSITION_NED` 또는 `GLOBAL_POSITION_INT` 수신 시 | 파싱 실패/timeout 시 `Valid=false`, `Stale=1` | `CFE_TIME` mission elapsed ms |
-| `FC_ATTITUDE_STATE_MID` | `0x1906` | `mavlink_bridge_app` | `mavlink_bridge_app` | `cfs_core_app`, `lora_fc_downlink_app` | `MAVLINK_BRIDGE_APP_CMD_MID` (`0x18A0`) | MAVLink `ATTITUDE` 수신 시 (~20 Hz) | 파싱 실패/timeout 시 `Valid=false`, `Stale=1` | `CFE_TIME` mission elapsed ms |
-| `FC_GPS_RAW_STATE_MID` | `0x1907` | `mavlink_bridge_app` | `mavlink_bridge_app` | `cfs_core_app`, `lora_fc_downlink_app` | `MAVLINK_BRIDGE_APP_CMD_MID` (`0x18A0`) | MAVLink `GPS_RAW_INT` 수신 시 (~5 Hz) | fix 미달 시 `Valid=false`, timeout 시 `Stale=1` | `CFE_TIME` mission elapsed ms |
-| `FC_EKF_STATUS_MID` | `0x1908` | `mavlink_bridge_app` | `mavlink_bridge_app` | `cfs_core_app`, `lora_fc_downlink_app` | `MAVLINK_BRIDGE_APP_CMD_MID` (`0x18A0`) | MAVLink `EKF_STATUS_REPORT` 수신 시 (~10 Hz) | Flags=0 시 `Valid=false` | `CFE_TIME` mission elapsed ms |
-| `SYSTEM_HEALTH_MID` | `0x1904` | `cfs_core_app` | `cfs_core_app` | `lora_fc_downlink_app`, 운영자 모니터링 소비자 | `CFS_CORE_APP_CMD_MID` (`0x18C0`) | 1 Hz periodic + 상태 전이 이벤트 | 입력 부족 시 `CFS_DEGRADED` 또는 `CFS_RECOVERY` 게시 | `CFE_TIME` mission elapsed ms |
+| `FC_EKF_LOCAL_STATE_MID` | `0x1905` | `mavlink_bridge_app` | `mavlink_bridge_app` | `cfs_core_app`, `lora_tdm_app` | `MAVLINK_BRIDGE_APP_CMD_MID` (`0x18A0`) | MAVLink `LOCAL_POSITION_NED` 또는 `GLOBAL_POSITION_INT` 수신 시 | 파싱 실패/timeout 시 `Valid=false`, `Stale=1` | `CFE_TIME` mission elapsed ms |
+| `FC_ATTITUDE_STATE_MID` | `0x1906` | `mavlink_bridge_app` | `mavlink_bridge_app` | `cfs_core_app`, `lora_tdm_app` | `MAVLINK_BRIDGE_APP_CMD_MID` (`0x18A0`) | MAVLink `ATTITUDE` 수신 시 (~20 Hz) | 파싱 실패/timeout 시 `Valid=false`, `Stale=1` | `CFE_TIME` mission elapsed ms |
+| `FC_GPS_RAW_STATE_MID` | `0x1907` | `mavlink_bridge_app` | `mavlink_bridge_app` | `cfs_core_app`, `lora_tdm_app` | `MAVLINK_BRIDGE_APP_CMD_MID` (`0x18A0`) | MAVLink `GPS_RAW_INT` 수신 시 (~5 Hz) | fix 미달 시 `Valid=false`, timeout 시 `Stale=1` | `CFE_TIME` mission elapsed ms |
+| `FC_EKF_STATUS_MID` | `0x1908` | `mavlink_bridge_app` | `mavlink_bridge_app` | `cfs_core_app`, `lora_tdm_app` | `MAVLINK_BRIDGE_APP_CMD_MID` (`0x18A0`) | MAVLink `EKF_STATUS_REPORT` 수신 시 (~10 Hz) | Flags=0 시 `Valid=false` | `CFE_TIME` mission elapsed ms |
+| `SYSTEM_HEALTH_MID` | `0x1904` | `cfs_core_app` | `cfs_core_app` | `lora_tdm_app`, 운영자 모니터링 소비자 | `CFS_CORE_APP_CMD_MID` (`0x18C0`) | 1 Hz periodic + 상태 전이 이벤트 | 입력 부족 시 `CFS_DEGRADED` 또는 `CFS_RECOVERY` 게시 | `CFE_TIME` mission elapsed ms |
 | `UPLINK_STATUS_MID` | `0x190A` | `uplink_app` | `uplink_app` | `cfs_core_app`, 운영자 모니터링 소비자 | `UPLINK_APP_CMD_MID` (`0x18D0`) | 1 Hz periodic + 명령 처리 결과 이벤트 | CRC/길이/시퀀스 실패 시 reject 카운터와 오류 코드 게시 | `CFE_TIME` mission elapsed ms |
 | `ROUTE_UPDATE_MID` | `0x190B` | `cfs_core_app` | `uplink_app` (검증 후 publish) | `cfs_core_app` (캐시 저장), `mavlink_bridge_app` (FC MISSION 업로드) | `UPLINK_APP_CMD_MID` (`0x18D0`) ingress | 이벤트 기반 (유효 route update 수락 시) | 검증 실패 시 `uplink_app`에서 거부, `UPLINK_STATUS_MID`에 원인 게시, 기존 active route 유지 | `CFE_TIME` mission elapsed ms |
+| `LORA_TDM_APP_HK_TLM_MID` | `0x08E0` | `lora_tdm_app` | `lora_tdm_app` | 운영자 모니터링 소비자 | `LORA_TDM_APP_CMD_MID` (`0x18E0`) | HK request 수신 시 | serial open 실패, TX/RX 오류 시 오류 카운터 반영 | `CFE_TIME` mission elapsed ms |
+| `LORA_TDM_APP_LINK_STATUS_MID` | `0x190F` | `lora_tdm_app` | `lora_tdm_app` | 운영자 모니터링 소비자 | `LORA_TDM_APP_CMD_MID` (`0x18E0`) | HK request 수신 시 | ACK 타임아웃 시 LinkState 전이 반영 | `CFE_TIME` mission elapsed ms |
 
 > **ROUTE_UPDATE_MID 운용 주의**: 이 MID는 `cfs_core_app`의 route cache 갱신뿐 아니라 `mavlink_bridge_app`의 FC mission upload를 즉시 트리거한다. 따라서 이 MID를 publish하는 생산자(`uplink_app`)는 payload 검증뿐 아니라 FC 업로드 가능성까지 고려해야 한다. FC 업로드 프로토콜 상세는 `notes/mavlink_bridge_app_behavior_spec.md`를 참조한다.
 
@@ -851,62 +853,55 @@ FC, 모터 또는 액추에이터 명령 및 비행 제어 매개변수
 | `CFS_CORE_APP_SEND_HK_MID` | `0x18C1` |
 | `UPLINK_APP_CMD_MID` | `0x18D0` |
 | `UPLINK_APP_SEND_HK_MID` | `0x18D1` |
+| `LORA_TDM_APP_CMD_MID` | `0x18E0` |
+| `LORA_TDM_APP_SEND_HK_MID` | `0x18E1` |
+| `LORA_TDM_APP_HK_TLM_MID` | `0x08E0` |
 | `SYSTEM_HEALTH_MID` | `0x1904` |
 | `UPLINK_STATUS_MID` | `0x190A` |
 | `ROUTE_UPDATE_MID` | `0x190B` |
+| `LORA_TDM_APP_LINK_STATUS_MID` | `0x190F` |
 
-`DOWNLINK_STATUS_MID`는 현재 구현되지 않았다. `lora_fc_downlink_app`은 별도 status MID를 publish하지 않으며 HK만 publish한다. `0x1905`는 `FC_EKF_LOCAL_STATE_MID`로 할당되어 있으므로 `DOWNLINK_STATUS_MID`에 사용할 수 없다.
+`DOWNLINK_STATUS_MID`는 현재 구현되지 않았다. `0x1905`는 `FC_EKF_LOCAL_STATE_MID`로 할당되어 있으므로 `DOWNLINK_STATUS_MID`에 사용할 수 없다.
 
-#### lora_fc_downlink_app LoRa 송신/수신 동작 (구현 완료)
+> **Note**: `lora_fc_downlink_app`과 `uplink_app`의 LoRa serial 직접 접근 동작은 `lora_tdm_app`으로 통합되었다.
+> `lora_fc_downlink_app`(TX 전용)과 Python `lora_uplink_bridge.py`(RX 전용)는 폐기된다.
 
-`lora_fc_downlink_app`은 SB에서 FC 상태를 구독하고 LoRa serial로 직접 전송하며, 지상국 HB를 수신하여 링크 상태를 관리한다.
+#### lora_tdm_app TDM 동작 (구현 완료)
 
-**캐시 필드 (ProcessInputMessage 갱신):**
-- ATTITUDE: RollRad, PitchRad, YawRad
-- EKF_LOCAL: X_m, Y_m, Z_m, Vx_mps, Vy_mps, Vz_mps
-- GPS_RAW: LatE7, LonE7, AltMm, FixType
-- SYSTEM_HEALTH: HealthState, FaultCode
+`lora_tdm_app`은 LoRa serial을 독점 소유하고 TDM 방식으로 downlink TX → RX 창(300 ms)을 반복한다.
 
-**LoRa 송신 패킷 (ServiceLoRa, SB 수신마다 호출):**
+**캐시 필드 (UpdateCacheFromMsg 갱신):**
+- ATTITUDE (0x1906): RollRad, PitchRad, YawRad, AttitudeValid
+- EKF_LOCAL (0x1905): PosX/Y/Z, VelX/Y/Z, LocalValid
+- GPS_RAW (0x1907): LatE7, LonE7, AltMm, GpsFix, GpsValid
+- EKF_STATUS (0x1908): EkfValid
+- SYSTEM_HEALTH (0x1904): SystemHealthState, FaultCode
 
-| PacketType | 형식 | 조건 |
+**LoRa TX 패킷 (RunTx, 매 TDM 주기 1회):**
+
+| PacketType | 형식 | 선택 조건 |
 | --- | --- | --- |
-| 1 (FC State) | `FC,count,ts,roll,pitch,yaw,x,y,z,vx,vy,vz,lat_e7,lon_e7,alt_mm,fix_type\n` | AttitudeValid && LocalValid |
-| 2 (SH) | `SH,count,ts,health_state,fault_code\n` | SYSTEM_HEALTH 수신 시 |
+| FC State (default) | `FC,<seq>,<ts>,<roll>,<pitch>,<yaw>,<x>,<y>,<z>,<vx>,<vy>,<vz>,<lat_e7>,<lon_e7>,<alt_mm>,<fix>,<ufb>\n` | PacketType ≠ SYSTEM_HEALTH |
+| SH | `SH,<seq>,<ts>,<state>,<fault>,<linkstate>,<ufb>\n` | PacketType = SYSTEM_HEALTH |
 
-**LoRa HB 수신 (ServiceLoRaRead, SB 수신마다 호출):**
-- LoRa serial에서 1바이트씩 읽어 줄 단위 누적
-- `HB`, `HB,seq`, `HB,node,seq,tx_ms,sensor_ok,crc16` 형식 파싱
-- HB 수신 성공 시 `HbLastRxMs`, `HbLinkValid=1` 갱신
+`ufb` (UplinkFeedback): 0x00=OK, 0x01=CRC_FAIL, 0x02=SEQ_FAIL.
 
-**LoRa serial 설정:** `LORA_FC_DOWNLINK_APP_LORA_SERIAL_PATH`, baud `57600`, O_RDWR, blocking 모드.
+**LoRa RX 창 (RunRxWindow, TX 직후 300 ms):**
+- 1바이트씩 읽어 줄 단위 누적
+- `ACK,<seq>\n` → `ParseAckFrame()`: LastAckTimestampMs 갱신, NoAckCount 유지
+- `UP,...\n` → `ProcessUpFrame()`: UP 프레임 CRC 검증 → `UPLINK_APP_ProcessUplinkCmd_t` 구성 → `CFE_SB_TransmitMsg` to `UPLINK_APP_CMD_MID` (0x18D0)
+- RX 창 종료 시 ACK 미수신이면 NoAckCount++ (최대 0xFFFF)
 
-`bridge/lora_telemetry_bridge.py` Python 프로세스는 이 앱으로 대체된다.
+**링크 상태 (UpdateLinkState, 매 주기):**
+- LastAckTimestampMs로부터 `LINK_TIMEOUT_MS (5000 ms)` 초과 → DISCONNECTED
+- NoAckCount ≥ `LINK_LOSS_THRESHOLD (3)` → DEGRADED
+- 그 외 → CONNECTED
 
-현재 코드베이스의 `lora_fc_downlink_app`은 cFS topic-id 기반 매핑(`DEFAULT_LORA_FC_DOWNLINK_APP_MISSION_CMD_TOPICID`, `...SEND_HK_TOPICID`)을 사용한다. 해당 topic-id 매핑은 본 섹션의 `0x18B0/0x18B1` baseline과 동등한 명령 ingress 의미를 가져야 하며, 플랫폼 설정 시 값 충돌이 없도록 동일 baseline으로 유지해야 한다.
+**LoRa serial 설정:** `LORA_TDM_APP_LORA_SERIAL_PATH`, baud `57600`, O_RDWR, blocking 모드.
+
+`bridge/lora_telemetry_bridge.py`와 `bridge/lora_uplink_bridge.py` Python 프로세스는 이 앱으로 대체된다.
 
 본 문서에서 `UPLINK_CMD_MID`라는 일반 표현은 현재 구현 기준 `UPLINK_APP_CMD_MID`와 동일한 명령 ingress MID를 의미한다. 별도 uplink command gateway MID를 두지 않는 한 두 용어를 동의어로 사용한다.
-
-#### uplink_app LoRa serial 직접 수신 동작 (구현 완료)
-
-`uplink_app`은 `ServicePrototype()` 호출마다 `ServiceLoRa()`를 통해 LoRa serial에서 UP 프레임을 직접 읽어 처리한다.
-
-**UP 프레임 형식:**
-```
-UP,<version>,<command_class>,<sequence>,<flags>,<payload_hex>,<crc16_hex>
-```
-
-**검증 단계 (ParseLoRaFrame):**
-1. CRC16-CCITT 검증 (`UP,ver,class,seq,flags,payload_hex` 부분)
-2. hex 디코딩 유효성
-3. payload 길이 ≤ 196바이트
-4. sequence 단조 증가 (`LoRaSeqInitialized` 이후)
-
-**검증 통과 시:** `UPLINK_APP_ProcessUplink()` 직접 호출 — UDP 경로와 동일한 처리 흐름.
-
-**LoRa serial 설정:** `UPLINK_APP_LORA_SERIAL_PATH`, baud `57600`, O_RDONLY, blocking 모드.
-
-`bridge/lora_uplink_bridge.py` Python 프로세스는 이 경로로 대체된다.
 
 ### 17.2 payload 정밀도 및 엔디안 정책
 
@@ -922,13 +917,13 @@ UP,<version>,<command_class>,<sequence>,<flags>,<payload_hex>,<crc16_hex>
 1. `mav_bridge_app`
 2. `cfs_core_app`
 3. `uplink_app`
-4. `lora_fc_downlink_app` (Section 4의 `downlink_app` 구현체)
+4. `lora_tdm_app` (Section 4의 LoRa TDM 구현체)
 
 기준 우선순위 정책:
 
 - `mav_bridge_app`와 `cfs_core_app`은 downlink/uplink 앱보다 높은 우선순위를 가져야 한다.
 - 본 섹션의 `mav_bridge_app`은 Section 4의 `mavlink_bridge_app`과 동일한 앱을 의미한다.
-- `uplink_app`은 `lora_fc_downlink_app`와 같거나 더 높은 우선순위를 가져야 한다.
+- `uplink_app`은 `lora_tdm_app`와 같거나 더 높은 우선순위를 가져야 한다.
 - 스택 크기는 각 앱의 현재 cFS sample baseline을 사용하되, parser 또는 route validation 확장으로 인해 오버플로우 위험이 확인되면 그 앱만 상향 조정한다.
 
 ### 17.4 앱 기간 제어 기준
@@ -936,7 +931,7 @@ UP,<version>,<command_class>,<sequence>,<flags>,<payload_hex>,<crc16_hex>
 - `mavlink_bridge_app`: app-local polling loop를 사용한다.
 - `cfs_core_app`: event-driven 입력 처리와 1 Hz health publish를 병행한다.
 - `uplink_app`: event-driven command 처리와 1 Hz status publish를 사용한다.
-- `lora_fc_downlink_app`: subscribed state message 기반 event-driven packet compose를 사용하고, status/HK는 1 Hz 기준을 따른다.
+- `lora_tdm_app`: `OS_TaskDelay(CYCLE_PERIOD_MS=1000)` 기반 1 Hz TDM 주기 루프를 사용한다. 각 주기에 TX → RX창(300 ms) 순서로 실행하며, HK/LinkStatus는 HK request 이벤트 기반으로 publish한다.
 
 SCH 기반 제어가 추가되더라도 위 publish rate와 event-driven 계약을 깨뜨려서는 안 된다.
 
@@ -963,7 +958,7 @@ SCH 기반 제어가 추가되더라도 위 publish rate와 event-driven 계약�
 - `mavlink_bridge_app`의 외부 승인 command는 `NOOP`, `RESET_COUNTERS`, `SEND_HK`로 제한한다.
 - `cfs_core_app`의 외부 승인 command는 `NOOP`, `RESET_COUNTERS`, `SEND_HK`로 제한한다.
 - `uplink_app`의 외부 승인 command는 `NOOP`, `RESET_COUNTERS`, `SEND_HK`, `PROCESS_UPLINK`를 포함한다.
-- `lora_fc_downlink_app`의 외부 승인 command는 `NOOP`, `RESET_COUNTERS`, `SEND_HK`로 제한한다.
+- `lora_tdm_app`의 외부 승인 command는 `NOOP`, `RESET_COUNTERS`, `SEND_HK`로 제한한다.
 
 ### 17.8 시간 기준 유지 정책
 
