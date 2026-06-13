@@ -38,11 +38,6 @@ typedef struct
     uint8                  LastRollbackReason;
     uint8                  CfsHealthState;
     uint8                  CfsHealthReceived;
-    int                    LoRaFd;
-    uint16                 LastLoRaSeq;
-    uint8                  LoRaSeqInitialized;
-    char                   LoRaReadBuf[512];
-    uint16                 LoRaReadLen;
     CFE_SB_PipeId_t        CommandPipe;
     UPLINK_APP_HkTlm_t     HkTlm;
     UPLINK_APP_StatusTlm_t StatusTlm;

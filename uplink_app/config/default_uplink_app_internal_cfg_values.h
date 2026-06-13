@@ -8,9 +8,6 @@
 #define UPLINK_APP_PROTOCOL_VERSION     1
 #define UPLINK_APP_MAX_PAYLOAD_LENGTH   196
 #define UPLINK_APP_STATE_FILE_PATH      "/cf/uplink_app_state.bin"
-#define UPLINK_APP_LORA_SERIAL_PATH \
-    "/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0"
-#define UPLINK_APP_LORA_BAUDRATE        57600
 
 #define UPLINK_APP_VIEWPOINT_VERSION    1
 #define UPLINK_APP_VIEWPOINT_MAX_TYPE   2   /* 0=absolute 1=relative 2=track */

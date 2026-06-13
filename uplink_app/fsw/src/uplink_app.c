@@ -54,7 +54,6 @@ CFE_Status_t UPLINK_APP_Init(void)
 
     memset(&UPLINK_APP_Data, 0, sizeof(UPLINK_APP_Data));
     UPLINK_APP_Data.RunStatus = CFE_ES_RunStatus_APP_RUN;
-    UPLINK_APP_Data.LoRaFd    = -1;
 
     Status = CFE_EVS_Register(NULL, 0, CFE_EVS_EventFilter_BINARY);
     if (Status != CFE_SUCCESS)

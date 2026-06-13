@@ -66,11 +66,6 @@ void UPLINK_APP_UpdateStatusTelemetry(uint32 NowMs)
     UT_GenStub_Execute(UPLINK_APP_UpdateStatusTelemetry, Basic, NULL);
 }
 
-void UPLINK_APP_ServiceLoRa(void)
-{
-    UT_GenStub_Execute(UPLINK_APP_ServiceLoRa, Basic, NULL);
-}
-
 uint16 UPLINK_APP_ComputeProxyCrc(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
 {
     UT_GenStub_SetupReturnBuffer(UPLINK_APP_ComputeProxyCrc, uint16);

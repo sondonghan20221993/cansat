@@ -734,15 +734,12 @@ EVS 로그/HK/serial 출력으로 결과를 검증한다.
 
 | 항목 | 비고 |
 |---|---|
-<<<<<<< HEAD
-=======
 | `mavlink_bridge_app` unit test | unit-test 디렉터리 미구성 |
 | `lora_tdm_app` `ReportHousekeeping` 단위테스트 | HK payload 반영 확인 — 미작성 |
 | `lora_tdm_app` `ReportLinkStatus` 단위테스트 | LinkStatus TLM 반영 확인 — 미작성 |
 | `lora_tdm_app` SEQ_FAIL 경로 (TDM-RX-004) | `UPLINK_FB_SEQ_FAIL` 미구현 |
 | `lora_tdm_app` `RunCycle` TDM 타이밍 검증 | serial 의존 → Pi 런타임 필요 |
 | `lora_tdm_app` LoRa 하드웨어 연동 | Pi 실물 serial 필요 |
->>>>>>> 6ec0826 (feat(lora_tdm_app): TDM 앱 구현 및 관련 문서/테스트 정합성 갱신)
 | `uplink_app` LoRa serial read C 경로 단위테스트 | `ServiceLoRa()`/`ParseLoRaFrame()` static — 통합테스트로 대체 |
 | `uplink_app` CRC16 C 구현 | `UPLINK_APP_CRC16()` static — `test_uplink_lora_frame.py`로 검증 예정 |
 | `lora_fc_downlink_app` SB timeout alive (LORA-FC-008) | main loop — static 함수, 단위테스트 불가 |

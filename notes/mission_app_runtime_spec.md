@@ -264,6 +264,8 @@ MID 계약을 정의했습니다. 앱은 다른 앱이 소유한 앱을 직접 �
 
 ### 6.6 `DOWNLINK_STATUS_MID`
 
+> **[미구현]** `DOWNLINK_STATUS_MID`는 현재 구현되지 않았다(`§17.1` 참조). 아래는 향후 구현 시 기준이 되는 사양이다. `0x1905`는 `FC_EKF_LOCAL_STATE_MID`로 이미 사용 중이므로 MID 값은 별도 할당이 필요하다.
+
 최소 필드:
 
 - 타임스탬프 및 시간 유효성.
@@ -830,7 +832,7 @@ FC, 모터 또는 액추에이터 명령 및 비행 제어 매개변수
 | 파일 | 검증 범위 | 방법 |
 | --- | --- | --- |
 | `tests/test_uplink_e2e.py` | uplink_app C 경로 seq regression, ProcessUplink 실제 흐름 | cFS 실행 후 UDP 전송 → EVS 로그 확인 |
-| `tests/test_lora_fc_downlink_e2e.py` | ServiceLoRa() 실제 LoRa 출력, LORA-FC-006~007 | SB mock → cFS 실행 → PTY serial 캡처 |
+| `tests/test_lora_fc_downlink_e2e.py` | lora_tdm_app LoRa TX 출력, LORA-FC-006~007 | SB mock → cFS 실행 → PTY serial 캡처 |
 | `tests/test_rec_serial.py` | REC-001~004 serial 장애/재연결 | PTY close/reopen 시뮬레이션 |
 
 그룹 B 실행: `pytest -m cfs_required` (cFS 빌드 및 native 실행 환경 필요)
@@ -847,8 +849,8 @@ FC, 모터 또는 액추에이터 명령 및 비행 제어 매개변수
 | --- | --- |
 | `MAVLINK_BRIDGE_APP_CMD_MID` | `0x18A0` |
 | `MAVLINK_BRIDGE_APP_SEND_HK_MID` | `0x18A1` |
-| `DOWNLINK_APP_CMD_MID` | `0x18B0` |
-| `DOWNLINK_APP_SEND_HK_MID` | `0x18B1` |
+| ~~`DOWNLINK_APP_CMD_MID`~~ | ~~`0x18B0`~~ | [deprecated] `lora_fc_downlink_app` 폐기로 미사용 |
+| ~~`DOWNLINK_APP_SEND_HK_MID`~~ | ~~`0x18B1`~~ | [deprecated] `lora_fc_downlink_app` 폐기로 미사용 |
 | `CFS_CORE_APP_CMD_MID` | `0x18C0` |
 | `CFS_CORE_APP_SEND_HK_MID` | `0x18C1` |
 | `UPLINK_APP_CMD_MID` | `0x18D0` |
@@ -859,6 +861,8 @@ FC, 모터 또는 액추에이터 명령 및 비행 제어 매개변수
 | `SYSTEM_HEALTH_MID` | `0x1904` |
 | `UPLINK_STATUS_MID` | `0x190A` |
 | `ROUTE_UPDATE_MID` | `0x190B` |
+| `VIEWPOINT_CMD_MID` | `0x190D` |
+| `CONFIG_CMD_MID` | `0x190E` |
 | `LORA_TDM_APP_LINK_STATUS_MID` | `0x190F` |
 
 `DOWNLINK_STATUS_MID`는 현재 구현되지 않았다. `0x1905`는 `FC_EKF_LOCAL_STATE_MID`로 할당되어 있으므로 `DOWNLINK_STATUS_MID`에 사용할 수 없다.
@@ -1414,7 +1418,7 @@ counter management payload는 최소한 다음 필드를 포함해야 한다.
 본 문서의 route update 기준 수치는 Section 18.4.6.2와 동일하게 고정한다.
 
 - waypoint 개수: `1..16`
-- 인접 waypoint 간 3D 거리: `2m..2m`
+- 인접 waypoint 간 3D 거리: 정확히 `2m` (±0.0001m 허용 오차, `ROUTE_SEGMENT_DIST_M`)
 
 상위 임무 계층에는 검증된 route segment 정보가 전달되어야 하며, 여기에는 최소한 `route_type`, `route_version`, `waypoint_count`, 그리고 waypoint 배열이 포함되어야 한다. 이 내부 표현은 raw uplink payload를 그대로 재사용하는 것이 아니라, 경로 관리 계층이 직접 사용할 수 있는 검증된 route segment 구조로 변환되어야 한다.
 
