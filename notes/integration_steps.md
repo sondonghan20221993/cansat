@@ -199,6 +199,9 @@ Linux는 같은 tty 동시 open을 막지 않아 `EBUSY` 없이 둘 다 열리�
 - `lora_fc_downlink_app`이 RX에서 읽은 "UP,..." 원문을 `UPLINK_RAW_MID`(0x1909)로 publish,
   `uplink_app`이 이를 구독해 `ParseLoRaFrame()`로 파싱(파싱·검증은 uplink 소유).
 - 반이중 제약: RX 윈도우는 downlink TX 후 300ms만 열림(지상국은 슬롯 내 응답 필요).
+- **지상국측 정합**: 지상 LoRa 브리지(openMCT `lora_bridge.py`)는 UP 프레임을 즉시
+  쏘지 말고 큐에 적재 후, downlink 라인 수신 직후(= Pi RX 윈도우 열림) 그 슬롯에 송신해야 한다.
+  SH가 FC 없이도 ~1Hz로 downlink되므로 슬롯은 항상 열린다. (상세: openMCT `openmct_bridge_notes.md`)
 
 ### 9. lora_fc_downlink_app CommandPipe starvation (depth)
 
