@@ -86,7 +86,7 @@ SET(SPACECRAFT_ID 0x42)
 # and must be loaded explicitly via startup script or command.
 # This list is effectively appended to every TGTx_APPLIST in targets.cmake.
 # Example:
-list(APPEND MISSION_GLOBAL_APPLIST sample_lib mavlink_bridge_app cfs_core_app uplink_app lora_fc_downlink_app)
+list(APPEND MISSION_GLOBAL_APPLIST sample_lib)
 
 # The "MISSION_GLOBAL_STATIC_APPLIST" is similar to MISSION_GLOBAL_APPLIST
 # but the apps are statically linked.
@@ -102,7 +102,7 @@ SET(FT_INSTALL_SUBDIR "host/functional-test")
 SET(MISSION_CPUNAMES cpu1)
 
 SET(cpu1_PROCESSORID 1)
-SET(cpu1_APPLIST ci_lab to_lab sch_lab)
+SET(cpu1_APPLIST ci_lab to_lab sch_lab mavlink_bridge_app cfs_core_app uplink_app lora_fc_downlink_app)
 SET(cpu1_FILELIST cfe_es_startup.scr)
 SET(cpu1_SYSTEM native)
 
