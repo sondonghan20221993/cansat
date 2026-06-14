@@ -17,13 +17,13 @@
 ## 구현 기능
 
 ### uplink 패킷 처리 (PROCESS_UPLINK_CC)
-- `lora_tdm_app`이 LoRa serial RX 창에서 수신한 UP frame을 SB를 통해 전달하거나, 테스트용 UDP 경로로 수신
+- 지상국 또는 `bridge/lora_uplink_bridge.py`에서 CCSDS 래핑된 uplink 패킷 수신
 - 검증 항목: 프로토콜 버전, CRC-16, payload 길이(최대 196바이트), sequence 단조 증가
 - 명령 클래스 분류: route update, viewpoint update, runtime configuration, recovery command 등
 - 검증 통과 시 대상 MID로 라우팅
 
 ### route update 처리
-- waypoint 개수(1..16), x/y/z finite 검사, 고도(2m..8m), 인접 waypoint 3D 거리(정확히 2m ±0.0001m) 검증
+- waypoint 개수(1..16), x/y/z finite 검사, 고도(2m..8m), 인접 waypoint 3D 거리(2m..2m) 검증
 - 검증 통과 시 `ROUTE_UPDATE_MID`로 publish → `cfs_core_app` 캐시 + `mavlink_bridge_app` FC 업로드
 - Z 좌표: 양수 = 고도(AGL), 단위 meters
 
@@ -41,16 +41,35 @@
 
 ## 입력 경로
 
-### LoRa SB 경로 (lora_tdm_app, 운영 경로)
-`lora_tdm_app`이 LoRa serial을 독점 소유하고 TDM RX 창(300ms)에서 UP 프레임을 수신한다. 검증(CRC16-CCITT, hex 디코딩, payload 길이 ≤ 196바이트) 통과 시 `UPLINK_APP_ProcessUplinkCmd_t` 메시지를 `UPLINK_APP_CMD_MID`(0x18D0)로 SB 전송 → 이 앱의 `PROCESS_UPLINK_CC`로 수신.
+### UDP 경로 (CI_LAB)
+`bridge/lora_uplink_bridge.py` 또는 `tools/uplink_route_update_sender.py --transport udp`가 CCSDS UDP 패킷을 UDP 1234로 전달한다.
 
-UP 프레임 형식(lora_tdm_app이 파싱):
+### LoRa serial 직접 경로 (ServiceLoRa) — ⚠️ 비활성화 권고 (lora_tdm_app 잔재물)
+
+> **포트 충돌**: `lora_fc_downlink_app`이 같은 CP2102 포트를 `O_RDWR`로 독점 오픈한다.
+> 두 앱이 동시에 같은 포트를 열면 Linux 시리얼 드라이버의 수신 버퍼를 서로 빼앗아 가므로,
+> 이 경로를 활성화하면 `lora_fc_downlink_app`의 HB 수신과 `uplink_app`의 UP 수신 모두 신뢰할 수 없다.
+>
+> **올바른 경로**: `lora_fc_downlink_app`이 RX 윈도우에서 UP 프레임을 읽고 SB로 publish →
+> `uplink_app`이 `UPLINK_APP_CMD_MID`를 구독하는 방식 (PDF 설계 원칙).
+> 현재 `lora_fc_downlink_app`에 UP 파싱이 미구현이므로 UDP 경로를 사용할 것.
+
+`ServicePrototype()` 호출마다 `ServiceLoRa()`가 LoRa serial에서 직접 UP 프레임을 읽어 `ProcessUplink()`를 내부 호출한다.
+
+- serial 경로: `UPLINK_APP_LORA_SERIAL_PATH` (config, 기본값: CP2102 USB-UART)
+- Baud: `UPLINK_APP_LORA_BAUDRATE` (기본 57600)
+- open 모드: `O_RDONLY | O_NOCTTY | O_NONBLOCK` → 열기 후 blocking 전환
+
+UP 프레임 형식:
 ```
 UP,<version>,<command_class>,<sequence>,<flags>,<payload_hex>,<crc16_hex>
 ```
 
-### UDP 경로 (CI_LAB, 테스트용)
-`tools/uplink_route_update_sender.py --transport udp`가 CCSDS UDP 패킷을 UDP 1234로 전달한다.
+검증 항목:
+- CRC16-CCITT (`UP,version,class,seq,flags,payload_hex` 부분에 대한 CRC)
+- hex 디코딩 유효성
+- payload 길이 ≤ 196바이트
+- sequence 단조 증가 (regression 거부)
 
 ## 미구현
 
@@ -58,12 +77,12 @@ UP,<version>,<command_class>,<sequence>,<flags>,<payload_hex>,<crc16_hex>
 
 ## Python bridge 대체 현황
 
-| 구 Python 프로세스 | 현 cFS 구현 |
-| --- | --- |
-| `bridge/lora_uplink_bridge.py` | `lora_tdm_app` RX 창 → SB → 이 앱 |
+| 구 Python 프로세스 | 현 cFS 구현 | 상태 |
+| --- | --- | --- |
+| `bridge/lora_uplink_bridge.py` | ~~이 앱 `ServiceLoRa()` 직접 처리~~ | ⚠️ CP2102 포트 충돌로 사용 불가 |
+| — | UDP 경로 (CI_LAB) 유지 | ✓ 현재 권장 경로 |
 
 ## 동작 명세 참조
 
 - uplink 전체 계약: `notes/mission_app_runtime_spec.md` §18
-- lora_tdm_app TDM 동작 (UP frame 수신 경로): `notes/lora_tdm_app_behavior_spec.md`
-- LoRa bridge 프로토콜(참고/deprecated): `notes/lora_uplink_bridge_design.md`
+- LoRa bridge 프로토콜(참고): `notes/lora_uplink_bridge_design.md`

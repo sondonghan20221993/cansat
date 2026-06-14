@@ -181,12 +181,14 @@ static void LORA_FC_DOWNLINK_APP_ServiceLoRaRead(void)
 
 static void LORA_FC_DOWNLINK_APP_ServiceLoRa(void)
 {
-    int            Fd;
-    int            WriteRc;
-    struct termios Tio;
-    char           Line[256];
-    int            LineLen;
-    speed_t        BaudConstant = B57600;
+    int                Fd;
+    int                WriteRc;
+    struct termios     Tio;
+    char               Line[256];
+    int                LineLen;
+    speed_t            BaudConstant = B57600;
+    CFE_TIME_SysTime_t Now;
+    uint32             NowMs;
 
     if (LORA_FC_DOWNLINK_APP_Data.LoRaFd < 0)
     {
@@ -235,9 +237,17 @@ static void LORA_FC_DOWNLINK_APP_ServiceLoRa(void)
                           LORA_FC_DOWNLINK_APP_LORA_SERIAL_PATH, LORA_FC_DOWNLINK_APP_LORA_BAUDRATE);
     }
 
+    /* Rate limiting: minimum 500ms between LoRa writes to avoid overwhelming the link */
+    Now   = CFE_TIME_GetTime();
+    NowMs = (uint32)((uint64)Now.Seconds * 1000ULL + (uint64)Now.Subseconds * 1000ULL / 0x100000000ULL);
+    if ((NowMs - LORA_FC_DOWNLINK_APP_Data.LastLoRaTxMs) < 500U)
+    {
+        return;
+    }
+
     if (LORA_FC_DOWNLINK_APP_Data.PacketType == LORA_FC_DOWNLINK_APP_SYSTEM_HEALTH_PACKET_TYPE)
     {
-        LineLen = snprintf(Line, sizeof(Line), "SH,%lu,%lu,%u,%u\n",
+        LineLen = snprintf(Line, sizeof(Line), "SH,%lu,%lu,%u,%u,0,0\n",
                            (unsigned long)(++LORA_FC_DOWNLINK_APP_Data.LoRaTxCount),
                            (unsigned long)LORA_FC_DOWNLINK_APP_Data.LastSystemHealthTimestampMs,
                            (unsigned int)LORA_FC_DOWNLINK_APP_Data.SystemHealthState,
@@ -246,7 +256,7 @@ static void LORA_FC_DOWNLINK_APP_ServiceLoRa(void)
     else if (LORA_FC_DOWNLINK_APP_Data.AttitudeValid && LORA_FC_DOWNLINK_APP_Data.LocalValid)
     {
         LineLen = snprintf(Line, sizeof(Line),
-                           "FC,%lu,%lu,%.6f,%.6f,%.6f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%ld,%ld,%ld,%u\n",
+                           "FC,%lu,%lu,%.6f,%.6f,%.6f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%ld,%ld,%ld,%u,0\n",
                            (unsigned long)(++LORA_FC_DOWNLINK_APP_Data.LoRaTxCount),
                            (unsigned long)LORA_FC_DOWNLINK_APP_Data.LastAttitudeTimestampMs,
                            (double)LORA_FC_DOWNLINK_APP_Data.AttitudeRollRad,
@@ -284,6 +294,10 @@ static void LORA_FC_DOWNLINK_APP_ServiceLoRa(void)
                           "LORA_FC_DOWNLINK_APP: LoRa write failed errno=%d, forcing reopen", errno);
         close(LORA_FC_DOWNLINK_APP_Data.LoRaFd);
         LORA_FC_DOWNLINK_APP_Data.LoRaFd = -1;
+    }
+    else
+    {
+        LORA_FC_DOWNLINK_APP_Data.LastLoRaTxMs = NowMs;
     }
 }
 

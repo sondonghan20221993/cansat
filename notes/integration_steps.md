@@ -1,94 +1,5 @@
 # Raspberry Pi 재통합 및 재설정 절차
 
-## Pi↔FC MAVLink 양방향 통신 진단
-
-> **핵심**: telemetry 수신 정상(FC→Pi) ≠ command 송신 정상(Pi→FC).
-> cFS 미션 업로드 문제가 발생하면 MAVProxy로 양방향 통신을 먼저 검증한다.
-
-### 사전 확인 (QGC/MP 파라미터)
-
-| 파라미터 | 정상값 | 의미 |
-|---------|--------|------|
-| `SERIAL4_PROTOCOL` | `2` | MAVLink2. `0`이면 FC가 RX 무시 |
-| `SERIAL4_BAUD` | `57` | 57600 baud 일치 |
-| `SERIAL4_OPTIONS` | `0` | Half-duplex 등 옵션 없음 |
-
-### MAVProxy 단독 테스트
-
-```bash
-pip install mavproxy
-mavproxy.py --master=/dev/serial0 --baudrate=57600
-```
-
-연결 후 콘솔에서:
-```
-arm throttle    # ACK 응답 오면 Pi→FC TX 정상
-disarm
-```
-
-- ACK 응답 있음 → Pi↔FC 양방향 정상. cFS 미션 업로드 문제는 브리지 코드 쪽.
-- ACK 응답 없음 → Pi TX 물리 배선 또는 FC 파라미터 문제.
-
-### 물리 배선 확인
-
-| 핀 | 연결 대상 |
-|----|---------|
-| Pi GPIO14 (TXD, Pin 8) | FC UART4 RX |
-| Pi GPIO15 (RXD, Pin 10) | FC UART4 TX |
-| GND | FC GND (공통) |
-
----
-
-## 개발 워크플로 (소스 수정 후 재빌드)
-
-> **모든 경로는 Raspberry Pi 기준이다.** 빌드·실행은 Pi 터미널에서 수행한다.
-
-소스를 수정한 뒤 cFS에 반영하는 절차. `rsync` 대신 `cp -r`을 사용한다.
-
-### 1. 소스 동기화
-
-```bash
-# fsw 소스가 변경된 경우
-cp -r ~/Desktop/cfs-telemetry-app/<app>/fsw/ ~/Desktop/cFS_clean/apps/<app>/fsw/
-
-# unit-test가 변경된 경우
-cp -r ~/Desktop/cfs-telemetry-app/<app>/unit-test/ ~/Desktop/cFS_clean/apps/<app>/unit-test/
-```
-
-### 2. cFS 재빌드 및 설치
-
-```bash
-cd ~/Desktop/cFS_clean/build-native_std
-make native_default_cpu1-all -j$(nproc)
-
-# .so 수동 복사 (sudo make install 대체)
-cp ~/Desktop/cFS_clean/build-native_std/native/default_cpu1/apps/<app>/<app>.so ~/Desktop/cFS_clean/build-native_std/exe/cpu1/cf/
-```
-
-`mav_bridge_app`는 target 이름이 짧으므로:
-```bash
-cp apps/mavlink_bridge_app/mav_bridge_app.so ~/Desktop/cFS_clean/build-native_std/exe/cpu1/cf/
-```
-
-### 3. unit-test 재빌드 및 실행
-
-```bash
-cd ~/Desktop/cFS_clean/build-ut/native/default_cpu1/apps/<app>/unit-test
-make -j4
-./coverage-<app>-<module>-testrunner
-```
-
-### 4. Python 테스트
-
-```bash
-cd ~/Desktop/cfs-telemetry-app
-.venv/bin/python -m pytest tests/ -v
-```
-
----
-
-> **이 문서의 모든 경로(`~/Desktop/cFS_clean`, `~/Desktop/cfs-telemetry-app`)는 Raspberry Pi 기준이다.**
-
 이 문서는 Raspberry Pi가 초기화된 뒤 `cFS`와 baseline telemetry app set을 다시 올릴 때
 필요한 절차와, 실제로 확인된 문제 및 해결 기준을 정리한다.
 
@@ -96,7 +7,7 @@ cd ~/Desktop/cfs-telemetry-app
 
 - `mavlink_bridge_app`
 - `cfs_core_app`
-- `lora_tdm_app` (LoRa TDM downlink/uplink 통합 앱)
+- `downlink_app` (`lora_fc_downlink_app` 기반)
 - `uplink_app`
 
 `telemetry_app`과 `img_app`은 현재 baseline app set에 포함하지 않는다.
@@ -104,7 +15,7 @@ cd ~/Desktop/cfs-telemetry-app
 ## 목표
 
 - 단일 Raspberry Pi 환경에서 `native_std / cpu1`로 `cFS`를 안정적으로 실행한다.
-- MAVLink를 `FC -> Raspberry Pi -> mavlink_bridge_app -> downlink_app` 경로로 연결한다.
+- MAVLink를 `FC -> Raspberry Pi -> mavlink_bridge_app -> lora_fc_downlink_app` 경로로 연결한다.
 - Windows 측에서 최종 수신 여부를 검증한다.
 
 ## 확인된 문제 요약
@@ -234,7 +145,7 @@ hostname -I
 작업 경로는 `~/Desktop/cFS_clean`를 기준으로 한다.
 
 ```bash
-cd ~
+cd ~/Desktop
 git clone --recurse-submodules https://github.com/nasa/cFS.git cFS_clean
 cd ~/Desktop/cFS_clean
 git submodule update --init --recursive
@@ -248,7 +159,7 @@ git submodule update --init --recursive
 apps/mavlink_bridge_app
 apps/cfs_core_app
 apps/uplink_app
-apps/lora_tdm_app
+apps/lora_fc_downlink_app
 ```
 
 ### 4. mission app 등록
@@ -276,7 +187,7 @@ apps/lora_tdm_app
 
 기준:
 
-- `mav_bridge_app`, `cfs_core_app`, `uplink_app`, `lora_tdm_app`는 수동 entry로 추가한다.
+- `mav_bridge_app`, `cfs_core_app`, `uplink_app`, `lora_fc_downlink_app`는 수동 entry로 추가한다.
 - 자동 루프 목록에는 `lc`, `cf`, `ds`, `fm`, `hk`, `hs`, `mm`, `sc`, `md`, `cs`만 둔다.
 - `sbn` 계열은 baseline bring-up에서는 제외한다.
 
@@ -316,21 +227,15 @@ baseline bring-up 기준으로 아래 MID만 남긴다.
 
 ### 11. 빌드와 설치
 
-실제 동작하는 빌드 명령은 다음과 같다.
+다음 명령만 사용한다.
 
 ```bash
-# 빌드
-cd ~/Desktop/cFS_clean/build-native_std
-make native_default_cpu1-all -j$(nproc)
-
-# 설치 (.so 파일을 실행 디렉터리로 복사)
-cp ~/Desktop/cFS_clean/build-native_std/native/default_cpu1/apps/mavlink_bridge_app/mav_bridge_app.so ~/Desktop/cFS_clean/build-native_std/exe/cpu1/cf/
-cp ~/Desktop/cFS_clean/build-native_std/native/default_cpu1/apps/uplink_app/uplink_app.so ~/Desktop/cFS_clean/build-native_std/exe/cpu1/cf/
-cp ~/Desktop/cFS_clean/build-native_std/native/default_cpu1/apps/cfs_core_app/cfs_core_app.so ~/Desktop/cFS_clean/build-native_std/exe/cpu1/cf/
-cp ~/Desktop/cFS_clean/build-native_std/native/default_cpu1/apps/lora_tdm_app/lora_tdm_app.so ~/Desktop/cFS_clean/build-native_std/exe/cpu1/cf/
+make native_std.prep SIMULATION=native
+make native_std.compile SIMULATION=native
+make native_std.install SIMULATION=native
 ```
 
-설치 결과는 `~/Desktop/cFS_clean/build-native_std/exe/cpu1/` 아래에 생성된다.
+설치 결과는 기본적으로 `build-native_std/exe/cpu1` 아래에 생성된다.
 
 ### 12. 런타임 실행
 
@@ -338,7 +243,7 @@ cp ~/Desktop/cFS_clean/build-native_std/native/default_cpu1/apps/lora_tdm_app/lo
 
 ```bash
 cd ~/Desktop/cFS_clean/build-native_std/exe/cpu1
-sudo ./core-cpu1
+./core-cpu1
 ```
 
 기대 결과:
@@ -354,7 +259,7 @@ sudo ./core-cpu1
 다음 조건을 모두 만족하면 baseline bring-up 성공으로 본다.
 
 - `native_std / cpu1`가 `OPERATIONAL` 상태에 도달한다.
-- `CFS_CORE_APP`, `UPLINK_APP`, `LORA_TDM_APP`, `MAV_BRIDGE_APP` 초기화 로그가 출력된다.
+- `CFS_CORE_APP`, `UPLINK_APP`, `LORA_FC_DOWNLINK_APP`, `MAV_BRIDGE_APP` 초기화 로그가 출력된다.
 - `MAV_BRIDGE_APP: opened serial path /dev/serial0 at 57600 baud` 로그가 출력된다.
 - `MAVLINK_BRIDGE_APP: requested telemetry streams` 또는 `COMMAND_ACK cmd=511 result=0` 로그가 출력된다.
 - `Pipe Overflow, MsgId 0x80e, pipe SBNSubPipe, sender TO_LAB`가 재발하지 않는다.

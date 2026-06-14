@@ -23,7 +23,7 @@
 이 명세는 다음을 다루지 않는다.
 
 - `mavlink_bridge_app` 내부 파싱 규칙
-- `downlink_app` 패킷 형식
+- `lora_fc_downlink_app` 패킷 형식
 - 다른 앱이나 장치의 능동적 재시작
 - `cfs_core_app`에 존재하지 않는 오류 처리 동작
 
@@ -549,19 +549,18 @@ mission route와 landing route는 독립적으로 캐시된다.
 
 ### 19.2 런타임 검증 매트릭스
 
-| ID | 시나리오 | 자극 | 기대 출력 | 검증 도구 |
-| --- | --- | --- | --- | --- |
-| CORE-RUN-001 | 정상 | bridge HK와 모든 FC 상태가 `Valid=1`, `Stale=0`으로 신선하게 도착 | `SYSTEM_HEALTH_MID`가 `NOMINAL`, `FAULT_NONE`, `RecoveryRequested=0` 보고 | §21.2 route-mp-verify-a 또는 CI_LAB + uplink_app |
-| CORE-RUN-002 | Bridge 타임아웃 | bridge HK 갱신을 `3000 ms` 이상 중단 | `SYSTEM_HEALTH_MID`가 `RECOVERY`, `FAULT_BRIDGE_TIMEOUT`, `RecoveryRequested=1` 보고 | 직접 시뮬레이션 또는 CI_LAB 정지 |
-| CORE-RUN-003 | GPS stale 플래그 | 신선한 bridge, attitude, local, EKF 전달; GPS `Stale=1` 설정 | `SYSTEM_HEALTH_MID`가 `DEGRADED`, `FAULT_GPS_STALE`, `RecoveryRequested=0` 보고 | 직접 시뮬레이션 |
-| CORE-RUN-004 | GPS 타임아웃 | bridge와 EKF 관련 입력은 신선하게 유지하면서 GPS 갱신을 `3000 ms` 이상 중단 | `SYSTEM_HEALTH_MID`가 `DEGRADED`, `FAULT_GPS_STALE` 보고 | 직접 시뮬레이션 |
-| CORE-RUN-005 | EKF invalid 플래그 | 다른 입력은 신선하게 유지하면서 EKF `Valid=0` 설정 | `SYSTEM_HEALTH_MID`가 `DEGRADED`, `FAULT_EKF_INVALID` 보고 | 직접 시뮬레이션 |
-| CORE-RUN-006 | Local 타임아웃 | bridge, attitude, GPS, EKF는 신선하게 유지하면서 local-state 갱신을 `2000 ms` 이상 중단 | `SYSTEM_HEALTH_MID`가 `DEGRADED`, `FAULT_LOCAL_TIMEOUT` 보고 | 직접 시뮬레이션 |
-| CORE-RUN-007 | Attitude 타임아웃 | bridge, local, GPS, EKF는 신선하게 유지하면서 attitude-state 갱신을 `2000 ms` 이상 중단 | `SYSTEM_HEALTH_MID`가 `DEGRADED`, `FAULT_ATTITUDE_TIMEOUT` 보고 | 직접 시뮬레이션 |
-| CORE-RUN-008 | 우선순위 확인 | bridge 타임아웃과 GPS stale를 동시에 강제 | `SYSTEM_HEALTH_MID`가 `RECOVERY`, `FAULT_BRIDGE_TIMEOUT` 보고 | 직접 시뮬레이션 |
-| CORE-RUN-009 | 복구 후 정상 | CORE-RUN-002 또는 CORE-RUN-003 이후 신선한 유효 입력 재개 | 다음 헬스 평가 시 `NOMINAL` 복귀 | 직접 시뮬레이션 |
-| CORE-RUN-010 | 시작 워밍업 | 첫 번째 bridge HK 이전에 앱 시작 | bridge HK 도착 전까지 첫 헬스 출력에서 `RECOVERY` 보고 가능 | 직접 시뮬레이션 |
-| CORE-RUN-011 | 경로 업로드 검증 | `tools/uplink_route_update_sender.py` UDP 전송 (§21.2 route-mp-verify-a~e 예제) | Mission Planner에서 FC 웨이포인트 로드 확인 | `uplink_route_update_sender.py route-mp-verify-a --host <ip> --port 1234` |
+| ID | 시나리오 | 자극 | 기대 출력 |
+| --- | --- | --- | --- |
+| CORE-RUN-001 | 정상 | bridge HK와 모든 FC 상태가 `Valid=1`, `Stale=0`으로 신선하게 도착 | `SYSTEM_HEALTH_MID`가 `NOMINAL`, `FAULT_NONE`, `RecoveryRequested=0` 보고 |
+| CORE-RUN-002 | Bridge 타임아웃 | bridge HK 갱신을 `3000 ms` 이상 중단 | `SYSTEM_HEALTH_MID`가 `RECOVERY`, `FAULT_BRIDGE_TIMEOUT`, `RecoveryRequested=1` 보고 |
+| CORE-RUN-003 | GPS stale 플래그 | 신선한 bridge, attitude, local, EKF 전달; GPS `Stale=1` 설정 | `SYSTEM_HEALTH_MID`가 `DEGRADED`, `FAULT_GPS_STALE`, `RecoveryRequested=0` 보고 |
+| CORE-RUN-004 | GPS 타임아웃 | bridge와 EKF 관련 입력은 신선하게 유지하면서 GPS 갱신을 `3000 ms` 이상 중단 | `SYSTEM_HEALTH_MID`가 `DEGRADED`, `FAULT_GPS_STALE` 보고 |
+| CORE-RUN-005 | EKF invalid 플래그 | 다른 입력은 신선하게 유지하면서 EKF `Valid=0` 설정 | `SYSTEM_HEALTH_MID`가 `DEGRADED`, `FAULT_EKF_INVALID` 보고 |
+| CORE-RUN-006 | Local 타임아웃 | bridge, attitude, GPS, EKF는 신선하게 유지하면서 local-state 갱신을 `2000 ms` 이상 중단 | `SYSTEM_HEALTH_MID`가 `DEGRADED`, `FAULT_LOCAL_TIMEOUT` 보고 |
+| CORE-RUN-007 | Attitude 타임아웃 | bridge, local, GPS, EKF는 신선하게 유지하면서 attitude-state 갱신을 `2000 ms` 이상 중단 | `SYSTEM_HEALTH_MID`가 `DEGRADED`, `FAULT_ATTITUDE_TIMEOUT` 보고 |
+| CORE-RUN-008 | 우선순위 확인 | bridge 타임아웃과 GPS stale를 동시에 강제 | `SYSTEM_HEALTH_MID`가 `RECOVERY`, `FAULT_BRIDGE_TIMEOUT` 보고 |
+| CORE-RUN-009 | 복구 후 정상 | CORE-RUN-002 또는 CORE-RUN-003 이후 신선한 유효 입력 재개 | 다음 헬스 평가 시 `NOMINAL` 복귀 |
+| CORE-RUN-010 | 시작 워밍업 | 첫 번째 bridge HK 이전에 앱 시작 | bridge HK 도착 전까지 첫 헬스 출력에서 `RECOVERY` 보고 가능 |
 
 ### 19.3 로그 및 텔레메트리 관찰 지점
 
@@ -580,12 +579,11 @@ EVS 이벤트는 `HealthState` 값이 변경될 때마다 발생하며, 형식�
 
 다음 동작은 구현되어 있지 않으며 테스트 또는 운용 시 가정해서는 안 된다.
 
-- ~~`FAILED` 헬스 출력 상태~~ → **구현 완료 (A6)**: bridge timeout이 `CFS_CORE_APP_FAILED_ESCALATION_MS` (30 s) 이상 지속 시 `RECOVERY`에서 `FAILED`로 에스컬레이션. `RecoveryStartMs` 필드로 타이머 추적. bridge 복구 시 리셋.
-- ~~시퀀스 갭 또는 중복 감지~~ → **구현 완료 (2026-06-07)**: `UpdateStateCache`에서 `Msg->Seq > Cache->Seq + 1` 조건 시 `SeqGapCount++` 및 `CFS_CORE_APP_SEQ_GAP_EID (12)` DEBUG 이벤트 발생. 캐시는 갱신됨 (거부 아님).
-- **[2026-06-07 범위 제외] viewpoint → FC MAVLink 실행**: `cfs_core_app`이 viewpoint를 `ViewpointCmd` 캐시에 저장하는 것까지만 구현. FC에 MAVLink 명령(예: `MAV_CMD_NAV_LOITER_TIME`)으로 전달하는 경로는 실시간 단일 지점 이동 임무로 분류되어 현 구현 범위에서 제외한다.
-- ~~타임스탬프 기준 유효성 검사~~ → **구현 완료 (A7)**: `TimestampMs > NowMs + CFS_CORE_APP_TIMESTAMP_MAX_FUTURE_MS` (5 s) 조건에서 거부. `TimestampRejectedCount` 카운터 및 `CFS_CORE_APP_TIMESTAMP_ERR_EID (9)` 이벤트.
-- ~~bridge 또는 peer 앱의 능동적 재시작~~ → **구현 완료 (A8)**: bridge timeout 발생 시 `CFE_ES_GetAppIDByName` + `CFE_ES_RestartApp`으로 `mavlink_bridge_app` 재시작. 인터벌 `CFS_CORE_APP_BRIDGE_RESTART_INTERVAL_MS` (5 s), 최대 `CFS_CORE_APP_BRIDGE_MAX_RESTARTS` (3회). bridge 복구 시 `BridgeRestartCount`, `NextBridgeRestartMs` 리셋. EVS `CFS_CORE_APP_BRIDGE_RESTART_EID (10)` 발생.
-- ~~앱 재시작 후 마지막 헬스 상태 지속~~ → **구현 완료 (A9)**: 헬스 상태 전이 시 `CFS_CORE_APP_SaveState()`로 `/cf/cfs_core_app_state.bin`에 원자적 저장. `Init()` 시 `CFS_CORE_APP_LoadState()`로 복원. Magic + Checksum 무결성 검증. 파일 미존재 또는 검증 실패 시 NOMINAL로 시작.
+- `FAILED` 헬스 출력 상태
+- 시퀀스 갭 또는 중복 감지
+- 타임스탬프 기준 유효성 검사
+- bridge 또는 peer 앱의 능동적 재시작
+- 앱 재시작 후 마지막 헬스 상태 지속
 
 다음 항목은 이전에 미구현으로 나열됐으나 현재 구현 완료되었다.
 
@@ -622,48 +620,21 @@ EVS 이벤트는 `HealthState` 값이 변경될 때마다 발생하며, 형식�
 - `--allow-seq-regression` 없이 운용 시 동일 sequence 번호 반복 전송은 거부된다. 실운용에서는 매 전송마다 sequence를 증가시켜야 한다.
 - Pi의 LoRa 모듈은 `/dev/ttyUSB0` (CP2102 USB-UART), FC UART는 `/dev/ttyAMA0`으로 분리 확인되었다.
 
-### 21.2 Mission Planner 시각 검증용 경로 예제
+### 21.2 런타임 구성 적용 경로
 
-**[경로 예제 테스트 케이스]**
+`UPLINK_APP_CLASS_CONFIG`는 인식된 명령 클래스이나, 게시 주기, 타임아웃 값 등 mission-app 런타임 파라미터에 구성 페이로드를 실제로 적용하는 구현은 확인되지 않았다.
 
-Mission Planner에서 경로 업로드 결과 검증용 사전정의 경로 예제들. 각 예제는 웨이포인트 개수를 달리 설정하여 덮어씌워짐 없이 개별 확인 가능.
+현재 상태:
 
-| 예제 | 웨이포인트 개수 | 좌표 | 용도 |
-| --- | --- | --- | --- |
-| `route-mp-verify-a` | 2 | (0.0, 10.0, 4.0) → (2.0, 10.0, 4.0) | 기본 2-waypoint 경로 |
-| `route-mp-verify-b` | 2 | (-20.0, 20.0, 5.0) → (-18.0, 20.0, 5.0) | 다른 구역 2-waypoint 경로 |
-| `route-mp-verify-c` | 3 | (10.0, -10.0, 3.0) → (12.0, -10.0, 3.0) → (14.0, -10.0, 3.0) | 3-waypoint 경로 |
-| `route-mp-verify-d` | 4 | (-10.0, -20.0, 6.0) → (-8.0, -20.0, 6.0) → (-6.0, -20.0, 6.0) → (-4.0, -20.0, 6.0) | 4-waypoint 경로 |
-| `route-mp-verify-e` | 5 | (5.0, 0.0, 5.0) → (7.0, 0.0, 5.0) → (9.0, 0.0, 5.0) → (11.0, 0.0, 5.0) → (13.0, 0.0, 5.0) | 5-waypoint 경로 |
+- config 클래스 수락은 명령 검증 수준에서 존재한다
+- config 페이로드를 디코딩하여 `cfs_core_app`, `telemetry_app` 또는 다른 mission 앱의 활성 설정을 갱신하는 end-to-end 구현은 확인되지 않았다
 
-모든 예제는 제약 준수: X,Y ∈ [-50,50]m, 고도 ∈ [2,8]m, 세그먼트 거리 ≈ 2.0m.
+의미:
 
-### 21.3 런타임 구성 적용 경로
+- route-update 테스트는 현재 지원된다
+- 출력 주기 또는 타임아웃 변경 테스트는 현재 구현된 운용 기능으로 지원되지 않는다
 
-**[구현 완료]**
-
-`UPLINK_APP_CLASS_CONFIG` 명령 클래스에 대한 end-to-end 경로가 완전 구현되어 있다.
-
-**uplink_app 측 (완료):**
-- `UPLINK_APP_ValidateProxyCommand()`: CLASS_CONFIG 검증 (CRC 포함)
-- `UPLINK_APP_ForwardConfigCommand()`: `CONFIG_CMD_MID` (0x190E)로 SB publish
-
-**수신 측 앱 (완료):**
-- `cfs_core_app`: `CONFIG_CMD_MID` 구독 → `CFS_CORE_APP_ProcessConfigCommand()` 호출. scope=1, version=1, checksum 검증 후 `ActiveConfig`에 반영. 적용 파라미터: `attitude/local/gps/ekf/bridge_timeout_ms`, `publish_period_ms`.
-- `mavlink_bridge_app`: `CONFIG_CMD_MID` 구독 → `MAVLINK_BRIDGE_APP_ProcessConfigCommand()` 호출. scope=2, version=1, checksum 검증 후 `ActiveConfig`에 반영. 적용 파라미터: `attitude/local/global_position/gps_raw/ekf_status_interval_us`, `reconnect/heartbeat_interval_ms`. 활성화 직후 `StreamRequestPending=1`로 FC에 새 interval 재요청.
-- 두 앱 모두 scope 불일치 시 각자의 방식으로 무시 또는 거부.
-
-**지상국 툴 (완료):**
-- `tools/uplink_config_sender.py`: scope/param/value를 인자로 받아 config payload를 빌드하고 UDP/LoRa-text/LoRa-serial로 전송.
-- `tests/test_uplink_config_sender.py`: checksum, payload 레이아웃, CRC16, LoRa frame 검증 12개 테스트.
-
-**사용 예:**
-```
-python tools/uplink_config_sender.py cfs_core publish_period_ms 2000 --host 127.0.0.1
-python tools/uplink_config_sender.py mavlink_bridge attitude_interval_us 50000 --transport lora-text
-```
-
-### 21.4 LoRa downlink 안정성 — C1에서 수정
+### 21.3 LoRa downlink 안정성 — C1에서 수정
 
 **[수정 완료 — C1에서 구현]**
 
@@ -688,7 +659,7 @@ python tools/uplink_config_sender.py mavlink_bridge attitude_interval_us 50000 -
 - 지속적 링크 오류 → 포트 재열기 트리거
 - 두 경우가 명확히 구별된다
 
-### 21.5 헬스 상태 가시성 — 구현 완료
+### 21.4 헬스 상태 가시성 — 구현 완료
 
 **[구현 완료 — A5에서 구현]**
 
@@ -702,7 +673,7 @@ python tools/uplink_config_sender.py mavlink_bridge attitude_interval_us 50000 -
 
 Pi 런타임 로그 노출 여부는 EVS 필터 설정에 따라 달라질 수 있다.
 
-### 21.6 오류 세부 정보 세밀도 — 구현 완료
+### 21.5 오류 세부 정보 세밀도 — 구현 완료
 
 **[구현 완료 — A2에서 구현]**
 
@@ -719,29 +690,3 @@ Pi 런타임 로그 노출 여부는 EVS 필터 설정에 따라 달라질 수 �
 | GPS 불가용 | DEGRADED | FAULT_GPS_STALE (3) |
 
 이전 버전에서 local/attitude/EKF 조건이 모두 `FAULT_EKF_INVALID`로 통합되었던 동작은 A2에서 수정되었다.
-
-## 22. FC 경로 업로드 (mavlink_bridge_app 위임)
-
-이 섹션에서 정의했던 FC 업로드 상세 명세는 `notes/mavlink_bridge_app_behavior_spec.md`로 이관되었다.
-
-### 22.1 책임 분리
-
-| 단계 | 담당 앱 | 동작 |
-| --- | --- | --- |
-| 경로 명령 수신 및 검증 | `uplink_app` | `ROUTE_UPDATE_MID` 게시 |
-| 경로 캐시 저장 | `cfs_core_app` | MissionRoute / LandingRoute 갱신 (§7.3, §8.3, §16 참조) |
-| FC 웨이포인트 업로드 | `mavlink_bridge_app` | MAVLink MISSION 업로드 프로토콜 수행 |
-
-`cfs_core_app`의 경로 캐시 처리는 §7.3, §8.3, §16에 정의되어 있다.
-FC 업로드 프로토콜 상세(MISSION_ITEM_INT 필드 매핑, 좌표계, 재시도, HK 필드, FC 호환성 제약)는 `notes/mavlink_bridge_app_behavior_spec.md`를 참조한다.
-
-### 22.2 ROUTE_UPDATE_MID 트리거 공유
-
-`ROUTE_UPDATE_MID` (0x190B)는 `cfs_core_app`과 `mavlink_bridge_app` 모두가 구독한다.
-
-| 앱 | 동작 |
-| --- | --- |
-| `cfs_core_app` | 경로 캐시 갱신 + 즉시 헬스 재게시 |
-| `mavlink_bridge_app` | FC MISSION 업로드 시작 (FC 링크 CONNECTED 시) |
-
-이 MID를 publish하는 생산자(`uplink_app`)는 payload 검증뿐 아니라 FC 업로드 가능성까지 고려해야 한다. `ROUTE_UPDATE_MID` publish는 즉시 FC로의 MAVLink 업로드 시퀀스를 트리거한다.

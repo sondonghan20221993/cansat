@@ -29,6 +29,7 @@ typedef struct
     uint32                          LastSystemHealthTimestampMs;
     int                             LoRaFd;
     uint32                          LoRaTxCount;
+    uint32                          LastLoRaTxMs;
     uint32                          HbLastRxMs;
     uint8                           HbLinkValid;
     char                            LoRaReadBuf[256];

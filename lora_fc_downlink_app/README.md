@@ -37,6 +37,13 @@ SB 메시지 수신마다 `ServiceLoRa()`를 호출한다.
 - AttitudeValid && LocalValid → FC 패킷 전송
 - 그 외 → 전송 없음
 
+**레이트 리미팅**: 마지막 TX로부터 500ms 미만이면 전송 스킵. (`LastLoRaTxMs` 기반)
+
+> **⚠️ 포트 충돌 주의**: `uplink_app`도 동일한 CP2102 포트를 `O_RDONLY`로 열고 있음.
+> Linux에서 두 프로세스가 같은 시리얼 포트를 열면 바이트를 서로 빼앗김.
+> HB 바이트가 `uplink_app`으로, UP 바이트가 이 앱으로 분산될 수 있음.
+> 근본 해결: 이 앱이 포트 독점 후 UP 프레임을 SB publish → `uplink_app`이 SB 구독.
+
 write 오류:
 - `EAGAIN/EWOULDBLOCK`: packet skip, 포트 유지
 - 그 외: EVS 로그 후 포트 close + 재열기 대기
@@ -56,8 +63,10 @@ HB 수신 시 `HbLastRxMs`(CFE_TIME 기반 ms), `HbLinkValid = 1` 갱신.
 
 ### FC State 패킷 (PacketType 1)
 ```
-FC,<count>,<ts_ms>,<roll_rad>,<pitch_rad>,<yaw_rad>,<x_m>,<y_m>,<z_m>,<vx_mps>,<vy_mps>,<vz_mps>,<lat_e7>,<lon_e7>,<alt_mm>,<fix_type>\n
+FC,<count>,<ts_ms>,<roll_rad>,<pitch_rad>,<yaw_rad>,<x_m>,<y_m>,<z_m>,<vx_mps>,<vy_mps>,<vz_mps>,<lat_e7>,<lon_e7>,<alt_mm>,<fix_type>,0\n
 ```
+
+총 17필드 (FC 포함). 마지막 `0`은 `uplink_fb` 자리이며 이 앱에서는 항상 0.
 
 | 필드 | 형식 | 출처 |
 | --- | --- | --- |
@@ -69,11 +78,16 @@ FC,<count>,<ts_ms>,<roll_rad>,<pitch_rad>,<yaw_rad>,<x_m>,<y_m>,<z_m>,<vx_mps>,<
 | lat_e7/lon_e7 | %ld (1e-7 도) | GpsRawTlm |
 | alt_mm | %ld | GpsRawTlm |
 | fix_type | %u | GpsRawTlm |
+| uplink_fb | 항상 0 | 미구현 (lora_tdm_app 호환용 자리) |
+
+> **주의**: Python 파서(`fc_serial_ws_server.py`)는 17필드를 기대함. `,0` 누락 시 파싱 실패.
 
 ### System Health 패킷 (PacketType 2)
 ```
-SH,<count>,<ts_ms>,<health_state>,<fault_code>\n
+SH,<count>,<ts_ms>,<health_state>,<fault_code>,0,0\n
 ```
+
+총 7필드 (SH 포함). 마지막 `0,0`은 `link_state`, `uplink_fb` 자리이며 이 앱에서는 항상 0.
 
 | 필드 | 형식 | 출처 |
 | --- | --- | --- |
@@ -81,6 +95,10 @@ SH,<count>,<ts_ms>,<health_state>,<fault_code>\n
 | ts_ms | uint | SystemHealthMirror.TimestampMs |
 | health_state | uint (0=NOMINAL, 1=DEGRADED, 2=RECOVERY) | SystemHealthMirror |
 | fault_code | uint | SystemHealthMirror.FaultCode |
+| link_state | 항상 0 | 미구현 (lora_tdm_app 호환용 자리) |
+| uplink_fb | 항상 0 | 미구현 (lora_tdm_app 호환용 자리) |
+
+> **주의**: Python 파서(`fc_serial_ws_server.py`)는 7필드를 기대함. `,0,0` 누락 시 파싱 실패.
 
 ## 카운터 필드 의미
 
