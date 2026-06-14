@@ -57,15 +57,75 @@
 
 - `apps/ds/fsw/tables/ds_filter_tbl.c`에서 해당 항목을 비활성화한다.
 
-### 4. `mavlink_bridge_app` 동적 로드 실패
+### 4. OSAL 이름 길이 한계 (앱 로드/실행 실패의 최다 원인)
 
-`mavlink_bridge_app.so`는 존재했지만, 긴 파일명과 앱 이름으로 인해 OSAL loader가
-`-104 (OS_FS_ERR_NAME_TOO_LONG)`를 반환했다.
+cFS/OSAL은 식별자 길이에 **하드 제한**이 있고, 초과해도 빌드는 성공하지만
+런타임에 조용히(또는 syslog에만) 실패한다. baseline bring-up에서 발생한
+다수의 "앱이 로드는 되는데 init 로그가 없음" 증상이 모두 이 한계 때문이었다.
+
+#### 적용되는 두 한계
+
+| 상수 | 기본값 | 적용 대상 | 검사 방식 |
+| --- | --- | --- | --- |
+| `OS_MAX_API_NAME` | 20 | 앱/태스크 이름(startup 4번째 필드), **entry point 심볼명(3번째 필드)** | null 종료문자 포함 ≤20 → **실사용 ≤19자** |
+| `OS_MAX_FILE_NAME` | 20 | `.so` 파일명(startup 2번째 필드 = CMake `add_cfe_app` 타겟명 + `.so`) | basename ≤20 → **실사용 ≤19자** |
+
+> 검사는 `memchr(name, '\0', 20)` 방식이라 정확히 20자면 첫 20바이트 안에 null이
+> 없어 실패한다. 따라서 **모든 이름은 19자 이하**로 잡는다.
+
+#### startup.scr 필드별 점검 (`CFE_APP, <파일>, <엔트리심볼>, <앱이름>, ...`)
+
+| 필드 | 한계 | 초과 시 에러 |
+| --- | --- | --- |
+| 2번째 `.so` 파일명 | `OS_MAX_FILE_NAME` | `CFE_ES_LoadModule: Could not load file. EC = -104` (`OS_FS_ERR_NAME_TOO_LONG`) |
+| 3번째 entry 심볼 | `OS_MAX_API_NAME` | `Could not find symbol:<19자로 잘린 이름>. EC = -1` |
+| 4번째 앱 이름 | `OS_MAX_API_NAME` | `OS_TaskCreate ... EC = -13` (`OS_ERR_NAME_TOO_LONG`), **syslog에만** 출력 → stdout엔 안 보임 |
+
+#### 실제 사례
+
+- `mavlink_bridge_app`: `.so` 파일명/앱 이름 20자 초과 → `-104`.
+  - 해결: CMake `add_cfe_app(mav_bridge_app)`, entry `MAV_BRIDGE_APP_Main`(19),
+    앱 이름 `MAVLINK_BRIDGE_APP`(18).
+- `lora_fc_downlink_app`: 세 필드 모두 초과로 단계적 실패(같은 증상 반복).
+  - `LORA_FC_DOWNLINK_APP`(앱 이름, 20) → `-13` (TaskCreate 실패, syslog만)
+  - `lora_fc_downlink_app.so`(파일명, 23) → `-104`
+  - `LORA_FC_DOWNLINK_APP_Main`(엔트리, 25) → 19자로 잘려 symbol not found `-1`
+  - 해결: 파일명/타겟 `lora_fc_dl_app`(`.so` 17), entry `LORA_FC_DL_Main`(15),
+    앱 이름 `LORA_FC_DOWNLINK`(16). C 내부 함수(`..._Init` 등)는 OS_SymbolLookup을
+    거치지 않으므로 길어도 무방하다 — **entry point 함수명만** 줄이면 된다.
+
+#### 신규 앱 추가 시 체크리스트
+
+- `.so` 파일명(= `add_cfe_app` 타겟명 + `.so`) ≤ 19자
+- entry point 함수명 ≤ 19자
+- startup 앱 이름 ≤ 19자
+- 디렉토리명/`APPLIST` 항목은 길어도 무방(빌드 탐색용일 뿐, OSAL 거치지 않음)
+
+### 4-1. `apps/` 복사본과 git 레포의 드리프트 (반드시 확인)
+
+빌드는 `~/cFS_clean/apps/<app>`을 소스로 사용한다. custom app을 git 레포
+`~/cfs-telemetry-app/<app>`에서 **복사**해 두면, 이후 `git pull`은 git 레포만
+갱신하고 빌드가 쓰는 복사본은 옛 버전 그대로 남는다. 그 결과 소스 수정이
+빌드에 전혀 반영되지 않으면서 동일 증상이 반복된다(디버깅 시간 최대 낭비 지점).
+
+확인:
+
+```bash
+diff -q ~/cFS_clean/apps/<app>/CMakeLists.txt ~/cfs-telemetry-app/<app>/CMakeLists.txt
+```
 
 해결 기준:
 
-- CMake target과 startup entry를 짧은 이름 `mav_bridge_app`로 통일한다.
-- entry point는 `MAV_BRIDGE_APP_Main`, 앱 이름은 `MAV_BRIDGE_APP`를 사용한다.
+- 복사본을 git 레포로 **심볼릭 링크**해 단일 소스로 만든다.
+
+```bash
+rm -rf ~/cFS_clean/apps/<app>
+ln -s ~/cfs-telemetry-app/<app> ~/cFS_clean/apps/<app>
+```
+
+- 이후 `git pull` 한 번으로 빌드 소스까지 갱신된다.
+- 단, `add_cfe_app` 타겟명을 바꾼 경우(파일명 변경) arch 빌드 캐시 재구성을 위해
+  `cmake -DMISSION_DEFS=... cfe -B build`를 다시 실행해야 새 `.so`가 생성된다.
 
 ### 5. startup script 중복 등록
 

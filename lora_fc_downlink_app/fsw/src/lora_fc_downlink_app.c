@@ -11,7 +11,9 @@
 
 LORA_FC_DOWNLINK_APP_Data_t LORA_FC_DOWNLINK_APP_Data;
 
-void LORA_FC_DOWNLINK_APP_Main(void)
+/* Entry point symbol kept <=19 chars (OS_MAX_API_NAME-1) for OS_SymbolLookup.
+ * LORA_FC_DOWNLINK_APP_Main (25) was truncated to 19 → symbol not found. */
+void LORA_FC_DL_Main(void)
 {
     CFE_Status_t     status;
     CFE_SB_Buffer_t *sb_buf_ptr;

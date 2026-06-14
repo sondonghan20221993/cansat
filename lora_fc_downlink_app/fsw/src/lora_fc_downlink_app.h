@@ -61,7 +61,7 @@ typedef struct
 
 extern LORA_FC_DOWNLINK_APP_Data_t LORA_FC_DOWNLINK_APP_Data;
 
-void         LORA_FC_DOWNLINK_APP_Main(void);
+void         LORA_FC_DL_Main(void); /* entry symbol <=19 chars for OS_SymbolLookup */
 CFE_Status_t LORA_FC_DOWNLINK_APP_Init(void);
 bool         LORA_FC_DOWNLINK_APP_VerifyCmdLength(const CFE_MSG_Message_t *msg_ptr, size_t expected_length);
 void         LORA_FC_DOWNLINK_APP_ReportHousekeeping(void);

@@ -8,7 +8,7 @@ CFE_Status_t LORA_FC_DOWNLINK_APP_Init(void)
     return UT_GenStub_GetReturnValue(LORA_FC_DOWNLINK_APP_Init, CFE_Status_t);
 }
 
-void LORA_FC_DOWNLINK_APP_Main(void)
+void LORA_FC_DL_Main(void)
 {
-    UT_GenStub_Execute(LORA_FC_DOWNLINK_APP_Main, Basic, NULL);
+    UT_GenStub_Execute(LORA_FC_DL_Main, Basic, NULL);
 }
