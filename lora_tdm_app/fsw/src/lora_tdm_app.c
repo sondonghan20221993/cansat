@@ -265,7 +265,7 @@ CFE_Status_t LORA_TDM_APP_Init(void)
         return Status;
     }
 
-    Status = CFE_SB_CreatePipe(&LORA_TDM_APP_Data.CommandPipe, 200, "LORA_TDM_PIPE");
+    Status = CFE_SB_CreatePipe(&LORA_TDM_APP_Data.CommandPipe, 50, "LORA_TDM_PIPE");
     if (Status != CFE_SUCCESS)
     {
         return Status;
