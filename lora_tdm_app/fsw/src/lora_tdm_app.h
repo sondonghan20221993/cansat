@@ -5,6 +5,7 @@
 #include "lora_tdm_app_msg.h"
 #include "lora_tdm_app_eventids.h"
 #include "lora_tdm_app_mission_cfg.h"
+#include "lora_tdm_app_topicid_values.h"
 
 /* FC state cache — updated from SB messages */
 typedef struct
