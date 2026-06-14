@@ -25,6 +25,15 @@ void UPLINK_APP_ServicePrototype(void)
     UT_GenStub_Execute(UPLINK_APP_ServicePrototype, Basic, NULL);
 }
 
+bool UPLINK_APP_ParseLoRaFrame(const char *Line, UPLINK_APP_ProcessUplinkCmd_t *Out)
+{
+    UT_GenStub_SetupReturnBuffer(UPLINK_APP_ParseLoRaFrame, bool);
+    UT_GenStub_AddParam(UPLINK_APP_ParseLoRaFrame, const char *, Line);
+    UT_GenStub_AddParam(UPLINK_APP_ParseLoRaFrame, UPLINK_APP_ProcessUplinkCmd_t *, Out);
+    UT_GenStub_Execute(UPLINK_APP_ParseLoRaFrame, Basic, NULL);
+    return UT_GenStub_GetReturnValue(UPLINK_APP_ParseLoRaFrame, bool);
+}
+
 bool UPLINK_APP_ValidateProxyCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd, UPLINK_APP_Result_t *Result)
 {
     UT_GenStub_SetupReturnBuffer(UPLINK_APP_ValidateProxyCommand, bool);

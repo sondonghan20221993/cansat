@@ -151,11 +151,8 @@
 | `UPLINK_APP_TaskPipe_SendHk` | `SEND_HK` MID → HK 보고 경로 진입 |
 | `UPLINK_APP_TaskPipe_SystemHealth` | `SYSTEM_HEALTH_MID` 수신 → `CfsHealthReceived`, `CfsHealthState` 갱신 |
 | `UPLINK_APP_TaskPipe_UnknownMid` | 알 수 없는 MID → error counter 증가 |
-| `UPLINK_APP_TaskPipe_LoRaRaw` ⏳ | `UPLINK_RAW_MID`(0x1909) 수신 → `ParseLoRaFrame` → `ProcessUplink` (Task B, 추가 필요) |
-| `UPLINK_APP_TaskPipe_LoRaRaw_BadFrame` ⏳ | 파싱 실패 프레임 → error counter 증가, 무시 (추가 필요) |
-
-추가 필요(coveragetest 미반영):
-- `UPLINK_APP_ParseLoRaFrame`: valid 프레임 파싱, CRC 불일치/hex 오류/oversize payload 거부.
+| `UPLINK_APP_TaskPipe_LoRaRaw` | `UPLINK_RAW_MID`(0x1909) + parse 성공 → `ProcessUplink` 호출 (Task B) |
+| `UPLINK_APP_TaskPipe_LoRaRaw_BadFrame` | parse 실패 → ErrCounter 증가, `ProcessUplink` 미호출 |
 
 #### `coveragetest_uplink_app_utils.c`
 
@@ -171,6 +168,7 @@
 | `UPLINK_APP_ForwardModeCommand` | mode 명령 SB publish 성공/실패 경로 |
 | `UPLINK_APP_ForwardDiagnosticCommand` | diagnostic 명령 SB publish 성공/실패 경로 |
 | `UPLINK_APP_ForwardViewpointCommand` | viewpoint 명령 SB publish 성공/실패/zero-payload 경로 |
+| `UPLINK_APP_ParseLoRaFrame` | "UP,..." 유효 파싱(empty/2바이트 payload), 비-UP/필드부족/CRC불일치/홀수hex 거부 (Task B) |
 
 ---
 
@@ -214,8 +212,7 @@
 | `LORA_FC_DOWNLINK_APP_ProcessInputMessage` | attitude(roll/pitch/yaw float 캐시), local(x/y/z/vx/vy/vz float 캐시), gps(LatE7/LonE7/AltMm/FixType), ekf, system health(HealthState/FaultCode) 입력별 캐시 갱신 확인 |
 | `LORA_FC_DOWNLINK_APP_ProcessInputMessage_InvalidInputs` | attitude/local Valid=0 → AttitudeValid/LocalValid=0 반영 (LORA-FC-005/006) |
 | `LORA_FC_DOWNLINK_APP_ProcessInputMessage_GpsEdgeCases` | GPS Valid=0 → GpsValid=0; Valid=1+FixType=0 → GpsFixType=0 캐시 (LORA-FC-007) |
-| `LORA_FC_DOWNLINK_APP_ForwardUplinkFrame` ⏳ | "UP,..." → `UPLINK_RAW_MID` publish; "HB"/비-UP/oversize → publish 안 함 (Task B, 추가 필요) |
-| `LORA_FC_DOWNLINK_APP_RxWindow_UplinkForward` ⏳ | RX 윈도우/ServiceLoRaRead에서 UP 프레임 forward, HB는 HbLinkValid 갱신 (추가 필요) |
+| `LORA_FC_DOWNLINK_APP_ForwardUplinkFrame` ⏳ | "UP,..." → `UPLINK_RAW_MID` publish (Task B). static + `read()` fd 의존이라 단위테스트는 리팩터 후 가능 — 현재 e2e/통합으로 검증 |
 
 ---
 
