@@ -1,13 +1,13 @@
-"""TDM-DOWN-001~006: lora_tdm_app LoRa 다운링크 패킷 포맷 테스트
+"""TDM-DOWN-001~006: lora_fc_downlink_app LoRa 다운링크 패킷 포맷 테스트
 
-C의 BuildFcDownlinkLine() / BuildShDownlinkLine() static 함수와 동일한 패킷 포맷 스펙을
-Python으로 정의하고 검증한다.
+C의 ServiceLoRa() snprintf 포맷과 동일한 패킷 포맷 스펙을 Python으로 정의하고 검증한다.
 
-FC 패킷 포맷 (lora_tdm_app_utils.c BuildFcDownlinkLine):
+FC 패킷 포맷 (lora_fc_downlink_app_utils.c ServiceLoRa):
   FC,<seq>,<ts>,<roll>,<pitch>,<yaw>,<x>,<y>,<z>,<vx>,<vy>,<vz>,<lat_e7>,<lon_e7>,<alt_mm>,<fix>,<ufb>\\n
-  float 정밀도: %.4f
+  angle 정밀도: %.6f  (roll/pitch/yaw)
+  position 정밀도: %.3f  (x/y/z, vx/vy/vz)
 
-SH 패킷 포맷 (BuildShDownlinkLine):
+SH 패킷 포맷:
   SH,<seq>,<ts>,<state>,<fault>,<linkstate>,<ufb>\\n
 """
 
@@ -51,12 +51,12 @@ class ShState:
 # ---- 빌더 (C snprintf 포맷 동일 재현) ----
 
 def build_fc_packet(s: FcState) -> str:
-    """C BuildFcDownlinkLine() 포맷 재현."""
+    """C ServiceLoRa() snprintf 포맷 재현: angles=%.6f, position/vel=%.3f."""
     return (
         f"FC,{s.seq},{s.ts_ms},"
-        f"{s.roll_rad:.4f},{s.pitch_rad:.4f},{s.yaw_rad:.4f},"
-        f"{s.x_m:.4f},{s.y_m:.4f},{s.z_m:.4f},"
-        f"{s.vx_mps:.4f},{s.vy_mps:.4f},{s.vz_mps:.4f},"
+        f"{s.roll_rad:.6f},{s.pitch_rad:.6f},{s.yaw_rad:.6f},"
+        f"{s.x_m:.3f},{s.y_m:.3f},{s.z_m:.3f},"
+        f"{s.vx_mps:.3f},{s.vy_mps:.3f},{s.vz_mps:.3f},"
         f"{s.lat_e7},{s.lon_e7},{s.alt_mm},{s.fix},{s.ufb}\n"
     )
 
@@ -162,14 +162,18 @@ class FcPacketFormatTest(unittest.TestCase):
         assert parsed is not None
         assert parsed.fix == 0
 
-    # TDM-DOWN-003: float 정밀도 %.4f
+    # TDM-DOWN-003: float 정밀도 — angles %.6f, position %.3f
     def test_fc_float_precision(self) -> None:
         s = self._sample_fc()
         pkt = build_fc_packet(s)
-        # roll=0.1 → "0.1000", not "0.100000"
-        assert "0.1000" in pkt
-        assert "0.2000" in pkt
-        assert "0.3000" in pkt
+        # roll=0.1 → "0.100000" (%.6f)
+        assert "0.100000" in pkt
+        assert "0.200000" in pkt
+        assert "0.300000" in pkt
+        # x=1.0 → "1.000" (%.3f)
+        assert "1.000" in pkt
+        assert "2.000" in pkt
+        assert "3.000" in pkt
 
     # TDM-DOWN-003: seq 단조 증가
     def test_fc_seq_monotonic(self) -> None:
@@ -220,6 +224,102 @@ class FcPacketFormatTest(unittest.TestCase):
 
     def test_sh_ends_with_newline(self) -> None:
         assert build_sh_packet(ShState(1, 100, 0, 0, 1, 0)).endswith("\n")
+
+    # TDM-DOWN-006: 파서 거부 — 빈 줄
+    def test_fc_parser_rejects_empty(self) -> None:
+        assert parse_fc_packet("") is None
+        assert parse_fc_packet("\n") is None
+
+    def test_sh_parser_rejects_empty(self) -> None:
+        assert parse_sh_packet("") is None
+        assert parse_sh_packet("\n") is None
+
+    # TDM-DOWN-006: 파서 거부 — 잘못된 prefix
+    def test_fc_parser_rejects_wrong_prefix(self) -> None:
+        s = self._sample_fc()
+        valid = build_fc_packet(s)
+        broken = "XX" + valid[2:]
+        assert parse_fc_packet(broken) is None
+
+    def test_sh_parser_rejects_wrong_prefix(self) -> None:
+        sh = ShState(seq=1, ts_ms=100, health_state=0, fault_code=0, link_state=1, ufb=0)
+        valid = build_sh_packet(sh)
+        broken = "XX" + valid[2:]
+        assert parse_sh_packet(broken) is None
+
+    # TDM-DOWN-006: 파서 거부 — 비숫자 필드
+    def test_fc_parser_rejects_non_numeric(self) -> None:
+        bad = "FC,one,two,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0,0,0,0,0\n"
+        assert parse_fc_packet(bad) is None
+
+    # TDM-DOWN-007: 음수 좌표 — 남반구/서경
+    def test_fc_negative_coordinates(self) -> None:
+        s = self._sample_fc(lat_e7=-337490000, lon_e7=-703690000, alt_mm=-500)
+        pkt = build_fc_packet(s)
+        parsed = parse_fc_packet(pkt)
+        assert parsed is not None
+        assert parsed.lat_e7 == -337490000
+        assert parsed.lon_e7 == -703690000
+        assert parsed.alt_mm == -500
+
+    # TDM-DOWN-007: velocity 필드 왕복
+    def test_fc_velocity_roundtrip(self) -> None:
+        s = FcState(
+            seq=10, ts_ms=5000,
+            roll_rad=0.0, pitch_rad=0.0, yaw_rad=0.0,
+            x_m=0.0, y_m=0.0, z_m=0.0,
+            vx_mps=-1.5, vy_mps=2.25, vz_mps=-0.75,
+            lat_e7=0, lon_e7=0, alt_mm=0, fix=0, ufb=0,
+        )
+        parsed = parse_fc_packet(build_fc_packet(s))
+        assert parsed is not None
+        assert abs(parsed.vx_mps - (-1.5)) < 1e-3
+        assert abs(parsed.vy_mps - 2.25) < 1e-3
+        assert abs(parsed.vz_mps - (-0.75)) < 1e-3
+
+    # TDM-DOWN-008: ufb=2 (SEQ_FAIL) 왕복
+    def test_fc_ufb_seq_fail(self) -> None:
+        s = self._sample_fc(ufb=2)
+        parsed = parse_fc_packet(build_fc_packet(s))
+        assert parsed is not None
+        assert parsed.ufb == 2
+
+    # TDM-DOWN-008: SH link_state / ufb 범위
+    def test_sh_link_state_values(self) -> None:
+        for ls in (0, 1, 2):
+            sh = ShState(seq=1, ts_ms=100, health_state=0, fault_code=0, link_state=ls, ufb=0)
+            parsed = parse_sh_packet(build_sh_packet(sh))
+            assert parsed is not None
+            assert parsed.link_state == ls
+
+    def test_sh_ufb_values(self) -> None:
+        for ufb in (0, 1, 2):
+            sh = ShState(seq=1, ts_ms=100, health_state=0, fault_code=0, link_state=1, ufb=ufb)
+            parsed = parse_sh_packet(build_sh_packet(sh))
+            assert parsed is not None
+            assert parsed.ufb == ufb
+
+    # TDM-DOWN-009: FC/SH 교대 패턴 (짝수 seq → FC, 홀수 seq → SH)
+    def test_fc_sh_alternation_pattern(self) -> None:
+        """C ServiceLoRa()는 DownlinkSeq%2==0이면 FC, 홀수면 SH를 전송."""
+        fc_state = FcState(
+            seq=0, ts_ms=0,
+            roll_rad=0.0, pitch_rad=0.0, yaw_rad=0.0,
+            x_m=0.0, y_m=0.0, z_m=0.0,
+            vx_mps=0.0, vy_mps=0.0, vz_mps=0.0,
+            lat_e7=0, lon_e7=0, alt_mm=0, fix=3, ufb=0,
+        )
+        sh_state = ShState(seq=1, ts_ms=0, health_state=0, fault_code=0, link_state=1, ufb=0)
+
+        # seq 짝수 → FC 파싱 성공, SH 파싱 실패
+        fc_pkt = build_fc_packet(fc_state)
+        assert parse_fc_packet(fc_pkt) is not None
+        assert parse_sh_packet(fc_pkt) is None
+
+        # seq 홀수 → SH 파싱 성공, FC 파싱 실패
+        sh_pkt = build_sh_packet(sh_state)
+        assert parse_sh_packet(sh_pkt) is not None
+        assert parse_fc_packet(sh_pkt) is None
 
 
 if __name__ == "__main__":
