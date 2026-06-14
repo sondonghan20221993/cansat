@@ -298,6 +298,57 @@ static void LORA_FC_DOWNLINK_APP_ServiceLoRa(void)
     else
     {
         LORA_FC_DOWNLINK_APP_Data.LastLoRaTxMs = NowMs;
+
+        /* TDM RX window: read for up to 300 ms after TX to drain ACK/HB frames.
+         * Prevents RF collision when ground station replies immediately after our TX. */
+        {
+            char               RxBuf[256];
+            uint16             RxLen = 0;
+            uint32             Deadline;
+            uint32             NowRx;
+            CFE_TIME_SysTime_t Tr;
+            char               C;
+
+            Tr       = CFE_TIME_GetTime();
+            Deadline = (uint32)((uint64)Tr.Seconds * 1000ULL +
+                                (uint64)Tr.Subseconds * 1000ULL / 0x100000000ULL) +
+                       300U;
+
+            while (LORA_FC_DOWNLINK_APP_Data.LoRaFd >= 0)
+            {
+                Tr    = CFE_TIME_GetTime();
+                NowRx = (uint32)((uint64)Tr.Seconds * 1000ULL +
+                                 (uint64)Tr.Subseconds * 1000ULL / 0x100000000ULL);
+                if (NowRx >= Deadline)
+                {
+                    break;
+                }
+
+                if (read(LORA_FC_DOWNLINK_APP_Data.LoRaFd, &C, 1) <= 0)
+                {
+                    break;
+                }
+
+                if (RxLen < sizeof(RxBuf) - 1U)
+                {
+                    RxBuf[RxLen++] = C;
+                }
+
+                if (C == '\n')
+                {
+                    RxBuf[RxLen] = '\0';
+                    if (LORA_FC_DOWNLINK_APP_ParseHb(RxBuf))
+                    {
+                        CFE_TIME_SysTime_t Th = CFE_TIME_GetTime();
+                        LORA_FC_DOWNLINK_APP_Data.HbLastRxMs =
+                            (uint32)((uint64)Th.Seconds * 1000ULL +
+                                     (uint64)Th.Subseconds * 1000ULL / 0x100000000ULL);
+                        LORA_FC_DOWNLINK_APP_Data.HbLinkValid = 1;
+                    }
+                    RxLen = 0;
+                }
+            }
+        }
     }
 }
 
