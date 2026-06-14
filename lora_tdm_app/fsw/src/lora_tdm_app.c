@@ -129,15 +129,23 @@ static void RunRxWindow(void)
 
 static void RunTx(void)
 {
-    char Line[LORA_TDM_APP_LINE_BUF_LEN];
-    int  Len;
+    char  Line[LORA_TDM_APP_LINE_BUF_LEN];
+    int   Len;
+    uint8 Type;
 
     if (LORA_TDM_APP_Data.LoRaFd < 0)
     {
         return;
     }
 
-    if (LORA_TDM_APP_Data.PacketType == LORA_TDM_APP_SYSTEM_HEALTH_PACKET_TYPE)
+    /* Alternate FC and SH packets deterministically based on sequence number.
+     * This avoids dependence on EKF_STATUS/SYSTEM_HEALTH message arrival order
+     * when the SB pipe saturates under high ATTITUDE publish rates. */
+    Type = ((LORA_TDM_APP_Data.DownlinkSeq % 2U) == 0U)
+               ? LORA_TDM_APP_FC_STATE_PACKET_TYPE
+               : LORA_TDM_APP_SYSTEM_HEALTH_PACKET_TYPE;
+
+    if (Type == LORA_TDM_APP_SYSTEM_HEALTH_PACKET_TYPE)
     {
         Len = LORA_TDM_APP_BuildShDownlinkLine(Line, sizeof(Line), &LORA_TDM_APP_Data);
     }
@@ -150,6 +158,7 @@ static void RunTx(void)
     {
         if (write(LORA_TDM_APP_Data.LoRaFd, Line, (size_t)Len) == Len)
         {
+            LORA_TDM_APP_Data.PacketType = Type;
             LORA_TDM_APP_Data.TxCount++;
             LORA_TDM_APP_Data.DownlinkSeq++;
             LORA_TDM_APP_Data.PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_OK;
@@ -256,7 +265,7 @@ CFE_Status_t LORA_TDM_APP_Init(void)
         return Status;
     }
 
-    Status = CFE_SB_CreatePipe(&LORA_TDM_APP_Data.CommandPipe, 10, "LORA_TDM_PIPE");
+    Status = CFE_SB_CreatePipe(&LORA_TDM_APP_Data.CommandPipe, 200, "LORA_TDM_PIPE");
     if (Status != CFE_SUCCESS)
     {
         return Status;
