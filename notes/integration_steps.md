@@ -181,6 +181,41 @@ FC USB 연결에서는 `ATTITUDE`, `GLOBAL_POSITION_INT`, `GPS_RAW_INT`, `EKF_ST
   - `GPS_RAW_INT (24)`
   - `EKF_STATUS_REPORT (193)`
 
+### 8. CP2102 LoRa 포트 충돌 (lora_fc_downlink_app ↔ uplink_app)
+
+`lora_fc_downlink_app`과 `uplink_app`이 동일한 CP2102 USB-UART 포트를 각각 직접 open했다.
+Linux는 같은 tty 동시 open을 막지 않아 `EBUSY` 없이 둘 다 열리지만, 수신 바이트를
+서로 빼앗아 HB/UP 수신이 모두 불안정해진다.
+
+확인된 증상:
+
+- 두 앱 모두 `opened LoRa serial ...CP2102...` 로그 출력
+- HB/UP 프레임 간헐적 유실
+
+해결 기준 (transport/app 분리):
+
+- CP2102는 `lora_fc_downlink_app`이 단독 소유(downlink TX + TDM RX 윈도우).
+- `uplink_app`은 serial 직접 open 제거 → SB 구독으로 전환.
+- `lora_fc_downlink_app`이 RX에서 읽은 "UP,..." 원문을 `UPLINK_RAW_MID`(0x1909)로 publish,
+  `uplink_app`이 이를 구독해 `ParseLoRaFrame()`로 파싱(파싱·검증은 uplink 소유).
+- 반이중 제약: RX 윈도우는 downlink TX 후 300ms만 열림(지상국은 슬롯 내 응답 필요).
+
+### 9. lora_fc_downlink_app CommandPipe starvation (depth)
+
+`ServiceLoRa()`가 SB 메시지 핸들러(`ProcessInputMessage`) 안에서 TX 후 **300ms 블로킹
+RX 윈도우**를 도는 동안 SB 수신 루프가 멈춰 FC 스트림이 CommandPipe에 누적된다.
+
+확인된 위험:
+
+- FC 스트림 ~45 msg/s × 300ms ≈ 14개 누적 → CommandPipe depth 10이면 오버플로(FC 드롭).
+- `lora_tdm_app` 시절 pipe depth starvation의 구조적 이전형.
+
+해결 기준:
+
+- `DEFAULT_LORA_FC_DOWNLINK_APP_PLATFORM_PIPE_DEPTH`를 **32**로 상향(cFS 최대 50 미만).
+- 근본 해결(블로킹 LoRa I/O를 SB 핸들러에서 분리)은 후속 과제로 남긴다.
+- 참고: cFS 파이프 depth 상한은 50. 이를 초과하면(과거 lora_tdm_app의 200) 즉시 종료된다.
+
 ## Raspberry Pi 재설정 절차
 
 ### 1. 네트워크와 SSH 확인

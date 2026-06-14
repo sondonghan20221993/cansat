@@ -48,7 +48,9 @@ write 오류:
 - `EAGAIN/EWOULDBLOCK`: packet skip, 포트 유지
 - 그 외: EVS 로그 후 포트 close + 재열기 대기
 
-> **주의 — blocking write 지연**: LoRa FD는 open 후 `fcntl(F_SETFL, Flags & ~O_NONBLOCK)`으로 blocking 모드로 전환된다. `ServiceLoRa()`는 SB 메시지 처리 경로(`ProcessInputMessage`)에서 호출되므로, LoRa write가 장시간 block되면 앱의 SB 처리 루프 전체가 지연될 수 있다. 운용상 write timeout 정책이 필요하면 별도 요구사항으로 정의해야 한다.
+> **주의 — blocking 지연 + 파이프 starvation**: LoRa FD는 open 후 `fcntl(F_SETFL, Flags & ~O_NONBLOCK)`으로 blocking 모드로 전환된다. `ServiceLoRa()`는 SB 메시지 처리 경로(`ProcessInputMessage`)에서 호출되며, TX 후 **TDM RX 윈도우(최대 300ms)** 동안 동기적으로 블록된다. 그 사이 SB 수신 루프가 멈춰 FC 스트림(~45 msg/s)이 CommandPipe에 누적된다(300ms ≈ 14개).
+>
+> 이 때문에 **CommandPipe depth = 32**로 설정(`DEFAULT_..._PLATFORM_PIPE_DEPTH`, cFS 최대 50 미만). depth 10에서는 오버플로로 FC 메시지가 드롭되어 downlink 누락이 발생한다(`lora_tdm_app` starvation의 구조적 이전형). 근본 해결은 블로킹 I/O를 SB 핸들러에서 분리하는 것으로 별도 과제다.
 
 ### 지상국 HB 수신 (ServiceLoRaRead)
 SB 메시지 수신마다 `ServiceLoRaRead()`를 호출하여 LoRa serial에서 1바이트씩 읽어 줄 단위로 누적한다.

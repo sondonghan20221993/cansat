@@ -29,8 +29,18 @@
 | `cfs_core_app` | 21 | 67 | 2026-05-28 |
 | `uplink_app` | 35 | 63+ | 2026-06-07 |
 | `lora_fc_downlink_app` | 14 | 40+ | 2026-06-07 |
-| `lora_tdm_app` | 30 | ~50 | 2026-06-11 |
+| ~~`lora_tdm_app`~~ (baseline 제거됨) | 30 | ~50 | 2026-06-11 |
 | `mavlink_bridge_app` | 25 | — | 2026-06-02 |
+
+> **2026-06-15 통합 변경 (Task A/B/C)** — 아래 항목은 unit-test 갱신 대기(coveragetest 미반영):
+> - **명명**: `.so` = `lora_fc_dl_app.so`, entry = `LORA_FC_DL_Main`, app명 = `LORA_FC_DOWNLINK`
+>   (OSAL `OS_MAX_FILE_NAME`/`OS_MAX_API_NAME` = 20 한계 대응). 자세히는 `notes/integration_steps.md §4`.
+> - **Task B (포트 충돌)**: `lora_fc_downlink_app`이 RX에서 "UP,..." 원문을
+>   `UPLINK_RAW_MID`(0x1909)로 publish(`ForwardUplinkFrame`). `uplink_app`은 serial 직접
+>   open 제거 → `UPLINK_RAW_MID` 구독 → `UPLINK_APP_ParseLoRaFrame` → `ProcessUplink`.
+>   seq 거부는 `ProcessUplink`의 `IsSequenceAccepted`(영구 `LastAcceptedSequence`)가 유지.
+> - **Task C (starvation)**: `lora_fc_downlink_app` CommandPipe depth 10→32
+>   (300ms 블로킹 RX 윈도우 동안 FC 누적 대비). `lora_tdm_app`은 startup에서 제거.
 
 ---
 
@@ -141,6 +151,11 @@
 | `UPLINK_APP_TaskPipe_SendHk` | `SEND_HK` MID → HK 보고 경로 진입 |
 | `UPLINK_APP_TaskPipe_SystemHealth` | `SYSTEM_HEALTH_MID` 수신 → `CfsHealthReceived`, `CfsHealthState` 갱신 |
 | `UPLINK_APP_TaskPipe_UnknownMid` | 알 수 없는 MID → error counter 증가 |
+| `UPLINK_APP_TaskPipe_LoRaRaw` ⏳ | `UPLINK_RAW_MID`(0x1909) 수신 → `ParseLoRaFrame` → `ProcessUplink` (Task B, 추가 필요) |
+| `UPLINK_APP_TaskPipe_LoRaRaw_BadFrame` ⏳ | 파싱 실패 프레임 → error counter 증가, 무시 (추가 필요) |
+
+추가 필요(coveragetest 미반영):
+- `UPLINK_APP_ParseLoRaFrame`: valid 프레임 파싱, CRC 불일치/hex 오류/oversize payload 거부.
 
 #### `coveragetest_uplink_app_utils.c`
 
@@ -199,10 +214,16 @@
 | `LORA_FC_DOWNLINK_APP_ProcessInputMessage` | attitude(roll/pitch/yaw float 캐시), local(x/y/z/vx/vy/vz float 캐시), gps(LatE7/LonE7/AltMm/FixType), ekf, system health(HealthState/FaultCode) 입력별 캐시 갱신 확인 |
 | `LORA_FC_DOWNLINK_APP_ProcessInputMessage_InvalidInputs` | attitude/local Valid=0 → AttitudeValid/LocalValid=0 반영 (LORA-FC-005/006) |
 | `LORA_FC_DOWNLINK_APP_ProcessInputMessage_GpsEdgeCases` | GPS Valid=0 → GpsValid=0; Valid=1+FixType=0 → GpsFixType=0 캐시 (LORA-FC-007) |
+| `LORA_FC_DOWNLINK_APP_ForwardUplinkFrame` ⏳ | "UP,..." → `UPLINK_RAW_MID` publish; "HB"/비-UP/oversize → publish 안 함 (Task B, 추가 필요) |
+| `LORA_FC_DOWNLINK_APP_RxWindow_UplinkForward` ⏳ | RX 윈도우/ServiceLoRaRead에서 UP 프레임 forward, HB는 HbLinkValid 갱신 (추가 필요) |
 
 ---
 
-### `lora_tdm_app`
+### ~~`lora_tdm_app`~~ (baseline 제거됨, 2026-06-15)
+
+> startup script에서 제거됨(pipe depth 200 > cFS 최대 50으로 즉시 종료되던 구버전 잔재).
+> 역할은 `lora_fc_downlink_app`(downlink) + SB 기반 uplink 경로로 대체됨.
+> 아래 테스트는 참고용 이력으로만 유지한다.
 
 테스트 위치:
 - `lora_tdm_app/unit-test/coveragetest/coveragetest_lora_tdm_app.c`
