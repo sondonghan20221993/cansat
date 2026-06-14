@@ -30,12 +30,12 @@ void LORA_TDM_APP_ProcessGroundCommand(CFE_SB_Buffer_t *SBBufPtr)
 {
     CFE_MSG_FcnCode_t FcnCode = 0;
 
-    CFE_MSG_GetFcnCode(CFE_MSG_PTR(SBBufPtr->Msg), &FcnCode);
+    CFE_MSG_GetFcnCode(&SBBufPtr->Msg, &FcnCode);
 
     switch (FcnCode)
     {
         case LORA_TDM_APP_NOOP_CC:
-            if (LORA_TDM_APP_VerifyCmdLength(CFE_MSG_PTR(SBBufPtr->Msg),
+            if (LORA_TDM_APP_VerifyCmdLength(&SBBufPtr->Msg,
                                               sizeof(LORA_TDM_APP_NoopCmd_t)))
             {
                 LORA_TDM_APP_Noop((const LORA_TDM_APP_NoopCmd_t *)SBBufPtr);
@@ -43,7 +43,7 @@ void LORA_TDM_APP_ProcessGroundCommand(CFE_SB_Buffer_t *SBBufPtr)
             break;
 
         case LORA_TDM_APP_RESET_COUNTERS_CC:
-            if (LORA_TDM_APP_VerifyCmdLength(CFE_MSG_PTR(SBBufPtr->Msg),
+            if (LORA_TDM_APP_VerifyCmdLength(&SBBufPtr->Msg,
                                               sizeof(LORA_TDM_APP_ResetCountersCmd_t)))
             {
                 LORA_TDM_APP_ResetCounters((const LORA_TDM_APP_ResetCountersCmd_t *)SBBufPtr);
@@ -62,7 +62,7 @@ void LORA_TDM_APP_ProcessCommandPacket(CFE_SB_Buffer_t *SBBufPtr)
 {
     CFE_SB_MsgId_t MsgId = CFE_SB_INVALID_MSG_ID;
 
-    CFE_MSG_GetMsgId(CFE_MSG_PTR(SBBufPtr->Msg), &MsgId);
+    CFE_MSG_GetMsgId(&SBBufPtr->Msg, &MsgId);
 
     if (CFE_SB_MsgId_Equal(MsgId, CFE_SB_ValueToMsgId(LORA_TDM_APP_CMD_MID_VALUE)))
     {

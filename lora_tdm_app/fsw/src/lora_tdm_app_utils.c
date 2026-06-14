@@ -311,7 +311,7 @@ void LORA_TDM_APP_UpdateCacheFromMsg(CFE_SB_Buffer_t *SBBufPtr, LORA_TDM_APP_Dat
 {
     CFE_SB_MsgId_t MsgId = CFE_SB_INVALID_MSG_ID;
 
-    CFE_MSG_GetMsgId(CFE_MSG_PTR(SBBufPtr->Msg), &MsgId);
+    CFE_MSG_GetMsgId(&SBBufPtr->Msg, &MsgId);
 
     if (CFE_SB_MsgId_Equal(MsgId, CFE_SB_ValueToMsgId(LORA_TDM_APP_FC_ATTITUDE_STATE_MID_VALUE)))
     {
