@@ -14,6 +14,7 @@ cFS Software Bus에서 FC 상태 메시지와 시스템 헬스를 구독하고, 
 | SB 수신 | `FC_EKF_STATUS_MID` | `0x1908` | EKF health flags |
 | SB 수신 | `SYSTEM_HEALTH_MID` | `0x1904` | 시스템 헬스 (HealthState/FaultCode) |
 | 게시 | `LORA_FC_DOWNLINK_APP_HK_TLM_MID` | topic-id 기반 | HK 텔레메트리 |
+| 게시 | `LORA_FC_DOWNLINK_APP_UPLINK_RAW_MID` | `0x1909` | 지상국 "UP,..." 원문 프레임 → `uplink_app` 전달 |
 
 ## 구현 기능
 
@@ -39,10 +40,9 @@ SB 메시지 수신마다 `ServiceLoRa()`를 호출한다.
 
 **레이트 리미팅**: 마지막 TX로부터 500ms 미만이면 전송 스킵. (`LastLoRaTxMs` 기반)
 
-> **⚠️ 포트 충돌 주의**: `uplink_app`도 동일한 CP2102 포트를 `O_RDONLY`로 열고 있음.
-> Linux에서 두 프로세스가 같은 시리얼 포트를 열면 바이트를 서로 빼앗김.
-> HB 바이트가 `uplink_app`으로, UP 바이트가 이 앱으로 분산될 수 있음.
-> 근본 해결: 이 앱이 포트 독점 후 UP 프레임을 SB publish → `uplink_app`이 SB 구독.
+> **포트 단독 소유 (충돌 해소됨)**: CP2102 포트는 이 앱만 연다.
+> `uplink_app`은 serial 직접 열기를 제거하고 SB `UPLINK_RAW_MID`(0x1909) 구독으로 전환.
+> 이 앱이 RX에서 읽은 "UP,..." 원문은 SB로 publish하여 `uplink_app`이 파싱한다.
 
 write 오류:
 - `EAGAIN/EWOULDBLOCK`: packet skip, 포트 유지
@@ -58,6 +58,10 @@ SB 메시지 수신마다 `ServiceLoRaRead()`를 호출하여 LoRa serial에서 
 - canonical: `HB,<node_id>,<seq>,<tx_ms>,<sensor_ok>,<crc16_hex>` — sensor_ok != 0 필수
 
 HB 수신 시 `HbLastRxMs`(CFE_TIME 기반 ms), `HbLinkValid = 1` 갱신.
+
+HB가 아닌 "UP,..." 프레임은 `ForwardUplinkFrame()`이 원문 그대로
+`UPLINK_RAW_MID`(0x1909)로 SB publish → `uplink_app`이 파싱/검증.
+ServiceLoRaRead(1바이트 경로)와 ServiceLoRa의 TDM RX 윈도우(TX 후 300ms) 양쪽에서 처리.
 
 ## 패킷 포맷 (LoRa ASCII)
 

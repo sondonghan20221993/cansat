@@ -140,6 +140,31 @@ static bool LORA_FC_DOWNLINK_APP_ParseHb(const char *Line)
     return true;
 }
 
+/* Forward a ground "UP,..." uplink frame onto SB for uplink_app.
+ * lora is the sole owner of the CP2102 port; uplink_app subscribes to
+ * UPLINK_RAW_MID and parses/validates the text frame itself. */
+static void LORA_FC_DOWNLINK_APP_ForwardUplinkFrame(const char *Line)
+{
+    size_t Len;
+
+    if ((Line[0] != 'U' && Line[0] != 'u') || (Line[1] != 'P' && Line[1] != 'p'))
+    {
+        return;
+    }
+
+    Len = strlen(Line);
+    if (Len == 0 || Len >= sizeof(LORA_FC_DOWNLINK_APP_Data.UplinkRawMsg.Frame))
+    {
+        return;
+    }
+
+    memcpy(LORA_FC_DOWNLINK_APP_Data.UplinkRawMsg.Frame, Line, Len);
+    LORA_FC_DOWNLINK_APP_Data.UplinkRawMsg.Frame[Len] = '\0';
+    LORA_FC_DOWNLINK_APP_Data.UplinkRawMsg.Length      = (uint16)Len;
+
+    CFE_SB_TransmitMsg(CFE_MSG_PTR(LORA_FC_DOWNLINK_APP_Data.UplinkRawMsg.TelemetryHeader), true);
+}
+
 static void LORA_FC_DOWNLINK_APP_ServiceLoRaRead(void)
 {
     ssize_t rc;
@@ -176,6 +201,10 @@ static void LORA_FC_DOWNLINK_APP_ServiceLoRaRead(void)
         uint32             NowMs = (uint32)(Now.Seconds * 1000U);
         LORA_FC_DOWNLINK_APP_Data.HbLastRxMs  = NowMs;
         LORA_FC_DOWNLINK_APP_Data.HbLinkValid = 1;
+    }
+    else
+    {
+        LORA_FC_DOWNLINK_APP_ForwardUplinkFrame(LORA_FC_DOWNLINK_APP_Data.LoRaReadBuf);
     }
 }
 
@@ -344,6 +373,10 @@ static void LORA_FC_DOWNLINK_APP_ServiceLoRa(void)
                             (uint32)((uint64)Th.Seconds * 1000ULL +
                                      (uint64)Th.Subseconds * 1000ULL / 0x100000000ULL);
                         LORA_FC_DOWNLINK_APP_Data.HbLinkValid = 1;
+                    }
+                    else
+                    {
+                        LORA_FC_DOWNLINK_APP_ForwardUplinkFrame(RxBuf);
                     }
                     RxLen = 0;
                 }

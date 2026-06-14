@@ -572,6 +572,89 @@ static int UPLINK_APP_HexNibble(char C)
     return -1;
 }
 
+/* Parse a ground "UP,<ver>,<class>,<seq>,<flags>,<payloadhex>,<crc>" text frame
+ * into a UPLINK_APP_ProcessUplinkCmd_t. CRC16 over the canonical prefix is
+ * verified. Called from dispatch when a LoRa raw frame arrives over SB.
+ * (Transport read is owned by lora_fc_downlink_app; parsing stays here.) */
+bool UPLINK_APP_ParseLoRaFrame(const char *Line, UPLINK_APP_ProcessUplinkCmd_t *Out)
+{
+    char   VersionStr[8], ClassStr[8], SeqStr[8], FlagsStr[8];
+    char   PayloadHex[UPLINK_APP_MAX_PAYLOAD_LENGTH * 2 + 2];
+    char   CrcStr[8];
+    char   Canonical[640];
+    int    CanonLen;
+    uint16 ExpectedCrc;
+    uint16 ActualCrc;
+    uint16 Seq;
+    uint8  Version, CommandClass, Flags;
+    uint8  Payload[UPLINK_APP_MAX_PAYLOAD_LENGTH];
+    uint16 PayloadLen;
+    uint16 HexLen;
+    uint16 i;
+
+    if (Line[0] != 'U' || Line[1] != 'P' || Line[2] != ',')
+    {
+        return false;
+    }
+
+    if (sscanf(Line + 3, "%7[^,],%7[^,],%7[^,],%7[^,],%[^,],%7s",
+               VersionStr, ClassStr, SeqStr, FlagsStr, PayloadHex, CrcStr) != 6)
+    {
+        return false;
+    }
+
+    Version      = (uint8)strtoul(VersionStr, NULL, 0);
+    CommandClass = (uint8)strtoul(ClassStr, NULL, 0);
+    Seq          = (uint16)strtoul(SeqStr, NULL, 0);
+    Flags        = (uint8)strtoul(FlagsStr, NULL, 0);
+    ExpectedCrc  = (uint16)strtoul(CrcStr, NULL, 16);
+
+    CanonLen = snprintf(Canonical, sizeof(Canonical), "UP,%s,%s,%s,%s,%s",
+                        VersionStr, ClassStr, SeqStr, FlagsStr, PayloadHex);
+    if (CanonLen <= 0 || (uint16)CanonLen >= sizeof(Canonical))
+    {
+        return false;
+    }
+
+    ActualCrc = UPLINK_APP_CRC16((const uint8 *)Canonical, (uint16)CanonLen);
+    if (ActualCrc != ExpectedCrc)
+    {
+        return false;
+    }
+
+    HexLen = (uint16)strlen(PayloadHex);
+    if (HexLen % 2 != 0 || HexLen / 2 > UPLINK_APP_MAX_PAYLOAD_LENGTH)
+    {
+        return false;
+    }
+
+    PayloadLen = HexLen / 2;
+    for (i = 0; i < PayloadLen; i++)
+    {
+        int Hi = UPLINK_APP_HexNibble(PayloadHex[i * 2]);
+        int Lo = UPLINK_APP_HexNibble(PayloadHex[i * 2 + 1]);
+        if (Hi < 0 || Lo < 0)
+        {
+            return false;
+        }
+        Payload[i] = (uint8)((Hi << 4) | Lo);
+    }
+
+    memset(Out, 0, sizeof(*Out));
+    CFE_MSG_Init(CFE_MSG_PTR(Out->CommandHeader),
+                 CFE_SB_ValueToMsgId(UPLINK_APP_CMD_MID_VALUE),
+                 sizeof(*Out));
+    Out->Version       = Version;
+    Out->CommandClass  = CommandClass;
+    Out->PayloadLength = (uint8)PayloadLen;
+    Out->Flags         = Flags;
+    Out->Sequence      = Seq;
+    memcpy(Out->Payload, Payload, PayloadLen);
+    Out->Checksum      = UPLINK_APP_ComputeProxyCrc(Out);
+
+    return true;
+}
+
 void UPLINK_APP_ServicePrototype(void)
 {
     uint32                NowMs;

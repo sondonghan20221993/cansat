@@ -172,5 +172,14 @@ typedef struct
     uint8                     LastRollbackReason;
 } UPLINK_APP_StatusTlm_t;
 
+/* Raw ground uplink frame received from lora_fc_downlink_app over SB.
+ * Layout MUST match lora_fc_downlink_app's LORA_FC_DOWNLINK_APP_UplinkRawTlm_t. */
+typedef struct
+{
+    CFE_MSG_TelemetryHeader_t TelemetryHeader;
+    uint16                    Length;
+    char                      Frame[256];
+} UPLINK_APP_LoRaRawMsg_t;
+
 #endif
 

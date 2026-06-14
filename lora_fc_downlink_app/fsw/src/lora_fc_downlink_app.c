@@ -72,6 +72,11 @@ CFE_Status_t LORA_FC_DOWNLINK_APP_Init(void)
     CFE_MSG_Init(CFE_MSG_PTR(LORA_FC_DOWNLINK_APP_Data.HkTlm.TelemetryHeader),
                  CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_HK_TLM_MID), sizeof(LORA_FC_DOWNLINK_APP_Data.HkTlm));
 
+    /* uplink raw frame forward message (lora RX window -> SB -> uplink_app) */
+    CFE_MSG_Init(CFE_MSG_PTR(LORA_FC_DOWNLINK_APP_Data.UplinkRawMsg.TelemetryHeader),
+                 CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_UPLINK_RAW_MID_VALUE),
+                 sizeof(LORA_FC_DOWNLINK_APP_Data.UplinkRawMsg));
+
     CFE_ES_WriteToSysLog("LORA_FC_DOWNLINK_APP: before pipe create\n");
     status = CFE_SB_CreatePipe(&LORA_FC_DOWNLINK_APP_Data.CommandPipe, LORA_FC_DOWNLINK_APP_PLATFORM_PIPE_DEPTH,
                                LORA_FC_DOWNLINK_APP_PLATFORM_PIPE_NAME);

@@ -57,6 +57,7 @@ typedef struct
     uint8                           Spare[1];
     CFE_SB_PipeId_t                 CommandPipe;
     LORA_FC_DOWNLINK_APP_HkTlm_t     HkTlm;
+    LORA_FC_DOWNLINK_APP_UplinkRawTlm_t UplinkRawMsg;
 } LORA_FC_DOWNLINK_APP_Data_t;
 
 extern LORA_FC_DOWNLINK_APP_Data_t LORA_FC_DOWNLINK_APP_Data;

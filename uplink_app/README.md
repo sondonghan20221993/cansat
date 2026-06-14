@@ -44,21 +44,21 @@
 ### UDP 경로 (CI_LAB)
 `bridge/lora_uplink_bridge.py` 또는 `tools/uplink_route_update_sender.py --transport udp`가 CCSDS UDP 패킷을 UDP 1234로 전달한다.
 
-### LoRa serial 직접 경로 (ServiceLoRa) — ⚠️ 비활성화 권고 (lora_tdm_app 잔재물)
+### LoRa SB 경로 (`LORA_RAW_MID` 구독) — ✅ 현행
 
-> **포트 충돌**: `lora_fc_downlink_app`이 같은 CP2102 포트를 `O_RDWR`로 독점 오픈한다.
-> 두 앱이 동시에 같은 포트를 열면 Linux 시리얼 드라이버의 수신 버퍼를 서로 빼앗아 가므로,
-> 이 경로를 활성화하면 `lora_fc_downlink_app`의 HB 수신과 `uplink_app`의 UP 수신 모두 신뢰할 수 없다.
->
-> **올바른 경로**: `lora_fc_downlink_app`이 RX 윈도우에서 UP 프레임을 읽고 SB로 publish →
-> `uplink_app`이 `UPLINK_APP_CMD_MID`를 구독하는 방식 (PDF 설계 원칙).
-> 현재 `lora_fc_downlink_app`에 UP 파싱이 미구현이므로 UDP 경로를 사용할 것.
+CP2102 포트는 **`lora_fc_downlink_app`이 단독 소유**(downlink TX + TDM RX 윈도우)한다.
+uplink_app은 더 이상 serial을 직접 열지 않는다(포트 충돌 제거).
 
-`ServicePrototype()` 호출마다 `ServiceLoRa()`가 LoRa serial에서 직접 UP 프레임을 읽어 `ProcessUplink()`를 내부 호출한다.
+흐름:
+1. `lora_fc_downlink_app`이 RX 윈도우에서 "UP,..." 원문 라인을 읽음
+2. HB가 아니면 `LORA_FC_DOWNLINK_APP_UPLINK_RAW_MID_VALUE`(0x1909)로 원문을 SB publish
+3. `uplink_app`이 같은 MID(`UPLINK_APP_LORA_RAW_MID_VALUE` 0x1909)를 구독
+4. `UPLINK_APP_TaskPipe`가 `UPLINK_APP_ParseLoRaFrame()`로 파싱 → `UPLINK_APP_ProcessUplink()`
 
-- serial 경로: `UPLINK_APP_LORA_SERIAL_PATH` (config, 기본값: CP2102 USB-UART)
-- Baud: `UPLINK_APP_LORA_BAUDRATE` (기본 57600)
-- open 모드: `O_RDONLY | O_NOCTTY | O_NONBLOCK` → 열기 후 blocking 전환
+파싱·검증(CRC/시퀀스/라우팅)은 uplink_app이 소유(transport=lora, app=uplink, spec §18.4.4).
+
+> **TDM 제약(반이중)**: lora RX 윈도우는 downlink TX 후 300ms만 열린다.
+> 지상국은 downlink 수신 직후 그 슬롯 안에 UP 프레임을 송신해야 수신된다.
 
 UP 프레임 형식:
 ```
@@ -69,7 +69,6 @@ UP,<version>,<command_class>,<sequence>,<flags>,<payload_hex>,<crc16_hex>
 - CRC16-CCITT (`UP,version,class,seq,flags,payload_hex` 부분에 대한 CRC)
 - hex 디코딩 유효성
 - payload 길이 ≤ 196바이트
-- sequence 단조 증가 (regression 거부)
 
 ## 미구현
 
@@ -79,8 +78,8 @@ UP,<version>,<command_class>,<sequence>,<flags>,<payload_hex>,<crc16_hex>
 
 | 구 Python 프로세스 | 현 cFS 구현 | 상태 |
 | --- | --- | --- |
-| `bridge/lora_uplink_bridge.py` | ~~이 앱 `ServiceLoRa()` 직접 처리~~ | ⚠️ CP2102 포트 충돌로 사용 불가 |
-| — | UDP 경로 (CI_LAB) 유지 | ✓ 현재 권장 경로 |
+| `bridge/lora_uplink_bridge.py` | `lora_fc_downlink_app` RX → SB `LORA_RAW_MID` → uplink 구독 | ✓ 포트 충돌 해소 |
+| — | UDP 경로 (CI_LAB) 유지 | ✓ 병행 가능 |
 
 ## 동작 명세 참조
 
