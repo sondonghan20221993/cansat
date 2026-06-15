@@ -355,7 +355,11 @@ static void LORA_FC_DOWNLINK_APP_ServiceLoRa(void)
 
                 if (read(LORA_FC_DOWNLINK_APP_Data.LoRaFd, &C, 1) <= 0)
                 {
-                    break;
+                    /* VMIN=0/VTIME=0: 데이터 없으면 read가 즉시 0을 반환한다.
+                     * 윈도우 시작 직후엔 지상 uplink가 아직 도착 전(왕복 지연)이므로
+                     * 여기서 break하면 uplink를 영영 못 읽는다. deadline까지 폴링 유지. */
+                    usleep(2000);
+                    continue;
                 }
 
                 if (RxLen < sizeof(RxBuf) - 1U)
