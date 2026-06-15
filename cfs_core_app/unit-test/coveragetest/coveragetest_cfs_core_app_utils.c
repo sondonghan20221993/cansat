@@ -92,8 +92,11 @@ void Test_CFS_CORE_APP_UpdateHealth_GpsStale(void)
 
     CFS_CORE_APP_UpdateHealth(NowMs, true);
 
-    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_DEGRADED);
-    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.FaultCode, CFS_CORE_APP_FAULT_GPS_STALE);
+    /* §12.5: GPS stale은 헬스를 저하시키지 않음 (보고 전용). 나머지 입력 정상 → NOMINAL */
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_NOMINAL);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.FaultCode, CFS_CORE_APP_FAULT_NONE);
+    /* GPS 상태는 보고 필드로 계속 노출 */
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.GpsStatus.TimedOut, 1);
 }
 
 void Test_CFS_CORE_APP_UpdateHealth_EkfInvalid(void)
@@ -1005,8 +1008,9 @@ void Test_CFS_CORE_APP_SaveState_OnTransition(void)
     CFS_CORE_APP_UpdateHealth(NowMs, true);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.LastHealthState, (int32)CFS_CORE_APP_HEALTH_NOMINAL);
 
-    /* GPS stale 주입 → DEGRADED 전이 발생 → SaveState 호출됨 (파일 없어도 무시) */
-    CFS_CORE_APP_Data.GpsState.Stale = 1;
+    /* EKF stale 주입 → DEGRADED 전이 발생 → SaveState 호출됨 (파일 없어도 무시).
+       (GPS는 §12.5에 따라 더 이상 헬스 저하를 유발하지 않으므로 EKF로 전이 유발) */
+    CFS_CORE_APP_Data.EkfState.Stale = 1;
     CFS_CORE_APP_UpdateHealth(NowMs + 100, true);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.LastHealthState, (int32)CFS_CORE_APP_HEALTH_DEGRADED);
 }
@@ -1275,8 +1279,10 @@ void Test_CFS_CORE_APP_UpdateHealth_GPS_Timeout(void)
 
     CFS_CORE_APP_UpdateHealth(NowMs, true);
 
-    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_DEGRADED);
-    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.FaultCode,   CFS_CORE_APP_FAULT_GPS_STALE);
+    /* §12.5: GPS 타임아웃은 헬스를 저하시키지 않음. 나머지 정상 → NOMINAL,
+       GpsStatus.TimedOut 보고 필드로만 관측 가능 */
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_NOMINAL);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.FaultCode,   CFS_CORE_APP_FAULT_NONE);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.GpsStatus.TimedOut, 1);
 }
 
@@ -1489,8 +1495,8 @@ void Test_CFS_CORE_APP_UpdateHealth_StabilityTimerReset(void)
     CFS_CORE_APP_UpdateHealth(NowMs, true);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.NominalEligibleSince, (int32)NowMs);
 
-    /* 5초 후 오류 재발 → 타이머 리셋 */
-    CFS_CORE_APP_Data.GpsState.Stale = 1;
+    /* 5초 후 오류 재발 → 타이머 리셋 (GPS는 §12.5로 비저하 → EKF stale로 재-fault 유발) */
+    CFS_CORE_APP_Data.EkfState.Stale = 1;
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = NowMs + 5000 - 100;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs     = NowMs + 5000 - 100;
     CFS_CORE_APP_Data.LocalState.TimestampMs        = NowMs + 5000 - 100;

@@ -56,7 +56,11 @@ OpenMCT Uplink CLI
   **GPS를 health 게이트에서 분리(A안)** 하기로 결정.
   - md 갱신 완료: `cfs_core_app_behavior_spec.md §12.5/§13.2/테스트`,
     `mission_app_runtime_spec.md §15 GPS 정책/§5.1.1/테스트`.
-  - 코드 변경 예정: cfs_core `GpsUnavailable→DEGRADED` 분기 제거, `GpsValid`는 보고 유지.
+  - **코드 변경 완료**: `cfs_core_app_utils.c` `else if (GpsUnavailable)` 헬스 분기 제거
+    (GpsUnavailable 계산은 `GpsStatus.TimedOut` 보고 필드용으로 유지). 빌드 OK.
+  - **단위 테스트 갱신 완료**(coveragetest_cfs_core_app_utils.c): GpsStale/GPS_Timeout →
+    NOMINAL+보고 검증, SaveState_OnTransition·StabilityTimerReset 재-fault 트리거를
+    GPS→EKF stale로 교체. 전체 193/193 PASS.
 - 잔여: GPS 분리 후에도 **EKF/local/attitude/bridge** 가 fresh해야 NOMINAL.
   현재 FC 링크 자체가 불안정(UART CRC fail) → 별도 해결 필요. EKF 헬스 반영 여부는 추후 검토.
 
