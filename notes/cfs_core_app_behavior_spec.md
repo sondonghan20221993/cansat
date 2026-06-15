@@ -16,7 +16,7 @@
 - 각 구독 메시지 수신 시 갱신되는 내부 캐시 상태
 - `SYSTEM_HEALTH_MID` 출력 필드 및 게시 타이밍
 - 헬스 상태 분류 로직
-- bridge, GPS, EKF, local-state, attitude-state 입력의 타임아웃 처리
+- bridge, EKF, local-state, attitude-state 입력의 타임아웃 처리 (GPS는 헬스 비반영, 보고 전용 — §12.5)
 - 시작 후 및 입력 손실 후 동작
 - 기존 단위 테스트 커버리지 및 런타임 검증 권고
 
@@ -225,8 +225,9 @@ bridge 캐시는 다음을 저장한다.
 | `Seq` | 모든 헬스 게시 시마다 증가하는 단조 앱-로컬 게시 카운터 |
 | `TimestampMs` | 게시 시점의 cFE 시간 (밀리초) |
 | `LastValidInputTimestampMs` | 수신된 attitude/local/GPS/EKF 캐시 중 최대 타임스탬프. 아무것도 수신되지 않은 경우 `NowMs` |
-| `HealthState` | 현재 구현에서 `NOMINAL`, `DEGRADED`, 또는 `RECOVERY` |
-| `FaultCode` | `NONE`, `BRIDGE_TIMEOUT`, `GPS_STALE`, `EKF_INVALID`, `LOCAL_TIMEOUT`, 또는 `ATTITUDE_TIMEOUT` |
+| `HealthState` | `NOMINAL`, `DEGRADED`, `RECOVERY`, `FAILED` (bridge 타임아웃이 `FAILED_ESCALATION_MS` 초과 시 `FAILED`) |
+| `FaultCode` | `NONE`, `BRIDGE_TIMEOUT`, `EKF_INVALID`, `LOCAL_TIMEOUT`, `ATTITUDE_TIMEOUT` (※ `GPS_STALE`는 enum 유지하나 헬스 저하용으로 미사용 — §12.5) |
+| `GpsValid` | GPS 가용성 보고 전용 필드 (헬스에 비반영) |
 | `RecoveryRequested` | bridge 타임아웃 조건에서만 `1`, 그 외에는 `0` |
 
 현재 구현은 매 게시 전 텔레메트리 구조체를 0으로 초기화한다.
@@ -318,31 +319,34 @@ HK는 `CFS_CORE_APP_SEND_HK_MID_VALUE` 수신 시에만 게시된다.
 - `FaultCode = CFS_CORE_APP_FAULT_ATTITUDE_TIMEOUT`
 - `RecoveryRequested = 0`
 
-### 12.5 우선순위 5: GPS 불가용
+### 12.5 GPS 가용성: 헬스 분류에서 제외 (보고 전용)
+
+GPS 가용성(만료 / `Valid == 0` / `Stale != 0`)은 **HealthState를 저하시키지 않는다.**
+
+근거:
+
+- cFS health는 Pi/cFS **통신·파이프라인 상태**를 나타낸다(§15, mission_app_runtime_spec §15). GPS fix는 **센서/비행 조건**이므로 통신-계층 health 게이트의 입력이 아니다.
+- GPS no-fix는 실내/프리플라이트에서 정상적으로 발생하며, 이를 DEGRADED로 처리하면 GPS와 무관한 비위험 uplink 명령(CONFIG/DIAGNOSTIC)까지 차단되어 운용이 불가능해진다.
+
+대신:
+
+- GPS 상태는 `SYSTEM_HEALTH_MID`의 per-input 요약 필드(`GpsValid`)로 **계속 보고**한다(관측 가능).
+- 헬스 분류 우선순위 사다리(§12.1~12.4)에서 GPS 분기는 제거한다.
+- `CFS_CORE_APP_FAULT_GPS_STALE` enum은 호환을 위해 정의를 유지하되 HealthState 저하용으로는 더 이상 생성하지 않는다.
+
+### 12.6 우선순위 5: 정상
 
 조건:
 
-- GPS state 만료
-- 또는 GPS `Valid == 0`
-- 또는 GPS `Stale != 0`
-
-출력:
-
-- `HealthState = CFS_CORE_APP_HEALTH_DEGRADED`
-- `FaultCode = CFS_CORE_APP_FAULT_GPS_STALE`
-- `RecoveryRequested = 0`
-
-### 12.6 우선순위 6: 정상
-
-조건:
-
-- 이전 조건 중 어느 것도 해당하지 않음
+- §12.1~12.4 조건 중 어느 것도 해당하지 않음 (bridge / EKF / local / attitude 모두 신선)
+- GPS 가용성은 NOMINAL 판정에 영향을 주지 않는다
 
 출력:
 
 - `HealthState = CFS_CORE_APP_HEALTH_NOMINAL`
 - `FaultCode = CFS_CORE_APP_FAULT_NONE`
 - `RecoveryRequested = 0`
+- `GpsValid`는 실제 GPS 상태를 그대로 반영 (NOMINAL이어도 0일 수 있음)
 
 ### 12.7 미사용 enum 상태
 
@@ -359,11 +363,11 @@ HK는 `CFS_CORE_APP_SEND_HK_MID_VALUE` 수신 시에만 게시된다.
 - `RECOVERY` 생성
 - `FAULT_BRIDGE_TIMEOUT` 생성
 - `RecoveryRequested = 1` 설정
-- bridge 타임아웃이 더 높은 우선순위를 가지므로 GPS 및 EKF 오류 보고 억제
+- bridge 타임아웃이 더 높은 우선순위를 가지므로 EKF 오류 보고 억제
 
-### 13.2 GPS stale
+### 13.2 GPS 가용성 (헬스 비반영, 보고 전용)
 
-`gps stale`은 다음을 모두 포함한다.
+`gps unavailable`은 다음을 포함한다.
 
 - GPS 메시지가 한 번도 수신되지 않음
 - GPS 타임스탬프 경과 시간이 `3000 ms` 초과
@@ -372,9 +376,10 @@ HK는 `CFS_CORE_APP_SEND_HK_MID_VALUE` 수신 시에만 게시된다.
 
 효과:
 
-- `DEGRADED` 생성
-- `FAULT_GPS_STALE` 생성
-- `RecoveryRequested` 미설정
+- **HealthState 변화 없음** (DEGRADED를 생성하지 않음)
+- `GpsValid = 0`으로 per-input 요약 필드에 반영 (보고 전용)
+- `FaultCode`는 GPS 사유로 설정하지 않음
+- 근거 및 정책: §12.5 참조
 
 ### 13.3 EKF invalid
 
@@ -553,8 +558,8 @@ mission route와 landing route는 독립적으로 캐시된다.
 | --- | --- | --- | --- |
 | CORE-RUN-001 | 정상 | bridge HK와 모든 FC 상태가 `Valid=1`, `Stale=0`으로 신선하게 도착 | `SYSTEM_HEALTH_MID`가 `NOMINAL`, `FAULT_NONE`, `RecoveryRequested=0` 보고 |
 | CORE-RUN-002 | Bridge 타임아웃 | bridge HK 갱신을 `3000 ms` 이상 중단 | `SYSTEM_HEALTH_MID`가 `RECOVERY`, `FAULT_BRIDGE_TIMEOUT`, `RecoveryRequested=1` 보고 |
-| CORE-RUN-003 | GPS stale 플래그 | 신선한 bridge, attitude, local, EKF 전달; GPS `Stale=1` 설정 | `SYSTEM_HEALTH_MID`가 `DEGRADED`, `FAULT_GPS_STALE`, `RecoveryRequested=0` 보고 |
-| CORE-RUN-004 | GPS 타임아웃 | bridge와 EKF 관련 입력은 신선하게 유지하면서 GPS 갱신을 `3000 ms` 이상 중단 | `SYSTEM_HEALTH_MID`가 `DEGRADED`, `FAULT_GPS_STALE` 보고 |
+| CORE-RUN-003 | GPS stale 플래그 (헬스 비반영) | 신선한 bridge, attitude, local, EKF 전달; GPS `Stale=1`(또는 `Valid=0`) 설정 | `SYSTEM_HEALTH_MID`가 **`NOMINAL`, `FAULT_NONE`** 보고, `GpsValid=0` 반영 (GPS는 헬스 저하 안 함 — §12.5) |
+| CORE-RUN-004 | GPS 타임아웃 (헬스 비반영) | bridge와 EKF 관련 입력은 신선하게 유지하면서 GPS 갱신을 `3000 ms` 이상 중단 | `SYSTEM_HEALTH_MID`가 **`NOMINAL`, `FAULT_NONE`** 보고, `GpsValid=0` 반영 |
 | CORE-RUN-005 | EKF invalid 플래그 | 다른 입력은 신선하게 유지하면서 EKF `Valid=0` 설정 | `SYSTEM_HEALTH_MID`가 `DEGRADED`, `FAULT_EKF_INVALID` 보고 |
 | CORE-RUN-006 | Local 타임아웃 | bridge, attitude, GPS, EKF는 신선하게 유지하면서 local-state 갱신을 `2000 ms` 이상 중단 | `SYSTEM_HEALTH_MID`가 `DEGRADED`, `FAULT_LOCAL_TIMEOUT` 보고 |
 | CORE-RUN-007 | Attitude 타임아웃 | bridge, local, GPS, EKF는 신선하게 유지하면서 attitude-state 갱신을 `2000 ms` 이상 중단 | `SYSTEM_HEALTH_MID`가 `DEGRADED`, `FAULT_ATTITUDE_TIMEOUT` 보고 |

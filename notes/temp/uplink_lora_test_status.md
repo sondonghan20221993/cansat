@@ -45,13 +45,20 @@ OpenMCT Uplink CLI
   `lora_fc_downlink_app_utils.c` ServiceLoRa RX 윈도우.
 - 상태: Pi 재빌드 후 재검증 필요.
 
-### 문제 C — CONFIG "적용" 차단 (정책, 설계대로)
+### 문제 C — CONFIG "적용" 차단 (정책)
 - 증상: 도달해도 CONFIG 미적용.
 - 원인: `uplink_app_cmds.c` health-block 정책 — **FAILED(3)는 전 명령 차단**,
   DEGRADED(1)/RECOVERY(2)도 CONFIG 차단. CONFIG는 **NOMINAL(0)에서만** 허용.
-- 현재 `health_state=3` (FC 텔레메트리 간헐: ATTITUDE seq 점프, GPS fix=0,
-  FC UART CRC fail 다수 → cfs_core DEGRADED→FAILED).
-- 해결 방향: CONFIG **적용** 검증은 health=0 만든 뒤. 그 전까지는 "blocked class=1"로 **도달만** 검증.
+- 실측 health 흐름: `0→2(0.75s)→3(51s)`, fault=1 = **BRIDGE_TIMEOUT 분기**
+  (FC 텔레메트리 전체 끊김: ATTITUDE/LOCAL 4회뿐, GPS/EKF 0회 → bridge stale).
+- **GPS 결합 문제 (결정됨)**: 설령 링크가 살아나도 GPS fix 없으면(실내) `GpsUnavailable→DEGRADED`로
+  CONFIG가 영영 차단됨. cFS health는 통신-계층 상태여야 하고 GPS는 센서/비행 조건이므로
+  **GPS를 health 게이트에서 분리(A안)** 하기로 결정.
+  - md 갱신 완료: `cfs_core_app_behavior_spec.md §12.5/§13.2/테스트`,
+    `mission_app_runtime_spec.md §15 GPS 정책/§5.1.1/테스트`.
+  - 코드 변경 예정: cfs_core `GpsUnavailable→DEGRADED` 분기 제거, `GpsValid`는 보고 유지.
+- 잔여: GPS 분리 후에도 **EKF/local/attitude/bridge** 가 fresh해야 NOMINAL.
+  현재 FC 링크 자체가 불안정(UART CRC fail) → 별도 해결 필요. EKF 헬스 반영 여부는 추후 검토.
 
 ## 5. 부가 관찰
 - FC UART 링크 노이즈: `crc fail msgid=24/30`, `Parse/data error code=4`, stream request 대상
