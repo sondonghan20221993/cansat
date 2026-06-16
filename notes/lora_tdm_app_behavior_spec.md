@@ -87,11 +87,21 @@
 > CFE_SB 17: Msg Limit Err, MsgId 0x1906, pipe LORA_TDM_PIPE, sender MAVLINK_BRIDGE_APP
 > ```
 > 캐시는 최신값으로 덮어쓰는 구조라 치명적 데이터 손실은 아니었으나(드롭돼도 다음 메시지가 최신값 갱신),
-> 불필요한 에러 이벤트가 계속 쌓였다. **조치**: `SYSTEM_HEALTH_MID` 포함 5개 MID를
+> 불필요한 에러 이벤트가 계속 쌓였다. **조치 1**: `SYSTEM_HEALTH_MID` 포함 5개 MID를
 > `CFE_SB_SubscribeEx(..., CFE_SB_DEFAULT_QOS, MsgLim)`로 변경(`lora_tdm_app.c`) — `SYSTEM_HEALTH_MID`는
 > 합산 이벤트 빈도가 더 높을 수 있어 MsgLim=20, FC_* 4개는 MsgLim=10. `CMD`/`SEND_HK`만 진짜 저빈도라
 > 기존 `CFE_SB_Subscribe()` 유지 — 앱 전체 구독 방식을 바꾼 게 아니라, 실측 근거가 있는 5개 MID에
 > 한정한 예외 처리다.
+>
+> **2차 재검증(2026-06-16)**: 위 수정 후 재실행했더니 `0x1904` 에러는 줄었지만 같은 부팅 시점에
+> `0x1905`/`0x1906`에서도 다시 발생. 전체 로그를 확인한 결과 **모든 Msg Limit Err(16건)가 부팅 후
+> 130ms 안에만 몰려 있고 이후 60초+ 동안 0건** — 지속 문제가 아니라 **1회성 부팅 버스트**임을 확인.
+> `rx_ms`(Pi 수신 시각)가 여러 메시지에서 동일하게 찍히는 패턴으로 보아, `mavlink_bridge_app`이
+> `/dev/serial0`를 여는 시점에 **cFS가 안 떠 있던 동안 FC가 계속 보내서 커널 시리얼 버퍼에 쌓여있던
+> 데이터를 한 번에 드레인**하는 것으로 판단됨 — 이 경우 MsgLim을 더 올려도 다운타임이 길면 버스트도
+> 커지므로 근본 해결이 안 됨. **조치 2(근본 원인)**: `mavlink_bridge_app_utils.c`의
+> `MAVLINK_BRIDGE_APP_OpenSerial()`에서 `tcsetattr()` 성공 직후 `tcflush(Fd, TCIFLUSH)` 추가 —
+> 포트를 열 때 묵은 입력 버퍼를 비워서 버스트 자체를 없앰.
 
 ### 5.2 게시 MID
 
