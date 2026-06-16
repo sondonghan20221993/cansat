@@ -35,7 +35,7 @@
 - `LoRaFd`, `LoRaTxCount` 필드 없음
 - FC 상태(ATTITUDE, EKF_LOCAL 등)를 SB publish하면 `lora_tdm_app`이 구독하여 TDM downlink로 전송
 
-> 코드 확인(2026-06-16): `fsw/src/*.c` 전체에 `LoRaFd`/`LoRaTxCount`/`ServiceLoRa` 등 LoRa 직접 접근 잔재 없음 — 위 서술과 일치. 단, `config/default_mavlink_bridge_app_platform_cfg.h`에 미사용 잔존 정의 `MAVLINK_BRIDGE_APP_LORA_SERIAL_PATH`/`MAVLINK_BRIDGE_APP_LORA_BAUDRATE`가 남아 있음(런타임 동작에는 영향 없는 dead config — 향후 정리 대상).
+> 코드 확인(2026-06-16): `fsw/src/*.c` 전체에 `LoRaFd`/`LoRaTxCount`/`ServiceLoRa` 등 LoRa 직접 접근 잔재 없음 — 위 서술과 일치. 미사용 잔존 정의 `MAVLINK_BRIDGE_APP_LORA_SERIAL_PATH`/`MAVLINK_BRIDGE_APP_LORA_BAUDRATE`는 `config/default_mavlink_bridge_app_platform_cfg.h`에서 제거함 (2026-06-16).
 
 ## 3. 참조
 

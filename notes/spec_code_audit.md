@@ -32,7 +32,7 @@
 | 1-4 | Pub/Sub | spec §4,§5 | `mavlink_bridge_app.c:142` | (미언급) | `CONFIG_CMD_MID 0x190E` 구독 | ❌ | behavior spec에 `CONFIG_CMD_MID` 구독(런타임 config 명령) 문서화 추가 |
 | 1-5 | 설정·한도 | spec §8,§13.0 | `mavlink_bridge_app_utils.c:40-41,63-65` | timeout 2000/retry 3/CLEAR_DELAY 300, sysid 255/compid 190 | 동일 (로컬 `#define`, config 헤더 아님) | ✅ **해결** | 정의 위치 확인 완료, 값 일치. §8/§13.0에 정의 위치 주석 추가 (2026-06-16) |
 | 1-6 | 게시율 | (mission spec §5.1.1) | internal_cfg_values.h | ATTITUDE ~20Hz, GPS ~5Hz, EKF ~10Hz | 요청 interval 5Hz/2Hz/2Hz | ❌ | **pass 4에서 처리**: 5.1.1 게시율을 코드 stream interval과 정합 |
-| 1-7 | 책임 분리 | spec §2.1 | `fsw/src/*.c` 전체, `platform_cfg.h` | `LoRaFd`/`LoRaTxCount`/`ServiceLoRa` 제거됨 | src 잔재 없음 확인. 단 `platform_cfg.h`에 미사용 `LORA_SERIAL_PATH`/`LORA_BAUDRATE` dead config 잔존 | ✅ **해결** | src 검증 완료, 서술과 일치. dead config 잔존은 §2.1에 각주로 기록 (2026-06-16, 향후 정리 대상) |
+| 1-7 | 책임 분리 | spec §2.1 | `fsw/src/*.c` 전체, `platform_cfg.h` | `LoRaFd`/`LoRaTxCount`/`ServiceLoRa` 제거됨 | src 잔재 없음 확인. `platform_cfg.h`의 미사용 `LORA_SERIAL_PATH`/`LORA_BAUDRATE`는 **코드에서 제거** | ✅ **해결(코드 수정)** | src 검증 완료, dead config 2건 삭제 (2026-06-16) |
 | 1-8 | spec 내부 | spec §13.1.1/§332/§341 vs §15 | `mavlink_bridge_app_utils.c:341,368` | INT 경로 global frame "미구현" ↔ §15 "구현 완료" | `SendMissionItemInt`=LOCAL_NED(미변환), `SendMissionItem`=GLOBAL_RELATIVE_ALT(변환) — 서로 다른 경로, 모순 아님 | ✅ **해결** | §15 "구현 완료" 항목에 "Legacy 경로(msg 39) 한정" 명시해 모호성 해소 (2026-06-16) |
 
 > 종합: MID/CC/EID 핵심 계약은 코드와 **일치**. 실 불일치는 ❌1-4(CONFIG_CMD_MID 미문서화), ❌1-6(게시율, pass 4). ⚠️1-8/🕒1-5/🕒1-7은 전부 해결(2026-06-16).
@@ -77,7 +77,7 @@
 | 3-2 | TDM 상수 | §7,§14 | mission_cfg.h | 1000/300/3/5000, FB 0/1/2, link 0/1/2 | 동일 | ✅ | — |
 | 3-3 | PacketType | §8 | mission_cfg.h:14 | "FC State (default = **0**)" | `FC_STATE_PACKET_TYPE = **1**` (SH=2) | ✅ **해결** | §8 표를 `FC_STATE=1`/`SYSTEM_HEALTH=2`로 정정 (2026-06-16) |
 | 3-4 | 설정·한도 | §5.1 | `lora_tdm_app.c:268` | "파이프 깊이 **10**" | 코드 깊이 **50** | ✅ **해결** | §5.1을 깊이 50으로 정정 (2026-06-16). TEST_CASES.md baseline 주석도 갱신 |
-| 3-5 | spec 내부 | §7.1 vs §15 | `lora_tdm_app_dispatch.c:71-74`, `lora_tdm_app.c` | §7.1 "SEND_HK→HK+LinkStatus" ↔ §15 "SEND_HK→HK만" | `SEND_HK`는 `ReportHousekeeping()`만 호출. `ReportLinkStatus()`는 dispatch.c/RunCycle 어디서도 호출 안 됨(dead code) | ✅ **해결** | §7.1을 §15와 통일(ReportLinkStatus 비호출 명시). **신규 발견**: `LINK_STATUS_MID(0x1911)`가 현재 전혀 게시되지 않음(미배포 앱이라 영향 없음, 향후 구현 필요) — §15/§5.2에 기록 (2026-06-16) |
+| 3-5 | spec 내부 | §7.1 vs §15 | `lora_tdm_app_dispatch.c:71-75` | §7.1 "SEND_HK→HK+LinkStatus" ↔ §15 "SEND_HK→HK만" | **코드 수정**: SEND_HK 분기에 `LORA_TDM_APP_ReportLinkStatus()` 호출 추가 → §7.1이 정답이 되도록 코드를 바로잡음 (단위테스트 stub이 이미 `ReportLinkStatus` 호출 카운트를 추적 가능했던 것으로 보아 누락된 호출로 판단) | ✅ **해결(코드 수정)** | dead code였던 `ReportLinkStatus()`를 SEND_HK 경로에 연결. §7.1/§15 모두 "호출됨"으로 통일 (2026-06-16) |
 | 3-6 | 이벤트 | (EID 표 없음) | eventids.h | — | `SEQ_FAIL_EID 12` 정의·로직 미구현 | ⚠️ | §15와 일관(경미). EID 표 추가 권장 |
 
 > 종합: MID·TDM 상수 **완전 일치**. 실 불일치는 ❌3-3(PacketType 기본값), ❌3-4(파이프 깊이 10 vs 50), 모두 해결. ⚠️3-5도 해결(spec 내부 모순 통일 + dead code 발견 기록).
@@ -146,12 +146,12 @@
 
 **spec 내부 staleness (⚠️) — 전부 해소 (2026-06-16):** 2-6/2-7/2-8/2-9(cfs_core, commit `4d66241`), 3-5(lora_tdm §7.1/§15 SEND_HK 문구 통일 + `ReportLinkStatus()` dead code 발견), 1-8(mavlink INT/Legacy 경로 구분 명확화).
 
-**확인 완료 (🕒 → ✅, 2026-06-16):** 1-5(sysid/timeout/retry/clear_delay 상수 — `mavlink_bridge_app_utils.c:40-41,63-65`에서 정의 확인, 값 일치), 1-7(mavlink src에 LoRa 잔재 없음 확인; `platform_cfg.h`에 미사용 dead config 2건 발견·기록).
+**확인 완료 (🕒 → ✅, 2026-06-16):** 1-5(sysid/timeout/retry/clear_delay 상수 — `mavlink_bridge_app_utils.c:40-41,63-65`에서 정의 확인, 값 일치), 1-7(mavlink src에 LoRa 잔재 없음 확인; `platform_cfg.h`의 dead config 2건 코드에서 제거).
 
 **일치 확인 (✅):** 전 앱 MID 수치값, cfs_core timing, lora_tdm TDM 상수, 앱 집합/라우팅 체인.
 
-**잔여 작업 (신규, 경미):**
-- `lora_tdm_app`: `LORA_TDM_APP_LINK_STATUS_MID(0x1911)`가 코드상 전혀 게시되지 않음(`ReportLinkStatus()` 미호출). 앱이 미배포 상태라 즉시 영향 없으나, 배포 전 SEND_HK 또는 주기 호출 추가 필요.
-- `mavlink_bridge_app`: `platform_cfg.h`의 `MAVLINK_BRIDGE_APP_LORA_SERIAL_PATH`/`LORA_BAUDRATE` 미사용 dead config — 향후 정리 대상.
+**audit 중 발견되어 코드를 수정한 항목 (2026-06-16):**
+- `lora_tdm_app_dispatch.c`: SEND_HK 분기에 `LORA_TDM_APP_ReportLinkStatus()` 호출 추가 (기존엔 dead code — `LINK_STATUS_MID 0x1911`이 전혀 게시되지 않았음).
+- `mavlink_bridge_app/config/default_mavlink_bridge_app_platform_cfg.h`: 미사용 `MAVLINK_BRIDGE_APP_LORA_SERIAL_PATH`/`MAVLINK_BRIDGE_APP_LORA_BAUDRATE` 제거.
 
-**모든 audit 패스(1~4)의 ❌/⚠️/🕒 항목 해결 완료.**
+**모든 audit 패스(1~4)의 ❌/⚠️/🕒 항목 해결 완료 (문서 정정 + 코드 수정 2건).**
