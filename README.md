@@ -21,7 +21,7 @@ lora_tdm_app         ←  FC 상태 MID + SYSTEM_HEALTH_MID
                      →  LoRa serial TX (downlink, TDM)
                      ←  LoRa serial RX (UP frame, TDM 300ms 창)
                      →  UPLINK_APP_CMD_MID     (0x18D0) → uplink_app (UP frame SB 전달)
-                     →  LORA_TDM_APP_LINK_STATUS_MID (0x190F)
+                     →  LORA_TDM_APP_LINK_STATUS_MID (0x1911)
 
 uplink_app           ←  UPLINK_APP_CMD_MID (lora_tdm_app SB) / UDP (테스트용)
                      →  ROUTE_UPDATE_MID       (0x190B) → cfs_core_app + mavlink_bridge_app
@@ -34,7 +34,7 @@ uplink_app           ←  UPLINK_APP_CMD_MID (lora_tdm_app SB) / UDP (테스트�
 | `mavlink_bridge_app` | CMD `0x18A0`, HK `0x08A0`, 게시 `0x1905-0x1908` | FC MAVLink 수신·파싱·게시, FC MISSION 업로드 (§22) |
 | `cfs_core_app` | CMD `0x18C0`, HK `0x08C0`, 게시 `0x1904` | FC 상태 종합, 헬스 판단, SYSTEM_HEALTH 게시 |
 | `uplink_app` | CMD `0x18D0`, HK `0x18D1`, 게시 `0x190A` | 지상국 명령 수신·검증·라우팅 |
-| `lora_tdm_app` | CMD `0x18E0`, HK `0x18E1`, 게시 `0x190F` | LoRa serial 독점 TDM — downlink TX + uplink RX → uplink_app SB 전달 |
+| `lora_tdm_app` | CMD `0x18E0`, HK `0x08E0`, 게시 `0x1911` | LoRa serial 독점 TDM — downlink TX + uplink RX → uplink_app SB 전달 |
 
 ## 주요 기능 구현 상태
 

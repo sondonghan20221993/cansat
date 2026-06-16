@@ -68,7 +68,7 @@
 | 심볼 | 값 | 목적 |
 | --- | --- | --- |
 | `LORA_TDM_APP_HK_TLM_MID_VALUE` | `0x08E0` | HK 텔레메트리 |
-| `LORA_TDM_APP_LINK_STATUS_MID_VALUE` | `0x190F` | LoRa 링크 상태 텔레메트리 |
+| `LORA_TDM_APP_LINK_STATUS_MID_VALUE` | `0x1911` | LoRa 링크 상태 텔레메트리 (구 `0x190F` → `uplink_app MODE_CMD_MID`와 충돌하여 재할당) |
 | `UPLINK_APP_CMD_MID_VALUE` | `0x18D0` | UP frame forward (수신된 uplink를 uplink_app에 전달) |
 
 ## 6. 내부 상태 캐시

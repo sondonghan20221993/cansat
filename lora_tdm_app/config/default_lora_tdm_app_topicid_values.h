@@ -18,6 +18,6 @@
 #define LORA_TDM_APP_CMD_MID_VALUE                   0x18E0
 #define LORA_TDM_APP_SEND_HK_MID_VALUE               0x18E1
 #define LORA_TDM_APP_HK_TLM_MID_VALUE               0x08E0
-#define LORA_TDM_APP_LINK_STATUS_MID_VALUE           0x190F
+#define LORA_TDM_APP_LINK_STATUS_MID_VALUE           0x1911
 
 #endif
