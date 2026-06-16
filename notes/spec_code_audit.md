@@ -97,8 +97,9 @@
 | 4-4 | 앱 집합 | §4 | startup.scr | downlink 역할 = `lora_fc_downlink_app` | startup에 `lora_fc_dl_app` 등록 | ✅ | 일치 (이전 pass에서 정정 완료) |
 | 4-5 | 배포 상태 | §2(현황) | startup.scr | — | `lora_tdm_app` 코드 존재·미배포, `telemetry_app`/`img_app` 미배포 | 📝 | §2 범위/현황에 "lora_tdm_app 코드 완료·미배포(향후 lora_fc_downlink 대체)" 명시 |
 | 4-6 | uplink 라우팅 | §18.4.x | dispatch 체인 | 명령 클래스 문서화됨 | `uplink_app`→(0x190C~0x1910)→`cfs_core_app`(viewpoint/config 구독) 실재 | ✅ | 클래스→MID 값 매핑만 보강(§4-2와 연계) |
+| 4-7 | **dead-end 라우팅** | §18.4.x (명령 클래스 분류) | `uplink_app_utils.c` `ForwardRecoveryCommand`/`ForwardModeCommand`/`ForwardDiagnosticCommand` | spec: RECOVERY/MODE/DIAGNOSTIC 명령 클래스가 대상 앱으로 라우팅됨을 전제 | `RECOVERY_CMD_MID`(0x190C)/`MODE_CMD_MID`(0x190F)/`DIAGNOSTIC_CMD_MID`(0x1910) — `grep -rl` 결과 코드베이스 전체에서 **publish하는 uplink_app 자신 외 구독자가 0개**. `cfs_core_app`/`mavlink_bridge_app`/`lora_fc_downlink_app` 어디도 구독 안 함 | ❌ | uplink_app은 이 3개 클래스를 검증 통과시키고 "라우팅 성공"으로 카운트하지만 실제 수신·처리하는 앱이 없음(허공에 publish). 대상 앱에 구독 추가 또는 spec에 "미구현 라우팅 대상"으로 명시 필요 (2026-06-16 발견) |
 
-> 종합: 핵심은 ❌4-1(**0x190F MID 충돌** — 최우선), ❌4-2(라우팅 MID 인벤토리 누락), ❌4-3(게시율). §4 앱 집합·라우팅 체인은 코드와 정합.
+> 종합: 핵심은 ❌4-1(**0x190F MID 충돌** — 최우선), ❌4-2(라우팅 MID 인벤토리 누락), ❌4-3(게시율), ❌4-7(**RECOVERY/MODE/DIAGNOSTIC 명령 dead-end** — 신규). §4 앱 집합·라우팅 체인 중 CONFIG/VIEWPOINT/ROUTE_UPDATE는 코드와 정합하나 나머지 3개 클래스는 수신처 없음.
 
 ---
 
@@ -123,11 +124,11 @@
 | `0x1909` | `UPLINK_APP_LORA_RAW_MID` (= `LORA_FC_DOWNLINK..._UPLINK_RAW`) | lora_fc_downlink_app→uplink_app | ✅ |
 | `0x190A` | `UPLINK_STATUS_MID` | uplink_app | ✅ |
 | `0x190B` | `ROUTE_UPDATE_MID` | uplink_app→cfs_core/mavlink_bridge | ✅ |
-| `0x190C` | `RECOVERY_CMD_MID` | uplink_app 라우팅 | ✅ |
+| `0x190C` | `RECOVERY_CMD_MID` | uplink_app publish, **구독자 없음(dead-end, §4-7)** | ✅ |
 | `0x190D` | `VIEWPOINT_CMD_MID` | uplink_app→cfs_core_app | ✅ |
 | `0x190E` | `CONFIG_CMD_MID` | uplink_app→cfs_core/mavlink_bridge | ✅ |
-| `0x190F` | `MODE_CMD_MID` | uplink_app 라우팅 | ✅ |
-| `0x1910` | `DIAGNOSTIC_CMD_MID` | uplink_app 라우팅 | ✅ |
+| `0x190F` | `MODE_CMD_MID` | uplink_app publish, **구독자 없음(dead-end, §4-7)** | ✅ |
+| `0x1910` | `DIAGNOSTIC_CMD_MID` | uplink_app publish, **구독자 없음(dead-end, §4-7)** | ✅ |
 | `0x1911` | `LORA_TDM_APP_LINK_STATUS_MID` (구 `0x190F`, 충돌 해소 재할당) | lora_tdm_app | 미배포 |
 
 > `0x190C`~`0x1910` 라우팅 명령 MID와 `0x1909`는 `mission_app_runtime_spec.md` MID 표에 미수록(§4-2). `0x190F` 이중 할당은 §4-1.
@@ -154,4 +155,10 @@
 - `lora_tdm_app_dispatch.c`: SEND_HK 분기에 `LORA_TDM_APP_ReportLinkStatus()` 호출 추가 (기존엔 dead code — `LINK_STATUS_MID 0x1911`이 전혀 게시되지 않았음).
 - `mavlink_bridge_app/config/default_mavlink_bridge_app_platform_cfg.h`: 미사용 `MAVLINK_BRIDGE_APP_LORA_SERIAL_PATH`/`MAVLINK_BRIDGE_APP_LORA_BAUDRATE` 제거.
 
-**모든 audit 패스(1~4)의 ❌/⚠️/🕒 항목 해결 완료 (문서 정정 + 코드 수정 2건).**
+**audit 패스(1~4)의 기존 ❌/⚠️/🕒 항목 해결 완료 (문서 정정 + 코드 수정 2건).** `lora_tdm_app` 빌드/테스트 블로커 3건(컴파일 에러, 잘못된 dispatch 단정문, `ProcessUpFrame` 빈 payload 파싱 버그)은 `tdm_refactor` 브랜치에서 별도 수정·검증 중 (75/75 PASS).
+
+**신규 발견, 미해결 (2026-06-16):**
+- ❌ **4-7 RECOVERY/MODE/DIAGNOSTIC 명령 dead-end** — `uplink_app`이 검증·라우팅까지는 하지만, `RECOVERY_CMD_MID`/`MODE_CMD_MID`/`DIAGNOSTIC_CMD_MID`를 구독하는 앱이 코드베이스 전체에 없음. 지상국이 이 3개 클래스 명령을 보내도 실제로 처리되지 않음.
+- ❌ **`mission_app_runtime_spec.md` §11.1 vs 코드** — spec은 `cfs_core_app`을 "모든 앱의 복구 권한(recovery authority)"로 설계(반복 앱 오류 시 60초/앱당 3회로 재시작)했으나, 코드의 `CFE_ES_RestartApp` 호출은 전체에서 1곳뿐이고 대상이 `mavlink_bridge_app`으로 하드코딩됨(5초/3회). `uplink_app`/`lora_fc_downlink_app`에 대한 감시·재시작·에스컬레이션 수신 메커니즘 없음. §11.1 표를 코드 기준으로 정정 필요.
+
+이 2건은 spec 정정이 아니라 **실제 기능 격차**라 코드 작업(라우팅 대상 구현 또는 spec에 미구현 명시) 필요 — 사용자 확인 후 진행.
