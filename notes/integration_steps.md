@@ -357,10 +357,15 @@ cd ~/Desktop/cFS_clean/build-native_std/exe/cpu1
 다음 조건을 모두 만족하면 baseline bring-up 성공으로 본다.
 
 - `native_std / cpu1`가 `OPERATIONAL` 상태에 도달한다.
-- `CFS_CORE_APP`, `UPLINK_APP`, `LORA_FC_DOWNLINK_APP`, `MAV_BRIDGE_APP` 초기화 로그가 출력된다.
+- `CFS_CORE_APP`, `UPLINK_APP`, `LORA_TDM_APP`(2026-06-16부터 `LORA_FC_DOWNLINK_APP` 대체), `MAV_BRIDGE_APP` 초기화 로그가 출력된다.
 - `MAV_BRIDGE_APP: opened serial path /dev/serial0 at 57600 baud` 로그가 출력된다.
 - `MAVLINK_BRIDGE_APP: requested telemetry streams` 또는 `COMMAND_ACK cmd=511 result=0` 로그가 출력된다.
 - `Pipe Overflow, MsgId 0x80e, pipe SBNSubPipe, sender TO_LAB`가 재발하지 않는다.
+- `CFS_CORE_APP: health`가 부팅 30초 후 `FAILED`(fault=1=BRIDGE_TIMEOUT)로 고착되지 않는다 —
+  `mission_defs/tables/cpu1_sch_lab_table.c`(2026-06-17 추가)가 `mavlink_bridge_app`의
+  `SEND_HK`를 스케줄링해야 `cfs_core_app`이 `BRIDGE_HK`를 받아 bridge 생존을 확인할 수 있다.
+  이 override 없으면(기본 `sch_lab_table.c`는 빈 placeholder) bridge가 정상이어도 영원히
+  타임아웃으로 오판한다.
 
 ## FC 연결 후 검증 절차
 

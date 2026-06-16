@@ -168,6 +168,9 @@
 
 **audit 패스(1~4)의 기존 ❌/⚠️/🕒 항목 해결 완료 (문서 정정 + 코드 수정 2건 + 위 블로커 3건).**
 
+**신규 발견 (2026-06-17):**
+- ✅ **해결 — `cfs_core_app` health FAILED 고착 (실 Pi 런타임에서 발견, 배포 설정 누락)** — 부팅 30초 후 `health 2->3 fault=1`(BRIDGE_TIMEOUT)로 빠진 뒤 다시는 회복되지 않음을 매 테스트 실행마다 관찰. 코드 확인: `BridgeTimedOut = !BridgeState.Received || ...`(`cfs_core_app_utils.c:233`)이고 `BridgeState.Received`는 `mavlink_bridge_app`의 `BRIDGE_HK`(0x08A0)를 한 번이라도 받아야 `true`가 됨. HK는 `SEND_HK` 명령(보통 `SCH_LAB` 스케줄러가 트리거)이 있어야 발행되는데, 실제 빌드의 `~/cFS_clean/apps/sch_lab/fsw/tables/sch_lab_table.c`(NASA 표준 sch_lab 기본 테이블)를 확인한 결과 **빈 placeholder이고 cFE 코어 서비스 HK 예시조차 전부 주석 처리**되어 있었음. `mission_defs/`에 이 테이블의 override가 없어 우리 커스텀 앱 4개 전부 SEND_HK가 스케줄된 적이 없었음 — `mavlink_bridge_app`은 실제로 FC 텔레메트리를 정상 디코드 중이었으나(로그로 확인), `cfs_core_app`이 그걸 확인할 방법이 없어 영원히 타임아웃으로 오판한 것. 코드 버그 아니라 배포 설정 누락. **조치**: `mission_defs/tables/cpu1_sch_lab_table.c` 신규 추가 — `mavlink_bridge_app`/`cfs_core_app`/`uplink_app`/`lora_tdm_app` 4개 앱의 `SEND_HK` MID를 ~1Hz로 스케줄링(`cpu1_cfe_es_startup.scr`와 동일한 `cpu1_<filename>` override 명명 규칙 사용).
+
 **신규 발견 (2026-06-16):**
 - ❌ **4-7 RECOVERY/MODE/DIAGNOSTIC 명령 dead-end** — `uplink_app`이 검증·라우팅까지는 하지만, `RECOVERY_CMD_MID`/`MODE_CMD_MID`/`DIAGNOSTIC_CMD_MID`를 구독하는 앱이 코드베이스 전체에 없음. 지상국이 이 3개 클래스 명령을 보내도 실제로 처리되지 않음.
 - ❌ **`mission_app_runtime_spec.md` §11.1 vs 코드** — spec은 `cfs_core_app`을 "모든 앱의 복구 권한(recovery authority)"로 설계(반복 앱 오류 시 60초/앱당 3회로 재시작)했으나, 코드의 `CFE_ES_RestartApp` 호출은 전체에서 1곳뿐이고 대상이 `mavlink_bridge_app`으로 하드코딩됨(5초/3회). `uplink_app`/`lora_fc_downlink_app`에 대한 감시·재시작·에스컬레이션 수신 메커니즘 없음. §11.1 표를 코드 기준으로 정정 필요.
