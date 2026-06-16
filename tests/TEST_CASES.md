@@ -26,7 +26,7 @@
 
 | 앱 | 테스트 수 | assertion 수 | 마지막 확인 |
 |---|---|---|---|
-| `cfs_core_app` | 21 | 67 | 2026-05-28 |
+| `cfs_core_app` | ~92 | — | 2026-06-16 |
 | `uplink_app` | 35 | 63+ | 2026-06-07 |
 | `lora_fc_downlink_app` | 14 | 40+ | 2026-06-07 |
 | ~~`lora_tdm_app`~~ (baseline 제거됨) | 30 | ~50 | 2026-06-11 |
@@ -82,7 +82,7 @@
 | `CFS_CORE_APP_VerifyCmdLength_Impl` | 정상/비정상 길이 판단 |
 | `CFS_CORE_APP_UpdateHealth_Nominal` | 전 입력 정상 시 health `NOMINAL` |
 | `CFS_CORE_APP_UpdateHealth_Recovery` | bridge timeout → health `RECOVERY`, recovery flag 설정 |
-| `CFS_CORE_APP_UpdateHealth_GpsStale` | GPS stale → health `DEGRADED`, fault `GPS_STALE` |
+| `CFS_CORE_APP_UpdateHealth_GpsStale` | GPS stale → health **`NOMINAL`** (GPS 헬스 비반영 — §12.5; `GpsStatus.TimedOut=1`만 보고) |
 | `CFS_CORE_APP_UpdateHealth_EkfInvalid` | EKF invalid → health `DEGRADED`, fault `EKF_INVALID` |
 | `CFS_CORE_APP_UpdateHealth_LocalTimeout` | local position timeout → health `DEGRADED`, fault `LOCAL_TIMEOUT` |
 | `CFS_CORE_APP_UpdateHealth_LocalInvalid` | local position invalid → health `DEGRADED`, fault `LOCAL_TIMEOUT` |
@@ -96,6 +96,49 @@
 | `CFS_CORE_APP_ProcessStateMessage_RouteUpdate` | `ROUTE_UPDATE_MID` 수신 → mission route cache 갱신 |
 | `CFS_CORE_APP_ProcessStateMessage_LandingRouteUpdate` | `ROUTE_UPDATE_MID` landing type → landing route cache 갱신 |
 | `CFS_CORE_APP_ProcessStateMessage_BridgeHk` | bridge HK 수신 → bridge state cache 갱신 |
+
+> **2026-06-16 추가 테스트** (config·seq/timestamp·bridge 재시작·영속화·FAILED 기능 반영). 위 목록은 구버전이며 실제 coveragetest는 아래 그룹을 포함한다.
+
+추가 헬스 분류:
+| 테스트 | 검증 |
+|---|---|
+| `UpdateHealth_Failed` / `UpdateHealth_FailedRecovery` | bridge timeout `FAILED_ESCALATION_MS(30s)` 초과 → `FAILED` 및 복구 |
+| `UpdateHealth_LocalInvalid` / `LocalStale` | local invalid/stale → `FAULT_LOCAL_TIMEOUT` |
+| `UpdateHealth_AttitudeInvalid` / `AttitudeStale` | attitude invalid/stale → `FAULT_ATTITUDE_TIMEOUT` |
+| `UpdateHealth_GPS_Timeout` | GPS 타임아웃 → **`NOMINAL`** (헬스 비반영, §12.5) |
+| `UpdateHealth_Priority_{BridgeOverGps,EkfOverLocal,LocalOverAttitude,AttitudeOverGps}` | 우선순위 사다리 |
+| `UpdateHealth_NominalStabilization` / `StabilityTimerReset` / `RecoveryToNominal` | 10s 안정화 타이머 |
+| `UpdateHealth_Startup_NoBridge` | 시작 시 bridge 미수신 → RECOVERY |
+| `UpdateHealth_InputStatus` / `HealthTransition` / `PeriodicRateLimit` | per-input status, 전이 EVS 1회, 주기 rate limit |
+
+seq/timestamp 검사:
+| 테스트 | 검증 |
+|---|---|
+| `SeqCheck_Normal` / `Duplicate` / `Regression` / `Gap` / `Gap_FirstReceive` | 중복·역행 거부, 갭 카운트, 첫 수신 예외 |
+| `TimestampCheck_Normal` / `FutureTooFar` / `FutureBoundary` / `GPS_Rejected` / `EKF_Rejected` / `BeforeSeqCheck` | 미래 timestamp(>5s) 거부, seq 검사보다 선평가 |
+
+config 명령 (`CONFIG_CMD_MID`):
+| 테스트 | 검증 |
+|---|---|
+| `ProcessConfig_AttitudeTimeout` / `PublishPeriod` | 정상 파라미터 적용 (ActiveConfig 갱신) |
+| `ProcessConfig_BadLength` / `BadScope` / `BadVersion` / `BadChecksum` / `BadValue` / `BadParam` | 단계별 검증 실패 거부 |
+| (dispatch) `TaskPipe_ConfigCmd` / `TaskPipe_ViewpointCmd` | CONFIG/VIEWPOINT MID 처리 경로 |
+| `ProcessViewpointCommand` | viewpoint 캐시 저장 |
+
+상태 영속화 / bridge 재시작:
+| 테스트 | 검증 |
+|---|---|
+| `LoadState_NoFile` / `SaveState_NoDir` / `SaveState_OnTransition` | 상태 파일 로드/저장, 전이 시 저장 |
+| `BridgeRestart_FirstAttempt` / `SecondAttempt` / `MaxReached` / `AllAttemptsExhausted` / `GetAppIdFail` / `ResetOnRecovery` / `RecoverAfterAttempt` | bridge 재시작 시도·최대 3회 한도·복구 시 리셋 |
+
+Init/dispatch 추가:
+| 테스트 | 검증 |
+|---|---|
+| `Init_DefaultTimeouts` | ActiveConfig 기본 타임아웃 로드 |
+| `Init_EVSRegisterError` / `MsgInitError` / `CreatePipeError` / `Subscribe2~9Error` | 각 init 단계 실패 주입 |
+| `TaskPipe_GetMsgIdError` / `GetFcnCodeError` / `AttitudeState` / `Noop_LengthFail` | dispatch 오류/분기 경로 |
+| (eds) `TaskPipe` | EDS dispatch 경로 |
+| `ServicePrototype` | 주기 서비스 경로 |
 
 ---
 
@@ -218,9 +261,9 @@
 
 ### ~~`lora_tdm_app`~~ (baseline 제거됨, 2026-06-15)
 
-> startup script에서 제거됨(pipe depth 200 > cFS 최대 50으로 즉시 종료되던 구버전 잔재).
-> 역할은 `lora_fc_downlink_app`(downlink) + SB 기반 uplink 경로로 대체됨.
-> 아래 테스트는 참고용 이력으로만 유지한다.
+> startup script에서 제거됨. 구버전은 pipe depth 200(>cFS 최대 50)으로 즉시 종료됐고, **현재 코드 깊이는 50**(`lora_tdm_app.c:268`)으로 수정됐으나 baseline(startup) 미등록 상태는 유지된다.
+> 현재 역할은 `lora_fc_downlink_app`(downlink) + SB 기반 uplink 경로로 대체됨.
+> 아래 테스트는 코드에 존재하나 baseline 미배포이므로 참고용 이력으로 유지한다.
 
 테스트 위치:
 - `lora_tdm_app/unit-test/coveragetest/coveragetest_lora_tdm_app.c`

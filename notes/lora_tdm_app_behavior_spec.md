@@ -51,7 +51,7 @@
 
 ### 5.1 구독 MID
 
-`lora_tdm_app`은 초기화 중 다음 MID를 구독한다. 모든 구독은 단일 파이프 `LORA_TDM_PIPE` (깊이 10)로 수신한다.
+`lora_tdm_app`은 초기화 중 다음 MID를 구독한다. 모든 구독은 단일 파이프 `LORA_TDM_PIPE` (깊이 50, `lora_tdm_app.c:268`)로 수신한다.
 
 | 심볼 | 값 | 목적 |
 | --- | --- | --- |
