@@ -102,7 +102,7 @@ SET(FT_INSTALL_SUBDIR "host/functional-test")
 SET(MISSION_CPUNAMES cpu1)
 
 SET(cpu1_PROCESSORID 1)
-SET(cpu1_APPLIST ci_lab to_lab sch_lab mavlink_bridge_app cfs_core_app uplink_app lora_fc_downlink_app)
+SET(cpu1_APPLIST ci_lab to_lab sch_lab mavlink_bridge_app cfs_core_app uplink_app lora_tdm_app)
 SET(cpu1_FILELIST cfe_es_startup.scr)
 SET(cpu1_SYSTEM native)
 
@@ -110,7 +110,7 @@ SET(cpu1_SYSTEM native)
 set(mavlink_bridge_app_SEARCH_PATH "${CMAKE_CURRENT_LIST_DIR}/..")
 set(cfs_core_app_SEARCH_PATH       "${CMAKE_CURRENT_LIST_DIR}/..")
 set(uplink_app_SEARCH_PATH         "${CMAKE_CURRENT_LIST_DIR}/..")
-set(lora_fc_downlink_app_SEARCH_PATH "${CMAKE_CURRENT_LIST_DIR}/..")
+set(lora_tdm_app_SEARCH_PATH "${CMAKE_CURRENT_LIST_DIR}/..")
 
 # CPU2 example.  This is not built by default anymore but
 # serves as an example of how one would configure multiple cpus.
