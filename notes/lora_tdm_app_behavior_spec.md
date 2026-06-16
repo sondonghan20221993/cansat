@@ -167,6 +167,8 @@ UP,<version>,<command_class>,<sequence>,<flags>,<payload_hex>,<crc16_hex>
 CRC 검증 대상: `UP,<version>,<command_class>,<sequence>,<flags>,<payload_hex>` (첫 6개 필드 comma 결합 문자열).
 알고리즘: CRC-16/CCITT-FALSE (init=0xFFFF, poly=0x1021).
 
+`<payload_hex>`가 빈 문자열인 프레임(payload 없는 명령)도 유효하다. 파싱은 1차로 `%[^,]` 기반 sscanf를 시도하고, 빈 payload로 인해 실패하면 `,,` 리터럴을 포함한 대체 포맷으로 재시도한다 (`lora_tdm_app_utils.c` `ProcessUpFrame`, 2026-06-16 수정 — 이전에는 빈 payload 프레임이 전부 CRC_FAIL로 오판되던 버그가 있었음, `Test_ProcessRxLine_ValidUp`로 검증).
+
 CRC 불일치 시: `PendingUplinkFeedback = UPLINK_FB_CRC_FAIL`, `RxErrorCount++`, 전달 안 함.
 CRC 통과 시: `LORA_TDM_APP_UplinkFwdCmd_t` 구성 → `CFE_MSG_Init()` + `CFE_SB_TransmitMsg()` to `UPLINK_APP_CMD_MID_VALUE (0x18D0)`.
 
