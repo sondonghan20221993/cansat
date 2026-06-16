@@ -28,8 +28,8 @@
 |---|---|---|---|
 | `cfs_core_app` | ~92 | — | 2026-06-16 |
 | `uplink_app` | 35 | 63+ | 2026-06-07 |
-| `lora_fc_downlink_app` | 14 | 40+ | 2026-06-07 |
-| ~~`lora_tdm_app`~~ (baseline 제거됨) | 30 | ~50 | 2026-06-11 |
+| ~~`lora_fc_downlink_app`~~ (baseline 제거됨, 2026-06-16 — `lora_tdm_app`으로 대체) | 14 | 40+ | 2026-06-07 |
+| `lora_tdm_app` (baseline 등록됨, 2026-06-16) | 75 (4개 testrunner) | — | 2026-06-16 |
 | `mavlink_bridge_app` | 25 | — | 2026-06-02 |
 
 > **2026-06-15 통합 변경 (Task A/B/C)** — 아래 항목은 unit-test 갱신 대기(coveragetest 미반영):
@@ -215,7 +215,9 @@ Init/dispatch 추가:
 
 ---
 
-### `lora_fc_downlink_app`
+### ~~`lora_fc_downlink_app`~~ (baseline 제거됨, 2026-06-16 — `lora_tdm_app`으로 대체)
+
+> startup script에서 제거됨(`lora_tdm_app`이 prio 58 슬롯 대체). 코드와 아래 테스트는 이력 참고용으로 유지.
 
 테스트 위치:
 - `lora_fc_downlink_app/unit-test/coveragetest/coveragetest_lora_fc_downlink_app.c`
@@ -259,11 +261,10 @@ Init/dispatch 추가:
 
 ---
 
-### ~~`lora_tdm_app`~~ (baseline 제거됨, 2026-06-15)
+### `lora_tdm_app` (baseline 등록됨, 2026-06-16)
 
-> startup script에서 제거됨. 구버전은 pipe depth 200(>cFS 최대 50)으로 즉시 종료됐고, **현재 코드 깊이는 50**(`lora_tdm_app.c:268`)으로 수정됐으나 baseline(startup) 미등록 상태는 유지된다.
-> 현재 역할은 `lora_fc_downlink_app`(downlink) + SB 기반 uplink 경로로 대체됨.
-> 아래 테스트는 코드에 존재하나 baseline 미배포이므로 참고용 이력으로 유지한다.
+> **2026-06-16: startup script에 등록됨** (`lora_fc_dl_app` 대체, prio 58). 구버전은 pipe depth 200(>cFS 최대 50)으로 즉시 종료됐으나 **현재 코드 깊이는 50**(`lora_tdm_app.c:268`)으로 수정 완료.
+> `lora_fc_downlink_app`(downlink TX) + `bridge/lora_uplink_bridge.py`(uplink RX, Pi 별도 프로세스)가 하던 역할을 이 앱 하나가 흡수. **Pi에서 python 프로세스 종료 및 cFS 프레임워크(이 저장소 밖) 앱 목록 갱신은 별도 운영 작업으로 필요**.
 >
 > **2026-06-16 재검증**: 이 앱은 `cFS_clean` 빌드 환경(targets.cmake)에 등록된 적이 없어 native unit-test가 한 번도 실제로 빌드·실행되지 않은 상태였다(아래 "✓" 표시는 코드 정독 기준, 실행 검증 아니었음). `tdm_refactor` 브랜치에서 임시로 등록해 처음으로 빌드/실행한 결과 버그 3건 발견 및 수정:
 > 1. `coveragetest_lora_tdm_app_utils.c`: `LORA_TDM_APP_ProcessRxLine` 호출에 문자열 리터럴(`const char*`) 전달 시 `char*` 시그니처와 불일치 → 컴파일 에러(`-Werror=discarded-qualifiers`). 함수가 실제로는 읽기 전용이므로 시그니처를 `const char *Line`으로 수정.

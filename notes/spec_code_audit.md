@@ -84,7 +84,7 @@
 
 ## 4. 교차 통합 패스 ↔ `mission_app_runtime_spec.md`
 
-**배포 baseline (`mission_defs/cpu1_cfe_es_startup.scr`)**: `mav_bridge_app`(prio50), `cfs_core_app`(55), `uplink_app`(57), `lora_fc_dl_app`(58) + lab apps(ci/to/sch).
+**배포 baseline (`mission_defs/cpu1_cfe_es_startup.scr`, 2026-06-16 갱신)**: `mav_bridge_app`(prio50), `cfs_core_app`(55), `uplink_app`(57), **`lora_tdm_app`(58, `lora_fc_dl_app` 대체)** + lab apps(ci/to/sch).
 → **`lora_tdm_app`·`telemetry_app`·`img_app`은 startup 미등록(미배포)**.
 
 **uplink_app 명령 라우팅 MID (uplink_app/config)**: `UPLINK_STATUS 0x190A`, `ROUTE_UPDATE 0x190B`, `RECOVERY_CMD 0x190C`, `VIEWPOINT_CMD 0x190D`, `CONFIG_CMD 0x190E`, `MODE_CMD 0x190F`, `DIAGNOSTIC_CMD 0x1910`, `UPLINK_APP_LORA_RAW 0x1909`, HK `0x08D0`.
@@ -94,8 +94,13 @@
 | 4-1 | **MID 충돌** | — | uplink_app:12 ↔ lora_tdm topicid:21 | — | `MODE_CMD_MID 0x190F`(uplink) = `LORA_TDM_APP_LINK_STATUS_MID 0x190F`(tdm) | ✅ **해결** | lora_tdm `LINK_STATUS_MID_VALUE` `0x190F`→**`0x1911`** 재할당(미배포 측 이동). uplink `MODE_CMD 0x190F` 유지. 문서(behavior spec/README) 동기화 완료 |
 | 4-2 | MID 인벤토리 | §5.1.1,§17.1 | uplink_app msgid | (누락) | `RECOVERY_CMD 0x190C`, `VIEWPOINT_CMD 0x190D`, `CONFIG_CMD 0x190E`, `MODE_CMD 0x190F`, `DIAGNOSTIC_CMD 0x1910`, `UPLINK_APP_LORA_RAW 0x1909` | ✅ **해결** | §17.1에 FC 상태 MID·라우팅 명령 MID(0x190C~0x1910)·0x1909·0x1911 추가 (2026-06-16) |
 | 4-3 (=1-6) | 게시율 | §5.1.1 | mavlink internal_cfg | ATTITUDE `~20Hz`, EKF `~10Hz`, GPS `~5Hz` | stream req ATTITUDE 5Hz(200ms), EKF 2Hz(500ms), GPS 2Hz(500ms) | ✅ **해결** | §5.1.1 게시율을 코드 stream 요청 간격으로 정정 + "FC 송신율 의존" 명시 (2026-06-16) |
-| 4-4 | 앱 집합 | §4 | startup.scr | downlink 역할 = `lora_fc_downlink_app` | startup에 `lora_fc_dl_app` 등록 | ✅ | 일치 (이전 pass에서 정정 완료) |
-| 4-5 | 배포 상태 | §2(현황) | startup.scr | — | `lora_tdm_app` 코드 존재·미배포, `telemetry_app`/`img_app` 미배포 | 📝 | §2 범위/현황에 "lora_tdm_app 코드 완료·미배포(향후 lora_fc_downlink 대체)" 명시 |
+| 4-4 | 앱 집합 | §4 | startup.scr | downlink 역할 = `lora_fc_downlink_app` | **변경**: startup.scr에서 `lora_fc_dl_app` 제거, `lora_tdm_app` 등록(prio 58) (2026-06-16) | ❌ | §4/§17 등 `lora_fc_downlink_app`을 downlink 역할 구현체로 서술하는 부분을 `lora_tdm_app`으로 갱신 필요 (대규모 — 별도 작업) |
+| 4-5 | 배포 상태 | §2(현황) | startup.scr | — | `lora_tdm_app` baseline 등록됨(2026-06-16), `lora_fc_downlink_app`은 코드 보존·미배포로 전환. `telemetry_app`/`img_app` 미배포 유지 | 📝 | §2 범위/현황 갱신 필요 |
+
+> **2026-06-16 배포 전환 후속 작업 (코드/문서 외부, 운영 단계):**
+> - Pi에서 `bridge/lora_uplink_bridge.py`, `bridge/lora_telemetry_bridge.py` 프로세스 종료 필요 (둘 다 `lora_tdm_app`과 같은 LoRa serial을 점유하면 충돌).
+> - Pi 크로스컴파일용 cFS 프레임워크의 앱 목록(`targets.cmake` 등, 이 저장소 밖)에 `lora_tdm_app` 추가 필요.
+> - `mission_app_runtime_spec.md`는 `lora_fc_downlink_app`을 downlink 역할 구현체로 광범위하게 서술 중(§4,§6,§11,§17~18 등) — 전면 갱신은 별도 작업으로 분리.
 | 4-6 | uplink 라우팅 | §18.4.x | dispatch 체인 | 명령 클래스 문서화됨 | `uplink_app`→(0x190C~0x1910)→`cfs_core_app`(viewpoint/config 구독) 실재 | ✅ | 클래스→MID 값 매핑만 보강(§4-2와 연계) |
 | 4-7 | **dead-end 라우팅** | §18.4.x (명령 클래스 분류) | `uplink_app_utils.c` `ForwardRecoveryCommand`/`ForwardModeCommand`/`ForwardDiagnosticCommand` | spec: RECOVERY/MODE/DIAGNOSTIC 명령 클래스가 대상 앱으로 라우팅됨을 전제 | `RECOVERY_CMD_MID`(0x190C)/`MODE_CMD_MID`(0x190F)/`DIAGNOSTIC_CMD_MID`(0x1910) — `grep -rl` 결과 코드베이스 전체에서 **publish하는 uplink_app 자신 외 구독자가 0개**. `cfs_core_app`/`mavlink_bridge_app`/`lora_fc_downlink_app` 어디도 구독 안 함 | ❌ | uplink_app은 이 3개 클래스를 검증 통과시키고 "라우팅 성공"으로 카운트하지만 실제 수신·처리하는 앱이 없음(허공에 publish). 대상 앱에 구독 추가 또는 spec에 "미구현 라우팅 대상"으로 명시 필요 (2026-06-16 발견) |
 

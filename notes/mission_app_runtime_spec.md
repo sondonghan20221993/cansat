@@ -860,7 +860,7 @@ FC, 모터 또는 액추에이터 명령 및 비행 제어 매개변수
 | `CONFIG_CMD_MID` | `0x190E` (uplink_app → cfs_core_app / mavlink_bridge_app) |
 | `MODE_CMD_MID` | `0x190F` (uplink_app 라우팅) |
 | `DIAGNOSTIC_CMD_MID` | `0x1910` (uplink_app 라우팅) |
-| `LORA_TDM_APP_LINK_STATUS_MID` | `0x1911` (lora_tdm_app; baseline 미배포) |
+| `LORA_TDM_APP_LINK_STATUS_MID` | `0x1911` (lora_tdm_app; baseline 등록됨, 2026-06-16 — `lora_fc_downlink_app` 대체) |
 
 > 명령 라우팅 MID(`0x190C`~`0x1910`)는 `uplink_app`이 검증된 uplink 명령을 클래스별로 publish하는 대상이다(§18.4.7 라우팅 표 참조). `0x1909`는 `lora_fc_downlink_app`이 LoRa로 수신한 "UP,..." 원문을 `uplink_app`에 전달하는 raw frame MID이다.
 
