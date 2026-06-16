@@ -53,31 +53,36 @@
 
 `lora_tdm_app`은 초기화 중 다음 MID를 구독한다. 모든 구독은 단일 파이프 `LORA_TDM_PIPE` (깊이 50, `lora_tdm_app.c:268`)로 수신한다.
 
-| 심볼 | 값 | 목적 |
-| --- | --- | --- |
-| `LORA_TDM_APP_CMD_MID_VALUE` | `0x18E0` | 명령 입력 (NOOP, RESET_COUNTERS) |
-| `LORA_TDM_APP_SEND_HK_MID_VALUE` | `0x18E1` | HK 게시 요청 |
-| `LORA_TDM_APP_SYSTEM_HEALTH_MID_VALUE` | `0x1904` | `cfs_core_app` 시스템 헬스 캐시 갱신 |
-| `LORA_TDM_APP_FC_EKF_LOCAL_STATE_MID_VALUE` | `0x1905` | FC local position/velocity 캐시 갱신 |
-| `LORA_TDM_APP_FC_ATTITUDE_STATE_MID_VALUE` | `0x1906` | FC attitude 캐시 갱신 |
-| `LORA_TDM_APP_FC_GPS_RAW_STATE_MID_VALUE` | `0x1907` | FC GPS 캐시 갱신 |
-| `LORA_TDM_APP_FC_EKF_STATUS_MID_VALUE` | `0x1908` | FC EKF status 캐시 갱신 |
+기본 원칙: 이 앱의 구독은 기존 앱들과 동일하게 **`CFE_SB_Subscribe()`(기본 limit=4)를 기준**으로 한다.
+저빈도 MID(명령·HK 요청·1Hz 헬스)는 이 기본값을 그대로 따른다. 다만 아래 표의 4개 FC 상태 MID는
+**문서화된 예외**로 `CFE_SB_SubscribeEx()` + 커스텀 `MsgLim`을 쓴다 — 이유는 표 아래 노트 참고.
 
-> **알려진 문제 (2026-06-16, 실 Pi 런타임에서 확인)**: 위 구독이 전부 `CFE_SB_Subscribe()`(기본 함수)를 쓰는데,
-> 이 경우 cFE 기본값 `CFE_PLATFORM_SB_DEFAULT_MSG_LIMIT = 4`가 적용된다 — **MsgId별로 미처리 메시지 4개까지만
-> 허용**하며, 이는 파이프 깊이(50)와는 별개의 제한이다. **파이프 깊이를 늘려도 이 문제는 해결되지 않는다.**
+| 심볼 | 값 | 목적 | 구독 함수 |
+| --- | --- | --- | --- |
+| `LORA_TDM_APP_CMD_MID_VALUE` | `0x18E0` | 명령 입력 (NOOP, RESET_COUNTERS) | `CFE_SB_Subscribe()` (기본) |
+| `LORA_TDM_APP_SEND_HK_MID_VALUE` | `0x18E1` | HK 게시 요청 | `CFE_SB_Subscribe()` (기본) |
+| `LORA_TDM_APP_SYSTEM_HEALTH_MID_VALUE` | `0x1904` | `cfs_core_app` 시스템 헬스 캐시 갱신 (1Hz, 기본 limit 4로 충분) | `CFE_SB_Subscribe()` (기본) |
+| `LORA_TDM_APP_FC_EKF_LOCAL_STATE_MID_VALUE` | `0x1905` | FC local position/velocity 캐시 갱신 | `CFE_SB_SubscribeEx()`, MsgLim=10 **(예외)** |
+| `LORA_TDM_APP_FC_ATTITUDE_STATE_MID_VALUE` | `0x1906` | FC attitude 캐시 갱신 | `CFE_SB_SubscribeEx()`, MsgLim=10 **(예외)** |
+| `LORA_TDM_APP_FC_GPS_RAW_STATE_MID_VALUE` | `0x1907` | FC GPS 캐시 갱신 | `CFE_SB_SubscribeEx()`, MsgLim=10 **(예외)** |
+| `LORA_TDM_APP_FC_EKF_STATUS_MID_VALUE` | `0x1908` | FC EKF status 캐시 갱신 | `CFE_SB_SubscribeEx()`, MsgLim=10 **(예외)** |
+
+> **수정 완료 (2026-06-16, 실 Pi 런타임에서 발견 후 코드 수정)**: 위 4개 FC 상태 MID가 원래
+> 다른 MID와 동일하게 `CFE_SB_Subscribe()`(기본 함수)를 썼는데, 이 경우 cFE 기본값
+> `CFE_PLATFORM_SB_DEFAULT_MSG_LIMIT = 4`가 적용된다 — **MsgId별로 미처리 메시지 4개까지만
+> 허용**하며, 이는 파이프 깊이(50)와는 별개의 제한이다(파이프 깊이를 늘려도 해결되지 않음).
 >
 > `lora_tdm_app`의 cycle 주기는 약 1.3초(`OS_TaskDelay(1000ms)` + 최대 `RX_WINDOW_MS(300)`)인데, FC가
 > `FC_ATTITUDE_STATE_MID`/`FC_EKF_LOCAL_STATE_MID`를 5 Hz(200ms)로 보내면 한 cycle 사이에 6~7개가 쌓여
-> limit 4를 넘는다. 실제 Pi 실행 로그에 다음 에러가 반복 확인됨:
+> limit 4를 넘었다. 실제 Pi 실행 로그에서 다음 에러가 반복 확인됨:
 > ```
 > CFE_SB 17: Msg Limit Err, MsgId 0x1904, pipe LORA_TDM_PIPE, sender CFS_CORE_APP
 > CFE_SB 17: Msg Limit Err, MsgId 0x1906, pipe LORA_TDM_PIPE, sender MAVLINK_BRIDGE_APP
 > ```
-> 캐시는 최신값으로 덮어쓰는 구조라 치명적 데이터 손실은 아니나(드롭돼도 다음 메시지가 최신값 갱신),
-> 불필요한 에러 이벤트가 계속 쌓인다. **해결 방안**: 고빈도 MID(`FC_ATTITUDE_STATE`/`FC_EKF_LOCAL_STATE`
-> 등 5 Hz)는 `CFE_SB_Subscribe()` 대신 `CFE_SB_SubscribeEx()`로 더 큰 `MsgLim`(예: 10)을 명시해야 한다.
-> 미해결 — 코드 수정 필요.
+> 캐시는 최신값으로 덮어쓰는 구조라 치명적 데이터 손실은 아니었으나(드롭돼도 다음 메시지가 최신값 갱신),
+> 불필요한 에러 이벤트가 계속 쌓였다. **조치**: 4개 FC 상태 MID만 `CFE_SB_SubscribeEx(..., CFE_SB_DEFAULT_QOS, 10)`로
+> 변경(`lora_tdm_app.c`). `CMD`/`SEND_HK`/`SYSTEM_HEALTH`는 저빈도라 기존 `CFE_SB_Subscribe()` 그대로 유지 —
+> 앱 전체 구독 방식을 바꾼 게 아니라, 실측 근거가 있는 4개 MID에 한정한 예외 처리다.
 
 ### 5.2 게시 MID
 

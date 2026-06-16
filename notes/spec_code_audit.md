@@ -168,9 +168,9 @@
 
 **audit 패스(1~4)의 기존 ❌/⚠️/🕒 항목 해결 완료 (문서 정정 + 코드 수정 2건 + 위 블로커 3건).**
 
-**신규 발견, 미해결 (2026-06-16):**
+**신규 발견 (2026-06-16):**
 - ❌ **4-7 RECOVERY/MODE/DIAGNOSTIC 명령 dead-end** — `uplink_app`이 검증·라우팅까지는 하지만, `RECOVERY_CMD_MID`/`MODE_CMD_MID`/`DIAGNOSTIC_CMD_MID`를 구독하는 앱이 코드베이스 전체에 없음. 지상국이 이 3개 클래스 명령을 보내도 실제로 처리되지 않음.
 - ❌ **`mission_app_runtime_spec.md` §11.1 vs 코드** — spec은 `cfs_core_app`을 "모든 앱의 복구 권한(recovery authority)"로 설계(반복 앱 오류 시 60초/앱당 3회로 재시작)했으나, 코드의 `CFE_ES_RestartApp` 호출은 전체에서 1곳뿐이고 대상이 `mavlink_bridge_app`으로 하드코딩됨(5초/3회). `uplink_app`/`lora_fc_downlink_app`에 대한 감시·재시작·에스컬레이션 수신 메커니즘 없음. §11.1 표를 코드 기준으로 정정 필요.
-- ❌ **`lora_tdm_app` SB Msg Limit Err (실 Pi 런타임에서 발견)** — `LORA_TDM_PIPE` 구독이 전부 `CFE_SB_Subscribe()`(기본 limit=4)라서, 5Hz로 들어오는 `FC_ATTITUDE_STATE`/`FC_EKF_LOCAL_STATE_MID`가 ~1.3초 cycle 사이에 4개 한도를 넘어 드롭됨(`CFE_SB Msg Limit Err` 반복 발생, 파이프 깊이 50과는 무관한 별개 제한). 치명적 데이터 손실은 아니나(캐시는 최신값 덮어쓰기) 에러 이벤트 누적. 해결: 고빈도 MID를 `CFE_SB_SubscribeEx()`로 더 큰 MsgLim 지정. 상세는 `lora_tdm_app_behavior_spec.md` §5.1.
+- ✅ **해결 — `lora_tdm_app` SB Msg Limit Err (실 Pi 런타임에서 발견)** — `LORA_TDM_PIPE`의 FC 상태 MID 4개가 전부 `CFE_SB_Subscribe()`(기본 limit=4)라서, 5Hz로 들어오는 `FC_ATTITUDE_STATE`/`FC_EKF_LOCAL_STATE_MID`가 ~1.3초 cycle 사이에 4개 한도를 넘어 드롭됨(`CFE_SB Msg Limit Err` 반복 발생, 파이프 깊이 50과는 무관한 별개 제한). **코드 수정**: 이 4개 MID만 `CFE_SB_SubscribeEx(..., MsgLim=10)`으로 변경(`lora_tdm_app.c`). `CMD`/`SEND_HK`/`SYSTEM_HEALTH`는 저빈도라 기존 기본 `CFE_SB_Subscribe()` 유지 — 앱 전체 구독 방식이 아니라 실측 근거 있는 4개 MID 한정 예외. 상세는 `lora_tdm_app_behavior_spec.md` §5.1.
 
-이 3건은 spec 정정이 아니라 **실제 기능 격차**라 코드 작업(라우팅 대상 구현/MsgLim 조정 또는 spec에 미구현 명시) 필요 — 사용자 확인 후 진행.
+위 2건(4-7, §11.1)은 spec 정정이 아니라 **실제 기능 격차**라 코드 작업(라우팅 대상 구현 또는 spec에 미구현 명시) 필요 — 사용자 확인 후 진행. Msg Limit Err 건은 코드 수정 완료(위 ✅).
