@@ -53,6 +53,25 @@ SET(cpu1_SYSTEM i686-linux-gnu)   # Raspberry Pi용 (32-bit)
 # SET(cpu1_SYSTEM arm-linux-gnueabihf)
 ```
 
+### 런타임 실행 시 `sudo` 필요 (2026-06-16 확인)
+
+`core-cpu1`을 일반 사용자 권한으로 실행하면 다음 에러로 즉시 종료된다.
+
+```
+CFE_PSP: OS_API_Init() failure
+```
+
+**원인**: `OS_API_Init()` → `OS_API_Impl_Init()` → `OS_Posix_TableMutex_Init()`
+(`osal/src/os/posix/src/os-impl-idmap.c`)에서 mutex 속성에
+`pthread_mutexattr_setprotocol(&mutex_attr, PTHREAD_PRIO_INHERIT)`를 설정하는데,
+이 우선순위 상속(priority-inheritance) mutex 속성은 일반 사용자 권한에서는 설정이
+거부될 수 있다. `sudo`로 실행하면 정상 동작한다.
+
+```bash
+cd ~/cFS_clean/build/exe/cpu1
+sudo ./core-cpu1 2>&1 | tee /tmp/cfs_run.log
+```
+
 ---
 
 ## 환경 전환 방법
