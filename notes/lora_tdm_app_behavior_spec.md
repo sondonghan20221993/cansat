@@ -68,7 +68,7 @@
 | 심볼 | 값 | 목적 |
 | --- | --- | --- |
 | `LORA_TDM_APP_HK_TLM_MID_VALUE` | `0x08E0` | HK 텔레메트리 |
-| `LORA_TDM_APP_LINK_STATUS_MID_VALUE` | `0x1911` | LoRa 링크 상태 텔레메트리 (구 `0x190F` → `uplink_app MODE_CMD_MID`와 충돌하여 재할당) |
+| `LORA_TDM_APP_LINK_STATUS_MID_VALUE` | `0x1911` | LoRa 링크 상태 텔레메트리 (구 `0x190F` → `uplink_app MODE_CMD_MID`와 충돌하여 재할당). 현재 호출 경로 없음 — §15 참고 |
 | `UPLINK_APP_CMD_MID_VALUE` | `0x18D0` | UP frame forward (수신된 uplink를 uplink_app에 전달) |
 
 ## 6. 내부 상태 캐시
@@ -108,7 +108,7 @@ CYCLE_PERIOD_MS = 1000 ms
 
 1. **SB pipe drain** (`CFE_SB_POLL`): 대기 중인 모든 메시지를 처리한다.
    - FC 상태 MID → `UpdateCacheFromMsg()` 호출로 내부 캐시 갱신
-   - SEND_HK → `ReportHousekeeping()` + `ReportLinkStatus()` 호출
+   - SEND_HK → `ReportHousekeeping()` 호출 (`ReportLinkStatus()`는 호출되지 않음 — §15 참고)
    - CMD MID → dispatch (NOOP, RESET_COUNTERS)
 2. **serial open**: `LoRaFd < 0`이면 `OpenSerial()` 시도.
 3. **TX** (`RunTx`): FC 또는 SH downlink 패킷 1건 전송.
@@ -253,5 +253,5 @@ else:
 ## 15. 미구현 항목
 
 - `SEQ_FAIL` 경로: `UPLINK_FB_SEQ_FAIL` 상수가 정의되어 있으나, sequence 단조 증가 검증 및 피드백 전송 로직이 구현되지 않았다.
-- `SEND_HK` 수신 시 `ReportLinkStatus()` 비호출 여부 확인 필요: 현재 dispatch.c에서 `SEND_HK_MID`는 `ReportHousekeeping()`만 호출하며 `ReportLinkStatus()`는 별도 호출되지 않는다. 필요 시 추가.
+- `ReportLinkStatus()`는 `lora_tdm_app.c`에 정의되어 있으나, `dispatch.c`(SEND_HK 처리)와 `RunCycle()`(주기 처리) 어디에서도 호출되지 않는다 (코드 확인, 2026-06-16). 즉 `LORA_TDM_APP_LINK_STATUS_MID`(0x1911)는 현재 게시되지 않는 dead code 상태다. SEND_HK 처리 또는 주기적 호출 추가가 필요하다.
 - `PacketType` 전환 명령: 현재 외부 명령으로 `PacketType`을 전환하는 command code가 없다.
