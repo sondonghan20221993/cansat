@@ -285,8 +285,11 @@ CFE_Status_t LORA_TDM_APP_Init(void)
         return Status;
     }
 
-    Status = CFE_SB_Subscribe(CFE_SB_ValueToMsgId(LORA_TDM_APP_SYSTEM_HEALTH_MID_VALUE),
-                               LORA_TDM_APP_Data.CommandPipe);
+    /* cfs_core_app force-publishes SYSTEM_HEALTH_MID immediately on every FC state update
+     * (see cfs_core_app_behavior_spec.md §11.1), not on a 1Hz timer, so this needs the same
+     * higher MsgLim as the FC_* MIDs below. */
+    Status = CFE_SB_SubscribeEx(CFE_SB_ValueToMsgId(LORA_TDM_APP_SYSTEM_HEALTH_MID_VALUE),
+                                 LORA_TDM_APP_Data.CommandPipe, CFE_SB_DEFAULT_QOS, 20);
     if (Status != CFE_SUCCESS)
     {
         return Status;
