@@ -121,8 +121,8 @@ CYCLE_PERIOD_MS = 1000 ms
 
 | PacketType | 형식 |
 | --- | --- |
-| FC State (default = 0) | `FC,<seq>,<ts>,<roll>,<pitch>,<yaw>,<x>,<y>,<z>,<vx>,<vy>,<vz>,<lat_e7>,<lon_e7>,<alt_mm>,<fix>,<ufb>\n` |
-| SYSTEM_HEALTH (`LORA_TDM_APP_SYSTEM_HEALTH_PACKET_TYPE`) | `SH,<seq>,<ts>,<state>,<fault>,<linkstate>,<ufb>\n` |
+| FC State (`LORA_TDM_APP_FC_STATE_PACKET_TYPE` = 1) | `FC,<seq>,<ts>,<roll>,<pitch>,<yaw>,<x>,<y>,<z>,<vx>,<vy>,<vz>,<lat_e7>,<lon_e7>,<alt_mm>,<fix>,<ufb>\n` |
+| SYSTEM_HEALTH (`LORA_TDM_APP_SYSTEM_HEALTH_PACKET_TYPE` = 2) | `SH,<seq>,<ts>,<state>,<fault>,<linkstate>,<ufb>\n` |
 
 필드 상세:
 - `<seq>`: `DownlinkSeq` (전송 성공마다 1 증가)
