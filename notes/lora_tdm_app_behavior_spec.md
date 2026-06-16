@@ -63,6 +63,22 @@
 | `LORA_TDM_APP_FC_GPS_RAW_STATE_MID_VALUE` | `0x1907` | FC GPS 캐시 갱신 |
 | `LORA_TDM_APP_FC_EKF_STATUS_MID_VALUE` | `0x1908` | FC EKF status 캐시 갱신 |
 
+> **알려진 문제 (2026-06-16, 실 Pi 런타임에서 확인)**: 위 구독이 전부 `CFE_SB_Subscribe()`(기본 함수)를 쓰는데,
+> 이 경우 cFE 기본값 `CFE_PLATFORM_SB_DEFAULT_MSG_LIMIT = 4`가 적용된다 — **MsgId별로 미처리 메시지 4개까지만
+> 허용**하며, 이는 파이프 깊이(50)와는 별개의 제한이다. **파이프 깊이를 늘려도 이 문제는 해결되지 않는다.**
+>
+> `lora_tdm_app`의 cycle 주기는 약 1.3초(`OS_TaskDelay(1000ms)` + 최대 `RX_WINDOW_MS(300)`)인데, FC가
+> `FC_ATTITUDE_STATE_MID`/`FC_EKF_LOCAL_STATE_MID`를 5 Hz(200ms)로 보내면 한 cycle 사이에 6~7개가 쌓여
+> limit 4를 넘는다. 실제 Pi 실행 로그에 다음 에러가 반복 확인됨:
+> ```
+> CFE_SB 17: Msg Limit Err, MsgId 0x1904, pipe LORA_TDM_PIPE, sender CFS_CORE_APP
+> CFE_SB 17: Msg Limit Err, MsgId 0x1906, pipe LORA_TDM_PIPE, sender MAVLINK_BRIDGE_APP
+> ```
+> 캐시는 최신값으로 덮어쓰는 구조라 치명적 데이터 손실은 아니나(드롭돼도 다음 메시지가 최신값 갱신),
+> 불필요한 에러 이벤트가 계속 쌓인다. **해결 방안**: 고빈도 MID(`FC_ATTITUDE_STATE`/`FC_EKF_LOCAL_STATE`
+> 등 5 Hz)는 `CFE_SB_Subscribe()` 대신 `CFE_SB_SubscribeEx()`로 더 큰 `MsgLim`(예: 10)을 명시해야 한다.
+> 미해결 — 코드 수정 필요.
+
 ### 5.2 게시 MID
 
 | 심볼 | 값 | 목적 |
