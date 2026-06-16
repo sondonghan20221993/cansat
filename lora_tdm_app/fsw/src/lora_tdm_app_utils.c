@@ -190,11 +190,18 @@ static void ProcessUpFrame(const char *Line, LORA_TDM_APP_Data_t *AppData)
     if (sscanf(Line + 3, "%7[^,],%7[^,],%7[^,],%7[^,],%[^,],%7s",
                VersionStr, ClassStr, SeqStr, FlagsStr, PayloadHex, CrcStr) != 6)
     {
-        AppData->PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_CRC_FAIL;
-        AppData->RxErrorCount++;
-        CFE_EVS_SendEvent(LORA_TDM_APP_CRC_FAIL_EID, CFE_EVS_EventType_ERROR,
-                          "LORA_TDM_APP: UP frame parse error");
-        return;
+        /* "%[^,]" requires >=1 char, so a zero-length payload_hex field (",,")
+         * falls through here. Retry assuming an empty payload before failing. */
+        PayloadHex[0] = '\0';
+        if (sscanf(Line + 3, "%7[^,],%7[^,],%7[^,],%7[^,],,%7s",
+                   VersionStr, ClassStr, SeqStr, FlagsStr, CrcStr) != 5)
+        {
+            AppData->PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_CRC_FAIL;
+            AppData->RxErrorCount++;
+            CFE_EVS_SendEvent(LORA_TDM_APP_CRC_FAIL_EID, CFE_EVS_EventType_ERROR,
+                              "LORA_TDM_APP: UP frame parse error");
+            return;
+        }
     }
 
     Version      = (uint8)strtoul(VersionStr, NULL, 0);
@@ -267,7 +274,7 @@ static void ProcessUpFrame(const char *Line, LORA_TDM_APP_Data_t *AppData)
 
 /* ---- Process a received line ---- */
 
-void LORA_TDM_APP_ProcessRxLine(char *Line, LORA_TDM_APP_Data_t *AppData)
+void LORA_TDM_APP_ProcessRxLine(const char *Line, LORA_TDM_APP_Data_t *AppData)
 {
     uint32               SeqEcho;
     LORA_TDM_AckResult_t AckResult;

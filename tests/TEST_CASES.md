@@ -264,6 +264,13 @@ Init/dispatch 추가:
 > startup script에서 제거됨. 구버전은 pipe depth 200(>cFS 최대 50)으로 즉시 종료됐고, **현재 코드 깊이는 50**(`lora_tdm_app.c:268`)으로 수정됐으나 baseline(startup) 미등록 상태는 유지된다.
 > 현재 역할은 `lora_fc_downlink_app`(downlink) + SB 기반 uplink 경로로 대체됨.
 > 아래 테스트는 코드에 존재하나 baseline 미배포이므로 참고용 이력으로 유지한다.
+>
+> **2026-06-16 재검증**: 이 앱은 `cFS_clean` 빌드 환경(targets.cmake)에 등록된 적이 없어 native unit-test가 한 번도 실제로 빌드·실행되지 않은 상태였다(아래 "✓" 표시는 코드 정독 기준, 실행 검증 아니었음). `tdm_refactor` 브랜치에서 임시로 등록해 처음으로 빌드/실행한 결과 버그 3건 발견 및 수정:
+> 1. `coveragetest_lora_tdm_app_utils.c`: `LORA_TDM_APP_ProcessRxLine` 호출에 문자열 리터럴(`const char*`) 전달 시 `char*` 시그니처와 불일치 → 컴파일 에러(`-Werror=discarded-qualifiers`). 함수가 실제로는 읽기 전용이므로 시그니처를 `const char *Line`으로 수정.
+> 2. `coveragetest_lora_tdm_app_dispatch.c`: `CmdNoop`/`CmdReset` 테스트가 `LORA_TDM_APP_Data.CmdCounter`를 직접 검증했으나, 이 dispatch 단독 테스트 바이너리에서는 `LORA_TDM_APP_Noop`/`ResetCounters`가 스텁(실제 카운터 미반영)이라 항상 실패. `UtAssert_STUB_COUNT`로 정정(다른 앱 dispatch 테스트와 동일 패턴).
+> 3. **실제 fsw 버그**: `lora_tdm_app_utils.c`의 `ProcessUpFrame`이 `sscanf("%[^,]", ...)`로 payload_hex를 파싱하는데, 이 지정자는 1자 이상 매칭을 요구해 **payload 없는(빈 문자열) UP 프레임을 전부 CRC_FAIL로 오판**하던 버그. `,,` 리터럴 포함 대체 포맷으로 재시도하도록 수정 (`Test_ProcessRxLine_ValidUp`로 검증). §9.1 참고.
+>
+> 수정 후 native 테스트 4개 바이너리 전부 재실행: **75/75 PASS, 0 FAIL**.
 
 테스트 위치:
 - `lora_tdm_app/unit-test/coveragetest/coveragetest_lora_tdm_app.c`
@@ -291,8 +298,8 @@ Init/dispatch 추가:
 |---|---|
 | `VerifyCmdLength` | 정상 길이 → dispatch 통과 |
 | `ProcessCommandPacket_SendHk` | `SEND_HK_MID` → HK 보고 경로 진입 |
-| `ProcessCommandPacket_CmdNoop` | `CMD_MID` + CC=0 → CmdCounter=1 |
-| `ProcessCommandPacket_CmdReset` | `CMD_MID` + CC=1 → CmdCounter=0 |
+| `ProcessCommandPacket_CmdNoop` | `CMD_MID` + CC=0 → `LORA_TDM_APP_Noop` 호출 1회 (`UtAssert_STUB_COUNT`) |
+| `ProcessCommandPacket_CmdReset` | `CMD_MID` + CC=1 → `LORA_TDM_APP_ResetCounters` 호출 1회 (`UtAssert_STUB_COUNT`) |
 | `ProcessCommandPacket_UnknownMid` | 알 수 없는 MID(0x9999) → ErrCounter=1 |
 | `ProcessCommandPacket_InvalidCC` | CC=99 → ErrCounter=1 |
 

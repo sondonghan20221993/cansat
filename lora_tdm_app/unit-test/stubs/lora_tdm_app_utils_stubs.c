@@ -30,9 +30,9 @@ int LORA_TDM_APP_BuildShDownlinkLine(char *Buf, size_t BufLen, const LORA_TDM_AP
     return UT_GenStub_GetReturnValue(LORA_TDM_APP_BuildShDownlinkLine, int);
 }
 
-void LORA_TDM_APP_ProcessRxLine(char *Line, LORA_TDM_APP_Data_t *AppData)
+void LORA_TDM_APP_ProcessRxLine(const char *Line, LORA_TDM_APP_Data_t *AppData)
 {
-    UT_GenStub_AddParam(LORA_TDM_APP_ProcessRxLine, char *, Line);
+    UT_GenStub_AddParam(LORA_TDM_APP_ProcessRxLine, const char *, Line);
     UT_GenStub_AddParam(LORA_TDM_APP_ProcessRxLine, LORA_TDM_APP_Data_t *, AppData);
     UT_GenStub_Execute(LORA_TDM_APP_ProcessRxLine, Basic, NULL);
 }

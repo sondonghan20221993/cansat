@@ -31,7 +31,7 @@ int LORA_TDM_APP_BuildShDownlinkLine(char *Buf, size_t BufLen,
                                       const LORA_TDM_APP_Data_t *AppData);
 
 /* Process a received line (ACK or UP); updates AppData state */
-void LORA_TDM_APP_ProcessRxLine(char *Line, LORA_TDM_APP_Data_t *AppData);
+void LORA_TDM_APP_ProcessRxLine(const char *Line, LORA_TDM_APP_Data_t *AppData);
 
 /* Update LinkState based on NoAckCount and LastAckTimestampMs */
 void LORA_TDM_APP_UpdateLinkState(LORA_TDM_APP_Data_t *AppData, uint32 NowMs);

@@ -56,7 +56,7 @@ void Test_ProcessCommandPacket_CmdNoop(void)
 
     LORA_TDM_APP_ProcessCommandPacket((CFE_SB_Buffer_t *)&Msg);
 
-    UtAssert_INT32_EQ(LORA_TDM_APP_Data.CmdCounter, 1);
+    UtAssert_STUB_COUNT(LORA_TDM_APP_Noop, 1);
 }
 
 void Test_ProcessCommandPacket_CmdReset(void)
@@ -67,7 +67,6 @@ void Test_ProcessCommandPacket_CmdReset(void)
     CFE_MSG_FcnCode_t               FcnCode;
 
     memset(&Msg, 0, sizeof(Msg));
-    LORA_TDM_APP_Data.CmdCounter = 5;
     CFE_MSG_Init(CFE_MSG_PTR(Msg.CommandHeader),
                  CFE_SB_ValueToMsgId(LORA_TDM_APP_CMD_MID_VALUE), sizeof(Msg));
     MsgId   = CFE_SB_ValueToMsgId(LORA_TDM_APP_CMD_MID_VALUE);
@@ -80,7 +79,7 @@ void Test_ProcessCommandPacket_CmdReset(void)
 
     LORA_TDM_APP_ProcessCommandPacket((CFE_SB_Buffer_t *)&Msg);
 
-    UtAssert_INT32_EQ(LORA_TDM_APP_Data.CmdCounter, 0);
+    UtAssert_STUB_COUNT(LORA_TDM_APP_ResetCounters, 1);
 }
 
 void Test_ProcessCommandPacket_UnknownMid(void)

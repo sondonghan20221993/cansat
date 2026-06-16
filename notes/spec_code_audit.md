@@ -155,7 +155,13 @@
 - `lora_tdm_app_dispatch.c`: SEND_HK 분기에 `LORA_TDM_APP_ReportLinkStatus()` 호출 추가 (기존엔 dead code — `LINK_STATUS_MID 0x1911`이 전혀 게시되지 않았음).
 - `mavlink_bridge_app/config/default_mavlink_bridge_app_platform_cfg.h`: 미사용 `MAVLINK_BRIDGE_APP_LORA_SERIAL_PATH`/`MAVLINK_BRIDGE_APP_LORA_BAUDRATE` 제거.
 
-**audit 패스(1~4)의 기존 ❌/⚠️/🕒 항목 해결 완료 (문서 정정 + 코드 수정 2건).** `lora_tdm_app` 빌드/테스트 블로커 3건(컴파일 에러, 잘못된 dispatch 단정문, `ProcessUpFrame` 빈 payload 파싱 버그)은 `tdm_refactor` 브랜치에서 별도 수정·검증 중 (75/75 PASS).
+**`lora_tdm_app` 빌드/테스트 블로커 3건 해소 (2026-06-16, `tdm_refactor`→main 병합):** `cFS_clean` 빌드 환경에 한 번도 등록된 적이 없어 native unit-test가 실제로 실행된 적이 없었음(코드 정독 기준 "✓" 표시만 존재). 임시 등록 후 처음 빌드/실행해 버그 3건 발견·수정 — 상세는 `tests/TEST_CASES.md` `lora_tdm_app` 섹션 참고:
+1. `lora_tdm_app_utils.h/.c` `ProcessRxLine`: `char*` → `const char*` (읽기 전용 함수, 테스트에서 문자열 리터럴 전달 시 컴파일 에러였음).
+2. `coveragetest_lora_tdm_app_dispatch.c`: `CmdNoop`/`CmdReset` 테스트가 stub이 반영 안 하는 `CmdCounter`를 직접 검증하던 오류 → `UtAssert_STUB_COUNT`로 정정.
+3. **실제 fsw 버그**: `ProcessUpFrame`의 `sscanf("%[^,]")`가 빈 payload(무페이로드 명령)를 파싱 못 해 전부 CRC_FAIL로 오판 → `,,` 대체 포맷 재시도 추가.
+검증: native 빌드-환경에 임시 등록 → 4개 테스트 바이너리 75/75 PASS 확인 → 등록 해제(원상복구).
+
+**audit 패스(1~4)의 기존 ❌/⚠️/🕒 항목 해결 완료 (문서 정정 + 코드 수정 2건 + 위 블로커 3건).**
 
 **신규 발견, 미해결 (2026-06-16):**
 - ❌ **4-7 RECOVERY/MODE/DIAGNOSTIC 명령 dead-end** — `uplink_app`이 검증·라우팅까지는 하지만, `RECOVERY_CMD_MID`/`MODE_CMD_MID`/`DIAGNOSTIC_CMD_MID`를 구독하는 앱이 코드베이스 전체에 없음. 지상국이 이 3개 클래스 명령을 보내도 실제로 처리되지 않음.
