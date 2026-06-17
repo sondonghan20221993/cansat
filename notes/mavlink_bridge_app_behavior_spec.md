@@ -55,6 +55,19 @@
 
 `ROUTE_UPDATE_MID` (0x190B)는 `cfs_core_app`과 `mavlink_bridge_app` 모두가 구독한다. 이 MID를 publish하는 생산자(`uplink_app`)는 payload 검증뿐 아니라 FC 업로드 가능성까지 고려해야 한다.
 
+### 4.1 mavlink_bridge_app SB 구독 목록
+
+`mavlink_bridge_app.c` 기준 실제 구독 MID (코드 권위):
+
+| MID | 값 | 처리 |
+| --- | --- | --- |
+| `MAVLINK_BRIDGE_APP_CMD_MID` | `0x18A0` | Ground command (NOOP/RESET_COUNTERS/MISSION_QUERY_CC) |
+| `MAVLINK_BRIDGE_APP_SEND_HK_MID` | `0x18A1` | HK publish 트리거 |
+| `ROUTE_UPDATE_MID` | `0x190B` | FC 웨이포인트 업로드 시작 |
+| `CONFIG_CMD_MID` | `0x190E` | 런타임 config 명령 수신 (`ProcessConfigCommand`) |
+
+> **1-4 audit 해소**: `CONFIG_CMD_MID 0x190E` 구독은 `mavlink_bridge_app.c:142`에서 확인됨. 본 spec의 구 §2/§4에서 누락되어 있었으나 mission_app_runtime_spec.md §5.1.1의 Subscribe 목록에는 이미 포함되어 있음 (2026-06-17 추가).
+
 ## 5. 트리거
 
 유효한 `ROUTE_UPDATE_MID` 수신 시 즉시 FC 업로드 시퀀스를 시작한다.
