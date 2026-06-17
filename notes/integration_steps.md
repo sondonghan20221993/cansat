@@ -210,6 +210,61 @@ FC USB 연결에서는 `ATTITUDE`, `GLOBAL_POSITION_INT`, `GPS_RAW_INT`, `EKF_ST
   - `GPS_RAW_INT (24)`
   - `EKF_STATUS_REPORT (193)`
 
+### 8. RPi UART가 로그인 콘솔에 점유돼 FC heartbeat 미수신
+
+**FC: PX4 펌웨어, CM4-IO-BASE-B 보드 기준**
+
+확인된 증상:
+
+- `MAVLINK_BRIDGE_APP: waiting for FC heartbeat before stream request` 반복
+- `sudo timeout 10 cat /dev/serial0 | od -An -tx1` 결과 아무것도 없음
+
+원인 1 — `/dev/serial0 → ttyS0` (mini UART):
+
+CM4에서 기본적으로 `serial0`이 mini UART(`ttyS0`)를 가리킨다. mini UART는 GPU 클럭에 종속되어 불안정하며, Bluetooth가 PL011(`ttyAMA0`)을 점유한다.
+
+해결:
+
+```bash
+echo "dtoverlay=disable-bt" | sudo tee -a /boot/firmware/config.txt
+sudo reboot
+```
+
+재부팅 후 `serial0 → ttyAMA0`로 변경 확인:
+
+```bash
+ls -la /dev/serial0
+```
+
+원인 2 — `serial-getty@ttyAMA0.service`가 `/dev/ttyAMA0` 점유:
+
+```bash
+sudo fuser -v /dev/ttyAMA0
+# root  3155 F.... login
+```
+
+해결:
+
+```bash
+sudo systemctl stop serial-getty@ttyAMA0.service
+sudo systemctl disable serial-getty@ttyAMA0.service
+sudo systemctl mask serial-getty@ttyAMA0.service
+```
+
+원인 3 — PX4 MAVLink 포트 설정 미적용:
+
+PX4에서 UART4(TELEM4)를 companion link로 사용하려면 QGC에서 다음을 설정하고 FC를 재부팅해야 한다.
+
+| 파라미터 | 설정값 | 비고 |
+|---|---|---|
+| `MAV_2_CONFIG` | 104 (TELEM4) | MAVLink 인스턴스 2를 TELEM4에 할당 |
+| `MAV_2_MODE` | 2 (Onboard) | ATTITUDE/GPS 고속 스트림 활성화 |
+| `SER_TEL4_BAUD` | 57600 | cFS 브리지 보드레이트와 일치 |
+
+참고: PX4의 `SER_TEL4_BAUD` 파라미터가 `1.614296E-40` 등 비정상 부동소수점으로 표시되는 경우, 정수 값(57600)으로 직접 입력한다.
+
+---
+
 ## Raspberry Pi 재설정 절차
 
 ### 1. 네트워크와 SSH 확인
