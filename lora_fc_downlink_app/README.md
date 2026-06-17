@@ -14,6 +14,7 @@ cFS Software Bus에서 FC 상태 메시지와 시스템 헬스를 구독하고, 
 | SB 수신 | `FC_EKF_STATUS_MID` | `0x1908` | EKF health flags |
 | SB 수신 | `SYSTEM_HEALTH_MID` | `0x1904` | 시스템 헬스 (HealthState/FaultCode) |
 | 게시 | `LORA_FC_DOWNLINK_APP_HK_TLM_MID` | topic-id 기반 | HK 텔레메트리 |
+| 게시 | `LORA_FC_DOWNLINK_APP_UPLINK_RAW_MID` | `0x1909` | 지상국 "UP,..." 원문 프레임 → `uplink_app` 전달 |
 
 ## 구현 기능
 
@@ -37,11 +38,19 @@ SB 메시지 수신마다 `ServiceLoRa()`를 호출한다.
 - AttitudeValid && LocalValid → FC 패킷 전송
 - 그 외 → 전송 없음
 
+**레이트 리미팅**: 마지막 TX로부터 500ms 미만이면 전송 스킵. (`LastLoRaTxMs` 기반)
+
+> **포트 단독 소유 (충돌 해소됨)**: CP2102 포트는 이 앱만 연다.
+> `uplink_app`은 serial 직접 열기를 제거하고 SB `UPLINK_RAW_MID`(0x1909) 구독으로 전환.
+> 이 앱이 RX에서 읽은 "UP,..." 원문은 SB로 publish하여 `uplink_app`이 파싱한다.
+
 write 오류:
 - `EAGAIN/EWOULDBLOCK`: packet skip, 포트 유지
 - 그 외: EVS 로그 후 포트 close + 재열기 대기
 
-> **주의 — blocking write 지연**: LoRa FD는 open 후 `fcntl(F_SETFL, Flags & ~O_NONBLOCK)`으로 blocking 모드로 전환된다. `ServiceLoRa()`는 SB 메시지 처리 경로(`ProcessInputMessage`)에서 호출되므로, LoRa write가 장시간 block되면 앱의 SB 처리 루프 전체가 지연될 수 있다. 운용상 write timeout 정책이 필요하면 별도 요구사항으로 정의해야 한다.
+> **주의 — blocking 지연 + 파이프 starvation**: LoRa FD는 open 후 `fcntl(F_SETFL, Flags & ~O_NONBLOCK)`으로 blocking 모드로 전환된다. `ServiceLoRa()`는 SB 메시지 처리 경로(`ProcessInputMessage`)에서 호출되며, TX 후 **TDM RX 윈도우(최대 300ms)** 동안 동기적으로 블록된다. 그 사이 SB 수신 루프가 멈춰 FC 스트림(~45 msg/s)이 CommandPipe에 누적된다(300ms ≈ 14개).
+>
+> 이 때문에 **CommandPipe depth = 32**로 설정(`DEFAULT_..._PLATFORM_PIPE_DEPTH`, cFS 최대 50 미만). depth 10에서는 오버플로로 FC 메시지가 드롭되어 downlink 누락이 발생한다(`lora_tdm_app` starvation의 구조적 이전형). 근본 해결은 블로킹 I/O를 SB 핸들러에서 분리하는 것으로 별도 과제다.
 
 ### 지상국 HB 수신 (ServiceLoRaRead)
 SB 메시지 수신마다 `ServiceLoRaRead()`를 호출하여 LoRa serial에서 1바이트씩 읽어 줄 단위로 누적한다.
@@ -52,12 +61,18 @@ SB 메시지 수신마다 `ServiceLoRaRead()`를 호출하여 LoRa serial에서 
 
 HB 수신 시 `HbLastRxMs`(CFE_TIME 기반 ms), `HbLinkValid = 1` 갱신.
 
+HB가 아닌 "UP,..." 프레임은 `ForwardUplinkFrame()`이 원문 그대로
+`UPLINK_RAW_MID`(0x1909)로 SB publish → `uplink_app`이 파싱/검증.
+ServiceLoRaRead(1바이트 경로)와 ServiceLoRa의 TDM RX 윈도우(TX 후 300ms) 양쪽에서 처리.
+
 ## 패킷 포맷 (LoRa ASCII)
 
 ### FC State 패킷 (PacketType 1)
 ```
-FC,<count>,<ts_ms>,<roll_rad>,<pitch_rad>,<yaw_rad>,<x_m>,<y_m>,<z_m>,<vx_mps>,<vy_mps>,<vz_mps>,<lat_e7>,<lon_e7>,<alt_mm>,<fix_type>\n
+FC,<count>,<ts_ms>,<roll_rad>,<pitch_rad>,<yaw_rad>,<x_m>,<y_m>,<z_m>,<vx_mps>,<vy_mps>,<vz_mps>,<lat_e7>,<lon_e7>,<alt_mm>,<fix_type>,0\n
 ```
+
+총 17필드 (FC 포함). 마지막 `0`은 `uplink_fb` 자리이며 이 앱에서는 항상 0.
 
 | 필드 | 형식 | 출처 |
 | --- | --- | --- |
@@ -69,11 +84,16 @@ FC,<count>,<ts_ms>,<roll_rad>,<pitch_rad>,<yaw_rad>,<x_m>,<y_m>,<z_m>,<vx_mps>,<
 | lat_e7/lon_e7 | %ld (1e-7 도) | GpsRawTlm |
 | alt_mm | %ld | GpsRawTlm |
 | fix_type | %u | GpsRawTlm |
+| uplink_fb | 항상 0 | 미구현 (lora_tdm_app 호환용 자리) |
+
+> **주의**: Python 파서(`fc_serial_ws_server.py`)는 17필드를 기대함. `,0` 누락 시 파싱 실패.
 
 ### System Health 패킷 (PacketType 2)
 ```
-SH,<count>,<ts_ms>,<health_state>,<fault_code>\n
+SH,<count>,<ts_ms>,<health_state>,<fault_code>,0,0\n
 ```
+
+총 7필드 (SH 포함). 마지막 `0,0`은 `link_state`, `uplink_fb` 자리이며 이 앱에서는 항상 0.
 
 | 필드 | 형식 | 출처 |
 | --- | --- | --- |
@@ -81,6 +101,10 @@ SH,<count>,<ts_ms>,<health_state>,<fault_code>\n
 | ts_ms | uint | SystemHealthMirror.TimestampMs |
 | health_state | uint (0=NOMINAL, 1=DEGRADED, 2=RECOVERY) | SystemHealthMirror |
 | fault_code | uint | SystemHealthMirror.FaultCode |
+| link_state | 항상 0 | 미구현 (lora_tdm_app 호환용 자리) |
+| uplink_fb | 항상 0 | 미구현 (lora_tdm_app 호환용 자리) |
+
+> **주의**: Python 파서(`fc_serial_ws_server.py`)는 7필드를 기대함. `,0,0` 누락 시 파싱 실패.
 
 ## 카운터 필드 의미
 

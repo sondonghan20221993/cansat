@@ -28,12 +28,14 @@
 
 ### 2.1 LoRa 텔레메트리 송신 이관
 
-`mavlink_bridge_app`은 과거에 `ServiceLoRa()` 함수를 통해 LoRa serial write를 직접 수행했으나, 이 기능은 `lora_fc_downlink_app`으로 이관되었다.
+`mavlink_bridge_app`은 과거에 `ServiceLoRa()` 함수를 통해 LoRa serial write를 직접 수행했으나, 이 기능은 `lora_tdm_app`으로 이관되었다.
 
 현재 `mavlink_bridge_app`의 LoRa 관련 책임:
 - LoRa serial 접근 없음
 - `LoRaFd`, `LoRaTxCount` 필드 없음
-- FC 상태(ATTITUDE, EKF_LOCAL 등)를 SB publish하면 `lora_fc_downlink_app`이 구독하여 LoRa로 전송
+- FC 상태(ATTITUDE, EKF_LOCAL 등)를 SB publish하면 `lora_tdm_app`이 구독하여 TDM downlink로 전송
+
+> 코드 확인(2026-06-16): `fsw/src/*.c` 전체에 `LoRaFd`/`LoRaTxCount`/`ServiceLoRa` 등 LoRa 직접 접근 잔재 없음 — 위 서술과 일치. 미사용 잔존 정의 `MAVLINK_BRIDGE_APP_LORA_SERIAL_PATH`/`MAVLINK_BRIDGE_APP_LORA_BAUDRATE`는 `config/default_mavlink_bridge_app_platform_cfg.h`에서 제거함 (2026-06-16).
 
 ## 3. 참조
 
@@ -147,6 +149,8 @@ x/y는 `int32` (× 10000, 0.1mm 단위)이고, z는 `float` meters (부호 반�
 | 최대 재시도 횟수 | 3 |
 | 재시도 조건 | timeout. 예상치 못한 seq 응답은 즉시 재시도하지 않고 무시되며, 이후 timeout 경로에서 재시도된다. |
 | 재시도 시 재시작 위치 | MISSION_COUNT부터 전체 재시작 |
+
+> 정의 위치: `mavlink_bridge_app_utils.c:63-65` (`MAVLINK_BRIDGE_APP_MISSION_UPLOAD_TIMEOUT_MS=2000U`, `MAVLINK_BRIDGE_APP_MISSION_MAX_RETRIES=3U`, `MAVLINK_BRIDGE_APP_MISSION_CLEAR_DELAY_MS=300U`) — 코드 확인, 2026-06-16.
 
 ## 9. 실패 및 성공 처리
 
@@ -278,6 +282,8 @@ python3 tools/query_fc_mission.py <Pi_IP> 1234
 | `MAVLINK_BRIDGE_APP_SYSTEM_ID` | `255` |
 | `MAVLINK_BRIDGE_APP_COMPONENT_ID` | `190` |
 
+> 정의 위치: `mavlink_bridge_app_utils.c:40-41` (로컬 `#define`, config 헤더에는 없음 — 코드 확인, 2026-06-16).
+
 **이유**: ArduPilot은 미션 업로드 등 명령을 `SYSID_MYGCS`(기본값 255)로 등록된 시스템에서만 수락한다. sysid=200 등 비표준 ID를 사용하면 FC가 MISSION_COUNT를 무시하고 응답하지 않는다. MAVProxy 기본값(`source_system=255`)이 정상 동작하고 우리 브리지(sysid=200)가 무응답이었던 사례로 확인됨.
 
 ### 13.1 MAV_FRAME_LOCAL_NED → GLOBAL_RELATIVE_ALT 변환
@@ -391,4 +397,4 @@ python3 tools/mission_upload_diag.py --port /dev/serial0 --baud 57600
 다음 항목은 구현 완료되었다:
 
 - mid-flight 경로 변경 안전 검사 → FC ARMED 상태 시 업로드 차단 구현 (`UpdateFromHeartbeat`, `IsArmed` 필드, `MAVLINK_BRIDGE_APP_ARMED_WARN_EID`)
-- Global mission frame (`MAV_FRAME_GLOBAL_RELATIVE_ALT`) 변환 및 업로드
+- **Legacy 경로(msg 39)** 한정 Global mission frame (`MAV_FRAME_GLOBAL_RELATIVE_ALT`) 변환 및 업로드 (`SendMissionItem`, `mavlink_bridge_app_utils.c:368`). INT 경로(msg 73, `SendMissionItemInt`)는 위 미구현 항목대로 `MAV_FRAME_LOCAL_NED` 그대로 송신한다 — 두 항목은 서로 다른 경로를 가리키므로 모순이 아니다.

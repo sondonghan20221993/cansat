@@ -17,15 +17,14 @@ mavlink_bridge_app   →  FC_ATTITUDE_STATE_MID  (0x1906)
 cfs_core_app         →  SYSTEM_HEALTH_MID      (0x1904)
                      ←  (위 FC 상태 MID 전부 구독)
 
-lora_fc_downlink_app ←  FC 상태 MID + SYSTEM_HEALTH_MID
-                     →  LoRa serial downlink
+lora_tdm_app         ←  FC 상태 MID + SYSTEM_HEALTH_MID
+                     →  LoRa serial TX (downlink, TDM)
+                     ←  LoRa serial RX (UP frame, TDM 300ms 창)
+                     →  UPLINK_APP_CMD_MID     (0x18D0) → uplink_app (UP frame SB 전달)
+                     →  LORA_TDM_APP_LINK_STATUS_MID (0x1911)
 
-uplink_app           ←  LoRa/UDP uplink 수신
+uplink_app           ←  UPLINK_APP_CMD_MID (lora_tdm_app SB) / UDP (테스트용)
                      →  ROUTE_UPDATE_MID       (0x190B) → cfs_core_app + mavlink_bridge_app
-
-bridge/lora_uplink_bridge.py
-                     ←  LoRa serial
-                     →  UDP → uplink_app
 ```
 
 ## 앱 목록
@@ -35,7 +34,7 @@ bridge/lora_uplink_bridge.py
 | `mavlink_bridge_app` | CMD `0x18A0`, HK `0x08A0`, 게시 `0x1905-0x1908` | FC MAVLink 수신·파싱·게시, FC MISSION 업로드 (§22) |
 | `cfs_core_app` | CMD `0x18C0`, HK `0x08C0`, 게시 `0x1904` | FC 상태 종합, 헬스 판단, SYSTEM_HEALTH 게시 |
 | `uplink_app` | CMD `0x18D0`, HK `0x18D1`, 게시 `0x190A` | 지상국 명령 수신·검증·라우팅 |
-| `lora_fc_downlink_app` | CMD `0x18B0`, HK `0x18B1` | FC 상태 수집 후 LoRa 텔레메트리 전송 |
+| `lora_tdm_app` | CMD `0x18E0`, HK `0x08E0`, 게시 `0x1911` | LoRa serial 독점 TDM — downlink TX + uplink RX → uplink_app SB 전달 |
 
 ## 주요 기능 구현 상태
 
@@ -49,7 +48,7 @@ bridge/lora_uplink_bridge.py
 | route update → FC MAVLink MISSION 업로드 (§22) | 구현됨 |
 | FC MISSION 재조회 (MISSION_QUERY_CC) | 구현됨 |
 | uplink_app 지속 상태 (SaveState/LoadState, atomic write) | 구현됨 |
-| uplink_app LoRa serial 직접 수신 (ServiceLoRa, bridge 프로세스 불필요) | 구현됨 |
+| lora_tdm_app LoRa TDM (TX downlink + RX UP frame → uplink_app SB 전달, bridge 프로세스 불필요) | 구현됨 |
 | cfs_core_app CFS_FAILED 상태 + bridge 자동 재시작 (최대 3회) | 구현됨 |
 | cfs_core_app 헬스 상태 파일 지속 (재시작 후 복원) | 구현됨 |
 | cfs_core_app 미래 타임스탬프 거부 | 구현됨 |
@@ -68,10 +67,11 @@ bridge/lora_uplink_bridge.py
 mavlink_bridge_app/   FC MAVLink 브리지 앱
 cfs_core_app/         상태 종합·헬스 관리 앱
 uplink_app/           지상국 uplink 처리 앱
-lora_fc_downlink_app/ LoRa 텔레메트리 downlink 앱
+lora_tdm_app/         LoRa serial 독점 TDM 앱 (downlink TX + uplink RX)
+lora_fc_downlink_app/ [deprecated] lora_tdm_app으로 대체됨
 bridge/               Raspberry Pi host-side 브리지
-                        lora_uplink_bridge.py     — 현행 (uplink_app이 내장할 때까지 사용)
-                        lora_telemetry_bridge.py  — [deprecated] lora_fc_downlink_app으로 대체됨
+                        lora_uplink_bridge.py     — [deprecated] lora_tdm_app으로 대체됨
+                        lora_telemetry_bridge.py  — [deprecated] lora_tdm_app으로 대체됨
                         mavlink_uart_bridge.py    — [deprecated] mavlink_bridge_app으로 대체됨
 tools/                개발용 CLI 스크립트
 tests/                Python 단위 테스트 + TEST_CASES.md
@@ -92,13 +92,13 @@ notes/                설계 문서 및 명세
 rsync -a --delete mavlink_bridge_app/ ~/cFS_clean/apps/mavlink_bridge_app/
 rsync -a --delete cfs_core_app/      ~/cFS_clean/apps/cfs_core_app/
 rsync -a --delete uplink_app/        ~/cFS_clean/apps/uplink_app/
-rsync -a --delete lora_fc_downlink_app/ ~/cFS_clean/apps/lora_fc_downlink_app/
+rsync -a --delete lora_tdm_app/        ~/cFS_clean/apps/lora_tdm_app/
 
 # 단위 테스트 빌드 및 실행
 cd ~/cFS_clean/build-ut
 make cfs_core_app_ut && ./coverage-cfs_core_app-testrunner
 make uplink_app_ut   && ./coverage-uplink_app-testrunner
-make lora_fc_downlink_app_ut && ./coverage-lora_fc_downlink_app-testrunner
+make lora_tdm_app_ut && ./coverage-lora_tdm_app-testrunner
 
 # Python 테스트
 cd ~/cfs-telemetry-app
@@ -119,5 +119,6 @@ python3 tools/uplink_route_update_sender.py --transport udp
 
 - `notes/mission_app_runtime_spec.md` — 전체 시스템 MID 계약 및 동작 사양
 - `notes/cfs_core_app_behavior_spec.md` — cfs_core_app 구현 기준 동작 명세
-- `notes/lora_uplink_bridge_design.md` — LoRa uplink bridge 프로토콜
+- `notes/lora_tdm_app_behavior_spec.md` — lora_tdm_app TDM 동작 명세
+- `notes/lora_uplink_bridge_design.md` — [deprecated] Python bridge 프로토콜 (참고용)
 - `tests/TEST_CASES.md` — 단위 테스트 및 런타임 테스트 케이스 목록

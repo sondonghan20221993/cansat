@@ -26,10 +26,21 @@
 
 | 앱 | 테스트 수 | assertion 수 | 마지막 확인 |
 |---|---|---|---|
-| `cfs_core_app` | 21 | 67 | 2026-05-28 |
+| `cfs_core_app` | ~92 | — | 2026-06-16 |
 | `uplink_app` | 35 | 63+ | 2026-06-07 |
-| `lora_fc_downlink_app` | 14 | 40+ | 2026-06-07 |
+| ~~`lora_fc_downlink_app`~~ (baseline 제거됨, 2026-06-16 — `lora_tdm_app`으로 대체) | 14 | 40+ | 2026-06-07 |
+| `lora_tdm_app` (baseline 등록됨, 2026-06-16) | 75 (4개 testrunner) | — | 2026-06-16 |
 | `mavlink_bridge_app` | 25 | — | 2026-06-02 |
+
+> **2026-06-15 통합 변경 (Task A/B/C)** — 아래 항목은 unit-test 갱신 대기(coveragetest 미반영):
+> - **명명**: `.so` = `lora_fc_dl_app.so`, entry = `LORA_FC_DL_Main`, app명 = `LORA_FC_DOWNLINK`
+>   (OSAL `OS_MAX_FILE_NAME`/`OS_MAX_API_NAME` = 20 한계 대응). 자세히는 `notes/integration_steps.md §4`.
+> - **Task B (포트 충돌)**: `lora_fc_downlink_app`이 RX에서 "UP,..." 원문을
+>   `UPLINK_RAW_MID`(0x1909)로 publish(`ForwardUplinkFrame`). `uplink_app`은 serial 직접
+>   open 제거 → `UPLINK_RAW_MID` 구독 → `UPLINK_APP_ParseLoRaFrame` → `ProcessUplink`.
+>   seq 거부는 `ProcessUplink`의 `IsSequenceAccepted`(영구 `LastAcceptedSequence`)가 유지.
+> - **Task C (starvation)**: `lora_fc_downlink_app` CommandPipe depth 10→32
+>   (300ms 블로킹 RX 윈도우 동안 FC 누적 대비). `lora_tdm_app`은 startup에서 제거.
 
 ---
 
@@ -71,7 +82,7 @@
 | `CFS_CORE_APP_VerifyCmdLength_Impl` | 정상/비정상 길이 판단 |
 | `CFS_CORE_APP_UpdateHealth_Nominal` | 전 입력 정상 시 health `NOMINAL` |
 | `CFS_CORE_APP_UpdateHealth_Recovery` | bridge timeout → health `RECOVERY`, recovery flag 설정 |
-| `CFS_CORE_APP_UpdateHealth_GpsStale` | GPS stale → health `DEGRADED`, fault `GPS_STALE` |
+| `CFS_CORE_APP_UpdateHealth_GpsStale` | GPS stale → health **`NOMINAL`** (GPS 헬스 비반영 — §12.5; `GpsStatus.TimedOut=1`만 보고) |
 | `CFS_CORE_APP_UpdateHealth_EkfInvalid` | EKF invalid → health `DEGRADED`, fault `EKF_INVALID` |
 | `CFS_CORE_APP_UpdateHealth_LocalTimeout` | local position timeout → health `DEGRADED`, fault `LOCAL_TIMEOUT` |
 | `CFS_CORE_APP_UpdateHealth_LocalInvalid` | local position invalid → health `DEGRADED`, fault `LOCAL_TIMEOUT` |
@@ -85,6 +96,49 @@
 | `CFS_CORE_APP_ProcessStateMessage_RouteUpdate` | `ROUTE_UPDATE_MID` 수신 → mission route cache 갱신 |
 | `CFS_CORE_APP_ProcessStateMessage_LandingRouteUpdate` | `ROUTE_UPDATE_MID` landing type → landing route cache 갱신 |
 | `CFS_CORE_APP_ProcessStateMessage_BridgeHk` | bridge HK 수신 → bridge state cache 갱신 |
+
+> **2026-06-16 추가 테스트** (config·seq/timestamp·bridge 재시작·영속화·FAILED 기능 반영). 위 목록은 구버전이며 실제 coveragetest는 아래 그룹을 포함한다.
+
+추가 헬스 분류:
+| 테스트 | 검증 |
+|---|---|
+| `UpdateHealth_Failed` / `UpdateHealth_FailedRecovery` | bridge timeout `FAILED_ESCALATION_MS(30s)` 초과 → `FAILED` 및 복구 |
+| `UpdateHealth_LocalInvalid` / `LocalStale` | local invalid/stale → `FAULT_LOCAL_TIMEOUT` |
+| `UpdateHealth_AttitudeInvalid` / `AttitudeStale` | attitude invalid/stale → `FAULT_ATTITUDE_TIMEOUT` |
+| `UpdateHealth_GPS_Timeout` | GPS 타임아웃 → **`NOMINAL`** (헬스 비반영, §12.5) |
+| `UpdateHealth_Priority_{BridgeOverGps,EkfOverLocal,LocalOverAttitude,AttitudeOverGps}` | 우선순위 사다리 |
+| `UpdateHealth_NominalStabilization` / `StabilityTimerReset` / `RecoveryToNominal` | 10s 안정화 타이머 |
+| `UpdateHealth_Startup_NoBridge` | 시작 시 bridge 미수신 → RECOVERY |
+| `UpdateHealth_InputStatus` / `HealthTransition` / `PeriodicRateLimit` | per-input status, 전이 EVS 1회, 주기 rate limit |
+
+seq/timestamp 검사:
+| 테스트 | 검증 |
+|---|---|
+| `SeqCheck_Normal` / `Duplicate` / `Regression` / `Gap` / `Gap_FirstReceive` | 중복·역행 거부, 갭 카운트, 첫 수신 예외 |
+| `TimestampCheck_Normal` / `FutureTooFar` / `FutureBoundary` / `GPS_Rejected` / `EKF_Rejected` / `BeforeSeqCheck` | 미래 timestamp(>5s) 거부, seq 검사보다 선평가 |
+
+config 명령 (`CONFIG_CMD_MID`):
+| 테스트 | 검증 |
+|---|---|
+| `ProcessConfig_AttitudeTimeout` / `PublishPeriod` | 정상 파라미터 적용 (ActiveConfig 갱신) |
+| `ProcessConfig_BadLength` / `BadScope` / `BadVersion` / `BadChecksum` / `BadValue` / `BadParam` | 단계별 검증 실패 거부 |
+| (dispatch) `TaskPipe_ConfigCmd` / `TaskPipe_ViewpointCmd` | CONFIG/VIEWPOINT MID 처리 경로 |
+| `ProcessViewpointCommand` | viewpoint 캐시 저장 |
+
+상태 영속화 / bridge 재시작:
+| 테스트 | 검증 |
+|---|---|
+| `LoadState_NoFile` / `SaveState_NoDir` / `SaveState_OnTransition` | 상태 파일 로드/저장, 전이 시 저장 |
+| `BridgeRestart_FirstAttempt` / `SecondAttempt` / `MaxReached` / `AllAttemptsExhausted` / `GetAppIdFail` / `ResetOnRecovery` / `RecoverAfterAttempt` | bridge 재시작 시도·최대 3회 한도·복구 시 리셋 |
+
+Init/dispatch 추가:
+| 테스트 | 검증 |
+|---|---|
+| `Init_DefaultTimeouts` | ActiveConfig 기본 타임아웃 로드 |
+| `Init_EVSRegisterError` / `MsgInitError` / `CreatePipeError` / `Subscribe2~9Error` | 각 init 단계 실패 주입 |
+| `TaskPipe_GetMsgIdError` / `GetFcnCodeError` / `AttitudeState` / `Noop_LengthFail` | dispatch 오류/분기 경로 |
+| (eds) `TaskPipe` | EDS dispatch 경로 |
+| `ServicePrototype` | 주기 서비스 경로 |
 
 ---
 
@@ -140,6 +194,8 @@
 | `UPLINK_APP_TaskPipe_SendHk` | `SEND_HK` MID → HK 보고 경로 진입 |
 | `UPLINK_APP_TaskPipe_SystemHealth` | `SYSTEM_HEALTH_MID` 수신 → `CfsHealthReceived`, `CfsHealthState` 갱신 |
 | `UPLINK_APP_TaskPipe_UnknownMid` | 알 수 없는 MID → error counter 증가 |
+| `UPLINK_APP_TaskPipe_LoRaRaw` | `UPLINK_RAW_MID`(0x1909) + parse 성공 → `ProcessUplink` 호출 (Task B) |
+| `UPLINK_APP_TaskPipe_LoRaRaw_BadFrame` | parse 실패 → ErrCounter 증가, `ProcessUplink` 미호출 |
 
 #### `coveragetest_uplink_app_utils.c`
 
@@ -155,10 +211,13 @@
 | `UPLINK_APP_ForwardModeCommand` | mode 명령 SB publish 성공/실패 경로 |
 | `UPLINK_APP_ForwardDiagnosticCommand` | diagnostic 명령 SB publish 성공/실패 경로 |
 | `UPLINK_APP_ForwardViewpointCommand` | viewpoint 명령 SB publish 성공/실패/zero-payload 경로 |
+| `UPLINK_APP_ParseLoRaFrame` | "UP,..." 유효 파싱(empty/2바이트 payload), 비-UP/필드부족/CRC불일치/홀수hex 거부 (Task B) |
 
 ---
 
-### `lora_fc_downlink_app`
+### ~~`lora_fc_downlink_app`~~ (baseline 제거됨, 2026-06-16 — `lora_tdm_app`으로 대체)
+
+> startup script에서 제거됨(`lora_tdm_app`이 prio 58 슬롯 대체). 코드와 아래 테스트는 이력 참고용으로 유지.
 
 테스트 위치:
 - `lora_fc_downlink_app/unit-test/coveragetest/coveragetest_lora_fc_downlink_app.c`
@@ -198,6 +257,77 @@
 | `LORA_FC_DOWNLINK_APP_ProcessInputMessage` | attitude(roll/pitch/yaw float 캐시), local(x/y/z/vx/vy/vz float 캐시), gps(LatE7/LonE7/AltMm/FixType), ekf, system health(HealthState/FaultCode) 입력별 캐시 갱신 확인 |
 | `LORA_FC_DOWNLINK_APP_ProcessInputMessage_InvalidInputs` | attitude/local Valid=0 → AttitudeValid/LocalValid=0 반영 (LORA-FC-005/006) |
 | `LORA_FC_DOWNLINK_APP_ProcessInputMessage_GpsEdgeCases` | GPS Valid=0 → GpsValid=0; Valid=1+FixType=0 → GpsFixType=0 캐시 (LORA-FC-007) |
+| `LORA_FC_DOWNLINK_APP_ForwardUplinkFrame` ⏳ | "UP,..." → `UPLINK_RAW_MID` publish (Task B). static + `read()` fd 의존이라 단위테스트는 리팩터 후 가능 — 현재 e2e/통합으로 검증 |
+
+---
+
+### `lora_tdm_app` (baseline 등록됨, 2026-06-16)
+
+> **2026-06-16: startup script에 등록됨** (`lora_fc_dl_app` 대체, prio 58). 구버전은 pipe depth 200(>cFS 최대 50)으로 즉시 종료됐으나 **현재 코드 깊이는 50**(`lora_tdm_app.c:268`)으로 수정 완료.
+> `lora_fc_downlink_app`(downlink TX) + `bridge/lora_uplink_bridge.py`(uplink RX, Pi 별도 프로세스)가 하던 역할을 이 앱 하나가 흡수. **Pi에서 python 프로세스 종료 및 cFS 프레임워크(이 저장소 밖) 앱 목록 갱신은 별도 운영 작업으로 필요**.
+>
+> **2026-06-16 재검증**: 이 앱은 `cFS_clean` 빌드 환경(targets.cmake)에 등록된 적이 없어 native unit-test가 한 번도 실제로 빌드·실행되지 않은 상태였다(아래 "✓" 표시는 코드 정독 기준, 실행 검증 아니었음). `tdm_refactor` 브랜치에서 임시로 등록해 처음으로 빌드/실행한 결과 버그 3건 발견 및 수정:
+> 1. `coveragetest_lora_tdm_app_utils.c`: `LORA_TDM_APP_ProcessRxLine` 호출에 문자열 리터럴(`const char*`) 전달 시 `char*` 시그니처와 불일치 → 컴파일 에러(`-Werror=discarded-qualifiers`). 함수가 실제로는 읽기 전용이므로 시그니처를 `const char *Line`으로 수정.
+> 2. `coveragetest_lora_tdm_app_dispatch.c`: `CmdNoop`/`CmdReset` 테스트가 `LORA_TDM_APP_Data.CmdCounter`를 직접 검증했으나, 이 dispatch 단독 테스트 바이너리에서는 `LORA_TDM_APP_Noop`/`ResetCounters`가 스텁(실제 카운터 미반영)이라 항상 실패. `UtAssert_STUB_COUNT`로 정정(다른 앱 dispatch 테스트와 동일 패턴).
+> 3. **실제 fsw 버그**: `lora_tdm_app_utils.c`의 `ProcessUpFrame`이 `sscanf("%[^,]", ...)`로 payload_hex를 파싱하는데, 이 지정자는 1자 이상 매칭을 요구해 **payload 없는(빈 문자열) UP 프레임을 전부 CRC_FAIL로 오판**하던 버그. `,,` 리터럴 포함 대체 포맷으로 재시도하도록 수정 (`Test_ProcessRxLine_ValidUp`로 검증). §9.1 참고.
+>
+> 수정 후 native 테스트 4개 바이너리 전부 재실행: **75/75 PASS, 0 FAIL**.
+
+테스트 위치:
+- `lora_tdm_app/unit-test/coveragetest/coveragetest_lora_tdm_app.c`
+- `lora_tdm_app/unit-test/coveragetest/coveragetest_lora_tdm_app_cmds.c`
+- `lora_tdm_app/unit-test/coveragetest/coveragetest_lora_tdm_app_dispatch.c`
+- `lora_tdm_app/unit-test/coveragetest/coveragetest_lora_tdm_app_utils.c`
+
+#### `coveragetest_lora_tdm_app.c`
+
+| 테스트 이름 | 검증 내용 |
+|---|---|
+| `Init` | 앱 초기화 성공 및 `RunStatus == APP_RUN` |
+| `Init_SubscribeError` | `CFE_SB_Subscribe` 실패 주입 → `CFE_SB_BAD_ARGUMENT` 반환 |
+
+#### `coveragetest_lora_tdm_app_cmds.c`
+
+| 테스트 이름 | 검증 내용 |
+|---|---|
+| `Noop` | `NOOP` 처리 시 CmdCounter 증가 |
+| `ResetCounters` | CmdCounter/ErrCounter/TxCount/RxAckCount/RxCmdCount/RxErrorCount/NoAckCount 전체 0 초기화 |
+
+#### `coveragetest_lora_tdm_app_dispatch.c`
+
+| 테스트 이름 | 검증 내용 |
+|---|---|
+| `VerifyCmdLength` | 정상 길이 → dispatch 통과 |
+| `ProcessCommandPacket_SendHk` | `SEND_HK_MID` → HK 보고 경로 진입 |
+| `ProcessCommandPacket_CmdNoop` | `CMD_MID` + CC=0 → `LORA_TDM_APP_Noop` 호출 1회 (`UtAssert_STUB_COUNT`) |
+| `ProcessCommandPacket_CmdReset` | `CMD_MID` + CC=1 → `LORA_TDM_APP_ResetCounters` 호출 1회 (`UtAssert_STUB_COUNT`) |
+| `ProcessCommandPacket_UnknownMid` | 알 수 없는 MID(0x9999) → ErrCounter=1 |
+| `ProcessCommandPacket_InvalidCC` | CC=99 → ErrCounter=1 |
+
+#### `coveragetest_lora_tdm_app_utils.c`
+
+| 테스트 이름 | 검증 내용 |
+|---|---|
+| `Crc16_KnownVector` | `"123456789"` → `0x29B1` (CRC-16/CCITT-FALSE 표준 벡터) |
+| `ParseAckFrame_Valid` | `"ACK,42\n"` → SeqEcho=42, OK |
+| `ParseAckFrame_ZeroSeq` | `"ACK,0\n"` → SeqEcho=0, OK |
+| `ParseAckFrame_WrongPrefix` | `"NAK,42\n"` → INVALID |
+| `ParseAckFrame_MalformedNoSeq` | `"ACK,\n"` → INVALID |
+| `BuildFcDownlinkLine_Basic` | `"FC,"` 시작, `"\n"` 종료, 반환값 > 0 |
+| `BuildFcDownlinkLine_UplinkFeedbackField` | `PendingUplinkFeedback=CRC_FAIL(1)` → 라인에 `,1\n` 포함 |
+| `BuildFcDownlinkLine_BufferTooSmall` | 4바이트 버퍼 → 반환값 < 0 |
+| `BuildShDownlinkLine_Basic` | `"SH,"` 시작, `"\n"` 종료, 반환값 > 0 |
+| `UpdateLinkState_Connected` | NoAckCount=0, elapsed < timeout → CONNECTED |
+| `UpdateLinkState_Degraded` | NoAckCount=THRESHOLD, elapsed < timeout → DEGRADED |
+| `UpdateLinkState_Disconnected` | elapsed > LINK_TIMEOUT_MS → DISCONNECTED |
+| `ProcessRxLine_Ack` | `"ACK,7\n"` → RxAckCount=1, NoAckCount=0 |
+| `ProcessRxLine_CrcFail` | UP 프레임 CRC 오류 → `PendingUplinkFeedback=CRC_FAIL`, RxErrorCount=1 |
+| `ProcessRxLine_ValidUp` | 올바른 CRC UP 프레임 → RxCmdCount=1, `PendingUplinkFeedback=OK` |
+| `UpdateCacheFromMsg_Attitude` | ATTITUDE MID → `FcState.RollRad/PitchRad/YawRad` 갱신 |
+| `UpdateCacheFromMsg_EkfLocal` | EKF_LOCAL MID → `PosX/VelX` 등 갱신 |
+| `UpdateCacheFromMsg_Gps` | GPS MID → `LatE7/LonE7/AltMm/GpsFix` 갱신 |
+| `UpdateCacheFromMsg_SystemHealth` | SYSTEM_HEALTH MID → `SystemHealthState/FaultCode` 갱신 |
+| `UpdateCacheFromMsg_EkfStatus` | EKF_STATUS MID → `EkfValid=1`, `PacketType=FC_STATE` |
 
 ---
 
@@ -370,6 +500,85 @@ python3 tools/query_fc_mission.py [cFS_host_ip]
 
 ---
 
+### lora_tdm_app TDM 연동 시험
+
+시험 목적: `lora_tdm_app` 단독으로 serial 포트를 점유하여 TX→RX 사이클이 정상 동작하는지 검증.  
+**전제 조건:** Pi에 `lora_tdm_app` 빌드 배포, LoRa serial 연결, 지상국(GS) PC에서 serial 터미널 또는 스크립트 실행.
+
+#### TDM-RT-001 — 다운링크 주기 수신
+
+| 항목 | 내용 |
+|---|---|
+| 시험 방법 | GS PC에서 LoRa serial 포트를 열고 수신 라인 모니터링 |
+| 기대 결과 | 약 1초 간격으로 `FC,<seq>,...` 또는 `SH,<seq>,...` 라인 수신 |
+| 판정 기준 | 30초 이상 공백 없이 수신, seq 단조 증가 |
+
+#### TDM-RT-002 — ACK 응답 시 링크 CONNECTED 확인
+
+| 항목 | 내용 |
+|---|---|
+| 시험 방법 | GS에서 각 다운링크 수신 후 `ACK,<seq>\n` 즉시 전송 |
+| 기대 결과 | HK TLM `LinkState==CONNECTED(1)`, `NoAckCount==0` |
+| 판정 기준 | `RxAckCount` 증가, `NoAckCount` 0 유지 |
+
+#### TDM-RT-003 — ACK 무응답 시 DEGRADED 전이
+
+| 항목 | 내용 |
+|---|---|
+| 시험 방법 | GS에서 ACK 전송 중단 (3사이클 이상) |
+| 기대 결과 | HK TLM `LinkState==DEGRADED(2)`, `NoAckCount>=3` |
+| 판정 기준 | EVS `LORA_TDM_APP: Link degraded` 또는 HK 확인 |
+
+#### TDM-RT-004 — ACK 무응답 5초 후 DISCONNECTED 전이
+
+| 항목 | 내용 |
+|---|---|
+| 시험 방법 | GS ACK 완전 중단 후 5초 대기 |
+| 기대 결과 | HK TLM `LinkState==DISCONNECTED(0)` |
+| 판정 기준 | `LastAckTimestampMs` 갱신 멈춤 확인 |
+
+#### TDM-RT-005 — ACK 재개 시 CONNECTED 복구
+
+| 항목 | 내용 |
+|---|---|
+| 시험 방법 | DISCONNECTED 상태에서 GS ACK 재전송 시작 |
+| 기대 결과 | `LinkState==CONNECTED`, `NoAckCount==0` 복구 |
+| 판정 기준 | `RxAckCount` 다시 증가 |
+
+#### TDM-RT-006 — 정상 UP 프레임 수신 → uplink_app 라우팅
+
+| 항목 | 내용 |
+|---|---|
+| 시험 방법 | GS에서 RX 윈도우 내(다운링크 직후 300ms) 유효한 UP 프레임 전송 |
+| 기대 결과 | `uplink_app` EVS: `routed uplink class=N seq=N` |
+| 판정 기준 | HK `RxCmdCount` 증가, `PendingUplinkFeedback==0` |
+
+#### TDM-RT-007 — CRC 오류 UP 프레임 → UFB=1 다음 다운링크 반영
+
+| 항목 | 내용 |
+|---|---|
+| 시험 방법 | GS에서 CRC를 임의 변조한 UP 프레임 전송 |
+| 기대 결과 | 다음 `FC,...` 라인 마지막 필드가 `1` (CRC_FAIL) |
+| 판정 기준 | GS에서 동일 seq UP 프레임 재전송 후 정상 처리 확인 |
+
+#### TDM-RT-008 — RX 윈도우 외 수신 무시
+
+| 항목 | 내용 |
+|---|---|
+| 시험 방법 | 다운링크 전송 직전(TX 중) UP 프레임 전송 |
+| 기대 결과 | `RxCmdCount` 증가 없음, 프레임 무시 |
+| 판정 기준 | HK `RxCmdCount` 변화 없음 |
+
+#### TDM-RT-009 — serial open 실패 후 재시도
+
+| 항목 | 내용 |
+|---|---|
+| 시험 방법 | 시작 시 serial 장치 미연결 → 연결 후 대기 |
+| 기대 결과 | EVS `LORA_TDM_APP: open serial failed`, 이후 재시도하여 정상 동작 |
+| 판정 기준 | 연결 후 다운링크 재개 확인 |
+
+---
+
 ---
 
 ## TC 분류 — 단위테스트 vs 통합테스트 vs 런타임
@@ -452,6 +661,61 @@ python3 tools/query_fc_mission.py [cFS_host_ip]
 | TC ID | 항목 | 분류 | 비고 |
 |---|---|---|---|
 | MAV-001~009 | HEARTBEAT/ATTITUDE/GPS/EKF 캐시, serial 오류 | 런타임 | `mavlink_bridge_app` unit-test 미구성, 하드웨어 필요 |
+
+---
+
+### TDM-ACK-* (ACK 프레임 파싱)
+
+| TC ID | 항목 | 분류 | 파일 |
+|---|---|---|---|
+| TDM-ACK-001 | 정상 ACK 파싱 → SeqEcho 추출 | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ |
+| TDM-ACK-002 | zero seq ACK 허용 | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ |
+| TDM-ACK-003 | 잘못된 prefix 거부 | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ |
+| TDM-ACK-004 | seq 필드 누락 거부 | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ |
+
+---
+
+### TDM-DOWN-* (다운링크 라인 빌드)
+
+| TC ID | 항목 | 분류 | 파일 |
+|---|---|---|---|
+| TDM-DOWN-001 | FC 라인 기본 포맷 (`FC,` 시작, `\n` 종료) | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ |
+| TDM-DOWN-002 | FC 라인에 UplinkFeedback 필드 포함 (CRC_FAIL=1) | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ |
+| TDM-DOWN-003 | 버퍼 부족 시 오류 반환 | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ |
+| TDM-DOWN-004 | SH 라인 기본 포맷 (`SH,` 시작, `\n` 종료) | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ |
+
+---
+
+### TDM-LINK-* (링크 상태 전이)
+
+| TC ID | 항목 | 분류 | 파일 |
+|---|---|---|---|
+| TDM-LINK-001 | NoAckCount=0 → CONNECTED | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ |
+| TDM-LINK-002 | NoAckCount≥THRESHOLD, elapsed<timeout → DEGRADED | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ |
+| TDM-LINK-003 | elapsed>LINK_TIMEOUT_MS → DISCONNECTED | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ |
+
+---
+
+### TDM-RX-* (수신 라인 처리)
+
+| TC ID | 항목 | 분류 | 파일 |
+|---|---|---|---|
+| TDM-RX-001 | ACK 수신 → RxAckCount++, NoAckCount=0 | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ |
+| TDM-RX-002 | UP 프레임 CRC 오류 → PendingUplinkFeedback=CRC_FAIL, RxErrorCount++ | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ |
+| TDM-RX-003 | UP 프레임 정상 → RxCmdCount++, PendingUplinkFeedback=OK, SB transmit | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ |
+| TDM-RX-004 | UP 프레임 SEQ_FAIL 경로 | 단위 | 미구현 |
+
+---
+
+### TDM-CACHE-* (SB 메시지 캐시)
+
+| TC ID | 항목 | 분류 | 파일 |
+|---|---|---|---|
+| TDM-CACHE-001 | ATTITUDE MID → roll/pitch/yaw 캐시 | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ |
+| TDM-CACHE-002 | EKF_LOCAL MID → pos/vel 캐시 | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ |
+| TDM-CACHE-003 | GPS MID → lat/lon/alt/fix 캐시 | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ |
+| TDM-CACHE-004 | SYSTEM_HEALTH MID → HealthState/FaultCode 캐시 | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ |
+| TDM-CACHE-005 | EKF_STATUS MID → EkfValid=1, PacketType=FC_STATE | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ |
 
 ---
 
@@ -539,6 +803,12 @@ EVS 로그/HK/serial 출력으로 결과를 검증한다.
 
 | 항목 | 비고 |
 |---|---|
+| `mavlink_bridge_app` unit test | unit-test 디렉터리 미구성 |
+| `lora_tdm_app` `ReportHousekeeping` 단위테스트 | HK payload 반영 확인 — 미작성 |
+| `lora_tdm_app` `ReportLinkStatus` 단위테스트 | LinkStatus TLM 반영 확인 — 미작성 |
+| `lora_tdm_app` SEQ_FAIL 경로 (TDM-RX-004) | `UPLINK_FB_SEQ_FAIL` 미구현 |
+| `lora_tdm_app` `RunCycle` TDM 타이밍 검증 | serial 의존 → Pi 런타임 필요 |
+| `lora_tdm_app` LoRa 하드웨어 연동 | Pi 실물 serial 필요 |
 | `uplink_app` LoRa serial read C 경로 단위테스트 | `ServiceLoRa()`/`ParseLoRaFrame()` static — 통합테스트로 대체 |
 | `uplink_app` CRC16 C 구현 | `UPLINK_APP_CRC16()` static — `test_uplink_lora_frame.py`로 검증 예정 |
 | `lora_fc_downlink_app` SB timeout alive (LORA-FC-008) | main loop — static 함수, 단위테스트 불가 |

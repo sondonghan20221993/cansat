@@ -376,6 +376,40 @@ void Test_UPLINK_APP_ForwardViewpointCommand(void)
     UtAssert_BOOL_FALSE(UPLINK_APP_ForwardViewpointCommand(&Cmd, &Payload));
 }
 
+/* ParseLoRaFrame: 유효 프레임 파싱 + 거부 경로 (Task B) */
+void Test_UPLINK_APP_ParseLoRaFrame(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t Cmd;
+
+    /* 유효: payload 비어있음, CRC = CRC16("UP,1,2,3,0,") = 0x06A1 */
+    memset(&Cmd, 0, sizeof(Cmd));
+    UtAssert_BOOL_TRUE(UPLINK_APP_ParseLoRaFrame("UP,1,2,3,0,,06A1", &Cmd));
+    UtAssert_INT32_EQ(Cmd.Version, 1);
+    UtAssert_INT32_EQ(Cmd.CommandClass, 2);
+    UtAssert_INT32_EQ(Cmd.Sequence, 3);
+    UtAssert_INT32_EQ(Cmd.PayloadLength, 0);
+
+    /* 유효: payload AB CD (2바이트), CRC = CRC16("UP,1,2,3,0,ABCD") = 0x960F */
+    memset(&Cmd, 0, sizeof(Cmd));
+    UtAssert_BOOL_TRUE(UPLINK_APP_ParseLoRaFrame("UP,1,2,3,0,ABCD,960F", &Cmd));
+    UtAssert_INT32_EQ(Cmd.PayloadLength, 2);
+    UtAssert_INT32_EQ(Cmd.Payload[0], 0xAB);
+    UtAssert_INT32_EQ(Cmd.Payload[1], 0xCD);
+
+    /* 거부: "UP," 접두사 아님 */
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseLoRaFrame("HB,1,2", &Cmd));
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseLoRaFrame("GARBAGE", &Cmd));
+
+    /* 거부: 필드 수 부족 */
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseLoRaFrame("UP,1,2,3", &Cmd));
+
+    /* 거부: CRC 불일치 */
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseLoRaFrame("UP,1,2,3,0,,FFFF", &Cmd));
+
+    /* 거부: 홀수 hex 길이. CRC16("UP,1,2,3,0,ABC")=0xA57B로 일치시켜 hex 검증 단계까지 도달 */
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseLoRaFrame("UP,1,2,3,0,ABC,A57B", &Cmd));
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(UPLINK_APP_ValidateProxyCommand);
@@ -390,4 +424,5 @@ void UtTest_Setup(void)
     ADD_TEST(UPLINK_APP_ForwardDiagnosticCommand);
     ADD_TEST(UPLINK_APP_ParseViewpointPayload);
     ADD_TEST(UPLINK_APP_ForwardViewpointCommand);
+    ADD_TEST(UPLINK_APP_ParseLoRaFrame);
 }

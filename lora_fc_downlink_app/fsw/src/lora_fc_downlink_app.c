@@ -11,11 +11,14 @@
 
 LORA_FC_DOWNLINK_APP_Data_t LORA_FC_DOWNLINK_APP_Data;
 
-void LORA_FC_DOWNLINK_APP_Main(void)
+/* Entry point symbol kept <=19 chars (OS_MAX_API_NAME-1) for OS_SymbolLookup.
+ * LORA_FC_DOWNLINK_APP_Main (25) was truncated to 19 → symbol not found. */
+void LORA_FC_DL_Main(void)
 {
     CFE_Status_t     status;
     CFE_SB_Buffer_t *sb_buf_ptr;
 
+    OS_printf("LORA_FC_DOWNLINK_APP: main entry\n");
     CFE_ES_WriteToSysLog("LORA_FC_DOWNLINK_APP: main entry\n");
 
     status = LORA_FC_DOWNLINK_APP_Init();
@@ -69,6 +72,11 @@ CFE_Status_t LORA_FC_DOWNLINK_APP_Init(void)
     CFE_MSG_Init(CFE_MSG_PTR(LORA_FC_DOWNLINK_APP_Data.HkTlm.TelemetryHeader),
                  CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_HK_TLM_MID), sizeof(LORA_FC_DOWNLINK_APP_Data.HkTlm));
 
+    /* uplink raw frame forward message (lora RX window -> SB -> uplink_app) */
+    CFE_MSG_Init(CFE_MSG_PTR(LORA_FC_DOWNLINK_APP_Data.UplinkRawMsg.TelemetryHeader),
+                 CFE_SB_ValueToMsgId(LORA_FC_DOWNLINK_APP_UPLINK_RAW_MID_VALUE),
+                 sizeof(LORA_FC_DOWNLINK_APP_Data.UplinkRawMsg));
+
     CFE_ES_WriteToSysLog("LORA_FC_DOWNLINK_APP: before pipe create\n");
     status = CFE_SB_CreatePipe(&LORA_FC_DOWNLINK_APP_Data.CommandPipe, LORA_FC_DOWNLINK_APP_PLATFORM_PIPE_DEPTH,
                                LORA_FC_DOWNLINK_APP_PLATFORM_PIPE_NAME);
@@ -98,6 +106,9 @@ CFE_Status_t LORA_FC_DOWNLINK_APP_Init(void)
                               LORA_FC_DOWNLINK_APP_Data.CommandPipe);
     if (status != CFE_SUCCESS)
     {
+        CFE_EVS_SendEvent(LORA_FC_DOWNLINK_APP_SUB_CMD_ERR_EID, CFE_EVS_EventType_ERROR,
+                          "LoRa FC Downlink App: Subscribe ATTITUDE (0x%04X) failed RC=0x%08lX",
+                          LORA_FC_DOWNLINK_APP_FC_ATTITUDE_STATE_MID_VALUE, (unsigned long)status);
         return status;
     }
 
@@ -105,6 +116,9 @@ CFE_Status_t LORA_FC_DOWNLINK_APP_Init(void)
                               LORA_FC_DOWNLINK_APP_Data.CommandPipe);
     if (status != CFE_SUCCESS)
     {
+        CFE_EVS_SendEvent(LORA_FC_DOWNLINK_APP_SUB_CMD_ERR_EID, CFE_EVS_EventType_ERROR,
+                          "LoRa FC Downlink App: Subscribe EKF_LOCAL (0x%04X) failed RC=0x%08lX",
+                          LORA_FC_DOWNLINK_APP_FC_EKF_LOCAL_STATE_MID_VALUE, (unsigned long)status);
         return status;
     }
 
@@ -112,6 +126,9 @@ CFE_Status_t LORA_FC_DOWNLINK_APP_Init(void)
                               LORA_FC_DOWNLINK_APP_Data.CommandPipe);
     if (status != CFE_SUCCESS)
     {
+        CFE_EVS_SendEvent(LORA_FC_DOWNLINK_APP_SUB_CMD_ERR_EID, CFE_EVS_EventType_ERROR,
+                          "LoRa FC Downlink App: Subscribe GPS_RAW (0x%04X) failed RC=0x%08lX",
+                          LORA_FC_DOWNLINK_APP_FC_GPS_RAW_STATE_MID_VALUE, (unsigned long)status);
         return status;
     }
 
@@ -119,6 +136,9 @@ CFE_Status_t LORA_FC_DOWNLINK_APP_Init(void)
                               LORA_FC_DOWNLINK_APP_Data.CommandPipe);
     if (status != CFE_SUCCESS)
     {
+        CFE_EVS_SendEvent(LORA_FC_DOWNLINK_APP_SUB_CMD_ERR_EID, CFE_EVS_EventType_ERROR,
+                          "LoRa FC Downlink App: Subscribe EKF_STATUS (0x%04X) failed RC=0x%08lX",
+                          LORA_FC_DOWNLINK_APP_FC_EKF_STATUS_MID_VALUE, (unsigned long)status);
         return status;
     }
 
@@ -126,6 +146,9 @@ CFE_Status_t LORA_FC_DOWNLINK_APP_Init(void)
                               LORA_FC_DOWNLINK_APP_Data.CommandPipe);
     if (status != CFE_SUCCESS)
     {
+        CFE_EVS_SendEvent(LORA_FC_DOWNLINK_APP_SUB_CMD_ERR_EID, CFE_EVS_EventType_ERROR,
+                          "LoRa FC Downlink App: Subscribe SYSTEM_HEALTH (0x%04X) failed RC=0x%08lX",
+                          LORA_FC_DOWNLINK_APP_SYSTEM_HEALTH_MID_VALUE, (unsigned long)status);
         return status;
     }
 

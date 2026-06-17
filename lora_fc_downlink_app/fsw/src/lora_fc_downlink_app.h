@@ -29,6 +29,7 @@ typedef struct
     uint32                          LastSystemHealthTimestampMs;
     int                             LoRaFd;
     uint32                          LoRaTxCount;
+    uint32                          LastLoRaTxMs;
     uint32                          HbLastRxMs;
     uint8                           HbLinkValid;
     char                            LoRaReadBuf[256];
@@ -56,11 +57,12 @@ typedef struct
     uint8                           Spare[1];
     CFE_SB_PipeId_t                 CommandPipe;
     LORA_FC_DOWNLINK_APP_HkTlm_t     HkTlm;
+    LORA_FC_DOWNLINK_APP_UplinkRawTlm_t UplinkRawMsg;
 } LORA_FC_DOWNLINK_APP_Data_t;
 
 extern LORA_FC_DOWNLINK_APP_Data_t LORA_FC_DOWNLINK_APP_Data;
 
-void         LORA_FC_DOWNLINK_APP_Main(void);
+void         LORA_FC_DL_Main(void); /* entry symbol <=19 chars for OS_SymbolLookup */
 CFE_Status_t LORA_FC_DOWNLINK_APP_Init(void);
 bool         LORA_FC_DOWNLINK_APP_VerifyCmdLength(const CFE_MSG_Message_t *msg_ptr, size_t expected_length);
 void         LORA_FC_DOWNLINK_APP_ReportHousekeeping(void);

@@ -13,4 +13,9 @@
 #define LORA_FC_DOWNLINK_APP_FC_GPS_RAW_STATE_MID_VALUE 0x1907
 #define LORA_FC_DOWNLINK_APP_FC_EKF_STATUS_MID_VALUE 0x1908
 
+/* Raw ground uplink frame forwarded over SB to uplink_app.
+ * lora_fc_downlink_app가 LoRa RX 윈도우에서 읽은 "UP,..." 원문을 publish.
+ * 값은 uplink_app의 UPLINK_APP_LORA_RAW_MID_VALUE와 반드시 동일해야 함. */
+#define LORA_FC_DOWNLINK_APP_UPLINK_RAW_MID_VALUE 0x1909
+
 #endif

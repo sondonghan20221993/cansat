@@ -8,9 +8,13 @@ EVS 로그 또는 UPLINK_STATUS_MID HK로 결과를 검증한다.
 
 검증 TC:
     - LORA-UP-011: seq 증가 → accept
-    - LORA-UP-012: seq 동일 → reject (C ServiceLoRa 경로)
-    - LORA-UP-013: seq 역행 → reject (C ServiceLoRa 경로)
+    - LORA-UP-012: seq 동일 → reject (ProcessUplink IsSequenceAccepted)
+    - LORA-UP-013: seq 역행 → reject (ProcessUplink IsSequenceAccepted)
     - REC-008: seq regression 반복 → reject count 증가
+
+    주: uplink serial 직접 경로(ServiceLoRa)는 제거됨. LoRa UP 프레임은
+    lora_fc_downlink_app이 UPLINK_RAW_MID(0x1909)로 SB publish → uplink_app 구독.
+    seq 거부는 영구 LastAcceptedSequence 기반 ProcessUplink에서 수행.
 """
 
 import socket

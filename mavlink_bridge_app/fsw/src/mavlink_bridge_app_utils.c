@@ -794,6 +794,11 @@ static CFE_Status_t MAVLINK_BRIDGE_APP_OpenSerial(void)
         return CFE_STATUS_EXTERNAL_RESOURCE_FAIL;
     }
 
+    /* Discard any bytes the FC sent while cFS was not running/reading this port.
+     * Without this, the first read after open drains that whole backlog in one burst,
+     * which can exceed downstream SB per-MsgId queue limits (see lora_tdm_app_behavior_spec.md §5.1). */
+    tcflush(Fd, TCIFLUSH);
+
     MAVLINK_BRIDGE_APP_Data.SerialFd       = Fd;
     MAVLINK_BRIDGE_APP_Data.LastErrorCode  = MAVLINK_BRIDGE_ERROR_NONE;
     MAVLINK_BRIDGE_APP_Data.LastRxTimestampMs = 0;

@@ -1,94 +1,5 @@
 # Raspberry Pi 재통합 및 재설정 절차
 
-## Pi↔FC MAVLink 양방향 통신 진단
-
-> **핵심**: telemetry 수신 정상(FC→Pi) ≠ command 송신 정상(Pi→FC).
-> cFS 미션 업로드 문제가 발생하면 MAVProxy로 양방향 통신을 먼저 검증한다.
-
-### 사전 확인 (QGC/MP 파라미터)
-
-| 파라미터 | 정상값 | 의미 |
-|---------|--------|------|
-| `SERIAL4_PROTOCOL` | `2` | MAVLink2. `0`이면 FC가 RX 무시 |
-| `SERIAL4_BAUD` | `57` | 57600 baud 일치 |
-| `SERIAL4_OPTIONS` | `0` | Half-duplex 등 옵션 없음 |
-
-### MAVProxy 단독 테스트
-
-```bash
-pip install mavproxy
-mavproxy.py --master=/dev/serial0 --baudrate=57600
-```
-
-연결 후 콘솔에서:
-```
-arm throttle    # ACK 응답 오면 Pi→FC TX 정상
-disarm
-```
-
-- ACK 응답 있음 → Pi↔FC 양방향 정상. cFS 미션 업로드 문제는 브리지 코드 쪽.
-- ACK 응답 없음 → Pi TX 물리 배선 또는 FC 파라미터 문제.
-
-### 물리 배선 확인
-
-| 핀 | 연결 대상 |
-|----|---------|
-| Pi GPIO14 (TXD, Pin 8) | FC UART4 RX |
-| Pi GPIO15 (RXD, Pin 10) | FC UART4 TX |
-| GND | FC GND (공통) |
-
----
-
-## 개발 워크플로 (소스 수정 후 재빌드)
-
-> **모든 경로는 Raspberry Pi 기준이다.** 빌드·실행은 Pi 터미널에서 수행한다.
-
-소스를 수정한 뒤 cFS에 반영하는 절차. `rsync` 대신 `cp -r`을 사용한다.
-
-### 1. 소스 동기화
-
-```bash
-# fsw 소스가 변경된 경우
-cp -r ~/Desktop/cfs-telemetry-app/<app>/fsw/ ~/Desktop/cFS_clean/apps/<app>/fsw/
-
-# unit-test가 변경된 경우
-cp -r ~/Desktop/cfs-telemetry-app/<app>/unit-test/ ~/Desktop/cFS_clean/apps/<app>/unit-test/
-```
-
-### 2. cFS 재빌드 및 설치
-
-```bash
-cd ~/Desktop/cFS_clean/build-native_std
-make native_default_cpu1-all -j$(nproc)
-
-# .so 수동 복사 (sudo make install 대체)
-cp ~/Desktop/cFS_clean/build-native_std/native/default_cpu1/apps/<app>/<app>.so ~/Desktop/cFS_clean/build-native_std/exe/cpu1/cf/
-```
-
-`mav_bridge_app`는 target 이름이 짧으므로:
-```bash
-cp apps/mavlink_bridge_app/mav_bridge_app.so ~/Desktop/cFS_clean/build-native_std/exe/cpu1/cf/
-```
-
-### 3. unit-test 재빌드 및 실행
-
-```bash
-cd ~/Desktop/cFS_clean/build-ut/native/default_cpu1/apps/<app>/unit-test
-make -j4
-./coverage-<app>-<module>-testrunner
-```
-
-### 4. Python 테스트
-
-```bash
-cd ~/Desktop/cfs-telemetry-app
-.venv/bin/python -m pytest tests/ -v
-```
-
----
-
-> **이 문서의 모든 경로(`~/Desktop/cFS_clean`, `~/Desktop/cfs-telemetry-app`)는 Raspberry Pi 기준이다.**
-
 이 문서는 Raspberry Pi가 초기화된 뒤 `cFS`와 baseline telemetry app set을 다시 올릴 때
 필요한 절차와, 실제로 확인된 문제 및 해결 기준을 정리한다.
 
@@ -104,7 +15,7 @@ cd ~/Desktop/cfs-telemetry-app
 ## 목표
 
 - 단일 Raspberry Pi 환경에서 `native_std / cpu1`로 `cFS`를 안정적으로 실행한다.
-- MAVLink를 `FC -> Raspberry Pi -> mavlink_bridge_app -> downlink_app` 경로로 연결한다.
+- MAVLink를 `FC -> Raspberry Pi -> mavlink_bridge_app -> lora_fc_downlink_app` 경로로 연결한다.
 - Windows 측에서 최종 수신 여부를 검증한다.
 
 ## 확인된 문제 요약
@@ -146,15 +57,75 @@ cd ~/Desktop/cfs-telemetry-app
 
 - `apps/ds/fsw/tables/ds_filter_tbl.c`에서 해당 항목을 비활성화한다.
 
-### 4. `mavlink_bridge_app` 동적 로드 실패
+### 4. OSAL 이름 길이 한계 (앱 로드/실행 실패의 최다 원인)
 
-`mavlink_bridge_app.so`는 존재했지만, 긴 파일명과 앱 이름으로 인해 OSAL loader가
-`-104 (OS_FS_ERR_NAME_TOO_LONG)`를 반환했다.
+cFS/OSAL은 식별자 길이에 **하드 제한**이 있고, 초과해도 빌드는 성공하지만
+런타임에 조용히(또는 syslog에만) 실패한다. baseline bring-up에서 발생한
+다수의 "앱이 로드는 되는데 init 로그가 없음" 증상이 모두 이 한계 때문이었다.
+
+#### 적용되는 두 한계
+
+| 상수 | 기본값 | 적용 대상 | 검사 방식 |
+| --- | --- | --- | --- |
+| `OS_MAX_API_NAME` | 20 | 앱/태스크 이름(startup 4번째 필드), **entry point 심볼명(3번째 필드)** | null 종료문자 포함 ≤20 → **실사용 ≤19자** |
+| `OS_MAX_FILE_NAME` | 20 | `.so` 파일명(startup 2번째 필드 = CMake `add_cfe_app` 타겟명 + `.so`) | basename ≤20 → **실사용 ≤19자** |
+
+> 검사는 `memchr(name, '\0', 20)` 방식이라 정확히 20자면 첫 20바이트 안에 null이
+> 없어 실패한다. 따라서 **모든 이름은 19자 이하**로 잡는다.
+
+#### startup.scr 필드별 점검 (`CFE_APP, <파일>, <엔트리심볼>, <앱이름>, ...`)
+
+| 필드 | 한계 | 초과 시 에러 |
+| --- | --- | --- |
+| 2번째 `.so` 파일명 | `OS_MAX_FILE_NAME` | `CFE_ES_LoadModule: Could not load file. EC = -104` (`OS_FS_ERR_NAME_TOO_LONG`) |
+| 3번째 entry 심볼 | `OS_MAX_API_NAME` | `Could not find symbol:<19자로 잘린 이름>. EC = -1` |
+| 4번째 앱 이름 | `OS_MAX_API_NAME` | `OS_TaskCreate ... EC = -13` (`OS_ERR_NAME_TOO_LONG`), **syslog에만** 출력 → stdout엔 안 보임 |
+
+#### 실제 사례
+
+- `mavlink_bridge_app`: `.so` 파일명/앱 이름 20자 초과 → `-104`.
+  - 해결: CMake `add_cfe_app(mav_bridge_app)`, entry `MAV_BRIDGE_APP_Main`(19),
+    앱 이름 `MAVLINK_BRIDGE_APP`(18).
+- `lora_fc_downlink_app`: 세 필드 모두 초과로 단계적 실패(같은 증상 반복).
+  - `LORA_FC_DOWNLINK_APP`(앱 이름, 20) → `-13` (TaskCreate 실패, syslog만)
+  - `lora_fc_downlink_app.so`(파일명, 23) → `-104`
+  - `LORA_FC_DOWNLINK_APP_Main`(엔트리, 25) → 19자로 잘려 symbol not found `-1`
+  - 해결: 파일명/타겟 `lora_fc_dl_app`(`.so` 17), entry `LORA_FC_DL_Main`(15),
+    앱 이름 `LORA_FC_DOWNLINK`(16). C 내부 함수(`..._Init` 등)는 OS_SymbolLookup을
+    거치지 않으므로 길어도 무방하다 — **entry point 함수명만** 줄이면 된다.
+
+#### 신규 앱 추가 시 체크리스트
+
+- `.so` 파일명(= `add_cfe_app` 타겟명 + `.so`) ≤ 19자
+- entry point 함수명 ≤ 19자
+- startup 앱 이름 ≤ 19자
+- 디렉토리명/`APPLIST` 항목은 길어도 무방(빌드 탐색용일 뿐, OSAL 거치지 않음)
+
+### 4-1. `apps/` 복사본과 git 레포의 드리프트 (반드시 확인)
+
+빌드는 `~/cFS_clean/apps/<app>`을 소스로 사용한다. custom app을 git 레포
+`~/cfs-telemetry-app/<app>`에서 **복사**해 두면, 이후 `git pull`은 git 레포만
+갱신하고 빌드가 쓰는 복사본은 옛 버전 그대로 남는다. 그 결과 소스 수정이
+빌드에 전혀 반영되지 않으면서 동일 증상이 반복된다(디버깅 시간 최대 낭비 지점).
+
+확인:
+
+```bash
+diff -q ~/cFS_clean/apps/<app>/CMakeLists.txt ~/cfs-telemetry-app/<app>/CMakeLists.txt
+```
 
 해결 기준:
 
-- CMake target과 startup entry를 짧은 이름 `mav_bridge_app`로 통일한다.
-- entry point는 `MAV_BRIDGE_APP_Main`, 앱 이름은 `MAV_BRIDGE_APP`를 사용한다.
+- 복사본을 git 레포로 **심볼릭 링크**해 단일 소스로 만든다.
+
+```bash
+rm -rf ~/cFS_clean/apps/<app>
+ln -s ~/cfs-telemetry-app/<app> ~/cFS_clean/apps/<app>
+```
+
+- 이후 `git pull` 한 번으로 빌드 소스까지 갱신된다.
+- 단, `add_cfe_app` 타겟명을 바꾼 경우(파일명 변경) arch 빌드 캐시 재구성을 위해
+  `cmake -DMISSION_DEFS=... cfe -B build`를 다시 실행해야 새 `.so`가 생성된다.
 
 ### 5. startup script 중복 등록
 
@@ -210,60 +181,43 @@ FC USB 연결에서는 `ATTITUDE`, `GLOBAL_POSITION_INT`, `GPS_RAW_INT`, `EKF_ST
   - `GPS_RAW_INT (24)`
   - `EKF_STATUS_REPORT (193)`
 
-### 8. RPi UART가 로그인 콘솔에 점유돼 FC heartbeat 미수신
+### 8. CP2102 LoRa 포트 충돌 (lora_fc_downlink_app ↔ uplink_app)
 
-**FC: PX4 펌웨어, CM4-IO-BASE-B 보드 기준**
+`lora_fc_downlink_app`과 `uplink_app`이 동일한 CP2102 USB-UART 포트를 각각 직접 open했다.
+Linux는 같은 tty 동시 open을 막지 않아 `EBUSY` 없이 둘 다 열리지만, 수신 바이트를
+서로 빼앗아 HB/UP 수신이 모두 불안정해진다.
 
 확인된 증상:
 
-- `MAVLINK_BRIDGE_APP: waiting for FC heartbeat before stream request` 반복
-- `sudo timeout 10 cat /dev/serial0 | od -An -tx1` 결과 아무것도 없음
+- 두 앱 모두 `opened LoRa serial ...CP2102...` 로그 출력
+- HB/UP 프레임 간헐적 유실
 
-원인 1 — `/dev/serial0 → ttyS0` (mini UART):
+해결 기준 (transport/app 분리):
 
-CM4에서 기본적으로 `serial0`이 mini UART(`ttyS0`)를 가리킨다. mini UART는 GPU 클럭에 종속되어 불안정하며, Bluetooth가 PL011(`ttyAMA0`)을 점유한다.
+- CP2102는 `lora_fc_downlink_app`이 단독 소유(downlink TX + TDM RX 윈도우).
+- `uplink_app`은 serial 직접 open 제거 → SB 구독으로 전환.
+- `lora_fc_downlink_app`이 RX에서 읽은 "UP,..." 원문을 `UPLINK_RAW_MID`(0x1909)로 publish,
+  `uplink_app`이 이를 구독해 `ParseLoRaFrame()`로 파싱(파싱·검증은 uplink 소유).
+- 반이중 제약: RX 윈도우는 downlink TX 후 300ms만 열림(지상국은 슬롯 내 응답 필요).
+- **지상국측 정합**: 지상 LoRa 브리지(openMCT `fc_serial_ws_server.py`)는 UP 프레임을 즉시
+  쏘지 말고 큐에 적재 후, downlink 라인 수신 직후(= Pi RX 윈도우 열림) 그 슬롯에 송신해야 한다.
+  SH가 FC 없이도 ~1Hz로 downlink되므로 슬롯은 항상 열린다. (상세: openMCT `openmct_bridge_notes.md`)
 
-해결:
+### 9. lora_fc_downlink_app CommandPipe starvation (depth)
 
-```bash
-echo "dtoverlay=disable-bt" | sudo tee -a /boot/firmware/config.txt
-sudo reboot
-```
+`ServiceLoRa()`가 SB 메시지 핸들러(`ProcessInputMessage`) 안에서 TX 후 **300ms 블로킹
+RX 윈도우**를 도는 동안 SB 수신 루프가 멈춰 FC 스트림이 CommandPipe에 누적된다.
 
-재부팅 후 `serial0 → ttyAMA0`로 변경 확인:
+확인된 위험:
 
-```bash
-ls -la /dev/serial0
-```
+- FC 스트림 ~45 msg/s × 300ms ≈ 14개 누적 → CommandPipe depth 10이면 오버플로(FC 드롭).
+- `lora_tdm_app` 시절 pipe depth starvation의 구조적 이전형.
 
-원인 2 — `serial-getty@ttyAMA0.service`가 `/dev/ttyAMA0` 점유:
+해결 기준:
 
-```bash
-sudo fuser -v /dev/ttyAMA0
-# root  3155 F.... login
-```
-
-해결:
-
-```bash
-sudo systemctl stop serial-getty@ttyAMA0.service
-sudo systemctl disable serial-getty@ttyAMA0.service
-sudo systemctl mask serial-getty@ttyAMA0.service
-```
-
-원인 3 — PX4 MAVLink 포트 설정 미적용:
-
-PX4에서 UART4(TELEM4)를 companion link로 사용하려면 QGC에서 다음을 설정하고 FC를 재부팅해야 한다.
-
-| 파라미터 | 설정값 | 비고 |
-|---|---|---|
-| `MAV_2_CONFIG` | 104 (TELEM4) | MAVLink 인스턴스 2를 TELEM4에 할당 |
-| `MAV_2_MODE` | 2 (Onboard) | ATTITUDE/GPS 고속 스트림 활성화 |
-| `SER_TEL4_BAUD` | 57600 | cFS 브리지 보드레이트와 일치 |
-
-참고: PX4의 `SER_TEL4_BAUD` 파라미터가 `1.614296E-40` 등 비정상 부동소수점으로 표시되는 경우, 정수 값(57600)으로 직접 입력한다.
-
----
+- `DEFAULT_LORA_FC_DOWNLINK_APP_PLATFORM_PIPE_DEPTH`를 **32**로 상향(cFS 최대 50 미만).
+- 근본 해결(블로킹 LoRa I/O를 SB 핸들러에서 분리)은 후속 과제로 남긴다.
+- 참고: cFS 파이프 depth 상한은 50. 이를 초과하면(과거 lora_tdm_app의 200) 즉시 종료된다.
 
 ## Raspberry Pi 재설정 절차
 
@@ -289,7 +243,7 @@ hostname -I
 작업 경로는 `~/Desktop/cFS_clean`를 기준으로 한다.
 
 ```bash
-cd ~
+cd ~/Desktop
 git clone --recurse-submodules https://github.com/nasa/cFS.git cFS_clean
 cd ~/Desktop/cFS_clean
 git submodule update --init --recursive
@@ -371,21 +325,15 @@ baseline bring-up 기준으로 아래 MID만 남긴다.
 
 ### 11. 빌드와 설치
 
-실제 동작하는 빌드 명령은 다음과 같다.
+다음 명령만 사용한다.
 
 ```bash
-# 빌드
-cd ~/Desktop/cFS_clean/build-native_std
-make native_default_cpu1-all -j$(nproc)
-
-# 설치 (.so 파일을 실행 디렉터리로 복사)
-cp ~/Desktop/cFS_clean/build-native_std/native/default_cpu1/apps/mavlink_bridge_app/mav_bridge_app.so ~/Desktop/cFS_clean/build-native_std/exe/cpu1/cf/
-cp ~/Desktop/cFS_clean/build-native_std/native/default_cpu1/apps/uplink_app/uplink_app.so ~/Desktop/cFS_clean/build-native_std/exe/cpu1/cf/
-cp ~/Desktop/cFS_clean/build-native_std/native/default_cpu1/apps/cfs_core_app/cfs_core_app.so ~/Desktop/cFS_clean/build-native_std/exe/cpu1/cf/
-cp ~/Desktop/cFS_clean/build-native_std/native/default_cpu1/apps/lora_fc_downlink_app/lora_fc_downlink_app.so ~/Desktop/cFS_clean/build-native_std/exe/cpu1/cf/
+make native_std.prep SIMULATION=native
+make native_std.compile SIMULATION=native
+make native_std.install SIMULATION=native
 ```
 
-설치 결과는 `~/Desktop/cFS_clean/build-native_std/exe/cpu1/` 아래에 생성된다.
+설치 결과는 기본적으로 `build-native_std/exe/cpu1` 아래에 생성된다.
 
 ### 12. 런타임 실행
 
@@ -393,7 +341,7 @@ cp ~/Desktop/cFS_clean/build-native_std/native/default_cpu1/apps/lora_fc_downlin
 
 ```bash
 cd ~/Desktop/cFS_clean/build-native_std/exe/cpu1
-sudo ./core-cpu1
+./core-cpu1
 ```
 
 기대 결과:
@@ -409,10 +357,15 @@ sudo ./core-cpu1
 다음 조건을 모두 만족하면 baseline bring-up 성공으로 본다.
 
 - `native_std / cpu1`가 `OPERATIONAL` 상태에 도달한다.
-- `CFS_CORE_APP`, `UPLINK_APP`, `LORA_FC_DOWNLINK_APP`, `MAV_BRIDGE_APP` 초기화 로그가 출력된다.
+- `CFS_CORE_APP`, `UPLINK_APP`, `LORA_TDM_APP`(2026-06-16부터 `LORA_FC_DOWNLINK_APP` 대체), `MAV_BRIDGE_APP` 초기화 로그가 출력된다.
 - `MAV_BRIDGE_APP: opened serial path /dev/serial0 at 57600 baud` 로그가 출력된다.
 - `MAVLINK_BRIDGE_APP: requested telemetry streams` 또는 `COMMAND_ACK cmd=511 result=0` 로그가 출력된다.
 - `Pipe Overflow, MsgId 0x80e, pipe SBNSubPipe, sender TO_LAB`가 재발하지 않는다.
+- `CFS_CORE_APP: health`가 부팅 30초 후 `FAILED`(fault=1=BRIDGE_TIMEOUT)로 고착되지 않는다 —
+  `mission_defs/tables/cpu1_sch_lab_table.c`(2026-06-17 추가)가 `mavlink_bridge_app`의
+  `SEND_HK`를 스케줄링해야 `cfs_core_app`이 `BRIDGE_HK`를 받아 bridge 생존을 확인할 수 있다.
+  이 override 없으면(기본 `sch_lab_table.c`는 빈 placeholder) bridge가 정상이어도 영원히
+  타임아웃으로 오판한다.
 
 ## FC 연결 후 검증 절차
 

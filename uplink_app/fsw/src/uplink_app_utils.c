@@ -572,7 +572,11 @@ static int UPLINK_APP_HexNibble(char C)
     return -1;
 }
 
-static bool UPLINK_APP_ParseLoRaFrame(const char *Line, UPLINK_APP_ProcessUplinkCmd_t *Out)
+/* Parse a ground "UP,<ver>,<class>,<seq>,<flags>,<payloadhex>,<crc>" text frame
+ * into a UPLINK_APP_ProcessUplinkCmd_t. CRC16 over the canonical prefix is
+ * verified. Called from dispatch when a LoRa raw frame arrives over SB.
+ * (Transport read is owned by lora_fc_downlink_app; parsing stays here.) */
+bool UPLINK_APP_ParseLoRaFrame(const char *Line, UPLINK_APP_ProcessUplinkCmd_t *Out)
 {
     char   VersionStr[8], ClassStr[8], SeqStr[8], FlagsStr[8];
     char   PayloadHex[UPLINK_APP_MAX_PAYLOAD_LENGTH * 2 + 2];
@@ -651,109 +655,9 @@ static bool UPLINK_APP_ParseLoRaFrame(const char *Line, UPLINK_APP_ProcessUplink
     return true;
 }
 
-void UPLINK_APP_ServiceLoRa(void)
-{
-    ssize_t                       Rc;
-    char                          C;
-    UPLINK_APP_ProcessUplinkCmd_t Cmd;
-
-    if (UPLINK_APP_Data.LoRaFd < 0)
-    {
-        int            Fd;
-        struct termios Tio;
-        speed_t        Baud = B57600;
-
-        Fd = open(UPLINK_APP_LORA_SERIAL_PATH, O_RDONLY | O_NOCTTY | O_NONBLOCK);
-        if (Fd < 0)
-        {
-            return;
-        }
-
-        if (tcgetattr(Fd, &Tio) != 0)
-        {
-            close(Fd);
-            return;
-        }
-
-        Tio.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON);
-        Tio.c_oflag &= ~OPOST;
-        Tio.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
-        Tio.c_cflag &= ~(CSIZE | PARENB);
-        Tio.c_cflag |= CS8 | CLOCAL | CREAD;
-#ifdef CRTSCTS
-        Tio.c_cflag &= ~CRTSCTS;
-#endif
-        Tio.c_cc[VMIN]  = 0;
-        Tio.c_cc[VTIME] = 0;
-        cfsetispeed(&Tio, Baud);
-        cfsetospeed(&Tio, Baud);
-
-        if (tcsetattr(Fd, TCSANOW, &Tio) != 0)
-        {
-            close(Fd);
-            return;
-        }
-
-        {
-            int Flags = fcntl(Fd, F_GETFL, 0);
-            if (Flags >= 0)
-            {
-                fcntl(Fd, F_SETFL, Flags & ~O_NONBLOCK);
-            }
-        }
-
-        UPLINK_APP_Data.LoRaFd = Fd;
-        CFE_EVS_SendEvent(UPLINK_APP_PUBLISH_EID, CFE_EVS_EventType_INFORMATION,
-                          "UPLINK_APP: opened LoRa serial %s", UPLINK_APP_LORA_SERIAL_PATH);
-    }
-
-    Rc = read(UPLINK_APP_Data.LoRaFd, &C, 1);
-    if (Rc <= 0)
-    {
-        return;
-    }
-
-    if (UPLINK_APP_Data.LoRaReadLen < sizeof(UPLINK_APP_Data.LoRaReadBuf) - 1)
-    {
-        UPLINK_APP_Data.LoRaReadBuf[UPLINK_APP_Data.LoRaReadLen++] = C;
-    }
-
-    if (C != '\n')
-    {
-        return;
-    }
-
-    UPLINK_APP_Data.LoRaReadBuf[UPLINK_APP_Data.LoRaReadLen] = '\0';
-    UPLINK_APP_Data.LoRaReadLen = 0;
-
-    if (!UPLINK_APP_ParseLoRaFrame(UPLINK_APP_Data.LoRaReadBuf, &Cmd))
-    {
-        CFE_EVS_SendEvent(UPLINK_APP_COMMAND_ERR_EID, CFE_EVS_EventType_ERROR,
-                          "UPLINK_APP: LoRa frame parse failed: %.40s", UPLINK_APP_Data.LoRaReadBuf);
-        return;
-    }
-
-    /* sequence regression check */
-    if (UPLINK_APP_Data.LoRaSeqInitialized &&
-        Cmd.Sequence <= UPLINK_APP_Data.LastLoRaSeq)
-    {
-        CFE_EVS_SendEvent(UPLINK_APP_COMMAND_ERR_EID, CFE_EVS_EventType_ERROR,
-                          "UPLINK_APP: LoRa seq regression seq=%u last=%u",
-                          (unsigned int)Cmd.Sequence, (unsigned int)UPLINK_APP_Data.LastLoRaSeq);
-        return;
-    }
-
-    UPLINK_APP_Data.LastLoRaSeq          = Cmd.Sequence;
-    UPLINK_APP_Data.LoRaSeqInitialized   = 1;
-
-    UPLINK_APP_ProcessUplink(&Cmd);
-}
-
 void UPLINK_APP_ServicePrototype(void)
 {
     uint32                NowMs;
-
-    UPLINK_APP_ServiceLoRa();
 
     NowMs = UPLINK_APP_GetTimeMs();
     if ((NowMs - UPLINK_APP_Data.LastPublishTimeMs) < UPLINK_APP_PROTOTYPE_PERIOD_MS)

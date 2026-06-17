@@ -1,8 +1,9 @@
 # LoRa Uplink Bridge Design
 
-> **[레거시 경로]** `bridge/lora_uplink_bridge.py`는 레거시 uplink 경로로 유지된다.
-> 신규 구현은 cFS C 앱 기반 TDM 방식(`lora_tdm_app`)을 사용하며, 설계 명세는 `notes/lora_tdm_app_behavior_spec.md`를 참조한다.
-> 이 문서는 Python 브리지 경로의 프로토콜 계약 및 구현 참고용으로 보관한다.
+> **[폐기됨]** 이 문서는 Python 프로세스(`bridge/lora_uplink_bridge.py`) 기반 LoRa uplink 브리지 설계를 기술한다.
+> 이 역할은 `lora_tdm_app` cFS 앱으로 이관되었다. `lora_tdm_app`은 LoRa serial을 독점 관리하고 TDM RX 창에서
+> UP frame을 직접 수신하여 SB를 통해 `uplink_app`(`UPLINK_APP_CMD_MID` 0x18D0)으로 전달한다.
+> 이 문서는 역사적 참고용으로만 보관한다.
 
 ## Purpose
 
@@ -100,9 +101,7 @@ EVS: UPLINK_APP: LoRa frame parse failed: UP1,1,10,...  ← corrupted frame
 
 This is not a software bug; it is an inherent single-channel half-duplex constraint.
 
-**채택된 해결 방향**: 별도 LoRa 모듈 추가 대신, Pi가 LoRa 채널 TX/RX 타이밍을 직접 제어하는 TDM(Time Division Multiplexing) 방식 채택.
-Python 브리지를 통한 UDP 우회 경로를 제거하고, 단일 cFS C 앱(`lora_tdm_app`)이 serial 포트를 단독 소유하여 TX→RX window→ACK 사이클을 관리한다.
-설계 상세는 `notes/lora_tdm_app_behavior_spec.md` 참조.
+Mitigation: use a second LoRa module connected to a separate COM port on the PC as a dedicated uplink channel. The Pi-side bridge would open both the downlink serial device (for FC/SH RX) and the uplink serial device (for UP RX) independently.
 
 ## Bring-up Notes
 

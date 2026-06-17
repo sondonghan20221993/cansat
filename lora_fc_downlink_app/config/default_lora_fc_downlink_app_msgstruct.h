@@ -45,4 +45,13 @@ typedef struct
     LORA_FC_DOWNLINK_APP_HkPayload_t Payload;
 } LORA_FC_DOWNLINK_APP_HkTlm_t;
 
+/* Raw ground uplink frame ("UP,..." text line) forwarded to uplink_app over SB.
+ * Layout MUST match uplink_app's UPLINK_APP_LoRaRawMsg_t (Length + Frame). */
+typedef struct
+{
+    CFE_MSG_TelemetryHeader_t TelemetryHeader;
+    uint16                    Length;
+    char                      Frame[256];
+} LORA_FC_DOWNLINK_APP_UplinkRawTlm_t;
+
 #endif

@@ -2,290 +2,299 @@
 
 ## 1. 목적
 
-이 문서는 `lora_tdm_app`의 설계 및 동작을 정의한다.
+이 문서는 현재 이 저장소에서 구현된 `lora_tdm_app`의 동작을 정의한다.
+코드와 정합된 명세서로, 리뷰, 통합, 테스트 수행에 활용한다.
 
-`lora_tdm_app`은 기존 `lora_fc_downlink_app`(TX 전용)과 `bridge/lora_uplink_bridge.py`(RX 전용)를 단일 cFS C 앱으로 대체하여, 반이중 LoRa 채널의 TX/RX 타이밍을 cFS 내부에서 직접 제어한다.
+코드와 이 문서가 서로 다르면, 코드를 조사의 원본으로 취급해야 한다.
 
-Python 브리지(`lora_uplink_bridge.py`)는 레거시 경로로 유지되며 이 앱과 동시에 실행되지 않는다.
+## 2. 설계 배경
 
-## 2. 배경 및 설계 동기
+이전 구조:
+- `lora_fc_downlink_app` — LoRa serial TX 전용. serial port를 점유하여 downlink만 송신.
+- `bridge/lora_uplink_bridge.py` — Python 프로세스, LoRa serial RX 전용. UP frame을 읽어 UDP 1234로 uplink_app에 전달.
 
-### 2.1 기존 구조의 문제
+문제: 두 컴포넌트가 동일한 serial port를 동시에 접근하여 LoRa half-duplex 충돌 발생.
 
-```
-[기존]
-lora_fc_downlink_app (C, cFS) → /dev/ttyUSB0  TX (연속 점유)
-lora_uplink_bridge.py (Python) ← /dev/ttyUSB0  RX
-```
-
-- 동일 serial 포트 동시 접근
-- TX 연속 점유로 인해 GS 명령 수신 불가
-- Python이 cFS SB 외부에서 UDP 우회로를 통해 명령 주입 (cFS 설계 원칙 위반)
-
-### 2.2 채택된 해결 방향
-
-단일 cFS C 앱이 serial 포트를 **단독 소유**하고, TDM(Time Division Multiplexing) 방식으로 TX/RX 타이밍을 제어한다.
-
-```
-[변경 후]
-lora_tdm_app (C, cFS) ↔ /dev/ttyUSB0
-  ├─ TX: 다운링크 텔레메트리 송신
-  ├─ RX window: ACK 또는 명령 수신 대기
-  └─ SB publish: 수신 명령 → uplink_app 또는 직접 ROUTE_UPDATE_MID
-```
+해결: `lora_tdm_app` 단일 cFS 앱이 serial port를 독점 소유하고 TDM(Time Division Multiplexing) 방식으로 TX → RX를 교대 수행한다.
 
 ## 3. 범위
 
 이 명세는 다음을 다룬다.
 
-- TDM 사이클 구조 (TX → RX window → 반복)
-- ACK 패킷 프로토콜
-- 업링크 명령 수신 및 SB 게시 경로
-- serial 포트 소유 및 재연결 처리
-- 링크 상태 모니터링 및 `LORA_LINK_STATUS_MID` 게시
-- MID 계약 및 타이밍 파라미터
+- `lora_tdm_app` 메시지 구독 및 게시
+- TDM 주기 구조 (TX → RX 창)
+- FC downlink 및 시스템 헬스 downlink 패킷 형식
+- ACK 및 UP frame 수신 처리
+- UP frame → uplink_app SB 전달 경로
+- 링크 상태 관리 (CONNECTED/DEGRADED/DISCONNECTED)
+- HK 및 링크 상태 텔레메트리 게시
+- serial 재열기 정책
+- 설정 상수
 
 이 명세는 다음을 다루지 않는다.
 
-- 다운링크 텔레메트리 패킷 포맷 (→ `lora_fc_downlink_app` 기존 포맷 재사용)
-- 업링크 명령 의미 검증 (→ `uplink_app` 책임)
-- GS(지상국) 측 소프트웨어 구현
+- `uplink_app` 내부 payload 검증 및 라우팅
+- `mavlink_bridge_app` 내부 MAVLink 파싱
+- `cfs_core_app` 헬스 분류 로직
 
 ## 4. 참조
 
-- 기존 다운링크: `lora_fc_downlink_app/fsw/src/`
-- 레거시 uplink 브리지: `bridge/lora_uplink_bridge.py`
-- uplink 프레임 계약: `notes/lora_uplink_bridge_design.md`
-- MID 계약 베이스라인: `notes/mission_app_runtime_spec.md` §5.1.1
+- Source: `lora_tdm_app/fsw/src/lora_tdm_app.c` — 초기화, TDM 주기, TX, RX 창
+- Source: `lora_tdm_app/fsw/src/lora_tdm_app_utils.c` — CRC, frame build/parse, 링크 상태, 캐시 갱신
+- Source: `lora_tdm_app/fsw/src/lora_tdm_app.h` — Data 구조체 정의
+- Source: `lora_tdm_app/fsw/src/lora_tdm_app_dispatch.c` — 명령 dispatch
+- Config: `lora_tdm_app/config/default_lora_tdm_app_mission_cfg.h` — 타이밍 상수, 링크 임계값
+- Config: `lora_tdm_app/config/default_lora_tdm_app_topicid_values.h` — MID 값
+- Config: `lora_tdm_app/config/default_lora_tdm_app_msgstruct.h` — 메시지 구조체
 
-## 5. 책임
+## 5. 인터페이스
 
-`lora_tdm_app`의 책임:
+### 5.1 구독 MID
 
-- LoRa serial 포트 단독 소유 및 재연결 관리
-- 구독한 FC 상태 MID 및 `SYSTEM_HEALTH_MID`로부터 다운링크 패킷 구성
-- TDM 사이클에 따라 다운링크 전송 후 RX window 진입
-- RX window에서 ACK 또는 UP 프레임 수신
-- 수신된 UP 프레임을 cFS SB에 직접 게시 (`UPLINK_APP_CMD_MID` 또는 직접 MID)
-- 링크 상태(`LORA_LINK_STATUS_MID`) 주기적 게시
-- HK 요청 수신 시 HK 텔레메트리 게시
+`lora_tdm_app`은 초기화 중 다음 MID를 구독한다. 모든 구독은 단일 파이프 `LORA_TDM_PIPE` (깊이 50, `lora_tdm_app.c:268`)로 수신한다.
 
-`lora_tdm_app`이 수행하지 않는 것:
+기본 원칙: 이 앱의 구독은 기존 앱들과 동일하게 **`CFE_SB_Subscribe()`(기본 limit=4)를 기준**으로 한다.
+정말 저빈도인 MID(명령·HK 요청)는 이 기본값을 그대로 따른다. 다만 아래 표의 5개 MID는
+**문서화된 예외**로 `CFE_SB_SubscribeEx()` + 커스텀 `MsgLim`을 쓴다 — 이유는 표 아래 노트 참고.
 
-- 업링크 명령의 의미 검증 (route geometry, CRC 등)
-- FC MAVLink 직접 통신
-- GS 측 타이밍 제어
+| 심볼 | 값 | 목적 | 구독 함수 |
+| --- | --- | --- | --- |
+| `LORA_TDM_APP_CMD_MID_VALUE` | `0x18E0` | 명령 입력 (NOOP, RESET_COUNTERS) | `CFE_SB_Subscribe()` (기본) |
+| `LORA_TDM_APP_SEND_HK_MID_VALUE` | `0x18E1` | HK 게시 요청 | `CFE_SB_Subscribe()` (기본) |
+| `LORA_TDM_APP_SYSTEM_HEALTH_MID_VALUE` | `0x1904` | `cfs_core_app` 시스템 헬스 캐시 갱신 | `CFE_SB_SubscribeEx()`, MsgLim=20 **(예외)** |
+| `LORA_TDM_APP_FC_EKF_LOCAL_STATE_MID_VALUE` | `0x1905` | FC local position/velocity 캐시 갱신 | `CFE_SB_SubscribeEx()`, MsgLim=10 **(예외)** |
+| `LORA_TDM_APP_FC_ATTITUDE_STATE_MID_VALUE` | `0x1906` | FC attitude 캐시 갱신 | `CFE_SB_SubscribeEx()`, MsgLim=10 **(예외)** |
+| `LORA_TDM_APP_FC_GPS_RAW_STATE_MID_VALUE` | `0x1907` | FC GPS 캐시 갱신 | `CFE_SB_SubscribeEx()`, MsgLim=10 **(예외)** |
+| `LORA_TDM_APP_FC_EKF_STATUS_MID_VALUE` | `0x1908` | FC EKF status 캐시 갱신 | `CFE_SB_SubscribeEx()`, MsgLim=10 **(예외)** |
 
-## 6. MID 계약
+> **수정 완료 (2026-06-16, 실 Pi 런타임 2차 검증에서 발견 후 코드 수정)**: 위 MID들이 원래
+> 다른 MID와 동일하게 `CFE_SB_Subscribe()`(기본 함수)를 썼는데, 이 경우 cFE 기본값
+> `CFE_PLATFORM_SB_DEFAULT_MSG_LIMIT = 4`가 적용된다 — **MsgId별로 미처리 메시지 4개까지만
+> 허용**하며, 이는 파이프 깊이(50)와는 별개의 제한이다(파이프 깊이를 늘려도 해결되지 않음).
+>
+> `lora_tdm_app`의 cycle 주기는 약 1.3초(`OS_TaskDelay(1000ms)` + 최대 `RX_WINDOW_MS(300)`)인데, FC가
+> `FC_ATTITUDE_STATE_MID`/`FC_EKF_LOCAL_STATE_MID`를 5 Hz(200ms)로 보내면 한 cycle 사이에 6~7개가 쌓여
+> limit 4를 넘었다. 1차 수정(이 4개 MID만 SubscribeEx 적용) 후 재검증한 로그에서 그 4개는 해결됐지만,
+> **`SYSTEM_HEALTH_MID`에서 동일 에러가 16회 연속(부팅 직후 5ms 안에 몰림) 추가로 확인됐다.** 원인을
+> 코드에서 확인한 결과 — `cfs_core_app`은 `SYSTEM_HEALTH_MID`를 1Hz 주기가 아니라 **FC 상태 메시지가
+> 들어올 때마다(ATTITUDE/EKF_LOCAL/GPS_RAW/EKF_STATUS/ROUTE_UPDATE 처리 직후) 매번 강제 발행**한다
+> (`cfs_core_app_utils.c:193`, `CFS_CORE_APP_UpdateHealth(NowMs, true)` — `ForcePublish=true`는
+> 1Hz 주기 제한을 우회함; 일치하는 서술: `cfs_core_app_behavior_spec.md` §11.1 "즉시 헬스 게시").
+> 즉 실제로는 FC 입력과 같은 속도(최대 14Hz대)로 발행되어, "1Hz라 기본값 충분"은 잘못된 가정이었다.
+> 실제 Pi 실행 로그(1차):
+> ```
+> CFE_SB 17: Msg Limit Err, MsgId 0x1904, pipe LORA_TDM_PIPE, sender CFS_CORE_APP
+> CFE_SB 17: Msg Limit Err, MsgId 0x1906, pipe LORA_TDM_PIPE, sender MAVLINK_BRIDGE_APP
+> ```
+> 캐시는 최신값으로 덮어쓰는 구조라 치명적 데이터 손실은 아니었으나(드롭돼도 다음 메시지가 최신값 갱신),
+> 불필요한 에러 이벤트가 계속 쌓였다. **조치 1**: `SYSTEM_HEALTH_MID` 포함 5개 MID를
+> `CFE_SB_SubscribeEx(..., CFE_SB_DEFAULT_QOS, MsgLim)`로 변경(`lora_tdm_app.c`) — `SYSTEM_HEALTH_MID`는
+> 합산 이벤트 빈도가 더 높을 수 있어 MsgLim=20, FC_* 4개는 MsgLim=10. `CMD`/`SEND_HK`만 진짜 저빈도라
+> 기존 `CFE_SB_Subscribe()` 유지 — 앱 전체 구독 방식을 바꾼 게 아니라, 실측 근거가 있는 5개 MID에
+> 한정한 예외 처리다.
+>
+> **2차 재검증(2026-06-16)**: 위 수정 후 재실행했더니 `0x1904` 에러는 줄었지만 같은 부팅 시점에
+> `0x1905`/`0x1906`에서도 다시 발생. 전체 로그를 확인한 결과 **모든 Msg Limit Err(16건)가 부팅 후
+> 130ms 안에만 몰려 있고 이후 60초+ 동안 0건** — 지속 문제가 아니라 **1회성 부팅 버스트**임을 확인.
+> `rx_ms`(Pi 수신 시각)가 여러 메시지에서 동일하게 찍히는 패턴으로 보아, `mavlink_bridge_app`이
+> `/dev/serial0`를 여는 시점에 **cFS가 안 떠 있던 동안 FC가 계속 보내서 커널 시리얼 버퍼에 쌓여있던
+> 데이터를 한 번에 드레인**하는 것으로 판단됨 — 이 경우 MsgLim을 더 올려도 다운타임이 길면 버스트도
+> 커지므로 근본 해결이 안 됨. **조치 2(근본 원인)**: `mavlink_bridge_app_utils.c`의
+> `MAVLINK_BRIDGE_APP_OpenSerial()`에서 `tcsetattr()` 성공 직후 `tcflush(Fd, TCIFLUSH)` 추가 —
+> 포트를 열 때 묵은 입력 버퍼를 비워서 버스트 자체를 없앰.
 
-### 6.1 구독 MID
+### 5.2 게시 MID
 
 | 심볼 | 값 | 목적 |
-|---|---|---|
-| `LORA_TDM_APP_CMD_MID` | `0x18E0` | 명령 입력 |
-| `LORA_TDM_APP_SEND_HK_MID` | `0x18E1` | HK 요청 |
-| `CFS_CORE_APP_FC_ATTITUDE_STATE_MID_VALUE` | `0x1906` | 다운링크 데이터 |
-| `CFS_CORE_APP_FC_EKF_LOCAL_STATE_MID_VALUE` | `0x1905` | 다운링크 데이터 |
-| `CFS_CORE_APP_FC_GPS_RAW_STATE_MID_VALUE` | `0x1907` | 다운링크 데이터 |
-| `CFS_CORE_APP_FC_EKF_STATUS_MID_VALUE` | `0x1908` | 다운링크 데이터 |
-| `SYSTEM_HEALTH_MID` | `0x1904` | 다운링크 데이터 |
+| --- | --- | --- |
+| `LORA_TDM_APP_HK_TLM_MID_VALUE` | `0x08E0` | HK 텔레메트리 |
+| `LORA_TDM_APP_LINK_STATUS_MID_VALUE` | `0x1911` | LoRa 링크 상태 텔레메트리 (구 `0x190F` → `uplink_app MODE_CMD_MID`와 충돌하여 재할당) |
+| `UPLINK_APP_CMD_MID_VALUE` | `0x18D0` | UP frame forward (수신된 uplink를 uplink_app에 전달) |
 
-### 6.2 게시 MID
+## 6. 내부 상태 캐시
 
-| 심볼 | 값 | 목적 |
-|---|---|---|
-| `LORA_TDM_APP_HK_TLM_MID` | `0x08E0` | HK 텔레메트리 |
-| `LORA_LINK_STATUS_MID` | `0x190F` | LoRa 링크 상태 |
-| `UPLINK_APP_CMD_MID` | `0x18D0` | 수신된 업링크 명령 → uplink_app 전달 |
+### 6.1 FC 상태 캐시 (`LORA_TDM_APP_FcStateCache_t`)
 
-> **참고**: 수신된 UP 프레임은 `uplink_app`의 기존 검증 경로를 재사용하기 위해 `UPLINK_APP_CMD_MID`로 SB publish한다. 직접 `ROUTE_UPDATE_MID`로 우회하지 않는다.
+| 필드 | 갱신 MID | 의미 |
+| --- | --- | --- |
+| RollRad, PitchRad, YawRad | 0x1906 | FC 자세 (rad) |
+| AttitudeValid | 0x1906 | 수신 여부 플래그 |
+| PosX, PosY, PosZ | 0x1905 | NED 위치 (m) |
+| VelX, VelY, VelZ | 0x1905 | NED 속도 (m/s) |
+| LocalValid | 0x1905 | 수신 여부 플래그 |
+| LatE7, LonE7, AltMm | 0x1907 | GPS 절대 위치 |
+| GpsFix | 0x1907 | fix type |
+| GpsValid | 0x1907 | 수신 여부 플래그 |
+| EkfValid | 0x1908 | EKF 상태 플래그 유효성 |
+| TimestampMs | 최신 갱신 MID | CFE_TIME 기반 mission elapsed ms |
 
-## 7. TDM 사이클 구조
+### 6.2 시스템 헬스 캐시 (`LORA_TDM_APP_SystemHealthCache_t`)
 
-```
-[1 사이클]
-┌─────────────────────────────────────────────────────┐
-│ Phase 1: TX                                         │
-│   다운링크 패킷 구성 + serial write                   │
-│   소요시간: LoRa 전송 완료까지 (SF/BW 설정 의존)      │
-├─────────────────────────────────────────────────────┤
-│ Phase 2: RX window                                  │
-│   serial read (timeout = LORA_TDM_RX_WINDOW_MS)     │
-│   ├─ ACK 수신    → 링크 정상, 명령 없음              │
-│   ├─ CMD 수신    → 링크 정상 + uplink_app에 전달     │
-│   └─ 타임아웃    → 링크 손실 카운터 증가              │
-├─────────────────────────────────────────────────────┤
-│ Phase 3: 대기                                       │
-│   다음 사이클까지 잔여 시간 대기                       │
-│   총 사이클 주기 = LORA_TDM_CYCLE_PERIOD_MS         │
-└─────────────────────────────────────────────────────┘
-```
+| 필드 | 갱신 MID | 의미 |
+| --- | --- | --- |
+| SystemHealthState | 0x1904 | cfs_core_app 헬스 상태 |
+| FaultCode | 0x1904 | 현재 fault code |
+| TimestampMs | 0x1904 | CFE_TIME 기반 mission elapsed ms |
 
-### 7.1 TX Phase
+## 7. TDM 주기 구조
 
-- 최신 캐시된 FC 상태 + SYSTEM_HEALTH 데이터로 다운링크 패킷 구성
-- 기존 `lora_fc_downlink_app` 다운링크 패킷 포맷 재사용
-- serial write 완료 후 즉시 RX window 진입
-
-### 7.2 RX Window Phase
-
-- serial read를 `LORA_TDM_RX_WINDOW_MS` 동안 수행
-- GS는 Pi의 다운링크 패킷 수신 후 ACK 또는 CMD를 이 window 내에 전송해야 함
-- 수신 프레임 타입에 따라 분기:
-
-| 수신 프레임 | 처리 |
-|---|---|
-| `ACK,<seq_echo>` | 링크 정상 확인, `LastAckTimestampMs` 갱신, `NoAckCount` 리셋 |
-| `UP,<version>,...` CRC 정상 | `UPLINK_APP_CMD_MID`로 SB publish, `PendingUplinkFeedback = 0x00` |
-| `UP,...` CRC 실패 | `RxErrorCount` 증가, 폐기, `PendingUplinkFeedback = 0x01` 설정 → 다음 다운링크에 포함 |
-| `UP,...` SEQ 실패 | `RxErrorCount` 증가, 폐기, `PendingUplinkFeedback = 0x02` 설정 → 다음 다운링크에 포함 |
-| 타임아웃 (무응답) | `NoAckCount` 증가, 링크 손실 판단 임계 검사 |
-| 파싱 오류 | `RxErrorCount` 증가, 폐기 |
-
-## 8. ACK 프레임 프로토콜
-
-### 8.1 ACK 프레임 형식 (GS → Pi)
-
-명령이 없을 때 GS가 Pi에 보내는 응답:
+`LORA_TDM_APP_Main()`은 `OS_TaskDelay(CYCLE_PERIOD_MS)` 후 `RunCycle()`을 반복한다.
 
 ```
-ACK,<seq_echo>\n
+CYCLE_PERIOD_MS = 1000 ms
 ```
 
-| 필드 | 형식 | 설명 |
-|---|---|---|
-| `ACK` | 고정 토큰 | 프레임 타입 |
-| `seq_echo` | uint8 hex | Pi가 마지막 전송한 다운링크 패킷 seq의 하위 8비트 |
+각 주기(`RunCycle`) 실행 순서:
 
-예시: `ACK,2A\n`
+1. **SB pipe drain** (`CFE_SB_POLL`): 대기 중인 모든 메시지를 처리한다.
+   - FC 상태 MID → `UpdateCacheFromMsg()` 호출로 내부 캐시 갱신
+   - SEND_HK → `ReportHousekeeping()` + `ReportLinkStatus()` 호출
+   - CMD MID → dispatch (NOOP, RESET_COUNTERS)
+2. **serial open**: `LoRaFd < 0`이면 `OpenSerial()` 시도.
+3. **TX** (`RunTx`): FC 또는 SH downlink 패킷 1건 전송.
+4. **RX 창** (`RunRxWindow`): 300 ms 동안 serial 읽기.
+5. **링크 상태 갱신** (`UpdateLinkState`): 현재 시각 기준으로 상태 재계산.
 
-### 8.1.1 업링크 오류 복구 (UplinkFeedback)
+## 8. TX 동작
 
-CRC 실패를 감지하는 쪽은 Pi(수신 측)이므로, Pi → GS 방향 피드백이 필요하다.
-Pi는 다운링크 패킷 헤더에 `UplinkFeedback` 필드를 포함하여 GS에 통보한다.
+`RunTx()`는 `PacketType` 필드에 따라 두 가지 중 하나를 전송한다.
 
-**`UplinkFeedback` 필드 (다운링크 패킷 내 포함):**
+| PacketType | 형식 |
+| --- | --- |
+| FC State (`LORA_TDM_APP_FC_STATE_PACKET_TYPE` = 1) | `FC,<seq>,<ts>,<roll>,<pitch>,<yaw>,<x>,<y>,<z>,<vx>,<vy>,<vz>,<lat_e7>,<lon_e7>,<alt_mm>,<fix>,<ufb>\n` |
+| SYSTEM_HEALTH (`LORA_TDM_APP_SYSTEM_HEALTH_PACKET_TYPE` = 2) | `SH,<seq>,<ts>,<state>,<fault>,<linkstate>,<ufb>\n` |
 
-| 값 | 심볼 | 의미 | GS 처리 |
-|---|---|---|---|
-| `0x00` | `UPLINK_FB_OK` | 최근 업링크 없음 또는 정상 수신 | 정상 |
-| `0x01` | `UPLINK_FB_CRC_FAIL` | 수신한 UP 프레임 CRC 불일치 | 마지막 명령 재전송 |
-| `0x02` | `UPLINK_FB_SEQ_FAIL` | sequence 오류 감지 | seq 재조정 후 재전송 |
+필드 상세:
+- `<seq>`: `DownlinkSeq` (전송 성공마다 1 증가)
+- `<ts>`: FC 상태 캐시의 `TimestampMs` (FC 패킷) 또는 SH 캐시의 `TimestampMs` (SH 패킷)
+- `<roll>/<pitch>/<yaw>`: float, 소수점 4자리 (rad)
+- `<x>/<y>/<z>/<vx>/<vy>/<vz>`: float, 소수점 4자리 (m, m/s)
+- `<lat_e7>/<lon_e7>`: 정수 ×10⁷
+- `<alt_mm>`: 정수 (mm)
+- `<fix>`: GPS fix type (unsigned)
+- `<ufb>`: UplinkFeedback — 0x00=OK, 0x01=CRC_FAIL, 0x02=SEQ_FAIL
+- `<state>/<fault>/<linkstate>`: unsigned 정수
+- `\n`: 줄바꿈 종단
 
-**Pi 측 동작:**
-- `PendingUplinkFeedback` 내부 필드를 유지 (기본값 `0x00`)
-- UP 프레임 CRC 실패 시 `PendingUplinkFeedback = 0x01` 설정
-- UP 프레임 SEQ 실패 시 `PendingUplinkFeedback = 0x02` 설정
-- UP 프레임 정상 수신 시 `PendingUplinkFeedback = 0x00` 리셋
-- 매 다운링크 TX 시 `PendingUplinkFeedback`를 패킷에 포함 후 `0x00`으로 리셋
+전송 성공 시: `TxCount++`, `DownlinkSeq++`, `PendingUplinkFeedback = UPLINK_FB_OK`.
+전송 실패 시: EVS ERROR 이벤트, 카운터 갱신 없음.
 
-**GS 재전송 규칙:**
-- GS는 다운링크 수신 후 `UplinkFeedback` 필드 확인
-- `UPLINK_FB_CRC_FAIL` 또는 `UPLINK_FB_SEQ_FAIL` → 다음 RX window에 마지막 명령 재전송
-- 재전송 최대 횟수: `GS_MAX_RETRANSMIT` (권장값: 3회)
-- 재전송 횟수 초과 시 해당 명령 폐기 및 운용자 알림
-- 재전송 시 sequence는 동일 값 유지 (증가 없음)
+## 9. RX 창 동작
 
-### 8.2 명령 프레임 (GS → Pi)
+`RunRxWindow()`는 `GetTimeMs() + RX_WINDOW_MS(300)`을 deadline으로 설정하고 반복한다.
 
-명령이 있을 때는 기존 `UP,...` 형식 그대로 사용:
+- deadline 초과 또는 `read()` ≤ 0 시 즉시 종료.
+- 1바이트씩 읽어 줄 버퍼 누적 (최대 `LORA_TDM_APP_LINE_BUF_LEN - 1`).
+- `'\n'` 수신 시 `ProcessRxLine(line, AppData)` 호출.
+
+`ProcessRxLine()`은 line 접두사로 분기한다.
+
+| 접두사 | 처리 |
+| --- | --- |
+| `ACK,` | `ParseAckFrame()` → `LastAckTimestampMs = UtilsGetTimeMs()`, `NoAckCount = 0`, `RxAckCount++` |
+| `UP,` | `ProcessUpFrame()` → CRC 검증 → hex 디코딩 → `CFE_SB_TransmitMsg` to `UPLINK_APP_CMD_MID` |
+| 기타 | 무시 (카운터 갱신 없음) |
+
+RX 창 종료 시 `RxAckCount == 0`이었으면 `NoAckCount++` (최대 0xFFFF).
+
+### 9.1 UP frame 처리 세부
+
+UP 프레임 형식:
+```
+UP,<version>,<command_class>,<sequence>,<flags>,<payload_hex>,<crc16_hex>
+```
+
+CRC 검증 대상: `UP,<version>,<command_class>,<sequence>,<flags>,<payload_hex>` (첫 6개 필드 comma 결합 문자열).
+알고리즘: CRC-16/CCITT-FALSE (init=0xFFFF, poly=0x1021).
+
+`<payload_hex>`가 빈 문자열인 프레임(payload 없는 명령)도 유효하다. 파싱은 1차로 `%[^,]` 기반 sscanf를 시도하고, 빈 payload로 인해 실패하면 `,,` 리터럴을 포함한 대체 포맷으로 재시도한다 (`lora_tdm_app_utils.c` `ProcessUpFrame`, 2026-06-16 수정 — 이전에는 빈 payload 프레임이 전부 CRC_FAIL로 오판되던 버그가 있었음, `Test_ProcessRxLine_ValidUp`로 검증).
+
+CRC 불일치 시: `PendingUplinkFeedback = UPLINK_FB_CRC_FAIL`, `RxErrorCount++`, 전달 안 함.
+CRC 통과 시: `LORA_TDM_APP_UplinkFwdCmd_t` 구성 → `CFE_MSG_Init()` + `CFE_SB_TransmitMsg()` to `UPLINK_APP_CMD_MID_VALUE (0x18D0)`.
+
+`LORA_TDM_APP_UplinkFwdCmd_t` 필드 매핑:
+- `Version = version`
+- `CommandClass = command_class`
+- `Sequence = sequence`
+- `Flags = flags`
+- `PayloadLength = decoded_len`
+- `Payload[0..decoded_len-1] = decoded_bytes`
+
+## 10. 링크 상태 관리
+
+`UpdateLinkState(AppData, NowMs)`:
 
 ```
-UP,<version>,<command_class>,<sequence>,<flags>,<payload_hex>,<crc16_hex>\n
+elapsed = NowMs - LastAckTimestampMs
+
+if elapsed > LINK_TIMEOUT_MS (5000):
+    LinkState = DISCONNECTED (0)
+elif NoAckCount >= LINK_LOSS_THRESHOLD (3):
+    LinkState = DEGRADED (2)
+else:
+    LinkState = CONNECTED (1)
 ```
 
-기존 `lora_uplink_bridge.py`의 프레임 계약과 동일 (`notes/lora_uplink_bridge_design.md` §Input Frame Contract 참조).
+초기 상태: `LastAckTimestampMs = 0`, `NoAckCount = 0` → 앱 시작 직후 `elapsed > 5000`이므로 DISCONNECTED.
 
-### 8.3 GS 응답 타이밍 요구사항
+## 11. HK 텔레메트리 (`LORA_TDM_APP_HkPayload_t`)
 
-GS는 Pi의 다운링크 패킷 수신 완료 후 `LORA_TDM_GS_RESPONSE_BUDGET_MS` 이내에 ACK 또는 CMD 전송을 시작해야 한다.
+`ReportHousekeeping()`이 게시하는 필드:
 
-```
-Pi TX 완료
-  └─ GS 처리 시간 (~30ms)
-  └─ GS LoRa TX 시간 (~50-100ms, SF/BW 의존)
-  └─ 마진 (~70ms)
-  = 총 RX window ≈ 200~300ms (LORA_TDM_RX_WINDOW_MS)
-```
+| 필드 | 소스 |
+| --- | --- |
+| CommandCounter | `CmdCounter` |
+| CommandErrorCounter | `ErrCounter` |
+| LinkState | `LinkState` |
+| PacketType | `PacketType` |
+| AttitudeValid, LocalValid, GpsValid, EkfValid | FcState 캐시 valid 플래그 |
+| SystemHealthState | SystemHealth 캐시 |
+| PendingUplinkFeedback | `PendingUplinkFeedback` |
+| TxCount, RxAckCount, RxCmdCount, RxErrorCount, NoAckCount | 카운터 |
+| LastAckTimestampMs | `LastAckTimestampMs` |
 
-## 9. 링크 상태 (`LORA_LINK_STATUS_MID`)
+## 12. 링크 상태 텔레메트리 (`LORA_TDM_APP_LinkStatusTlm_t`)
 
-### 9.1 게시 조건
+`ReportLinkStatus()`가 게시하는 필드:
 
-- TDM 사이클마다 갱신 (또는 주기적 게시)
-- 링크 상태 전이 발생 시 즉시 게시
+| 필드 | 소스 |
+| --- | --- |
+| Seq | `DownlinkSeq` |
+| TimestampMs | `GetTimeMs()` |
+| LinkState | `LinkState` |
+| LastAckTimestampMs | `LastAckTimestampMs` |
+| NoAckCount | `NoAckCount` |
+| RxErrorCount | `RxErrorCount` |
+| TxCount | `TxCount` |
+| RxAckCount | `RxAckCount` |
+| RxCmdCount | `RxCmdCount` |
 
-### 9.2 페이로드 필드
+## 13. Serial 재열기 정책
 
-| 필드 | 형식 | 설명 |
-|---|---|---|
-| `Seq` | `uint32` | 단조 게시 카운터 |
-| `TimestampMs` | `uint32` | 게시 시각 |
-| `LinkState` | `uint8` | `0=DISCONNECTED`, `1=CONNECTED`, `2=DEGRADED` |
-| `LastAckTimestampMs` | `uint32` | 마지막 ACK 수신 시각 |
-| `NoAckCount` | `uint16` | 연속 ACK 미수신 횟수 |
-| `TxCount` | `uint32` | 누적 다운링크 전송 횟수 |
-| `RxAckCount` | `uint32` | 누적 ACK 수신 횟수 |
-| `RxCmdCount` | `uint32` | 누적 명령 수신 횟수 |
-| `RxErrorCount` | `uint16` | 누적 수신 오류(파싱 실패 등) |
+- `LoRaFd`는 초기화 시 `-1`로 설정한다.
+- `RunCycle()` 진입마다 `LoRaFd < 0`이면 `OpenSerial()` 시도.
+- `OpenSerial()` 실패 시 EVS ERROR 이벤트 발행, `LoRaFd = -1` 유지.
+- 성공 시 O_RDWR, 57600 baud, 8N1, no flow control, blocking 모드로 설정.
+- `RunTx()`와 `RunRxWindow()`는 `LoRaFd < 0`이면 즉시 반환한다.
 
-### 9.3 링크 상태 분류
+## 14. 설정 상수
 
-| 상태 | 조건 |
-|---|---|
-| `CONNECTED` | `NoAckCount < LORA_TDM_LINK_LOSS_THRESHOLD` |
-| `DEGRADED` | `NoAckCount >= LORA_TDM_LINK_LOSS_THRESHOLD` (임계 미도달, 단순 손실 증가) |
-| `DISCONNECTED` | `NowMs - LastAckTimestampMs > LORA_TDM_LINK_TIMEOUT_MS` |
+| 상수 | 값 | 의미 |
+| --- | --- | --- |
+| `LORA_TDM_APP_CYCLE_PERIOD_MS` | `1000` | TDM 주기 (ms) |
+| `LORA_TDM_APP_RX_WINDOW_MS` | `300` | RX 창 길이 (ms) |
+| `LORA_TDM_APP_LINK_LOSS_THRESHOLD` | `3` | DEGRADED 전이 NoAckCount 임계값 |
+| `LORA_TDM_APP_LINK_TIMEOUT_MS` | `5000` | DISCONNECTED 전이 elapsed 임계값 (ms) |
+| `LORA_TDM_APP_UPLINK_FB_OK` | `0` | UplinkFeedback 정상 |
+| `LORA_TDM_APP_UPLINK_FB_CRC_FAIL` | `1` | UplinkFeedback CRC 실패 |
+| `LORA_TDM_APP_UPLINK_FB_SEQ_FAIL` | `2` | UplinkFeedback 시퀀스 실패 (미구현) |
+| `LORA_TDM_APP_LINK_DISCONNECTED` | `0` | 링크 상태: 단절 |
+| `LORA_TDM_APP_LINK_CONNECTED` | `1` | 링크 상태: 정상 |
+| `LORA_TDM_APP_LINK_DEGRADED` | `2` | 링크 상태: 저하 |
 
-## 10. 타이밍 설정
+## 15. 미구현 항목
 
-| 상수 | 기본값 | 설명 |
-|---|---|---|
-| `LORA_TDM_CYCLE_PERIOD_MS` | `1000` | 전체 TDM 사이클 주기 |
-| `LORA_TDM_RX_WINDOW_MS` | `300` | RX window 길이 (GS 응답 대기 시간) |
-| `LORA_TDM_LINK_LOSS_THRESHOLD` | `3` | DEGRADED 판단 연속 ACK 미수신 횟수 |
-| `LORA_TDM_LINK_TIMEOUT_MS` | `5000` | DISCONNECTED 판단 절대 타임아웃 |
+- `SEQ_FAIL` 경로: `UPLINK_FB_SEQ_FAIL` 상수가 정의되어 있으나, sequence 단조 증가 검증 및 피드백 전송 로직이 구현되지 않았다.
+- `PacketType` 전환 명령: 현재 외부 명령으로 `PacketType`을 전환하는 command code가 없다.
 
-> **참고**: `LORA_TDM_RX_WINDOW_MS`는 LoRa 모듈의 SF/BW 설정에 따라 조정이 필요하다. SF7/BW125kHz 기준 ACK 패킷 전송 시간 ~50ms를 포함하여 최소 200ms 이상이어야 한다.
-
-## 11. serial 포트 관리
-
-- 초기화 시 `O_RDWR | O_NOCTTY` 로 serial 포트 오픈
-- TX phase: write()
-- RX window phase: select() + read() (timeout = `LORA_TDM_RX_WINDOW_MS`)
-- write() 또는 read() 오류 시: 포트 닫기 → 재열기 재시도 (`LORA_TDM_SERIAL_REOPEN_DELAY_MS` 간격)
-- 재열기 중 TDM 사이클 일시 중단
-
-## 12. HK 동작
-
-HK 요청 시 보고 항목:
-
-- 명령 카운터 / 명령 오류 카운터
-- TxCount, RxAckCount, RxCmdCount, RxErrorCount
-- NoAckCount, LastAckTimestampMs
-- 현재 LinkState
-- serial 포트 상태
-- 재열기 시도 횟수
-
-## 13. 명령 처리
-
-| CC | 명령 | 동작 |
-|---|---|---|
-| 0 | NOOP | 이벤트 발생, 카운터 갱신 |
-| 1 | 카운터 리셋 | 모든 카운터 0으로 리셋 |
-
-## 14. 기존 컴포넌트와의 관계
-
-| 컴포넌트 | 상태 | 비고 |
-|---|---|---|
-| `lora_fc_downlink_app` | **대체됨** | `lora_tdm_app`이 TX 기능 포함. 레거시 빌드용으로 소스 보관 |
-| `bridge/lora_uplink_bridge.py` | **레거시 유지** | UDP 경로 테스트/디버깅용. Pi에서 `lora_tdm_app`과 동시 실행 불가 (serial 포트 충돌) |
-| `uplink_app` | **변경 없음** | SB 경로로 명령 수신, 기존 검증 로직 재사용 |
-| `cfs_core_app` | **변경 없음** | `LORA_LINK_STATUS_MID` 구독 추가 검토 가능 (선택) |
-
-## 15. 미구현 사항
-
-- CONFIG_CMD를 통한 `LORA_TDM_CYCLE_PERIOD_MS`, `LORA_TDM_RX_WINDOW_MS` 런타임 변경
-- 다운링크 패킷 포맷 변경 (현재 `lora_fc_downlink_app` 포맷 재사용)
-- ACK 프레임에 RSSI/SNR 피드백 필드 추가
-- GS 측 소프트웨어 (ACK 전송, 명령 큐잉) 구현
+> 수정 완료(2026-06-16): `ReportLinkStatus()`가 `dispatch.c`의 SEND_HK 처리에서 호출되지 않던 dead code 문제를 발견 — `LORA_TDM_APP_ProcessCommandPacket()`의 SEND_HK 분기에 `LORA_TDM_APP_ReportLinkStatus()` 호출을 추가해 해소함.

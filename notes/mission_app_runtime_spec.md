@@ -39,12 +39,6 @@
 
 임무 센서와 비행 제어 하드웨어는 MicoAir H743 V2 비행 컨트롤러 보드에 물리적으로 연결된다. Raspberry Pi는 cFS 호스트이자 비행 컨트롤러와 지상국 사이의 통신 브리지 역할을 수행한다. 기본 FC-Raspberry Pi 텔레메트리 경로는 MAVLink 메시지를 전달하는 UART 링크이다.
 
-전체 통신 과정은 이미지 데이터 전송과 FC 보드 상태정보 전송의 두 축으로 구성된다. 본 시스템은 cFS 구조를 참고하여 드론 시스템에서 FC 보드와 지상국 사이의 상태 감시 및 통신 관리 기능을 구현하였다. 실제 기체의 자세 안정화, 모터 출력, 비행 제어와 같은 실시간 제어 기능은 FC 보드가 담당하며, cFS는 이러한 FC 보드의 역할을 대체하지 않는다. 대신 상위 임무 컴퓨터 관점에서 FC로부터 수신한 상태 정보를 정리하고, 이를 지상국으로 전달하는 역할을 수행한다.
-
-이미지 데이터의 경우, 카메라의 무선 LAN 카드를 이용하여 지상국으로 직접 송신된다. 이후 수신된 이미지는 서버로 전달되어 복원 연산을 수행하며, 복원된 이미지는 다시 지상국 화면에 실시간으로 표시되어 복원 결과를 확인할 수 있도록 한다.
-
-FC 보드의 상태정보, 즉 시계열 데이터는 downlink 과정을 통해 지상국으로 전송되며, 지상국에서는 이를 OpenMCT를 이용하여 실시간으로 시각화한다. 또한 uplink 과정은 임무 수행 중 필요한 값 수정이나 명령 전달을 위해 사용된다. 다만 비행 안정성과 직접적으로 연관되는 FC 보드의 핵심 제어값은 안전상의 이유로 uplink를 통한 실시간 변경 대상에서 제외하며, uplink는 상위 임무 컴퓨터 측의 운용 파라미터 및 상태 관리 기능 중심으로 제한한다.
-
 기본 플랫폼 책임:
 
 | 요소 | 책임 |
@@ -100,7 +94,7 @@ MID 계약을 정의했습니다. 앱은 다른 앱이 소유한 앱을 직접 �
 | --- | --- | --- | --- |
 | `mavlink_bridge_app` | FC가 제공하는 MAVLink 텔레메트리를 수신하고 임무 상태 필드를 추출하여 임무 상태 MID를 게시한다. | `FC_EKF_LOCAL_STATE_MID`, `FC_ATTITUDE_STATE_MID`, `FC_GPS_RAW_STATE_MID`, `FC_EKF_STATUS_MID`, `MAVLINK_BRIDGE_APP_HK_TLM_MID` | FC의 UART 기반 MAVLink 입력 |
 | `cfs_core_app` | 수신된 임무 상태를 검증하고, 상태 및 복구 정책을 관리하며, 시스템 상태를 게시한다. | `SYSTEM_HEALTH_MID` | `FC_EKF_LOCAL_STATE_MID`, `FC_ATTITUDE_STATE_MID`, `FC_GPS_RAW_STATE_MID`, `FC_EKF_STATUS_MID`, 앱 health/status MID |
-| `lora_fc_downlink_app` (downlink 역할 구현체) | Software Bus에서 승인된 임무 상태 및 텔레메트리 MID를 수집하고, downlink packet을 구성하여 지상국으로 전송한다. MAVLink를 직접 파싱하거나 상태 유효성을 평가하지 않는다. | HK(`MAVLINK_BRIDGE_APP_HK_TLM_MID` 형식의 자체 HK)만 게시하며 별도 status MID는 미구현 (`DOWNLINK_STATUS_MID` 미할당, 866행 참조) | `FC_EKF_LOCAL_STATE_MID`, `FC_ATTITUDE_STATE_MID`, `FC_GPS_RAW_STATE_MID`, `FC_EKF_STATUS_MID`, `SYSTEM_HEALTH_MID` |
+| `lora_fc_downlink_app` (downlink 역할 구현체) | Software Bus에서 승인된 임무 상태 및 텔레메트리 MID를 수집하고, downlink packet을 구성하여 지상국으로 전송한다. MAVLink를 직접 파싱하거나 상태 유효성을 평가하지 않는다. | 자체 HK(`LORA_FC_DOWNLINK_APP_HK_TLM_MID`)만 게시하며 별도 status MID는 미구현 (`DOWNLINK_STATUS_MID` 미할당) | `FC_EKF_LOCAL_STATE_MID`, `FC_ATTITUDE_STATE_MID`, `FC_GPS_RAW_STATE_MID`, `FC_EKF_STATUS_MID`, `SYSTEM_HEALTH_MID` |
 | `uplink_app` | 지상국 명령을 수신하고 업링크 패킷을 검증한 뒤, 승인된 런타임 설정, 경로 수정, viewpoint, 복구 명령을 임무 앱으로 전달한다. | `UPLINK_STATUS_MID`, `ROUTE_UPDATE_MID`(검증 후 publish) | `UPLINK_APP_CMD_MID` ingress 또는 승인된 전송 입력 |
 
 별도 recovery authority 앱이 정의되기 전까지 `cfs_core_app`은 시스템 수준 복구 판단과 복구 요청 집계를 담당하는 recovery authority로 간주한다. 본 문서에서 "복구 권한" 또는 "recovery authority"에 요청한다고 기술된 경우, 현재 기준 구현 대상은 `cfs_core_app`이다.
@@ -155,24 +149,22 @@ MID 계약을 정의했습니다. 앱은 다른 앱이 소유한 앱을 직접 �
 완전한 MID별 계약 테이블은 각 앱을 구현하기 전에 채워져야 한다.
 앱별 MID 계약 테이블은 각 앱 구현 전에 채워야 하며, baseline MID 값은 Section 17.1을 따른다.
 
-### 5.1.1 Baseline MID 계약 테이블 (구현 기준)
+### 5.1.1 Baseline MID 계약 테이블 (8개 MID)
 
-아래 표는 **현재 실제 코드 기준** baseline 계약이다. 각 MID 값은 config header에서 직접 추출하였으며, 이 표를 계약 원본으로 사용한다.
+아래 표는 현재 구현 기준에서 즉시 검증 가능한 baseline 계약이다. 각 앱 구현은 본 표를 계약 원본으로 사용한다.
 
-> **주의**: 이전 버전 이 문서에는 aspirational MID(`IMU_STATE_MID 0x1900`, `GPS_STATE_MID 0x1901`, `EKF_STATE_MID 0x1902`, `BRIDGE_STATUS_MID 0x1903`, `DOWNLINK_STATUS_MID 0x1905`)가 정의되어 있었으나, 이 값들은 구현되지 않았다. 실제 코드는 아래 표의 MID를 사용한다. `0x1905`는 코드에서 `FC_EKF_LOCAL_STATE_MID`로 이미 사용 중이므로 `DOWNLINK_STATUS_MID`에 배정할 수 없다.
+| MID 이름 | 소유자 앱 | 생산자 | 소비자 | 명령 MID | 출판률 | 페이로드 레이아웃 | 유효성 규칙 | 오류 동작 | 시간 기준 | 시퀀스 규칙 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `FC_ATTITUDE_STATE_MID` (`0x1906`) | `mavlink_bridge_app` | `mavlink_bridge_app` | `cfs_core_app`, `lora_fc_downlink_app` | `MAVLINK_BRIDGE_APP_CMD_MID` (`0x18A0`) | MAVLink `ATTITUDE` 수신 시 (stream 요청 5 Hz / 200ms, `ATTITUDE_INTERVAL_US`; 실제 publish는 FC 송신율 의존) | Section 6.1 (논리명 `IMU_STATE_MID`) | MAVLink `ATTITUDE` 기반 필수 필드 파싱 성공, `TimeValid=true`, 데이터 범위 검사 통과 | 파싱 실패/timeout 시 `Valid=false`, `Stale=1`, 오류 코드 반영 | `CFE_TIME` mission elapsed ms | 생산자 로컬 단조 증가, wrap 허용, 역행/중복은 소비자가 stale로 처리 |
+| `FC_EKF_STATUS_MID` (`0x1908`) | `mavlink_bridge_app` | `mavlink_bridge_app` | `cfs_core_app`, `lora_fc_downlink_app` | `MAVLINK_BRIDGE_APP_CMD_MID` (`0x18A0`) | MAVLink `EKF_STATUS_REPORT` 수신 시 (stream 요청 2 Hz / 500ms, `EKF_STATUS_INTERVAL_US`; 실제는 FC 송신율 의존) | Section 6.3 (논리명 `EKF_STATE_MID`) | `EKF_STATUS_REPORT` 기반 필수 상태 플래그 파싱 성공 | Flags=0/invalid/stale 시 `Valid=false`, FaultCode 반영 | `CFE_TIME` mission elapsed ms | 생산자 로컬 단조 증가, wrap 허용 |
+| `FC_GPS_RAW_STATE_MID` (`0x1907`) | `mavlink_bridge_app` | `mavlink_bridge_app` | `cfs_core_app`, `lora_fc_downlink_app` | `MAVLINK_BRIDGE_APP_CMD_MID` (`0x18A0`) | MAVLink `GPS_RAW_INT` 수신 시 (stream 요청 2 Hz / 500ms, `GPS_RAW_INTERVAL_US`; 실제는 FC 송신율 의존) | Section 6.2 (논리명 `GPS_STATE_MID`) | MAVLink `GPS_RAW_INT` 기반 필수 필드 파싱 성공, fix/type 정책 통과 시 `Valid=true` | fix 미달/timeout 시 `Valid=false`, `Stale=1`, 오류 코드 반영 | `CFE_TIME` mission elapsed ms | 생산자 로컬 단조 증가, wrap 허용 |
+| `FC_EKF_LOCAL_STATE_MID` (`0x1905`) | `mavlink_bridge_app` | `mavlink_bridge_app` | `cfs_core_app`, `lora_fc_downlink_app` | `MAVLINK_BRIDGE_APP_CMD_MID` (`0x18A0`) | MAVLink `LOCAL_POSITION_NED` 또는 `GLOBAL_POSITION_INT` 수신 시 (stream 요청 5 Hz / 200ms, `LOCAL/GLOBAL_POSITION_INTERVAL_US`; 실제는 FC 송신율 의존) | Section 6.3 (논리명 `EKF_STATE_MID`) | 로컬 위치/속도 필수 필드 파싱 성공 | 파싱 실패/timeout 시 `Valid=false`, `Stale=1` | `CFE_TIME` mission elapsed ms | 생산자 로컬 단조 증가, wrap 허용 |
+| `MAVLINK_BRIDGE_APP_HK_TLM_MID` (`0x08A0`) | `mavlink_bridge_app` | `mavlink_bridge_app` | `cfs_core_app` | `MAVLINK_BRIDGE_APP_CMD_MID` (`0x18A0`), `MAVLINK_BRIDGE_APP_SEND_HK_MID` (`0x18A1`) | 1 Hz (HK request) | Section 6.4 (논리명 `BRIDGE_STATUS_MID`) | 링크 상태 평가 주기 내 필수 카운터/상태 필드 갱신 | open/reopen 실패, parser error 누적, timeout 시 오류 카운터/상태 반영 | `CFE_TIME` mission elapsed ms | HK 카운터 단조 증가 |
+| `SYSTEM_HEALTH_MID` (`0x1904`) | `cfs_core_app` | `cfs_core_app` | `lora_fc_downlink_app`, 운영자 모니터링 소비자 | `CFS_CORE_APP_CMD_MID` (`0x18C0`) | 1 Hz periodic + 상태 전이 이벤트 | Section 6.5 | 필수 입력(자세/EKF/bridge) freshness/유효성 규칙 통과 (GPS는 헬스 비반영, `GpsValid`로 보고만 — §15 GPS 정책) | 입력 부족 시 `CFS_DEGRADED` 또는 `CFS_RECOVERY` 게시, FaultCode로 원인 구분 | `CFE_TIME` mission elapsed ms | 생산자 로컬 단조 증가, wrap 허용 |
+| `UPLINK_STATUS_MID` (`0x190A`) | `uplink_app` | `uplink_app` | `cfs_core_app`, 운영자 모니터링 소비자 | `UPLINK_APP_CMD_MID` (`0x18D0`) | 1 Hz periodic + 명령 처리 결과 이벤트 | Section 18.7 | 프레임 검증/라우팅 처리 결과를 상태 필드에 반영 | CRC/길이/인증/시퀀스 실패 시 reject 카운터와 오류 코드 게시 | `CFE_TIME` mission elapsed ms | 수락된 uplink command sequence는 단조 증가, 회귀/중복 거부 |
+| `ROUTE_UPDATE_MID` (`0x190B`) | `cfs_core_app` | `uplink_app`(입력 생산), `cfs_core_app`(cache 반영 상태 생산) | `cfs_core_app`(입력 소비), 임무 경로 소비자 앱 | `UPLINK_APP_CMD_MID` (`0x18D0`) ingress, 내부 route 반영 인터페이스 | 이벤트 기반(유효 route update 수락 시) | Section 18.5.2 route payload + Section 6.5 연계 상태 | waypoint 개수(`1..16`), 필드 범위, route version/sequence, CRC/길이, 인접 waypoint 거리(`2m..2m`) 검증 통과 | 검증 실패 시 `uplink_app`에서 거부, `UPLINK_STATUS_MID`에 원인 게시, 기존 active route 유지 | `CFE_TIME` mission elapsed ms | route update sequence는 소스별 단조 증가, 회귀/중복은 거부 |
 
-| MID 이름 | 값 | 소유자 앱 | 생산자 | 소비자 | 명령 MID | 출판률 | 오류 동작 | 시간 기준 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `MAVLINK_BRIDGE_APP_HK_TLM_MID` | `0x08A0` | `mavlink_bridge_app` | `mavlink_bridge_app` | `cfs_core_app` | `MAVLINK_BRIDGE_APP_CMD_MID` (`0x18A0`) | 1 Hz (HK request) | open/reopen 실패, parser error 누적, timeout 시 오류 카운터 반영 | `CFE_TIME` mission elapsed ms |
-| `FC_EKF_LOCAL_STATE_MID` | `0x1905` | `mavlink_bridge_app` | `mavlink_bridge_app` | `cfs_core_app`, `lora_fc_downlink_app` | `MAVLINK_BRIDGE_APP_CMD_MID` (`0x18A0`) | MAVLink `LOCAL_POSITION_NED` 또는 `GLOBAL_POSITION_INT` 수신 시 | 파싱 실패/timeout 시 `Valid=false`, `Stale=1` | `CFE_TIME` mission elapsed ms |
-| `FC_ATTITUDE_STATE_MID` | `0x1906` | `mavlink_bridge_app` | `mavlink_bridge_app` | `cfs_core_app`, `lora_fc_downlink_app` | `MAVLINK_BRIDGE_APP_CMD_MID` (`0x18A0`) | MAVLink `ATTITUDE` 수신 시 (~20 Hz) | 파싱 실패/timeout 시 `Valid=false`, `Stale=1` | `CFE_TIME` mission elapsed ms |
-| `FC_GPS_RAW_STATE_MID` | `0x1907` | `mavlink_bridge_app` | `mavlink_bridge_app` | `cfs_core_app`, `lora_fc_downlink_app` | `MAVLINK_BRIDGE_APP_CMD_MID` (`0x18A0`) | MAVLink `GPS_RAW_INT` 수신 시 (~5 Hz) | fix 미달 시 `Valid=false`, timeout 시 `Stale=1` | `CFE_TIME` mission elapsed ms |
-| `FC_EKF_STATUS_MID` | `0x1908` | `mavlink_bridge_app` | `mavlink_bridge_app` | `cfs_core_app`, `lora_fc_downlink_app` | `MAVLINK_BRIDGE_APP_CMD_MID` (`0x18A0`) | MAVLink `EKF_STATUS_REPORT` 수신 시 (~10 Hz) | Flags=0 시 `Valid=false` | `CFE_TIME` mission elapsed ms |
-| `SYSTEM_HEALTH_MID` | `0x1904` | `cfs_core_app` | `cfs_core_app` | `lora_fc_downlink_app`, 운영자 모니터링 소비자 | `CFS_CORE_APP_CMD_MID` (`0x18C0`) | 1 Hz periodic + 상태 전이 이벤트 | 입력 부족 시 `CFS_DEGRADED` 또는 `CFS_RECOVERY` 게시 | `CFE_TIME` mission elapsed ms |
-| `UPLINK_STATUS_MID` | `0x190A` | `uplink_app` | `uplink_app` | `cfs_core_app`, 운영자 모니터링 소비자 | `UPLINK_APP_CMD_MID` (`0x18D0`) | 1 Hz periodic + 명령 처리 결과 이벤트 | CRC/길이/시퀀스 실패 시 reject 카운터와 오류 코드 게시 | `CFE_TIME` mission elapsed ms |
-| `ROUTE_UPDATE_MID` | `0x190B` | `cfs_core_app` | `uplink_app` (검증 후 publish) | `cfs_core_app` (캐시 저장), `mavlink_bridge_app` (FC MISSION 업로드) | `UPLINK_APP_CMD_MID` (`0x18D0`) ingress | 이벤트 기반 (유효 route update 수락 시) | 검증 실패 시 `uplink_app`에서 거부, `UPLINK_STATUS_MID`에 원인 게시, 기존 active route 유지 | `CFE_TIME` mission elapsed ms |
-
-> **ROUTE_UPDATE_MID 운용 주의**: 이 MID는 `cfs_core_app`의 route cache 갱신뿐 아니라 `mavlink_bridge_app`의 FC mission upload를 즉시 트리거한다. 따라서 이 MID를 publish하는 생산자(`uplink_app`)는 payload 검증뿐 아니라 FC 업로드 가능성까지 고려해야 한다. FC 업로드 프로토콜 상세는 `notes/mavlink_bridge_app_behavior_spec.md`를 참조한다.
+> **MID 정합 주의**: 위 표는 **실제 코드 config 헤더의 MID 값**을 계약 원본으로 한다. 이전 초안의 aspirational MID(`IMU_STATE_MID 0x1900`, `GPS_STATE_MID 0x1901`, `EKF_STATE_MID 0x1902`, `BRIDGE_STATUS_MID 0x1903`)는 구현되지 않았으며, Section 6의 논리적 페이로드 이름으로만 남는다(대응은 6장 상단 매핑 표 참조). `DOWNLINK_STATUS_MID`는 미구현이며 `0x1905`는 `FC_EKF_LOCAL_STATE_MID`에 할당되어 사용할 수 없다 — `lora_fc_downlink_app`은 별도 status MID 없이 자체 HK(`LORA_FC_DOWNLINK_APP_HK_TLM_MID`)만 publish한다.
 
 ### 5.2 시간 기준 유효성 정책
 
@@ -202,16 +194,16 @@ MID 계약을 정의했습니다. 앱은 다른 앱이 소유한 앱을 직접 �
 
 ## 6. 최소 페이로드 후보
 
-> **주의 (baseline 매핑)**: 본 섹션의 제목(`IMU_STATE_MID` 등)은 **payload 필드 설계 후보의 논리적 이름**이며, 실제 구현 MID가 아니다. 구현 MID와 값은 Section 5.1.1을 따른다. 논리 이름 → baseline MID 대응은 다음과 같다.
+> **주의 (baseline 매핑)**: 본 섹션 제목(`IMU_STATE_MID` 등)은 **payload 필드 설계 후보의 논리적 이름**이며 실제 구현 MID가 아니다. 구현 MID와 값은 Section 5.1.1을 따른다. 논리 이름 → baseline MID 대응:
 >
 > | 논리 이름 (Section 6) | baseline MID (Section 5.1.1) | 비고 |
 > | --- | --- | --- |
-> | `IMU_STATE_MID` | `FC_ATTITUDE_STATE_MID`(자세), `FC_EKF_STATUS_MID`(추정기 상태) | FC가 raw IMU를 직접 노출하지 않으므로 자세/추정기 상태로 분해 |
-> | `GPS_STATE_MID` | `FC_GPS_RAW_STATE_MID` | |
-> | `EKF_STATE_MID` | `FC_EKF_LOCAL_STATE_MID` | |
-> | `BRIDGE_STATUS_MID` | `MAVLINK_BRIDGE_APP_HK_TLM_MID` | 별도 bridge status MID 미구현, HK로 보고 |
+> | `IMU_STATE_MID` | `FC_ATTITUDE_STATE_MID` (`0x1906`) | FC가 raw IMU를 직접 노출하지 않아 자세 기반 |
+> | `GPS_STATE_MID` | `FC_GPS_RAW_STATE_MID` (`0x1907`) | |
+> | `EKF_STATE_MID` | `FC_EKF_LOCAL_STATE_MID` (`0x1905`), `FC_EKF_STATUS_MID` (`0x1908`) | 로컬 위치/추정기 상태로 분리 |
+> | `BRIDGE_STATUS_MID` | `MAVLINK_BRIDGE_APP_HK_TLM_MID` (`0x08A0`) | 별도 bridge status MID 미구현, HK로 보고 |
 > | `SYSTEM_HEALTH_MID` | `SYSTEM_HEALTH_MID` (`0x1904`) | 구현됨 |
-> | `DOWNLINK_STATUS_MID` | (미구현) | `lora_fc_downlink_app`은 HK만 publish (866행 참조) |
+> | `DOWNLINK_STATUS_MID` | (미구현) | `lora_fc_downlink_app`은 HK만 publish |
 
 ### 6.1 `IMU_STATE_MID`
 
@@ -281,9 +273,9 @@ MID 계약을 정의했습니다. 앱은 다른 앱이 소유한 앱을 직접 �
 - 마지막 복구 조치.
 - 오류 코드.
 
-### 6.6 `DOWNLINK_STATUS_MID`
+### 6.6 `DOWNLINK_STATUS_MID` (미구현)
 
-> **미구현**: 아래는 향후 별도 downlink status MID를 둘 경우의 payload 후보이다. 현재 `lora_fc_downlink_app`은 별도 status MID 없이 HK만 publish하며, `0x1905`는 `FC_EKF_LOCAL_STATE_MID`에 할당되어 `DOWNLINK_STATUS_MID`로 사용할 수 없다(866행 참조).
+> **미구현**: 아래는 향후 별도 downlink status MID를 둘 경우의 payload 후보이다. 현재 `lora_fc_downlink_app`은 별도 status MID 없이 자체 HK(`LORA_FC_DOWNLINK_APP_HK_TLM_MID`)만 publish하며, `0x1905`는 `FC_EKF_LOCAL_STATE_MID`에 할당되어 `DOWNLINK_STATUS_MID`로 사용할 수 없다.
 
 최소 필드:
 
@@ -777,17 +769,20 @@ FC, 모터 또는 액추에이터 명령 및 비행 제어 매개변수
 최종 앱별 상태 테이블은 명령 승인이 이루어지기 전에 정의되어야 합니다.
 최종 확정되었으며 섹션 17에서 추적됩니다.
 
-`CFS_DEGRADED`는 최상위 상태로 유지하되, 테스트와 운용 판단을 위해 최소한 다음 세부 원인을 `FaultCode` 필드로 구분해야 한다. 실제 코드 기준 열거값은 `cfs_core_app/config/default_cfs_core_app_msgdefs.h`의 `CFS_CORE_APP_FAULT_*` enum을 따른다.
+`CFS_DEGRADED`는 최상위 상태로 유지하되, 테스트와 운용 판단을 위해 최소한 다음 세부 원인을 `FaultCode` 또는 동등한 세부 필드로 구분해야 한다.
 
-| 구 명칭(폐기) | 실제 코드 열거값 | 값 | 설명 |
-| --- | --- | --- | --- |
-| `DEGRADED_BRIDGE` | `CFS_CORE_APP_FAULT_BRIDGE_TIMEOUT` | 1 | bridge HK 타임아웃 |
-| `DEGRADED_GPS` | `CFS_CORE_APP_FAULT_GPS_STALE` | 2 | GPS stale |
-| `DEGRADED_EKF` | `CFS_CORE_APP_FAULT_EKF_INVALID` | 3 | EKF 유효성 실패 |
-| — | `CFS_CORE_APP_FAULT_LOCAL_TIMEOUT` | 4 | local position 타임아웃 |
-| — | `CFS_CORE_APP_FAULT_ATTITUDE_TIMEOUT` | 5 | attitude 타임아웃 |
+- `DEGRADED_BRIDGE`
+- `DEGRADED_EKF`
+- `DEGRADED_LINK`
+- `DEGRADED_APP`
 
-즉 상태 기계는 단일 `CFS_DEGRADED`를 유지할 수 있지만, 테스트 기대 결과와 운용자 판단은 위 `FaultCode` 값으로 세부 결함 원인을 관찰할 수 있다.
+즉 상태 기계는 단일 `CFS_DEGRADED`를 유지할 수 있지만, 테스트 기대 결과와 운용자 판단은 세부 결함 원인까지 관찰 가능해야 한다.
+
+> **GPS 정책 (2026-06-15 개정)**: GPS 가용성(fix/valid/stale)은 **cFS health를 저하시키지 않는다.**
+> cFS health는 Pi/cFS 통신·파이프라인 상태(§15)이며 GPS fix는 센서/비행 조건이므로 health 게이트의 입력이 아니다.
+> GPS no-fix는 실내/프리플라이트에서 정상 발생하며, 이를 DEGRADED로 처리하면 GPS와 무관한 비위험 uplink 명령(CONFIG/DIAGNOSTIC)까지 차단되어 운용이 막힌다.
+> 따라서 `DEGRADED_GPS`는 폐지하고, GPS 상태는 `GpsValid` per-input 필드로 **보고만** 한다.
+> (구현 상세: `cfs_core_app_behavior_spec.md` §12.5)
 
 ## 16. 테스트 요구 사항
 
@@ -813,8 +808,8 @@ FC, 모터 또는 액추에이터 명령 및 비행 제어 매개변수
 | `mavlink_bridge_app` MAVLink 수신 | UART 기반 `ATTITUDE`, `GPS_RAW_INT`, `EKF_STATUS_REPORT` 입력 | 해당 상태 MID(`FC_ATTITUDE_STATE_MID`, `FC_GPS_RAW_STATE_MID`, `FC_EKF_STATUS_MID`)가 정상 publish되고 `MAVLINK_BRIDGE_APP_HK_TLM_MID`가 갱신된다. | 수신 로그, Software Bus subscribe 결과, HK 카운터 확인 |
 | `mavlink_bridge_app` 오류 처리 | 잘못된 길이, CRC 오류, 순서 오류, timeout | invalid frame이 폐기되고 링크 상태가 성능 저하 또는 손실로 반영된다. | `MAVLINK_BRIDGE_APP_HK_TLM_MID`의 오류 카운터/상태, discard count, 상태 MID 확인 |
 | `cfs_core_app` 상태 종합 | 정상 IMU/GPS/EKF/bridge 입력 | `SYSTEM_HEALTH_MID`가 정상 상태로 게시된다. | health 상태 필드, `FaultCode=FAULT_NONE`, sequence 증가 확인 |
-| `cfs_core_app` 복구 판단 | bridge timeout, EKF invalid, GPS stale | 성능 저하 또는 복구 필요 상태가 게시되고 필요한 복구 정책이 요청된다. | health 상태와 함께 `FaultCode=CFS_CORE_APP_FAULT_BRIDGE_TIMEOUT(1)`, `CFS_CORE_APP_FAULT_EKF_INVALID(3)`, `CFS_CORE_APP_FAULT_GPS_STALE(2)` 중 해당 값, recovery request 로그 확인 |
-| `lora_fc_downlink_app` 패킷 구성 | 승인된 상태 MID 입력 | downlink packet이 생성되고 송신 카운터와 마지막 송신 시각이 갱신된다. | 송신 로그, 자체 HK(송신 카운터/마지막 송신 시각) 확인 (별도 status MID 미구현) |
+| `cfs_core_app` 복구 판단 | bridge timeout, EKF invalid, local/attitude timeout | 성능 저하 또는 복구 필요 상태가 게시되고 필요한 복구 정책이 요청된다. | health 상태와 함께 `FaultCode=DEGRADED_BRIDGE`, `DEGRADED_EKF`, `LOCAL_TIMEOUT`, `ATTITUDE_TIMEOUT` 중 해당 값, recovery request 로그 확인 (GPS stale은 헬스 비반영 — §15 GPS 정책) |
+| `lora_fc_downlink_app` 패킷 구성 | 승인된 상태 MID 입력 | downlink packet이 생성되고 송신 카운터와 마지막 송신 시각이 갱신된다. | 송신 로그, 자체 HK(`LORA_FC_DOWNLINK_APP_HK_TLM_MID`, 송신 카운터/마지막 송신 시각) 확인 (별도 status MID 미구현) |
 | `lora_fc_downlink_app` 송신 오류 처리 | LoRa 또는 지상국 송신 실패 | 송신 오류 수가 증가하고 오류 상태가 유지된다. | error count, last fault code 확인 |
 | `uplink_app` 설정 반영 | 유효한 runtime configuration 명령 | pending 검증 후 active 설정이 갱신된다. | 설정 상태, sequence, 적용 로그 확인 |
 | `uplink_app` 설정 거부 | 범위 오류, CRC 오류, 비호환 설정 | 설정이 거부되고 active 값은 유지된다. | reject code, active config 불변 확인 |
@@ -833,28 +828,6 @@ FC, 모터 또는 액추에이터 명령 및 비행 제어 매개변수
 | uplink 기반 경로 수정 | 지상국에서 기존 경로 수정 payload를 송신한다. | 기체 측 cFS가 경로 수정 정보를 수신·검증하고 상위 임무 계층에 반영한다. |
 | 통신 장애 후 복구 | FC-UART 링크 또는 LoRa 송신을 일시적으로 차단한 뒤 복구한다. | 시스템 상태가 성능 저하 또는 복구 필요 상태로 전이되었다가, 링크 복구 후 정상 상태로 돌아온다. |
 | 앱 재시작 후 지속 상태 복원 | 앱을 재시작하거나 소프트 재부팅을 수행한다. | 필요한 persistent state와 active 설정이 정책에 맞게 복원된다. |
-
-### 16.3 자동화 pytest 통합테스트 계획
-
-`tests/TEST_CASES.md`에 상세 TC가 정의되어 있다. 레이어 구분:
-
-**그룹 A — Python 동등 구현 (cFS 불필요, 구현 완료):**
-
-| 파일 | 검증 범위 |
-| --- | --- |
-| `tests/test_hb_parse.py` | LORA-HB-001~010, REC-005 — HB 프레임 파싱/CRC/seq/prefix |
-| `tests/test_uplink_lora_frame.py` | LORA-UP-003~011, CFS-CMD-001~008, REC-006~008 — UP 프레임 파싱, cFS 패킷 필드 |
-| `tests/test_lora_fc_downlink_packet.py` | LORA-FRAME-001~008 — FC/SH 패킷 포맷, GPS 포함, seq 단조 |
-
-**그룹 B — cFS 실행 + mock (cFS 빌드 필요, 미구현):**
-
-| 파일 | 검증 범위 | 방법 |
-| --- | --- | --- |
-| `tests/test_uplink_e2e.py` | uplink_app C 경로 seq regression, ProcessUplink 실제 흐름 | cFS 실행 후 UDP 전송 → EVS 로그 확인 |
-| `tests/test_lora_fc_downlink_e2e.py` | ServiceLoRa() 실제 LoRa 출력, LORA-FC-006~007 | SB mock → cFS 실행 → PTY serial 캡처 |
-| `tests/test_rec_serial.py` | REC-001~004 serial 장애/재연결 | PTY close/reopen 시뮬레이션 |
-
-그룹 B 실행: `pytest -m cfs_required` (cFS 빌드 및 native 실행 환경 필요)
 
 ## 17. 기준 결정 사항
 
@@ -875,61 +848,27 @@ FC, 모터 또는 액추에이터 명령 및 비행 제어 매개변수
 | `UPLINK_APP_CMD_MID` | `0x18D0` |
 | `UPLINK_APP_SEND_HK_MID` | `0x18D1` |
 | `SYSTEM_HEALTH_MID` | `0x1904` |
+| `FC_EKF_LOCAL_STATE_MID` | `0x1905` |
+| `FC_ATTITUDE_STATE_MID` | `0x1906` |
+| `FC_GPS_RAW_STATE_MID` | `0x1907` |
+| `FC_EKF_STATUS_MID` | `0x1908` |
+| `UPLINK_APP_LORA_RAW_MID` | `0x1909` (lora_fc_downlink_app → uplink_app 원문 전달) |
 | `UPLINK_STATUS_MID` | `0x190A` |
 | `ROUTE_UPDATE_MID` | `0x190B` |
+| `RECOVERY_CMD_MID` | `0x190C` (uplink_app 라우팅) |
+| `VIEWPOINT_CMD_MID` | `0x190D` (uplink_app → cfs_core_app) |
+| `CONFIG_CMD_MID` | `0x190E` (uplink_app → cfs_core_app / mavlink_bridge_app) |
+| `MODE_CMD_MID` | `0x190F` (uplink_app 라우팅) |
+| `DIAGNOSTIC_CMD_MID` | `0x1910` (uplink_app 라우팅) |
+| `LORA_TDM_APP_LINK_STATUS_MID` | `0x1911` (lora_tdm_app; baseline 등록됨, 2026-06-16 — `lora_fc_downlink_app` 대체) |
 
-`DOWNLINK_STATUS_MID`는 현재 구현되지 않았다. `lora_fc_downlink_app`은 별도 status MID를 publish하지 않으며 HK만 publish한다. `0x1905`는 `FC_EKF_LOCAL_STATE_MID`로 할당되어 있으므로 `DOWNLINK_STATUS_MID`에 사용할 수 없다.
+> 명령 라우팅 MID(`0x190C`~`0x1910`)는 `uplink_app`이 검증된 uplink 명령을 클래스별로 publish하는 대상이다(§18.4.7 라우팅 표 참조). `0x1909`는 `lora_fc_downlink_app`이 LoRa로 수신한 "UP,..." 원문을 `uplink_app`에 전달하는 raw frame MID이다.
 
-#### lora_fc_downlink_app LoRa 송신/수신 동작 (구현 완료)
-
-`lora_fc_downlink_app`은 SB에서 FC 상태를 구독하고 LoRa serial로 직접 전송하며, 지상국 HB를 수신하여 링크 상태를 관리한다.
-
-**캐시 필드 (ProcessInputMessage 갱신):**
-- ATTITUDE: RollRad, PitchRad, YawRad
-- EKF_LOCAL: X_m, Y_m, Z_m, Vx_mps, Vy_mps, Vz_mps
-- GPS_RAW: LatE7, LonE7, AltMm, FixType
-- SYSTEM_HEALTH: HealthState, FaultCode
-
-**LoRa 송신 패킷 (ServiceLoRa, SB 수신마다 호출):**
-
-| PacketType | 형식 | 조건 |
-| --- | --- | --- |
-| 1 (FC State) | `FC,count,ts,roll,pitch,yaw,x,y,z,vx,vy,vz,lat_e7,lon_e7,alt_mm,fix_type\n` | AttitudeValid && LocalValid |
-| 2 (SH) | `SH,count,ts,health_state,fault_code\n` | SYSTEM_HEALTH 수신 시 |
-
-**LoRa HB 수신 (ServiceLoRaRead, SB 수신마다 호출):**
-- LoRa serial에서 1바이트씩 읽어 줄 단위 누적
-- `HB`, `HB,seq`, `HB,node,seq,tx_ms,sensor_ok,crc16` 형식 파싱
-- HB 수신 성공 시 `HbLastRxMs`, `HbLinkValid=1` 갱신
-
-**LoRa serial 설정:** `LORA_FC_DOWNLINK_APP_LORA_SERIAL_PATH`, baud `57600`, O_RDWR, blocking 모드.
-
-`bridge/lora_telemetry_bridge.py` Python 프로세스는 이 앱으로 대체된다.
+`DOWNLINK_STATUS_MID`는 초안 기준 `0x1905`로 할당되었으나, **현재 구현에서 `0x1905`는 `FC_EKF_LOCAL_STATE_MID`로 사용 중**이어서 충돌한다. `lora_fc_downlink_app`의 HK TLM MID는 topic-id 기반으로 별도 할당된다. `DOWNLINK_STATUS_MID = 0x1905`는 구현에 반영되지 않은 초안 할당이므로 사용하지 말 것.
 
 현재 코드베이스의 `lora_fc_downlink_app`은 cFS topic-id 기반 매핑(`DEFAULT_LORA_FC_DOWNLINK_APP_MISSION_CMD_TOPICID`, `...SEND_HK_TOPICID`)을 사용한다. 해당 topic-id 매핑은 본 섹션의 `0x18B0/0x18B1` baseline과 동등한 명령 ingress 의미를 가져야 하며, 플랫폼 설정 시 값 충돌이 없도록 동일 baseline으로 유지해야 한다.
 
 본 문서에서 `UPLINK_CMD_MID`라는 일반 표현은 현재 구현 기준 `UPLINK_APP_CMD_MID`와 동일한 명령 ingress MID를 의미한다. 별도 uplink command gateway MID를 두지 않는 한 두 용어를 동의어로 사용한다.
-
-#### uplink_app LoRa serial 직접 수신 동작 (구현 완료)
-
-`uplink_app`은 `ServicePrototype()` 호출마다 `ServiceLoRa()`를 통해 LoRa serial에서 UP 프레임을 직접 읽어 처리한다.
-
-**UP 프레임 형식:**
-```
-UP,<version>,<command_class>,<sequence>,<flags>,<payload_hex>,<crc16_hex>
-```
-
-**검증 단계 (ParseLoRaFrame):**
-1. CRC16-CCITT 검증 (`UP,ver,class,seq,flags,payload_hex` 부분)
-2. hex 디코딩 유효성
-3. payload 길이 ≤ 196바이트
-4. sequence 단조 증가 (`LoRaSeqInitialized` 이후)
-
-**검증 통과 시:** `UPLINK_APP_ProcessUplink()` 직접 호출 — UDP 경로와 동일한 처리 흐름.
-
-**LoRa serial 설정:** `UPLINK_APP_LORA_SERIAL_PATH`, baud `57600`, O_RDONLY, blocking 모드.
-
-`bridge/lora_uplink_bridge.py` Python 프로세스는 이 경로로 대체된다.
 
 ### 17.2 payload 정밀도 및 엔디안 정책
 
@@ -965,9 +904,17 @@ SCH 기반 제어가 추가되더라도 위 publish rate와 event-driven 계약�
 
 ### 17.5 명령 권한 부여 기준
 
-**[범위 외 — 미구현 및 미정의]**
+기준 권한 수준은 다음과 같이 고정한다.
 
-명령 권한 레벨(Level 1/2/3) 체계는 uplink 프로토콜에 operator credential 필드가 없어 현재 구현 불가하다. 명령 허용/차단은 `uplink_app`의 health state 기반 차단 매트릭스(§18.10)만으로 수행한다. 권한 레벨 분류 및 token 검증은 uplink 프로토콜 개정 시 별도 정의한다.
+| 권한 수준 | 허용 명령 |
+| --- | --- |
+| Level 1 | NOOP, HK request, diagnostic read-only, 상태 조회 |
+| Level 2 | route update, viewpoint update, runtime configuration |
+| Level 3 | recovery command, mode command, counter management |
+
+Level 3 명령은 명시적 운용자 승인과 request token 검증을 모두 만족해야 한다.
+
+이 표는 권한 수준 체계와 명령 클래스별 기본 권한 수준을 고정한다. 개별 function code 또는 세부 command code와 Level 간의 1:1 매핑은 각 앱 command dictionary 구현 시 본 표를 따라 채워야 한다.
 
 ### 17.6 `uplink_app` 명령 라우팅 기준
 
@@ -999,7 +946,7 @@ SCH 기반 제어가 추가되더라도 위 publish rate와 event-driven 계약�
 - `CFS_DEGRADED`: 모든 기준 앱 활성, 단 정상 상태가 필요한 명령만 차단
 - `CFS_RECOVERY`: `cfs_core_app`와 필수 bridge/status path 유지, 구성 변경과 mode 변경 차단
 - 최소 보고 시작: `cfs_core_app`, 필수 bridge/status publish, 오류 보고만 유지
-- `CFS_DEGRADED -> CFS_NOMINAL` 복귀 조건: 필수 입력(`FC_ATTITUDE_STATE_MID`, `FC_GPS_RAW_STATE_MID`, `FC_EKF_STATUS_MID`, `FC_EKF_LOCAL_STATE_MID`, `MAVLINK_BRIDGE_APP_HK_TLM_MID`)이 freshness/유효성 규칙을 모두 만족하고 active critical FaultCode가 없는 상태가 연속 `10 s` 유지될 때 복귀한다.
+- `CFS_DEGRADED -> CFS_NOMINAL` 복귀 조건: 필수 입력(`FC_ATTITUDE_STATE_MID`, `FC_EKF_LOCAL_STATE_MID`, `FC_EKF_STATUS_MID`, `MAVLINK_BRIDGE_APP_HK_TLM_MID`)이 freshness/유효성 규칙을 모두 만족하고 active critical FaultCode가 없는 상태가 연속 `10 s` 유지될 때 복귀한다. (GPS는 §15 정책에 따라 health 게이트에서 제외, 보고 전용.)
 - `CFS_RECOVERY -> CFS_NOMINAL` 복귀 조건: 복구 대상으로 지정된 필수 입력이 모두 복원된 뒤, 위 `CFS_DEGRADED -> CFS_NOMINAL` 조건을 동일하게 연속 `10 s` 만족할 때 복귀한다.
 
 ### 17.10 시퀀스 및 정확성 기준
@@ -1518,6 +1465,13 @@ cFS 상태 및 운영자 인증 수준은 전환을 허용합니다. `uplink_app
 
 `uplink_app`은(는) 승인된 호스트로부터 전달된 표준 uplink envelope을 소비하는 역할을 담당한다. transport-specific 입력은 LoRa 직렬, 지상국 무선 링크, 또는 다른 승인된 채널일 수 있으나, Section 18.4.4의 transport 계층이 이를 표준 envelope으로 변환한 뒤 `uplink_app`에 전달해야 한다.
 
+> **[2026-06-14 현재 구현 상태]**
+> - **활성 경로**: `PC LoRa (COM7) → RF → Pi /dev/ttyUSB0 → lora_uplink_bridge.py → UDP:1234 → CI_LAB → uplink_app`
+> - `lora_uplink_bridge.py` (Python, Pi에서 실행)가 transport 계층 역할을 담당.
+> - `uplink_app`의 `ServiceLoRa()` 직접 serial 경로(CP2102 O_RDONLY)는 **비활성화 권고**.
+>   이유: `lora_fc_downlink_app`이 같은 CP2102를 O_RDWR로 독점 오픈하여 바이트 분산 발생.
+>   참조: `uplink_app/README.md §LoRa serial 직접 경로`
+
 `uplink_app` 운송 책임:
 
 - transport 계층이 보고한 업링크 연결 상태를 소비하고 상태 보고에 반영한다.
@@ -1563,28 +1517,11 @@ downlink 텔레메트리 상태는 `lora_fc_downlink_app`의 책임이며
 | `CFS_RECOVERY` | 진단 및 상태 확인 명령만 허용하고, 설정 변경 및 모드 관련 명령은 차단한다. |
 | 최소 보고 시작 | 카운터 재설정 및 진단 명령만 허용하며, 그 외 명령 클래스는 차단한다. |
 
-#### 18.10.1 명령 클래스별 상태 차단 매트릭스
-
-`CFS_DEGRADED`에서 "정상 상태가 필요한 명령"의 범위를 아래와 같이 확정한다. VIEWPOINT, CONFIG는 시스템이 정상 동작 중임을 전제하는 명령(위치 집행, 설정 변경)이므로 DEGRADED 이상의 이상 상태에서는 차단한다.
-
-| 명령 클래스 | `NOMINAL` | `DEGRADED` | `RECOVERY` | `FAILED` | 비고 |
-| --- | --- | --- | --- | --- | --- |
-| `CLASS_ROUTE_UPDATE` | ✓ 허용 | ✓ 허용 | ✗ 차단 | ✗ 차단 | **[2026-06-07] DEGRADED 차단 범위에서 제외** — 경로 갱신은 degraded 상태에서도 운용 필요성이 있어 별도 검토 예정 |
-| `CLASS_VIEWPOINT` | ✓ 허용 | ✗ 차단 | ✗ 차단 | ✗ 차단 | |
-| `CLASS_CONFIG` | ✓ 허용 | ✗ 차단 | ✗ 차단 | ✗ 차단 | |
-| `CLASS_MODE` | ✓ 허용 | ✓ 허용 | ✗ 차단 | ✗ 차단 | |
-| `CLASS_RECOVERY` | ✓ 허용 | ✓ 허용 | ✗ 차단 | ✗ 차단 | |
-| `CLASS_DIAGNOSTIC` | ✓ 허용 | ✓ 허용 | ✓ 허용 | ✗ 차단 | |
-
-헬스 수신 전(`CfsHealthReceived = 0`)에는 매트릭스를 적용하지 않고 전부 허용한다(fail-open).
-
-`CfsHealthState` 인코딩: `0 = NOMINAL`, `1 = DEGRADED`, `2 = RECOVERY`, `3 = FAILED`.
-
 ### 18.11 `uplink_app`에 대한 미해결 항목
 
 현재 baseline 구현에서 추가로 세분화가 필요한 항목은 다음과 같다.
 
-- 명령 권한 레벨 체계는 §17.5에서 범위 외로 처리됨. uplink 프로토콜 개정 전까지 health state 차단 매트릭스(§18.10)가 유일한 허용/차단 기준이다.
+- 명령 클래스별 기본 권한 수준은 Section 17.5에서 고정했으며, 개별 command code별 권한 매핑 표만 추가로 작성하면 된다.
 - 시퀀스 번호 정책은 strict monotonic increase로 고정했으며, wraparound 허용 여부와 허용 시간 창은 추가 확장 시에만 세분화한다.
 - 명령 라우팅은 Section 17.6과 Section 18.4.7에서 baseline target을 고정했으며, 세부 command code별 MID 매핑 표만 추가하면 된다.
 - 업링크 packet 형식과 version 정책은 Section 18.4.3의 envelope과 현재 `version=1` 기준을 사용한다.
@@ -1601,8 +1538,8 @@ downlink 텔레메트리 상태는 `lora_fc_downlink_app`의 책임이며
 - 통신 복구 후 명령 폭주: queue limit, priority, stale drop 외에 burst rate limit, old command purge, 중복 route update 정리 정책을 고려해야 한다.
 - 반복 재시작 또는 반복 복구 실패: recovery escalation과 minimum-reporting mode 외에 재시작 횟수 창, operator intervention 필요 조건, 최종 fail-safe 상태를 고려해야 한다.
 - 시간 무효 상태: `TimeValid=false`일 때 어떤 명령은 제한하고 어떤 명령은 허용할지, route update를 포함한 상태 의존 명령 제한을 고려해야 한다.
-- 부분 장애 상태 정의: Section 15의 `CFS_CORE_APP_FAULT_*` 열거값 기반 fault code 구분을 유지하되, 필요한 경우 세부 fault code 집합만 확장한다.
+- 부분 장애 상태 정의: Section 15의 `DEGRADED_*` fault code 구분을 유지하되, 필요한 경우 세부 fault code 집합만 확장한다.
 - persistent state integrity: boot counter, command sequence cache, route cache, active configuration 저장본의 checksum 또는 CRC 오류 처리 정책을 고려해야 한다.
 - route/config 적용 원자성: route update 또는 configuration 변경이 일부만 적용된 상태로 남지 않도록 atomic apply 또는 rollback 필요성을 고려해야 한다.
 - 복구 중 허용 명령: `CFS_RECOVERY` 또는 최소 보고 상태에서 허용되는 명령 클래스의 최소 집합을 별도로 검토해야 한다.
-- 권한 또는 출처 검증: 권한 레벨 체계는 §17.5에서 범위 외 처리됨. uplink 프로토콜 개정 시 credential 필드 추가와 함께 별도 정의한다.
+- 권한 또는 출처 검증: sequence/replay 검증과 별도로, 명령 출처와 권한 수준을 어떻게 결합할지 검토해야 한다.

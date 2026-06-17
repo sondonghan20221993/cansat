@@ -140,6 +140,31 @@ static bool LORA_FC_DOWNLINK_APP_ParseHb(const char *Line)
     return true;
 }
 
+/* Forward a ground "UP,..." uplink frame onto SB for uplink_app.
+ * lora is the sole owner of the CP2102 port; uplink_app subscribes to
+ * UPLINK_RAW_MID and parses/validates the text frame itself. */
+static void LORA_FC_DOWNLINK_APP_ForwardUplinkFrame(const char *Line)
+{
+    size_t Len;
+
+    if ((Line[0] != 'U' && Line[0] != 'u') || (Line[1] != 'P' && Line[1] != 'p'))
+    {
+        return;
+    }
+
+    Len = strlen(Line);
+    if (Len == 0 || Len >= sizeof(LORA_FC_DOWNLINK_APP_Data.UplinkRawMsg.Frame))
+    {
+        return;
+    }
+
+    memcpy(LORA_FC_DOWNLINK_APP_Data.UplinkRawMsg.Frame, Line, Len);
+    LORA_FC_DOWNLINK_APP_Data.UplinkRawMsg.Frame[Len] = '\0';
+    LORA_FC_DOWNLINK_APP_Data.UplinkRawMsg.Length      = (uint16)Len;
+
+    CFE_SB_TransmitMsg(CFE_MSG_PTR(LORA_FC_DOWNLINK_APP_Data.UplinkRawMsg.TelemetryHeader), true);
+}
+
 static void LORA_FC_DOWNLINK_APP_ServiceLoRaRead(void)
 {
     ssize_t rc;
@@ -177,16 +202,22 @@ static void LORA_FC_DOWNLINK_APP_ServiceLoRaRead(void)
         LORA_FC_DOWNLINK_APP_Data.HbLastRxMs  = NowMs;
         LORA_FC_DOWNLINK_APP_Data.HbLinkValid = 1;
     }
+    else
+    {
+        LORA_FC_DOWNLINK_APP_ForwardUplinkFrame(LORA_FC_DOWNLINK_APP_Data.LoRaReadBuf);
+    }
 }
 
 static void LORA_FC_DOWNLINK_APP_ServiceLoRa(void)
 {
-    int            Fd;
-    int            WriteRc;
-    struct termios Tio;
-    char           Line[256];
-    int            LineLen;
-    speed_t        BaudConstant = B57600;
+    int                Fd;
+    int                WriteRc;
+    struct termios     Tio;
+    char               Line[256];
+    int                LineLen;
+    speed_t            BaudConstant = B57600;
+    CFE_TIME_SysTime_t Now;
+    uint32             NowMs;
 
     if (LORA_FC_DOWNLINK_APP_Data.LoRaFd < 0)
     {
@@ -235,9 +266,17 @@ static void LORA_FC_DOWNLINK_APP_ServiceLoRa(void)
                           LORA_FC_DOWNLINK_APP_LORA_SERIAL_PATH, LORA_FC_DOWNLINK_APP_LORA_BAUDRATE);
     }
 
+    /* Rate limiting: minimum 500ms between LoRa writes to avoid overwhelming the link */
+    Now   = CFE_TIME_GetTime();
+    NowMs = (uint32)((uint64)Now.Seconds * 1000ULL + (uint64)Now.Subseconds * 1000ULL / 0x100000000ULL);
+    if ((NowMs - LORA_FC_DOWNLINK_APP_Data.LastLoRaTxMs) < 500U)
+    {
+        return;
+    }
+
     if (LORA_FC_DOWNLINK_APP_Data.PacketType == LORA_FC_DOWNLINK_APP_SYSTEM_HEALTH_PACKET_TYPE)
     {
-        LineLen = snprintf(Line, sizeof(Line), "SH,%lu,%lu,%u,%u\n",
+        LineLen = snprintf(Line, sizeof(Line), "SH,%lu,%lu,%u,%u,0,0\n",
                            (unsigned long)(++LORA_FC_DOWNLINK_APP_Data.LoRaTxCount),
                            (unsigned long)LORA_FC_DOWNLINK_APP_Data.LastSystemHealthTimestampMs,
                            (unsigned int)LORA_FC_DOWNLINK_APP_Data.SystemHealthState,
@@ -246,7 +285,7 @@ static void LORA_FC_DOWNLINK_APP_ServiceLoRa(void)
     else if (LORA_FC_DOWNLINK_APP_Data.AttitudeValid && LORA_FC_DOWNLINK_APP_Data.LocalValid)
     {
         LineLen = snprintf(Line, sizeof(Line),
-                           "FC,%lu,%lu,%.6f,%.6f,%.6f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%ld,%ld,%ld,%u\n",
+                           "FC,%lu,%lu,%.6f,%.6f,%.6f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%ld,%ld,%ld,%u,0\n",
                            (unsigned long)(++LORA_FC_DOWNLINK_APP_Data.LoRaTxCount),
                            (unsigned long)LORA_FC_DOWNLINK_APP_Data.LastAttitudeTimestampMs,
                            (double)LORA_FC_DOWNLINK_APP_Data.AttitudeRollRad,
@@ -284,6 +323,69 @@ static void LORA_FC_DOWNLINK_APP_ServiceLoRa(void)
                           "LORA_FC_DOWNLINK_APP: LoRa write failed errno=%d, forcing reopen", errno);
         close(LORA_FC_DOWNLINK_APP_Data.LoRaFd);
         LORA_FC_DOWNLINK_APP_Data.LoRaFd = -1;
+    }
+    else
+    {
+        LORA_FC_DOWNLINK_APP_Data.LastLoRaTxMs = NowMs;
+
+        /* TDM RX window: read for up to 300 ms after TX to drain ACK/HB frames.
+         * Prevents RF collision when ground station replies immediately after our TX. */
+        {
+            char               RxBuf[256];
+            uint16             RxLen = 0;
+            uint32             Deadline;
+            uint32             NowRx;
+            CFE_TIME_SysTime_t Tr;
+            char               C;
+
+            Tr       = CFE_TIME_GetTime();
+            Deadline = (uint32)((uint64)Tr.Seconds * 1000ULL +
+                                (uint64)Tr.Subseconds * 1000ULL / 0x100000000ULL) +
+                       300U;
+
+            while (LORA_FC_DOWNLINK_APP_Data.LoRaFd >= 0)
+            {
+                Tr    = CFE_TIME_GetTime();
+                NowRx = (uint32)((uint64)Tr.Seconds * 1000ULL +
+                                 (uint64)Tr.Subseconds * 1000ULL / 0x100000000ULL);
+                if (NowRx >= Deadline)
+                {
+                    break;
+                }
+
+                if (read(LORA_FC_DOWNLINK_APP_Data.LoRaFd, &C, 1) <= 0)
+                {
+                    /* VMIN=0/VTIME=0: 데이터 없으면 read가 즉시 0을 반환한다.
+                     * 윈도우 시작 직후엔 지상 uplink가 아직 도착 전(왕복 지연)이므로
+                     * 여기서 break하면 uplink를 영영 못 읽는다. deadline까지 폴링 유지. */
+                    usleep(2000);
+                    continue;
+                }
+
+                if (RxLen < sizeof(RxBuf) - 1U)
+                {
+                    RxBuf[RxLen++] = C;
+                }
+
+                if (C == '\n')
+                {
+                    RxBuf[RxLen] = '\0';
+                    if (LORA_FC_DOWNLINK_APP_ParseHb(RxBuf))
+                    {
+                        CFE_TIME_SysTime_t Th = CFE_TIME_GetTime();
+                        LORA_FC_DOWNLINK_APP_Data.HbLastRxMs =
+                            (uint32)((uint64)Th.Seconds * 1000ULL +
+                                     (uint64)Th.Subseconds * 1000ULL / 0x100000000ULL);
+                        LORA_FC_DOWNLINK_APP_Data.HbLinkValid = 1;
+                    }
+                    else
+                    {
+                        LORA_FC_DOWNLINK_APP_ForwardUplinkFrame(RxBuf);
+                    }
+                    RxLen = 0;
+                }
+            }
+        }
     }
 }
 

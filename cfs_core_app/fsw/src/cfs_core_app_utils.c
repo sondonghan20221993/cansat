@@ -318,16 +318,8 @@ void CFS_CORE_APP_UpdateHealth(uint32 NowMs, bool ForcePublish)
         Tlm->FaultCode         = CFS_CORE_APP_FAULT_ATTITUDE_TIMEOUT;
         Tlm->RecoveryRequested = 0;
     }
-    else if (GpsUnavailable)
-    {
-        CFS_CORE_APP_Data.RecoveryStartMs      = 0;
-        CFS_CORE_APP_Data.BridgeRestartCount   = 0;
-        CFS_CORE_APP_Data.NextBridgeRestartMs  = 0;
-        CFS_CORE_APP_Data.NominalEligibleSince = 0;
-        Tlm->HealthState       = CFS_CORE_APP_HEALTH_DEGRADED;
-        Tlm->FaultCode         = CFS_CORE_APP_FAULT_GPS_STALE;
-        Tlm->RecoveryRequested = 0;
-    }
+    /* GPS 가용성은 헬스를 저하시키지 않는다 (보고 전용) — 명세 §12.5.
+       GpsUnavailable은 아래 GpsStatus.TimedOut 보고 필드용으로만 계산·사용한다. */
     else if (CFS_CORE_APP_Data.LastHealthState == CFS_CORE_APP_HEALTH_NOMINAL)
     {
         /* Already nominal: stay nominal immediately, no timer needed */

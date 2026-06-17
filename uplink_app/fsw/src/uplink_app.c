@@ -54,7 +54,6 @@ CFE_Status_t UPLINK_APP_Init(void)
 
     memset(&UPLINK_APP_Data, 0, sizeof(UPLINK_APP_Data));
     UPLINK_APP_Data.RunStatus = CFE_ES_RunStatus_APP_RUN;
-    UPLINK_APP_Data.LoRaFd    = -1;
 
     Status = CFE_EVS_Register(NULL, 0, CFE_EVS_EventFilter_BINARY);
     if (Status != CFE_SUCCESS)
@@ -97,6 +96,13 @@ CFE_Status_t UPLINK_APP_Init(void)
     }
 
     Status = CFE_SB_Subscribe(CFE_SB_ValueToMsgId(SYSTEM_HEALTH_MID_VALUE), UPLINK_APP_Data.CommandPipe);
+    if (Status != CFE_SUCCESS)
+    {
+        return Status;
+    }
+
+    /* raw ground uplink frames forwarded by lora_fc_downlink_app (CP2102 owner) */
+    Status = CFE_SB_Subscribe(CFE_SB_ValueToMsgId(UPLINK_APP_LORA_RAW_MID_VALUE), UPLINK_APP_Data.CommandPipe);
     if (Status != CFE_SUCCESS)
     {
         return Status;

@@ -8,9 +8,11 @@ set(APP_SRC_FILES
 )
 
 # Create the app module
-add_cfe_app(lora_fc_downlink_app ${APP_SRC_FILES})
+# NOTE: target/.so name kept short (lora_fc_dl_app.so = 17 chars) to stay under
+# OS_MAX_FILE_NAME=20. Full name lora_fc_downlink_app.so (23) caused OSAL -104.
+add_cfe_app(lora_fc_dl_app ${APP_SRC_FILES})
 
-target_include_directories(lora_fc_downlink_app PUBLIC fsw/inc)
+target_include_directories(lora_fc_dl_app PUBLIC fsw/inc)
 
 # If UT is enabled, then add the tests from the subdirectory
 # Note that this is an app, and therefore does not provide
