@@ -269,7 +269,33 @@ else:
 | RxAckCount | `RxAckCount` |
 | RxCmdCount | `RxCmdCount` |
 
-## 13. Serial 재열기 정책
+## 13. 이벤트 ID 목록
+
+`lora_tdm_app/fsw/inc/lora_tdm_app_eventids.h` 기준 (코드 권위):
+
+| EID | 심볼 | 유형 | 트리거 | 구현 |
+| --- | --- | --- | --- | --- |
+| 1 | `INIT_INF_EID` | INFO | 앱 초기화 완료 | ✅ |
+| 2 | `NOOP_INF_EID` | INFO | NOOP 명령 수신 | ✅ |
+| 3 | `RESET_INF_EID` | INFO | RESET_COUNTERS 수신 | ✅ |
+| 4 | `MID_ERR_EID` | ERROR | 알 수 없는 MID 수신 | ✅ |
+| 5 | `CMD_LEN_ERR_EID` | ERROR | 명령 길이 불일치 | ✅ |
+| 6 | `CC_ERR_EID` | ERROR | 알 수 없는 CC 수신 | ✅ |
+| 7 | `SERIAL_OPEN_ERR_EID` | ERROR | `/dev/serial0` 열기 실패 | ✅ |
+| 8 | `SERIAL_WRITE_ERR_EID` | ERROR | TX write 실패 | ✅ |
+| 9 | `SERIAL_READ_ERR_EID` | ERROR | RX read 실패 | ✅ |
+| 10 | `ACK_PARSE_ERR_EID` | ERROR | "ACK," 프레임 파싱 실패 | ✅ |
+| 11 | `CRC_FAIL_EID` | ERROR | UP frame CRC 불일치 | ✅ |
+| 12 | `SEQ_FAIL_EID` | ERROR | ACK sequence echo 불일치 | ⚪ **미구현** — EID 정의됨, `SeqEcho` 파싱 후 `(void)SeqEcho`로 무시 (`lora_tdm_app_utils.c:295`). `DownlinkSeq`와 비교하는 로직 없음 |
+| 13 | `LINK_LOST_EID` | ERROR | LinkState → DISCONNECTED 전이 | ✅ |
+| 14 | `LINK_DEGRADED_EID` | WARNING | LinkState → DEGRADED 전이 | ✅ |
+| 15 | `LINK_RESTORED_EID` | INFO | LinkState → CONNECTED 복구 | ✅ |
+| 16 | `PIPE_ERR_EID` | ERROR | SB 파이프 수신 오류 | ✅ |
+| 17 | `SUB_ERR_EID` | ERROR | SB 구독 실패 | ✅ |
+| 18 | `SB_SEND_ERR_EID` | ERROR | SB 메시지 송신 실패 | ✅ |
+| 19 | `DIAGNOSTIC_CMD_EID` | INFO | `DIAGNOSTIC_CMD_MID` 수신 (2026-06-17 추가) | ✅ |
+
+## 14. Serial 재열기 정책 <!-- 구 §13 -->
 
 - `LoRaFd`는 초기화 시 `-1`로 설정한다.
 - `RunCycle()` 진입마다 `LoRaFd < 0`이면 `OpenSerial()` 시도.
@@ -277,7 +303,7 @@ else:
 - 성공 시 O_RDWR, 57600 baud, 8N1, no flow control, blocking 모드로 설정.
 - `RunTx()`와 `RunRxWindow()`는 `LoRaFd < 0`이면 즉시 반환한다.
 
-## 14. 설정 상수
+## 15. 설정 상수 <!-- 구 §14 -->
 
 | 상수 | 값 | 의미 |
 | --- | --- | --- |
@@ -292,7 +318,7 @@ else:
 | `LORA_TDM_APP_LINK_CONNECTED` | `1` | 링크 상태: 정상 |
 | `LORA_TDM_APP_LINK_DEGRADED` | `2` | 링크 상태: 저하 |
 
-## 15. 미구현 항목
+## 16. 미구현 항목 <!-- 구 §15 -->
 
 - `SEQ_FAIL` 경로: `UPLINK_FB_SEQ_FAIL` 상수가 정의되어 있으나, sequence 단조 증가 검증 및 피드백 전송 로직이 구현되지 않았다.
 - `PacketType` 전환 명령: 현재 외부 명령으로 `PacketType`을 전환하는 command code가 없다.

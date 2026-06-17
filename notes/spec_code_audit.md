@@ -78,7 +78,7 @@
 | 3-3 | PacketType | §8 | mission_cfg.h:14 | "FC State (default = **0**)" | `FC_STATE_PACKET_TYPE = **1**` (SH=2) | ✅ **해결** | §8 표를 `FC_STATE=1`/`SYSTEM_HEALTH=2`로 정정 (2026-06-16) |
 | 3-4 | 설정·한도 | §5.1 | `lora_tdm_app.c:268` | "파이프 깊이 **10**" | 코드 깊이 **50** | ✅ **해결** | §5.1을 깊이 50으로 정정 (2026-06-16). TEST_CASES.md baseline 주석도 갱신 |
 | 3-5 | spec 내부 | §7.1 vs §15 | `lora_tdm_app_dispatch.c:71-75` | §7.1 "SEND_HK→HK+LinkStatus" ↔ §15 "SEND_HK→HK만" | **코드 수정**: SEND_HK 분기에 `LORA_TDM_APP_ReportLinkStatus()` 호출 추가 → §7.1이 정답이 되도록 코드를 바로잡음 (단위테스트 stub이 이미 `ReportLinkStatus` 호출 카운트를 추적 가능했던 것으로 보아 누락된 호출로 판단) | ✅ **해결(코드 수정)** | dead code였던 `ReportLinkStatus()`를 SEND_HK 경로에 연결. §7.1/§15 모두 "호출됨"으로 통일 (2026-06-16) |
-| 3-6 | 이벤트 | (EID 표 없음) | eventids.h | — | `SEQ_FAIL_EID 12` 정의·로직 미구현 | ⚠️ | §15와 일관(경미). EID 표 추가 권장 |
+| 3-6 | 이벤트 | (EID 표 없음) | eventids.h | — | `SEQ_FAIL_EID 12` 정의·로직 미구현 | ✅ **해결** | `lora_tdm_app_behavior_spec.md` §13에 EID 1~19 전체 표 추가; `SEQ_FAIL_EID 12`는 ⚪ 미구현(`lora_tdm_app_utils.c:295` `(void)SeqEcho`)으로 명시 (2026-06-17) |
 
 > 종합: MID·TDM 상수 **완전 일치**. 실 불일치는 ❌3-3(PacketType 기본값), ❌3-4(파이프 깊이 10 vs 50), 모두 해결. ⚠️3-5도 해결(spec 내부 모순 통일 + dead code 발견 기록).
 
