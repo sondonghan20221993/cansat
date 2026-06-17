@@ -6,8 +6,10 @@
 #define CFS_CORE_APP_HK_TLM_MID 0x08C0
 #define SYSTEM_HEALTH_MID       0x1904
 #define ROUTE_UPDATE_MID        0x190B
-#define CONFIG_CMD_MID          0x190EU
+#define RECOVERY_CMD_MID        0x190CU
 #define VIEWPOINT_CMD_MID       0x190DU
+#define CONFIG_CMD_MID          0x190EU
+#define MODE_CMD_MID            0x190FU
 
 #endif
 

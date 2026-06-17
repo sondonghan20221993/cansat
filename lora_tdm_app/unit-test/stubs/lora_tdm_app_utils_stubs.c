@@ -59,3 +59,9 @@ uint16 LORA_TDM_APP_Crc16(const uint8 *Data, size_t Len)
     UT_GenStub_Execute(LORA_TDM_APP_Crc16, Basic, NULL);
     return UT_GenStub_GetReturnValue(LORA_TDM_APP_Crc16, uint16);
 }
+
+void LORA_TDM_APP_ProcessDiagnosticCommand(CFE_SB_Buffer_t *SBBufPtr)
+{
+    UT_GenStub_AddParam(LORA_TDM_APP_ProcessDiagnosticCommand, CFE_SB_Buffer_t *, SBBufPtr);
+    UT_GenStub_Execute(LORA_TDM_APP_ProcessDiagnosticCommand, Basic, NULL);
+}

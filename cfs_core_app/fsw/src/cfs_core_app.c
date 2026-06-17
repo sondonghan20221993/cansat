@@ -152,6 +152,18 @@ CFE_Status_t CFS_CORE_APP_Init(void)
         return Status;
     }
 
+    Status = CFE_SB_Subscribe(CFE_SB_ValueToMsgId(RECOVERY_CMD_MID), CFS_CORE_APP_Data.CommandPipe);
+    if (Status != CFE_SUCCESS)
+    {
+        return Status;
+    }
+
+    Status = CFE_SB_Subscribe(CFE_SB_ValueToMsgId(MODE_CMD_MID), CFS_CORE_APP_Data.CommandPipe);
+    if (Status != CFE_SUCCESS)
+    {
+        return Status;
+    }
+
     CFS_CORE_APP_LoadState();
 
     CFE_EVS_SendEvent(CFS_CORE_APP_STARTUP_EID, CFE_EVS_EventType_INFORMATION,

@@ -231,6 +231,38 @@ void Test_CFS_CORE_APP_TaskPipe_ViewpointCmd(void)
     UtAssert_STUB_COUNT(CFS_CORE_APP_ProcessViewpointCommand, 1);
 }
 
+/* RECOVERY_CMD_MID → ProcessRecoveryCommand 호출 */
+void Test_CFS_CORE_APP_TaskPipe_RecoveryCmd(void)
+{
+    CFE_SB_Buffer_t Buffer;
+    CFE_SB_MsgId_t  MsgId;
+
+    memset(&Buffer, 0, sizeof(Buffer));
+    MsgId = CFE_SB_ValueToMsgId(RECOVERY_CMD_MID);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+
+    CFS_CORE_APP_Data.ErrCounter = 0;
+    CFS_CORE_APP_TaskPipe(&Buffer);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ErrCounter, 0);
+    UtAssert_STUB_COUNT(CFS_CORE_APP_ProcessRecoveryCommand, 1);
+}
+
+/* MODE_CMD_MID → ProcessModeCommand 호출 */
+void Test_CFS_CORE_APP_TaskPipe_ModeCmd(void)
+{
+    CFE_SB_Buffer_t Buffer;
+    CFE_SB_MsgId_t  MsgId;
+
+    memset(&Buffer, 0, sizeof(Buffer));
+    MsgId = CFE_SB_ValueToMsgId(MODE_CMD_MID);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+
+    CFS_CORE_APP_Data.ErrCounter = 0;
+    CFS_CORE_APP_TaskPipe(&Buffer);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ErrCounter, 0);
+    UtAssert_STUB_COUNT(CFS_CORE_APP_ProcessModeCommand, 1);
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(CFS_CORE_APP_VerifyCmdLength);
@@ -247,4 +279,6 @@ void UtTest_Setup(void)
     ADD_TEST(CFS_CORE_APP_TaskPipe_UnknownCC);
     ADD_TEST(CFS_CORE_APP_TaskPipe_ConfigCmd);
     ADD_TEST(CFS_CORE_APP_TaskPipe_ViewpointCmd);
+    ADD_TEST(CFS_CORE_APP_TaskPipe_RecoveryCmd);
+    ADD_TEST(CFS_CORE_APP_TaskPipe_ModeCmd);
 }

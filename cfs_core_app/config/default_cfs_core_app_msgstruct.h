@@ -96,6 +96,30 @@ typedef struct
     uint8                     Payload[CFS_CORE_APP_CONFIG_MAX_PAYLOAD];
 } CFS_CORE_APP_ConfigCmdTlm_t;
 
+/* RECOVERY_CMD_MID 수신용 — uplink_app의 UPLINK_APP_RecoveryCmdTlm_t와 동일 레이아웃 */
+typedef struct
+{
+    CFE_MSG_TelemetryHeader_t TelemetryHeader;
+    uint32                    Seq;
+    uint32                    TimestampMs;
+    uint16                    SourceSequence;
+    uint8                     Reserved[2];
+} CFS_CORE_APP_RecoveryCmdTlm_t;
+
+/* MODE_CMD_MID 수신용 — uplink_app의 UPLINK_APP_ModeCmdTlm_t와 동일 레이아웃 */
+#define CFS_CORE_APP_MODE_MAX_PAYLOAD 196
+
+typedef struct
+{
+    CFE_MSG_TelemetryHeader_t TelemetryHeader;
+    uint32                    Seq;
+    uint32                    TimestampMs;
+    uint16                    SourceSequence;
+    uint8                     PayloadLength;
+    uint8                     Reserved;
+    uint8                     Payload[CFS_CORE_APP_MODE_MAX_PAYLOAD];
+} CFS_CORE_APP_ModeCmdTlm_t;
+
 /* VIEWPOINT_CMD_MID 수신용 — uplink_app의 UPLINK_APP_ViewpointCmdTlm_t와 동일 레이아웃 */
 typedef struct
 {

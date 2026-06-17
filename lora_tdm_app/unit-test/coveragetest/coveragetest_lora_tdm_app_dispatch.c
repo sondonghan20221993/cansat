@@ -114,6 +114,21 @@ void Test_ProcessCommandPacket_InvalidCC(void)
     UtAssert_INT32_EQ(LORA_TDM_APP_Data.ErrCounter, 1);
 }
 
+void Test_ProcessCommandPacket_DiagnosticCmd(void)
+{
+    LORA_TDM_APP_NoopCmd_t Msg;
+    CFE_SB_MsgId_t         MsgId;
+
+    memset(&Msg, 0, sizeof(Msg));
+    MsgId = CFE_SB_ValueToMsgId(LORA_TDM_APP_DIAGNOSTIC_CMD_MID_VALUE);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+
+    LORA_TDM_APP_Data.ErrCounter = 0;
+    LORA_TDM_APP_ProcessCommandPacket((CFE_SB_Buffer_t *)&Msg);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.ErrCounter, 0);
+    UtAssert_STUB_COUNT(LORA_TDM_APP_ProcessDiagnosticCommand, 1);
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(VerifyCmdLength);
@@ -122,4 +137,5 @@ void UtTest_Setup(void)
     ADD_TEST(ProcessCommandPacket_CmdReset);
     ADD_TEST(ProcessCommandPacket_UnknownMid);
     ADD_TEST(ProcessCommandPacket_InvalidCC);
+    ADD_TEST(ProcessCommandPacket_DiagnosticCmd);
 }

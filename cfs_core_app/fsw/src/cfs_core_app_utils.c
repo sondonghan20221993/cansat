@@ -630,3 +630,31 @@ void CFS_CORE_APP_ServicePrototype(void)
     CFS_CORE_APP_UpdateHealth(CFS_CORE_APP_GetTimeMs(), false);
 }
 
+void CFS_CORE_APP_ProcessRecoveryCommand(const CFS_CORE_APP_RecoveryCmdTlm_t *Msg)
+{
+    CFS_CORE_APP_Data.RecoveryStartMs    = 0;
+    CFS_CORE_APP_Data.BridgeRestartCount = 0;
+    CFS_CORE_APP_Data.RecoveryRequestedCount++;
+    CFS_CORE_APP_Data.SystemHealthTlm.RecoveryRequested = 1;
+    CFS_CORE_APP_Data.CmdCounter++;
+
+    CFE_EVS_SendEvent(CFS_CORE_APP_RECOVERY_CMD_EID, CFE_EVS_EventType_INFORMATION,
+                      "CFS_CORE_APP: recovery cmd seq=%u count=%lu",
+                      (unsigned int)Msg->SourceSequence,
+                      (unsigned long)CFS_CORE_APP_Data.RecoveryRequestedCount);
+}
+
+void CFS_CORE_APP_ProcessModeCommand(const CFS_CORE_APP_ModeCmdTlm_t *Msg)
+{
+    if (Msg->PayloadLength >= 1)
+    {
+        CFS_CORE_APP_Data.LastModeValue = Msg->Payload[0];
+    }
+    CFS_CORE_APP_Data.CmdCounter++;
+
+    CFE_EVS_SendEvent(CFS_CORE_APP_MODE_CMD_EID, CFE_EVS_EventType_INFORMATION,
+                      "CFS_CORE_APP: mode cmd seq=%u mode=%u",
+                      (unsigned int)Msg->SourceSequence,
+                      (unsigned int)CFS_CORE_APP_Data.LastModeValue);
+}
+

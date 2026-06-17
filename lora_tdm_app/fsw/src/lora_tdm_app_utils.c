@@ -399,3 +399,14 @@ void LORA_TDM_APP_UpdateCacheFromMsg(CFE_SB_Buffer_t *SBBufPtr, LORA_TDM_APP_Dat
         AppData->PacketType = LORA_TDM_APP_FC_STATE_PACKET_TYPE;
     }
 }
+
+void LORA_TDM_APP_ProcessDiagnosticCommand(CFE_SB_Buffer_t *SBBufPtr)
+{
+    (void)SBBufPtr;
+    LORA_TDM_APP_Data.CmdCounter++;
+    CFE_EVS_SendEvent(LORA_TDM_APP_DIAGNOSTIC_CMD_EID, CFE_EVS_EventType_INFORMATION,
+                      "LORA_TDM_APP: diag cmd link=%u noack=%lu dlseq=%lu",
+                      (unsigned int)LORA_TDM_APP_Data.LinkState,
+                      (unsigned long)LORA_TDM_APP_Data.NoAckCount,
+                      (unsigned long)LORA_TDM_APP_Data.DownlinkSeq);
+}

@@ -13,6 +13,8 @@
 #define CFS_CORE_APP_BRIDGE_RESTART_EID   10
 #define CFS_CORE_APP_VIEWPOINT_EID        11
 #define CFS_CORE_APP_SEQ_GAP_EID          12
+#define CFS_CORE_APP_RECOVERY_CMD_EID     13
+#define CFS_CORE_APP_MODE_CMD_EID         14
 
 #endif
 

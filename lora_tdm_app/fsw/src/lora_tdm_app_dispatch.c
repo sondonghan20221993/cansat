@@ -81,6 +81,10 @@ void LORA_TDM_APP_ProcessCommandPacket(CFE_SB_Buffer_t *SBBufPtr)
     {
         LORA_TDM_APP_UpdateCacheFromMsg(SBBufPtr, &LORA_TDM_APP_Data);
     }
+    else if (CFE_SB_MsgId_Equal(MsgId, CFE_SB_ValueToMsgId(LORA_TDM_APP_DIAGNOSTIC_CMD_MID_VALUE)))
+    {
+        LORA_TDM_APP_ProcessDiagnosticCommand(SBBufPtr);
+    }
     else
     {
         LORA_TDM_APP_Data.ErrCounter++;

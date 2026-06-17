@@ -42,4 +42,7 @@ void LORA_TDM_APP_UpdateCacheFromMsg(CFE_SB_Buffer_t *SBBufPtr, LORA_TDM_APP_Dat
 /* CRC-16/CCITT-FALSE */
 uint16 LORA_TDM_APP_Crc16(const uint8 *Data, size_t Len);
 
+/* Process DIAGNOSTIC_CMD_MID from uplink_app */
+void LORA_TDM_APP_ProcessDiagnosticCommand(CFE_SB_Buffer_t *SBBufPtr);
+
 #endif
