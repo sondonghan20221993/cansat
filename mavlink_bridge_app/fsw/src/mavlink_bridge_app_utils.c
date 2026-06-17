@@ -1062,14 +1062,21 @@ static void MAVLINK_BRIDGE_APP_HandleFrameComplete(uint32 RxTimestampMs, uint8 C
 
     ReceivedCrc = ((uint16)CrcHigh << 8) | MAVLINK_BRIDGE_APP_Parser.CrcLow;
 
-    if (MAVLINK_BRIDGE_APP_Parser.MsgId == MAVLINK_MSG_ID_HEARTBEAT)
+    if (MAVLINK_BRIDGE_APP_Parser.MsgId == MAVLINK_MSG_ID_HEARTBEAT &&
+        MAVLINK_BRIDGE_APP_Parser.PayloadLen >= MAVLINK_MSG_ID_HEARTBEAT_LEN)
     {
-        MAVLINK_BRIDGE_APP_Data.TargetSystemId    = MAVLINK_BRIDGE_APP_Parser.SysId;
-        MAVLINK_BRIDGE_APP_Data.TargetComponentId = MAVLINK_BRIDGE_APP_Parser.CompId;
-        MAVLINK_BRIDGE_APP_Data.LastRxTimestampMs = RxTimestampMs;
-        MAVLINK_BRIDGE_APP_SetLinkState(MAVLINK_BRIDGE_LINK_CONNECTED);
-        if (MAVLINK_BRIDGE_APP_Parser.PayloadLen >= MAVLINK_MSG_ID_HEARTBEAT_LEN)
+        uint8 AutopilotType = MAVLINK_BRIDGE_APP_Parser.Payload[5];
+        /* Lock onto the first FC heartbeat (ArduPilot=3, PX4=12); ignore cameras/peripherals */
+        if (MAVLINK_BRIDGE_APP_Data.TargetSystemId == 0 &&
+            (AutopilotType == 3 || AutopilotType == 12))
         {
+            MAVLINK_BRIDGE_APP_Data.TargetSystemId    = MAVLINK_BRIDGE_APP_Parser.SysId;
+            MAVLINK_BRIDGE_APP_Data.TargetComponentId = MAVLINK_BRIDGE_APP_Parser.CompId;
+        }
+        if (MAVLINK_BRIDGE_APP_Parser.SysId == MAVLINK_BRIDGE_APP_Data.TargetSystemId)
+        {
+            MAVLINK_BRIDGE_APP_Data.LastRxTimestampMs = RxTimestampMs;
+            MAVLINK_BRIDGE_APP_SetLinkState(MAVLINK_BRIDGE_LINK_CONNECTED);
             MAVLINK_BRIDGE_APP_UpdateFromHeartbeat(
                 MAVLINK_BRIDGE_APP_Parser.Payload[6],
                 MAVLINK_BRIDGE_APP_Parser.Payload[7]);

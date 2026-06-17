@@ -185,3 +185,76 @@
 - ✅ **해결(3차 검증까지 완료) — `lora_tdm_app` SB Msg Limit Err (실 Pi 런타임에서 발견)** — `LORA_TDM_PIPE` 구독이 전부 `CFE_SB_Subscribe()`(기본 limit=4)라서, 1차로 FC_* 4개 MID(5Hz)에서 발생 확인 → `CFE_SB_SubscribeEx(MsgLim=10)`으로 수정 → 재검증 결과 그 4개는 해결됐으나 `SYSTEM_HEALTH_MID`에서 동일 에러 16회 추가 발견 → `SYSTEM_HEALTH_MID`도 `MsgLim=20`으로 수정(`cfs_core_app`이 1Hz가 아니라 FC 입력마다 강제 발행함을 코드로 확인, `cfs_core_app_utils.c:193`) → 3차 재검증 결과 에러가 줄었으나 부팅 시점에 `0x1905`/`0x1906`까지 재발. 전체 로그 분석 결과 **에러 16건 전부 부팅 후 130ms 안에만 발생, 이후 60초+ 0건** — 지속 문제 아니라 1회성 부팅 버스트로 확인. 근본 원인: `mavlink_bridge_app`이 `/dev/serial0`를 열 때 cFS가 꺼져있던 동안 FC가 보낸 누적 데이터를 한 번에 드레인(MsgLim을 올려도 다운타임이 길면 버스트가 커져 근본 해결 안 됨). **최종 조치**: `mavlink_bridge_app_utils.c`의 `OpenSerial()`에 `tcflush(Fd, TCIFLUSH)` 추가해 포트 open 시 묵은 입력 버퍼를 비움(버스트 자체를 제거). 상세는 `lora_tdm_app_behavior_spec.md` §5.1.
 
 위 2건(4-7, §11.1)은 spec 정정이 아니라 **실제 기능 격차**라 코드 작업(라우팅 대상 구현 또는 spec에 미구현 명시) 필요 — 사용자 확인 후 진행. Msg Limit Err 건은 코드 수정 완료(위 ✅).
+
+---
+
+## 배포 런타임 이슈 (2026-06-17)
+
+### 🔴 R-1: cFS 시작 불가 — `OS_API_Init()` failure (RT 스케줄링 권한 없음)
+
+**발견**: 2026-06-17 Pi 재부팅 후 `./core-cpu1` 즉시 abort.
+
+**증상**:
+```
+CFE_PSP: OS_API_Init() failure
+```
+`OSAL_CONFIG_DEBUG_PRINTF=TRUE` 재빌드(`native/default_cpu1` 서브cmake) 후 상세 출력:
+```
+OS_Posix_TaskAPI_Impl_Init():412: Could not setschedparam in main thread: Operation not permitted (1)
+OS_API_Init():146: OS_API_Impl_Init(0x1) failed to initialize: -1
+```
+
+**근본 원인**: OSAL이 `SCHED_RR`(Policy 2) 실시간 우선순위(`setschedparam`)를 요구하는데, 일반 사용자는 `CAP_SYS_NICE` capability 없이 RT policy 설정 불가. Pi 재부팅으로 `cap_sys_nice` capability가 초기화되었거나, 이전 실행 시에는 `sudo`나 capability 설정이 있었던 것으로 추정.
+
+**전제 확인 사항**:
+- `fs.mqueue.msg_max=10`(기본값)이 너무 낮아 보였으나 실제 원인 아님 (256으로 올렸어도 동일 실패).
+- `OSAL_CONFIG_DEBUG_PRINTF`는 top-level cmake(`~/cFS_clean/build/`)가 아닌 **`~/cFS_clean/build/native/default_cpu1/`** 에서 설정해야 적용됨.
+
+**해결 방법 (둘 중 하나 선택)**:
+
+| 방법 | 명령 | 장단점 |
+|---|---|---|
+| **A: `cap_sys_nice` capability 부여 (권장)** | `sudo setcap cap_sys_nice+eip ~/cFS_clean/build/exe/cpu1/core-cpu1` | RT 스케줄링 그대로 유지. `make install` 후 매번 재설정 필요. |
+| **B: OSAL Permissive Mode** | `cd ~/cFS_clean/build/native/default_cpu1 && cmake -DOSAL_CONFIG_DEBUG_PERMISSIVE_MODE=TRUE . && make -j4 && make install DESTDIR=~/cFS_clean/build` | RT 실패를 무시하고 계속 실행. RT 스케줄링 비활성화 — 앱 타이밍 정밀도 저하 가능. |
+
+**추가 조치**:
+- `sch_lab_table.tbl`: `make tabletool-execute` + 수동 복사로 `~/cFS_clean/build/exe/cpu1/cf/`에 배포 완료 (2026-06-17).
+- `fs.mqueue.msg_max=256`, `fs.mqueue.queues_max=512`: `/etc/sysctl.conf`에 영구 추가 완료 (2026-06-17).
+
+**✅ 해결 완료 (2026-06-17)**: `sudo ./core-cpu1`으로 실행. `setcap`은 `make install` 후 소멸되어 채택하지 않음.
+
+---
+
+### 🔴 R-2: `TargetSystemId` 덮어쓰기 버그 — 다중 MAVLink 장치 환경에서 스트림 요청 불안정
+
+**발견**: 2026-06-17 FC 연결 후 로그에서 복수의 sysid 관찰.
+
+**증상**:
+```
+requesting telemetry streams from sys=105 comp=0
+requesting telemetry streams from sys=1 comp=1
+requesting telemetry streams from sys=4 comp=0
+```
+스트림 요청 대상이 매 하트비트마다 바뀜. `health` BRIDGE_TIMEOUT 미해소.
+
+**근본 원인** (`mavlink_bridge_app_utils.c:1066-1070`):
+```c
+if (MAVLINK_BRIDGE_APP_Parser.MsgId == MAVLINK_MSG_ID_HEARTBEAT)
+{
+    MAVLINK_BRIDGE_APP_Data.TargetSystemId    = MAVLINK_BRIDGE_APP_Parser.SysId;  // 무조건 덮어씀
+    MAVLINK_BRIDGE_APP_Data.TargetComponentId = MAVLINK_BRIDGE_APP_Parser.CompId;
+```
+MAVLink 버스에 여러 장치가 하트비트를 보내면 (sys=1 FC, sys=105/sys=4 주변기기) `TargetSystemId`가 매번 마지막 하트비트 발신자로 교체됨. 결과적으로 스트림 요청이 실제 FC(sys=1)가 아닌 다른 장치에도 전송되고, FC의 텔레메트리 스트림이 중단·재개를 반복.
+
+**연쇄 효과**:
+- `LastRxTimestampMs`는 하트비트 수신만으로도 업데이트되므로 BRIDGE_TIMEOUT은 발생하지 않음
+- 그러나 ATTITUDE/EKF/GPS 스트림이 끊어져 `cfs_core_app`의 `AttitudeState.Received`/`GpsState.Received` 미갱신
+- `health` BRIDGE_TIMEOUT과는 별도로 FC 텔레메트리 기반 기능(웨이포인트, EKF 판단 등) 동작 불가
+
+**✅ 해결 완료 (2026-06-17)** (`mavlink_bridge_app_utils.c:1065-1084`):
+- HEARTBEAT 수신 시 `autopilot` 필드(payload[5])로 FC 식별: `3`(ArduPilot) 또는 `12`(PX4)인 경우만 `TargetSystemId` lock-in
+- 이후 하트비트는 `SysId == TargetSystemId`인 경우만 처리 (주변기기 완전 무시)
+
+**검증 결과** (Pi 실 동작):
+- 수정 전: `sys=1/105/4` 혼재, FC 텔레메트리 끊김, `health 2` 지속
+- 수정 후: `sys=1`로만 스트림 요청, `LOCAL_POSITION_NED`·`ATTITUDE`·`GPS_RAW_INT` 수신, `health 2->1` NOMINAL 복귀 확인

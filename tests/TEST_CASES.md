@@ -17,7 +17,7 @@
 
 **통합테스트 원칙:**
 - 큰 기능(LoRa 포팅, bridge 경로 등) 완성 시 작성
-- Python pytest + UDP mock 기반
+- Python pytest + PTY/mock serial 기반
 - 실제 serial 없이 검증 가능한 범위까지
 
 ---
@@ -399,7 +399,7 @@ Init/dispatch 추가:
 | `test_parse_frame_line_rejects_invalid_format` | 프레임 아닌 일반 문자열 거부 |
 | `test_parse_frame_line_rejects_oversize_payload` | 192 byte 초과 payload 거부 |
 | `test_build_process_uplink_payload_rejects_wrong_version` | 미지원 protocol version 거부 |
-| `test_process_line_forwards_valid_frame_once` | 정상 프레임 → UDP 전송 1회, accept count 증가 |
+| `test_process_line_forwards_valid_frame_once` | 정상 프레임 → LoRa serial 전송 1회, accept count 증가 |
 | `test_process_line_rejects_sequence_regression` | 동일 sequence 재입력 → replay 거부 |
 | `test_process_line_allows_sequence_regression_when_disabled` | strict sequence 비활성화 시 동일 sequence 허용 |
 | `test_process_line_rejects_non_frame_text` | 비프레임 텍스트 입력 → 전송 없음 |
@@ -433,46 +433,6 @@ Init/dispatch 추가:
 ---
 
 ## 런타임 시험
-
-### Route Update 업로드 시험
-
-도구: `tools/uplink_route_update_sender.py`
-
-| 시험 항목 | 검증 내용 | 기대 결과 |
-|---|---|---|
-| `route-good` | 정상 mission extension route 수신/검증/publish | `UPLINK_APP: routed`, `CFS_CORE_APP: route updated type=1` |
-| `route-landing` | 정상 landing route | `CFS_CORE_APP: route updated type=2` |
-| `route-bad-alt` | 고도 2m 미만 route → 거부 | `invalid route update payload`, core route update 없음 |
-| `route-bad-distance` | waypoint 거리 제약 위반 → 거부 | invalid route 로그 |
-
-### FC 경로 업로드 시험 (mavlink_bridge_app_behavior_spec.md §5–§9)
-
-도구: `tools/uplink_route_update_sender.py` → cFS → FC 직렬
-
-| ID | 시험 항목 | 검증 내용 | 기대 결과 |
-|---|---|---|---|
-| MAV-UP-001 | FC heartbeat 수신 전 route update | FC 링크 미연결 상태에서 업로드 시도 | EVS: `route update ignored - FC link not connected` |
-| MAV-UP-002 | FC heartbeat 후 route update | `StartMissionUpload` 진단 로그 확인 | EVS: `StartMissionUpload called wp=N link=1`, HK `LastUploadResult==1` |
-| MAV-UP-003 | FC가 `MISSION_REQUEST_INT` 미응답 | timeout 3회 재시도 후 실패 | EVS: `mission upload failed after 3 retries`, HK `LastUploadResult==2` |
-| MAV-UP-004 | FC가 `MISSION_ACK result != ACCEPTED` | NAK 수신 시 즉시 실패, 재시도 없음 | EVS: upload fail, HK `LastUploadResult==3` |
-| MAV-UP-005 | 업로드 후 `MISSION_QUERY_CC` 실행 | FC 저장 waypoint 조회 | EVS: `[wp 0] x=... y=... z=...` — 업로드 값과 일치 |
-| MAV-UP-006 | `MAV_FRAME_LOCAL_NED` frame 거부 | FC가 `MAV_MISSION_UNSUPPORTED_FRAME` 반환 | EVS: upload fail, `LastUploadResult==3`, result 값 기록 확인 |
-| MAV-UP-007 | z 좌표 부호 반전 확인 | route payload Z=5.0 업로드 후 MISSION_QUERY_CC | FC 저장 z=-5.0 (LOCAL_NED down) 확인 |
-
-### FC 경로 재조회 시험 (MISSION_QUERY_CC)
-
-도구: `tools/query_fc_mission.py`
-
-```bash
-python3 tools/query_fc_mission.py [cFS_host_ip]
-```
-
-| 시험 항목 | 검증 내용 | 기대 결과 |
-|---|---|---|
-| 전원 재투입 후 미션 재조회 | FC 플래시에 저장된 웨이포인트가 유지되는지 확인 | EVS: `[wp 0] x=... y=... z=...` — 업로드 값과 일치 |
-| 빈 미션 조회 | count=0 처리 | EVS: `MISSION download complete: 0 waypoints (empty)` |
-| FC 링크 미연결 상태 조회 | 오류 반환 | EVS: `MISSION_QUERY ignored - FC link not connected` |
-| 조회 타임아웃 | FC 응답 없을 때 3초 후 실패 | EVS: `MISSION_QUERY timeout` |
 
 ### PC 수신 텔레메트리 시험
 
@@ -648,14 +608,6 @@ python3 tools/query_fc_mission.py [cFS_host_ip]
 
 ---
 
-### UDP-* (UDP 전송)
-
-| TC ID | 항목 | 분류 | 파일 |
-|---|---|---|---|
-| UDP-001~005 | UDP 전송 경로, host/port 변경 | 통합 | `test_lora_uplink_bridge.py` (기존 확장) |
-
----
-
 ### MAV-* (MAVLink 수신/캐시)
 
 | TC ID | 항목 | 분류 | 비고 |
@@ -771,7 +723,7 @@ python3 tools/query_fc_mission.py [cFS_host_ip]
 
 | 파일 | 검증 TC | 상태 |
 |---|---|---|
-| `test_lora_uplink_bridge.py` | LORA-UP-014, UDP 일부 | ✓ 구현 |
+| `test_lora_uplink_bridge.py` | LORA-UP-014 | ✓ 구현 |
 | `test_uplink_route_update_sender.py` | route update sender 전송 경로 | ✓ 구현 |
 | `test_uplink_lora_frame.py` | LORA-UP-003~011, CFS-CMD-001~008, REC-006~008 | ✓ 구현 |
 | `test_lora_fc_downlink_packet.py` | LORA-FRAME-001~008 | ✓ 구현 |
@@ -781,14 +733,14 @@ python3 tools/query_fc_mission.py [cFS_host_ip]
 | `test_tools_packet_builders.py` | CFS 커맨드 XOR 체크섬, CCSDS 주헤더 구조 (9개) | ✓ 구현 |
 | `test_mavlink_uart_bridge.py` | describe_message 포맷, parse_args 기본값/커스텀 (10개) | ✓ 구현 |
 
-### 그룹 B — cFS 실행 + mock (cFS 필요, PTY/UDP)
+### 그룹 B — cFS 실행 + mock (cFS 필요, PTY mock serial)
 
-cFS 프로세스가 실행 중인 상태에서 UDP 또는 PTY mock serial로 입력을 넣고
+cFS 프로세스가 실행 중인 상태에서 PTY mock serial로 입력을 넣고
 EVS 로그/HK/serial 출력으로 결과를 검증한다.
 
 | 파일 | 검증 TC | 방법 | 상태 |
 |---|---|---|---|
-| `test_uplink_e2e.py` | LORA-UP seq regression C 경로, REC-008 C 검증 | UDP → cFS → EVS 로그 확인 | 미구현 |
+| `test_uplink_e2e.py` | LORA-UP seq regression C 경로, REC-008 C 검증 | LoRa serial → cFS → EVS 로그 확인 | 미구현 |
 | `test_lora_fc_downlink_e2e.py` | LORA-FRAME C 실제 출력, LORA-FC-006~007 | SB mock → cFS → PTY serial 캡처 | 미구현 |
 | `test_rec_serial.py` | REC-001~004 장애/복구 | PTY close/reopen 시뮬레이션 | 미구현 |
 
@@ -816,3 +768,34 @@ EVS 로그/HK/serial 출력으로 결과를 검증한다.
 | `lora_fc_downlink_app` HB 파싱 단위테스트 | static 함수 — `test_hb_parse.py`로 검증 예정 |
 | `lora_fc_downlink_app` 실제 LoRa 하드웨어 검증 | Pi에서 실물 연결 필요 |
 | B그룹 통합테스트 실행 | cFS + PTY 환경 필요 — 구조는 있음, 현재 pytest.skip() |
+
+---
+
+## 현재 실행 가능한 런타임 시험 (2026-06-17 기준)
+
+**전제 조건**: Pi(`192.168.50.65`) + FC 연결 + `sudo ./core-cpu1` 실행 중
+
+### ✅ 완료된 런타임 확인 항목
+
+| 항목 | 확인 내용 | 결과 |
+|---|---|---|
+| RT-BOOT-001 | cFS `OPERATIONAL` 진입, 커스텀 앱 4개 Initialized | ✅ 확인 |
+| RT-BOOT-002 | SCH_LAB SEND_HK ~1Hz 트리거 (CFS_CORE_APP HK 출력 확인) | ✅ 확인 |
+| RT-FC-001 | FC 하트비트 수신 → `sys=1`로만 스트림 요청 (주변기기 sysid 무시) | ✅ 확인 |
+| RT-FC-002 | FC 텔레메트리 수신 (ATTITUDE, LOCAL_POSITION_NED, GPS_RAW_INT) | ✅ 확인 |
+| RT-FC-003 | `health 2->1` BRIDGE_TIMEOUT 해소, NOMINAL 복귀 | ✅ 확인 |
+
+### 🔲 Pi + FC로 지금 바로 실행 가능 (LoRa 불필요)
+
+| ID | 시험 항목 | 방법 | 기대 EVS |
+|---|---|---|---|
+| RT-HEALTH-001 | FC serial 분리 → BRIDGE_TIMEOUT | `/dev/serial0` 물리 분리 후 3초 대기 | `health 1->2 fault=1` |
+| RT-HEALTH-002 | FC serial 재연결 → NOMINAL 복구 | serial 재연결 | `health 2->1` |
+
+### 🔲 LoRa 하드웨어 필요
+
+| ID | 시험 항목 | 참조 |
+|---|---|---|
+| RT-TDM-001~009 | lora_tdm_app TDM 사이클, ACK, 링크 상태 전이 | 위 TDM-RT-001~009 |
+| RT-DL-001 | FC → LoRa → GS PC 전 구간 텔레메트리 수신 | PC 수신 텔레메트리 시험 |
+| RT-UL-001 | GS → LoRa → uplink_app → cFS SB 경로 | LoRa uplink 직접 수신 시험 |
