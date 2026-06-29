@@ -238,6 +238,40 @@ hostname -I
 - default route가 존재한다.
 - `ssh` 서비스가 `active` 상태다.
 
+#### 1.1 Pi 접속 정보 (실측, 2026-06-29)
+
+| 항목 | 값 |
+| --- | --- |
+| IP | `192.168.50.65` (TTL=64, ping/22 OK) |
+| hostname | `sdh2983` |
+| user | `sdh2983` |
+| SSH 포트 | 22 |
+| 인증 | **비밀번호** (현재 외부 머신 공개키 미등록 → key 인증 불가) |
+
+```bash
+ssh sdh2983@192.168.50.65          # 비밀번호 입력 필요
+```
+
+#### 1.2 무인증(키) 접속 설정 — SSH 누락분
+
+key 기반 무인증 접속을 하려면 **접속하는 쪽(WSL/지상 PC)** 에서 공개키를 Pi에 등록해야 한다.
+(Pi 안에서 `ssh-copy-id`를 실행하면 `No identities found`로 실패 — 방향이 반대다.)
+
+```bash
+# 지상/WSL 머신에서 실행 (Pi 안 X)
+ssh-copy-id -i ~/.ssh/id_ed25519.pub sdh2983@192.168.50.65
+# 키쌍이 없으면 먼저: ssh-keygen -t ed25519
+```
+
+등록 확인:
+
+```bash
+ssh -o BatchMode=yes sdh2983@192.168.50.65 'echo OK'   # OK면 무인증 성공
+```
+
+> **누락 기록**: 본 문서 §1은 `ip/hostname/ssh active` 점검만 있고 **실제 Pi IP·user·키 등록 절차가 없어**
+> 외부에서 자동(무인증) SSH가 불가했다. 위 §1.1/§1.2가 그 누락분이다.
+
 ### 2. `cFS` 작업공간 준비
 
 작업 경로는 `~/Desktop/cFS_clean`를 기준으로 한다.

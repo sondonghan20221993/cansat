@@ -1549,3 +1549,42 @@ downlink 텔레메트리 상태는 `lora_tdm_app`의 책임이며
 - route/config 적용 원자성: route update 또는 configuration 변경이 일부만 적용된 상태로 남지 않도록 atomic apply 또는 rollback 필요성을 고려해야 한다.
 - 복구 중 허용 명령: `CFS_RECOVERY` 또는 최소 보고 상태에서 허용되는 명령 클래스의 최소 집합을 별도로 검토해야 한다.
 - 권한 또는 출처 검증: sequence/replay 검증과 별도로, 명령 출처와 권한 수준을 어떻게 결합할지 검토해야 한다.
+
+### 18.13 지상 Uplink CLI 명령 표면
+
+지상 운영자 인터페이스(OpenMCT "FS Uplink CLI", 지상 `fc_serial_ws_server.py` 경유)는
+표준 uplink envelope을 생성해 LoRa transport로 송신하는 운영자측 surface이다.
+이 CLI는 `uplink_app` 명령 클래스(§18.2)의 일부만 노출하며, 노출 여부는 cFS측 계약과 독립적이다.
+
+| CLI 명령 | 매핑 command_class | uplink_app 계약 | 현 노출 상태 |
+| --- | --- | --- | --- |
+| `config <scope> <param> <value>` | runtime configuration (`1`) | §18.4.6.1 / §18.5 | ✅ 노출 |
+| `recovery [payload_hex]` | recovery command (`4`) | §18.4.6.4 / §18.6 | ✅ 노출 |
+| `uplinktest` | (전송 없음, 서버 health/param 조회) | — | ✅ 노출 |
+| `route <route_type> <wp...>` | route update (`2`) | §18.4.6.2 | ✅ 노출 (2026-06-29 구현) |
+
+**route 명령 추가 가능성(결정)**: route update는 이미 `uplink_app`의 승인된 클래스이며
+검증(`waypoint_count 1..16`, finite, 고도 `2..8m`, 인접 3D 거리 `2..2m`, CRC/길이/sequence)과
+라우팅(`ROUTE_UPDATE_MID` → `cfs_core_app`)이 구현되어 있다(§18.4.6.2, §5.1.1).
+따라서 CLI `route` 명령 추가는 **cFS측 변경 없이 지상 CLI의 frame 생성 로직만 확장**하면 된다.
+
+`route` 명령 계약(지상 CLI 측):
+
+- 구문: `route <route_type> <x,y,z> [<x,y,z> ...]`, `route_type ∈ {mission, landing}`
+  (`mission_extension=1`, `landing=2`), waypoint는 LOCAL_NED meters, Z = AGL 양수.
+- envelope 프레임: `UP,<version=1>,<command_class=2>,<sequence>,<flags>,<payload_hex>,<crc16_hex>`
+  (config/recovery와 동일 형식, CRC16-CCITT 적용 범위도 동일).
+- route payload byte layout(little-endian): `route_type:u8, route_version:u8, waypoint_count:u8, reserved:u8`,
+  이어서 waypoint마다 `x:f32, y:f32, z:f32`. (`tools/uplink_route_update_sender.py`의 `build_route_payload`와 동일.)
+- 검증 책임 경계: 지상 CLI는 형식/개수 등 최소 사전 점검만 수행하고, 권위 있는 검증은
+  §18.4.4 원칙대로 `uplink_app`이 수행한다.
+- 송신 정책: config/recovery와 동일하게 4개 연속 downlink 슬롯 자동 재전송(§참조 운영 노트),
+  중복 sequence는 `uplink_app`이 replay로 무시(무해).
+- health gate: route update의 cFS 상태별 허용은 §18.10 및 `uplink_app` health-block 정책을 따른다.
+
+**구현 위치(2026-06-29)**: 지상 openMCT 리포(`문서/GitHub/openMCT`).
+- 서버 `fc_serial_ws_server.py`: `UPLINK_CLASS_ROUTE_UPDATE=2`, `_build_route_payload`,
+  `POST /api/uplink/route` (body `{route_type, waypoints:[[x,y,z],...]}`) → class=2 프레임 생성 후
+  config/recovery와 동일한 4슬롯 TDM 재전송 큐(`_queue_uplink`)로 송신.
+- CLI 플러그인 `my_openmct_app/src/plugins/uplinkCLI/plugin.js`: `route` 명령 + help 추가.
+- 생성 프레임은 `tools/uplink_route_update_sender.py`(route-good) 출력과 byte 동일 검증 완료.
