@@ -1588,3 +1588,17 @@ downlink 텔레메트리 상태는 `lora_tdm_app`의 책임이며
   config/recovery와 동일한 4슬롯 TDM 재전송 큐(`_queue_uplink`)로 송신.
 - CLI 플러그인 `my_openmct_app/src/plugins/uplinkCLI/plugin.js`: `route` 명령 + help 추가.
 - 생성 프레임은 `tools/uplink_route_update_sender.py`(route-good) 출력과 byte 동일 검증 완료.
+
+#### 18.13.1 향후 요구사항 (planned)
+
+route 생성·전송은 다음 두 가지를 반영하도록 확장한다(현재 미구현, 차기 작업).
+
+1. **누적(append) 방식 — 교체(replace) 아님**: 신규 route를 보낼 때 기존 route를 덮어쓰지 않고
+   **기존 waypoint 뒤에 이어붙이는** 것을 기본/선택 모드로 지원한다. payload `Reserved` 바이트를
+   `RouteMode`(0=replace, 1=append)로 사용한다. 누적은 `uplink_app`이 현재 route 버퍼를 유지하며
+   합쳐진 **전체 목록을 `ROUTE_UPDATE_MID`로 publish**(cfs_core/mavlink_bridge는 무수정, 전체 교체 →
+   결과적으로 append). 제약: 합산 ≤ `MAX_ROUTE_WAYPOINT_COUNT`(16), 이음새(기존 마지막↔신규 첫)
+   segment 거리 규칙 적용.
+2. **절대 고도 고려**: 현재 Z는 Home(0,0) 기준 상대 고도(AGL)다. 향후 **절대 고도**(MSL 또는
+   절대 frame, 예: `MAV_FRAME_GLOBAL_RELATIVE_ALT`/global) 입력·해석을 함께 지원하도록 설계한다.
+   route payload에 고도 frame 식별을 추가하고, mavlink_bridge 업로드 frame과 정합시킨다.

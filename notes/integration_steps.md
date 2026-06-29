@@ -242,14 +242,14 @@ hostname -I
 
 | 항목 | 값 |
 | --- | --- |
-| IP | `192.168.50.65` (TTL=64, ping/22 OK) |
+| IP | `<PI_IP>` (TTL=64, ping/22 OK) |
 | hostname | `sdh2983` |
 | user | `sdh2983` |
 | SSH 포트 | 22 |
 | 인증 | **비밀번호** (현재 외부 머신 공개키 미등록 → key 인증 불가) |
 
 ```bash
-ssh sdh2983@192.168.50.65          # 비밀번호 입력 필요
+ssh sdh2983@<PI_IP>          # 비밀번호 입력 필요
 ```
 
 #### 1.2 무인증(키) 접속 설정 — SSH 누락분
@@ -259,18 +259,40 @@ key 기반 무인증 접속을 하려면 **접속하는 쪽(WSL/지상 PC)** 에
 
 ```bash
 # 지상/WSL 머신에서 실행 (Pi 안 X)
-ssh-copy-id -i ~/.ssh/id_ed25519.pub sdh2983@192.168.50.65
+ssh-copy-id -i ~/.ssh/id_ed25519.pub sdh2983@<PI_IP>
 # 키쌍이 없으면 먼저: ssh-keygen -t ed25519
 ```
 
 등록 확인:
 
 ```bash
-ssh -o BatchMode=yes sdh2983@192.168.50.65 'echo OK'   # OK면 무인증 성공
+ssh -o BatchMode=yes sdh2983@<PI_IP> 'echo OK'   # OK면 무인증 성공
 ```
 
 > **누락 기록**: 본 문서 §1은 `ip/hostname/ssh active` 점검만 있고 **실제 Pi IP·user·키 등록 절차가 없어**
 > 외부에서 자동(무인증) SSH가 불가했다. 위 §1.1/§1.2가 그 누락분이다.
+
+> **상태(2026-06-29)**: WSL 공개키(`~/.ssh/id_ed25519.pub`)는 **아직 Pi에 미등록**
+> (`Permission denied (publickey,password)` 확인). 위 `ssh-copy-id`를 **Pi가 켜진 상태에서**
+> WSL 쪽에서 실행해야 한다. Pi가 꺼져 있으면(`No route to host`) 등록 자체가 불가.
+
+#### 1.3 원격 종료/재가동
+
+- 종료(원격): SSH + `sudo`. 비밀번호 인증 환경에서는 tty 필요.
+
+```bash
+ssh -t sdh2983@<PI_IP> 'sudo poweroff'        # SSH 비번 + sudo 비번
+```
+
+- 무인증 자동 종료까지 원하면 키 등록(§1.2) + poweroff sudo 비번 면제:
+
+```bash
+# Pi에서 1회
+echo "sdh2983 ALL=(ALL) NOPASSWD: /sbin/poweroff" | sudo tee /etc/sudoers.d/poweroff
+```
+
+- 재가동은 **물리 전원 재인가** 필요(원격 기동 불가). 이후 cFS 실행은 §12 / PC검증 §1.
+- 종료 후 `ping`/포트22가 `No route to host`면 정상 종료된 것.
 
 ### 2. `cFS` 작업공간 준비
 
