@@ -33,6 +33,13 @@ typedef struct
 
 typedef struct
 {
+    uint32 LastHkRxMs;
+    bool   Received;
+    uint8  Pad[3];
+} CFS_CORE_APP_AppHkCache_t;
+
+typedef struct
+{
     uint32                  TimestampMs;
     uint32                  SourceSequence;
     uint32                  UpdateCount;
@@ -90,6 +97,8 @@ typedef struct
     CFS_CORE_APP_StateCache_t   GpsState;
     CFS_CORE_APP_StateCache_t   EkfState;
     CFS_CORE_APP_BridgeCache_t  BridgeState;
+    CFS_CORE_APP_AppHkCache_t   UplinkAppState;
+    CFS_CORE_APP_AppHkCache_t   LoraAppState;
     CFS_CORE_APP_RouteCache_t      MissionRoute;
     CFS_CORE_APP_RouteCache_t      LandingRoute;
     CFS_CORE_APP_ViewpointCache_t  ViewpointCmd;

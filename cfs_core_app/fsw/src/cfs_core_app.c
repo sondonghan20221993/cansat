@@ -110,6 +110,12 @@ CFE_Status_t CFS_CORE_APP_Init(void)
         return Status;
     }
 
+    Status = CFE_SB_Subscribe(CFE_SB_ValueToMsgId(CFS_CORE_APP_UPLINK_HK_MID_VALUE), CFS_CORE_APP_Data.CommandPipe);
+    if (Status != CFE_SUCCESS)
+    {
+        return Status;
+    }
+
     Status = CFE_SB_Subscribe(CFE_SB_ValueToMsgId(CFS_CORE_APP_FC_EKF_LOCAL_STATE_MID_VALUE), CFS_CORE_APP_Data.CommandPipe);
     if (Status != CFE_SUCCESS)
     {

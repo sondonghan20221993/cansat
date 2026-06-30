@@ -155,6 +155,11 @@ void CFS_CORE_APP_ProcessStateMessage(CFE_SB_Buffer_t *SBBufPtr)
         CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = BridgeHk->LastRxTimestampMs;
         CFS_CORE_APP_Data.BridgeState.Received          = true;
     }
+    else if (CFE_SB_MsgIdToValue(MsgId) == CFS_CORE_APP_UPLINK_HK_MID_VALUE)
+    {
+        CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs = NowMs;
+        CFS_CORE_APP_Data.UplinkAppState.Received   = true;
+    }
     else if (CFE_SB_MsgIdToValue(MsgId) == CFS_CORE_APP_FC_ATTITUDE_STATE_MID_VALUE)
     {
         CFS_CORE_APP_UpdateStateCache(&CFS_CORE_APP_Data.AttitudeState, (const CFS_CORE_APP_GenericStateTlm_t *)MsgPtr, NowMs);
@@ -202,6 +207,7 @@ void CFS_CORE_APP_UpdateHealth(uint32 NowMs, bool ForcePublish)
     bool                            EkfTimedOut;
     bool                            LocalTimedOut;
     bool                            AttitudeTimedOut;
+    bool                            UplinkTimedOut;
 
     if (!ForcePublish && (NowMs - CFS_CORE_APP_Data.LastPublishTimeMs) < CFS_CORE_APP_Data.ActiveConfig.PublishPeriodMs)
     {
@@ -240,6 +246,8 @@ void CFS_CORE_APP_UpdateHealth(uint32 NowMs, bool ForcePublish)
                        !CFS_CORE_APP_Data.LocalState.Valid || (CFS_CORE_APP_Data.LocalState.Stale != 0);
     AttitudeTimedOut = CFS_CORE_APP_StateExpired(&CFS_CORE_APP_Data.AttitudeState, NowMs, CFS_CORE_APP_Data.ActiveConfig.AttitudeTimeoutMs) ||
                        !CFS_CORE_APP_Data.AttitudeState.Valid || (CFS_CORE_APP_Data.AttitudeState.Stale != 0);
+    UplinkTimedOut   = !CFS_CORE_APP_Data.UplinkAppState.Received ||
+                       (NowMs - CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs) > CFS_CORE_APP_UPLINK_TIMEOUT_MS;
 
     Tlm = &CFS_CORE_APP_Data.SystemHealthTlm;
     CFS_CORE_APP_Data.LastPublishTimeMs = NowMs;
@@ -318,6 +326,16 @@ void CFS_CORE_APP_UpdateHealth(uint32 NowMs, bool ForcePublish)
         Tlm->FaultCode         = CFS_CORE_APP_FAULT_ATTITUDE_TIMEOUT;
         Tlm->RecoveryRequested = 0;
     }
+    else if (UplinkTimedOut)
+    {
+        CFS_CORE_APP_Data.RecoveryStartMs      = 0;
+        CFS_CORE_APP_Data.BridgeRestartCount   = 0;
+        CFS_CORE_APP_Data.NextBridgeRestartMs  = 0;
+        CFS_CORE_APP_Data.NominalEligibleSince = 0;
+        Tlm->HealthState       = CFS_CORE_APP_HEALTH_DEGRADED;
+        Tlm->FaultCode         = CFS_CORE_APP_FAULT_UPLINK_TIMEOUT;
+        Tlm->RecoveryRequested = 0;
+    }
     /* GPS 가용성은 헬스를 저하시키지 않는다 (보고 전용) — 명세 §12.5.
        GpsUnavailable은 아래 GpsStatus.TimedOut 보고 필드용으로만 계산·사용한다. */
     else if (CFS_CORE_APP_Data.LastHealthState == CFS_CORE_APP_HEALTH_NOMINAL)
@@ -378,6 +396,8 @@ void CFS_CORE_APP_UpdateHealth(uint32 NowMs, bool ForcePublish)
     Tlm->BridgeStatus.LinkState  = CFS_CORE_APP_Data.BridgeState.LinkState;
     Tlm->BridgeStatus.ErrorCode  = CFS_CORE_APP_Data.BridgeState.LastErrorCode;
     Tlm->BridgeStatus.TimedOut   = (uint8)BridgeTimedOut;
+
+    Tlm->UplinkStatus.TimedOut   = (uint8)UplinkTimedOut;
 
     if (Tlm->HealthState != CFS_CORE_APP_Data.LastHealthState)
     {

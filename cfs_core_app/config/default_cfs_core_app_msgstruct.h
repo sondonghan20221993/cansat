@@ -47,6 +47,12 @@ typedef struct
 
 typedef struct
 {
+    uint8 TimedOut;
+    uint8 Reserved[3];
+} CFS_CORE_APP_AppStatus_t;
+
+typedef struct
+{
     CFE_MSG_TelemetryHeader_t  TelemetryHeader;
     uint32                     Seq;
     uint32                     TimestampMs;
@@ -60,6 +66,8 @@ typedef struct
     CFS_CORE_APP_InputStatus_t GpsStatus;
     CFS_CORE_APP_InputStatus_t EkfStatus;
     CFS_CORE_APP_BridgeStatus_t BridgeStatus;
+    CFS_CORE_APP_AppStatus_t    UplinkStatus;
+    CFS_CORE_APP_AppStatus_t    LoraStatus;
 } CFS_CORE_APP_SystemHealthTlm_t;
 
 typedef struct

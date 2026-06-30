@@ -339,7 +339,33 @@ HK는 `CFS_CORE_APP_SEND_HK_MID_VALUE` 수신 시에만 게시된다.
 - `FaultCode = CFS_CORE_APP_FAULT_ATTITUDE_TIMEOUT`
 - `RecoveryRequested = 0`
 
-### 12.5 GPS 가용성: 헬스 분류에서 제외 (보고 전용)
+### 12.5 우선순위 5: uplink_app 타임아웃
+
+조건:
+
+- uplink_app HK가 한 번도 수신되지 않음
+- 또는 `NowMs - UplinkAppState.LastHkRxMs > 5000`
+
+출력:
+
+- `HealthState = CFS_CORE_APP_HEALTH_DEGRADED`
+- `FaultCode = CFS_CORE_APP_FAULT_UPLINK_TIMEOUT`
+- `RecoveryRequested = 0`
+
+### 12.6 우선순위 6: lora_tdm_app 타임아웃
+
+조건:
+
+- lora_tdm_app HK가 한 번도 수신되지 않음
+- 또는 `NowMs - LoraAppState.LastHkRxMs > 5000`
+
+출력:
+
+- `HealthState = CFS_CORE_APP_HEALTH_DEGRADED`
+- `FaultCode = CFS_CORE_APP_FAULT_LORA_TIMEOUT`
+- `RecoveryRequested = 0`
+
+### 12.7 GPS 가용성: 헬스 분류에서 제외 (보고 전용)
 
 GPS 가용성(만료 / `Valid == 0` / `Stale != 0`)은 **HealthState를 저하시키지 않는다.**
 
@@ -354,7 +380,7 @@ GPS 가용성(만료 / `Valid == 0` / `Stale != 0`)은 **HealthState를 저하�
 - 헬스 분류 우선순위 사다리(§12.1~12.4)에서 GPS 분기는 제거한다.
 - `CFS_CORE_APP_FAULT_GPS_STALE` enum은 호환을 위해 정의를 유지하되 HealthState 저하용으로는 더 이상 생성하지 않는다.
 
-### 12.6 우선순위 5: 정상
+### 12.8 우선순위 7: 정상
 
 조건:
 
@@ -368,7 +394,7 @@ GPS 가용성(만료 / `Valid == 0` / `Stale != 0`)은 **HealthState를 저하�
 - `RecoveryRequested = 0`
 - `GpsValid`는 실제 GPS 상태를 그대로 반영 (NOMINAL이어도 0일 수 있음)
 
-### 12.7 FAILED 에스컬레이션
+### 12.9 FAILED 에스컬레이션
 
 `CFS_CORE_APP_HEALTH_FAILED`는 bridge 타임아웃이 `CFS_CORE_APP_FAILED_ESCALATION_MS` (30000ms) 이상 지속될 때 생성된다. bridge 타임아웃이 시작되면 `RecoveryStartMs`가 설정되고, `NowMs - RecoveryStartMs >= 30000`이면 `HealthState = FAILED`, 그 이전에는 `RECOVERY`로 게시한다 (§13.1, §14.4 참조).
 
@@ -453,6 +479,40 @@ GPS 가용성(만료 / `Valid == 0` / `Stale != 0`)은 **HealthState를 저하�
 
 참고: attitude `Valid == 0` 또는 `Stale != 0`은 우선순위 4에서 `FAULT_ATTITUDE_TIMEOUT`으로 분류된다.
 이는 EKF 우선순위(2)와 독립적으로 평가되며, 타임스탬프 만료와 동일한 조건 블록에서 처리된다.
+
+### 13.6 uplink_app 타임아웃
+
+`uplink_app`의 HK (`UPLINK_APP_HK_TLM_MID = 0x08D0`)가 `5000 ms` 이내에 수신되지 않으면 타임아웃으로 판정한다.
+
+조건:
+
+- `UplinkAppState.Received == false` (한 번도 수신되지 않음)
+- 또는 `NowMs - UplinkAppState.LastHkRxMs > CFS_CORE_APP_UPLINK_TIMEOUT_MS (5000)`
+
+효과:
+
+- `DEGRADED` 생성
+- `FAULT_UPLINK_TIMEOUT` 생성
+- `RecoveryRequested = 0`
+- 자동 재시작 없음 (보고 전용)
+
+`UplinkAppState.LastHkRxMs`는 HK를 수신한 시점의 `NowMs` (cFS wall-clock ms)로 갱신된다. uplink_app의 내부 timestamp를 사용하지 않는다.
+
+### 13.7 lora_tdm_app 타임아웃
+
+`lora_tdm_app`의 HK (`LORA_TDM_APP_HK_TLM_MID = 0x08E0`)가 `5000 ms` 이내에 수신되지 않으면 타임아웃으로 판정한다.
+
+조건:
+
+- `LoraAppState.Received == false`
+- 또는 `NowMs - LoraAppState.LastHkRxMs > CFS_CORE_APP_LORA_TIMEOUT_MS (5000)`
+
+효과:
+
+- `DEGRADED` 생성
+- `FAULT_LORA_TIMEOUT` 생성
+- `RecoveryRequested = 0`
+- 자동 재시작 없음 (보고 전용)
 
 ## 14. 시작, 입력 손실, 복구 동작
 

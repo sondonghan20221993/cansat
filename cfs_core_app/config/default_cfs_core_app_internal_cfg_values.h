@@ -16,6 +16,8 @@
 #define CFS_CORE_APP_BRIDGE_RESTART_INTERVAL_MS    5000
 #define CFS_CORE_APP_BRIDGE_MAX_RESTARTS              3
 #define CFS_CORE_APP_BRIDGE_APP_NAME   "mavlink_bridge_app"
+#define CFS_CORE_APP_UPLINK_TIMEOUT_MS             5000
+#define CFS_CORE_APP_LORA_TIMEOUT_MS               5000
 #define CFS_CORE_APP_STATE_FILE_PATH   "/cf/cfs_core_app_state.bin"
 #define CFS_CORE_APP_STATE_MAGIC       0xCF5C0A00U
 #define CFS_CORE_APP_CONFIG_VERSION    1U

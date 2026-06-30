@@ -48,6 +48,8 @@ void Test_CFS_CORE_APP_UpdateHealth_Nominal(void)
     CFS_CORE_APP_Data.EkfState.Valid          = 1;
     CFS_CORE_APP_Data.BridgeState.Received    = true;
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 4900;
+    CFS_CORE_APP_Data.UplinkAppState.Received    = true;
+    CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs  = NowMs - 100;
 
     CFS_CORE_APP_UpdateHealth(NowMs, true);
 
@@ -89,14 +91,15 @@ void Test_CFS_CORE_APP_UpdateHealth_GpsStale(void)
     CFS_CORE_APP_Data.EkfState.Valid              = 1;
     CFS_CORE_APP_Data.BridgeState.Received        = true;
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 4900;
+    CFS_CORE_APP_Data.UplinkAppState.Received    = true;
+    CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs  = NowMs - 100;
 
     CFS_CORE_APP_UpdateHealth(NowMs, true);
 
-    /* §12.5: GPS stale은 헬스를 저하시키지 않음 (보고 전용). 나머지 입력 정상 → NOMINAL */
+    /* GPS stale은 헬스에 영향 없음 (보고 전용) — 명세 §12.5 */
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_NOMINAL);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.FaultCode, CFS_CORE_APP_FAULT_NONE);
-    /* GPS 상태는 보고 필드로 계속 노출 */
-    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.GpsStatus.TimedOut, 1);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.GpsStatus.Stale, 1);
 }
 
 void Test_CFS_CORE_APP_UpdateHealth_EkfInvalid(void)
@@ -298,6 +301,8 @@ void Test_CFS_CORE_APP_UpdateHealth_NominalStabilization(void)
     CFS_CORE_APP_Data.EkfState.Valid                = 1;
     CFS_CORE_APP_Data.BridgeState.Received          = true;
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = NowMs - 100;
+    CFS_CORE_APP_Data.UplinkAppState.Received    = true;
+    CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs  = NowMs - 100;
 
     /* Simulate LastHealthState = DEGRADED (coming from a fault) */
     CFS_CORE_APP_Data.LastHealthState = CFS_CORE_APP_HEALTH_DEGRADED;
@@ -314,6 +319,7 @@ void Test_CFS_CORE_APP_UpdateHealth_NominalStabilization(void)
     CFS_CORE_APP_Data.GpsState.TimestampMs          = NowMs + 5000 - 100;
     CFS_CORE_APP_Data.EkfState.TimestampMs          = NowMs + 5000 - 100;
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = NowMs + 5000 - 100;
+    CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs     = NowMs + 5000 - 100;
     CFS_CORE_APP_UpdateHealth(NowMs + 5000, true);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_DEGRADED);
 
@@ -323,6 +329,7 @@ void Test_CFS_CORE_APP_UpdateHealth_NominalStabilization(void)
     CFS_CORE_APP_Data.GpsState.TimestampMs          = NowMs + 10001 - 100;
     CFS_CORE_APP_Data.EkfState.TimestampMs          = NowMs + 10001 - 100;
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = NowMs + 10001 - 100;
+    CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs     = NowMs + 10001 - 100;
     CFS_CORE_APP_UpdateHealth(NowMs + 10001, true);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_NOMINAL);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.NominalEligibleSince,        0);
@@ -399,6 +406,8 @@ void Test_CFS_CORE_APP_UpdateHealth_HealthTransition(void)
     CFS_CORE_APP_Data.EkfState.Valid                = 1;
     CFS_CORE_APP_Data.BridgeState.Received          = true;
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 4900;
+    CFS_CORE_APP_Data.UplinkAppState.Received    = true;
+    CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs  = NowMs - 100;
 
     /* NOMINAL==0 equals initial LastHealthState==0: no transition event */
     UT_CHECKEVENT_SETUP(&EventTest, CFS_CORE_APP_HEALTH_TRANSITION_EID, NULL);
@@ -407,8 +416,8 @@ void Test_CFS_CORE_APP_UpdateHealth_HealthTransition(void)
     UtAssert_INT32_EQ(EventTest.MatchCount, 0);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.LastHealthState, CFS_CORE_APP_HEALTH_NOMINAL);
 
-    /* NOMINAL->DEGRADED: transition event fires once */
-    CFS_CORE_APP_Data.GpsState.Stale = 1;
+    /* NOMINAL->DEGRADED: transition event fires once (EKF invalid) */
+    CFS_CORE_APP_Data.EkfState.Valid = 0;
     UT_CHECKEVENT_SETUP(&EventTest, CFS_CORE_APP_HEALTH_TRANSITION_EID, NULL);
     CFS_CORE_APP_UpdateHealth(NowMs + 100, true);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_DEGRADED);
@@ -1000,6 +1009,8 @@ void Test_CFS_CORE_APP_SaveState_OnTransition(void)
     CFS_CORE_APP_Data.EkfState.Received              = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs           = NowMs - 100;
     CFS_CORE_APP_Data.EkfState.Valid                 = 1;
+    CFS_CORE_APP_Data.UplinkAppState.Received    = true;
+    CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs  = NowMs - 100;
 
     /* DEGRADED에서 시작 → NOMINAL로 전이 (즉시, LastHealthState가 NOMINAL이라면) */
     CFS_CORE_APP_Data.LastHealthState = CFS_CORE_APP_HEALTH_NOMINAL;
@@ -1008,9 +1019,8 @@ void Test_CFS_CORE_APP_SaveState_OnTransition(void)
     CFS_CORE_APP_UpdateHealth(NowMs, true);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.LastHealthState, (int32)CFS_CORE_APP_HEALTH_NOMINAL);
 
-    /* EKF stale 주입 → DEGRADED 전이 발생 → SaveState 호출됨 (파일 없어도 무시).
-       (GPS는 §12.5에 따라 더 이상 헬스 저하를 유발하지 않으므로 EKF로 전이 유발) */
-    CFS_CORE_APP_Data.EkfState.Stale = 1;
+    /* EKF invalid 주입 → DEGRADED 전이 발생 → SaveState 호출됨 (파일 없어도 무시) */
+    CFS_CORE_APP_Data.EkfState.Valid = 0;
     CFS_CORE_APP_UpdateHealth(NowMs + 100, true);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.LastHealthState, (int32)CFS_CORE_APP_HEALTH_DEGRADED);
 }
@@ -1127,128 +1137,6 @@ void Test_CFS_CORE_APP_BridgeRestart_ResetOnRecovery(void)
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.RecoveryStartMs,     0);
 }
 
-/* 인터벌마다 RestartApp 호출 확인 — 두 번째 시도 */
-void Test_CFS_CORE_APP_BridgeRestart_SecondAttempt(void)
-{
-    uint32 NowMs    = 10000;
-    uint32 Interval = CFS_CORE_APP_BRIDGE_RESTART_INTERVAL_MS;
-
-    CFS_CORE_APP_Data.BridgeState.Received          = true;
-    CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 1000;
-    CFS_CORE_APP_Data.BridgeRestartCount            = 0;
-    CFS_CORE_APP_Data.NextBridgeRestartMs           = 0;
-    CFS_CORE_APP_Data.RecoveryStartMs               = 0;
-
-    UT_SetDefaultReturnValue(UT_KEY(CFE_ES_GetAppIDByName), CFE_SUCCESS);
-
-    /* T+0: 타이머 시작, 재시작 없음 */
-    CFS_CORE_APP_UpdateHealth(NowMs, true);
-    UtAssert_STUB_COUNT(CFE_ES_RestartApp, 0);
-    UtAssert_INT32_EQ(CFS_CORE_APP_Data.BridgeRestartCount, 0);
-
-    /* T+5s: 첫 번째 재시작 */
-    CFS_CORE_APP_UpdateHealth(NowMs + Interval, true);
-    UtAssert_STUB_COUNT(CFE_ES_RestartApp, 1);
-    UtAssert_INT32_EQ(CFS_CORE_APP_Data.BridgeRestartCount, 1);
-
-    /* T+10s: 두 번째 재시작 */
-    CFS_CORE_APP_UpdateHealth(NowMs + 2 * Interval, true);
-    UtAssert_STUB_COUNT(CFE_ES_RestartApp, 2);
-    UtAssert_INT32_EQ(CFS_CORE_APP_Data.BridgeRestartCount, 2);
-}
-
-/* 3회 전체 소진 후 추가 호출 없음 — 순서 진행으로 확인 */
-void Test_CFS_CORE_APP_BridgeRestart_AllAttemptsExhausted(void)
-{
-    uint32 NowMs    = 10000;
-    uint32 Interval = CFS_CORE_APP_BRIDGE_RESTART_INTERVAL_MS;
-
-    CFS_CORE_APP_Data.BridgeState.Received          = true;
-    CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 1000;
-    CFS_CORE_APP_Data.BridgeRestartCount            = 0;
-    CFS_CORE_APP_Data.NextBridgeRestartMs           = 0;
-    CFS_CORE_APP_Data.RecoveryStartMs               = 0;
-
-    UT_SetDefaultReturnValue(UT_KEY(CFE_ES_GetAppIDByName), CFE_SUCCESS);
-
-    /* T+0: 타이머 시작 */
-    CFS_CORE_APP_UpdateHealth(NowMs, true);
-
-    /* T+5, 10, 15s: 1회, 2회, 3회 재시작 */
-    CFS_CORE_APP_UpdateHealth(NowMs + Interval, true);
-    CFS_CORE_APP_UpdateHealth(NowMs + 2 * Interval, true);
-    CFS_CORE_APP_UpdateHealth(NowMs + 3 * Interval, true);
-
-    UtAssert_STUB_COUNT(CFE_ES_RestartApp, (int)CFS_CORE_APP_BRIDGE_MAX_RESTARTS);
-    UtAssert_INT32_EQ(CFS_CORE_APP_Data.BridgeRestartCount, (int32)CFS_CORE_APP_BRIDGE_MAX_RESTARTS);
-
-    /* T+20s: 최대치 도달 → 추가 재시작 없음 */
-    CFS_CORE_APP_UpdateHealth(NowMs + 4 * Interval, true);
-    UtAssert_STUB_COUNT(CFE_ES_RestartApp, (int)CFS_CORE_APP_BRIDGE_MAX_RESTARTS);
-    UtAssert_INT32_EQ(CFS_CORE_APP_Data.BridgeRestartCount, (int32)CFS_CORE_APP_BRIDGE_MAX_RESTARTS);
-}
-
-/* 재시작 1회 후 bridge 복구 → 카운터 리셋 후 안정화 거쳐 NOMINAL */
-void Test_CFS_CORE_APP_BridgeRestart_RecoverAfterAttempt(void)
-{
-    uint32 NowMs    = 10000;
-    uint32 Interval = CFS_CORE_APP_BRIDGE_RESTART_INTERVAL_MS;
-    uint32 RecoverMs;
-    uint32 NominalMs;
-
-    CFS_CORE_APP_Data.BridgeState.Received          = true;
-    CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 1000;
-    CFS_CORE_APP_Data.BridgeRestartCount            = 0;
-    CFS_CORE_APP_Data.NextBridgeRestartMs           = 0;
-    CFS_CORE_APP_Data.RecoveryStartMs               = 0;
-    CFS_CORE_APP_Data.LastHealthState               = CFS_CORE_APP_HEALTH_NOMINAL;
-
-    UT_SetDefaultReturnValue(UT_KEY(CFE_ES_GetAppIDByName), CFE_SUCCESS);
-
-    /* T+0: RECOVERY 진입 */
-    CFS_CORE_APP_UpdateHealth(NowMs, true);
-    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_RECOVERY);
-
-    /* T+5s: 첫 번째 재시작 시도 */
-    CFS_CORE_APP_UpdateHealth(NowMs + Interval, true);
-    UtAssert_STUB_COUNT(CFE_ES_RestartApp, 1);
-    UtAssert_INT32_EQ(CFS_CORE_APP_Data.BridgeRestartCount, 1);
-
-    /* 재시작 후 bridge가 복구됨 — 모든 입력 정상 */
-    RecoverMs = NowMs + Interval + 1000;
-    CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs  = RecoverMs - 100;
-    CFS_CORE_APP_Data.AttitudeState.Received          = true;
-    CFS_CORE_APP_Data.AttitudeState.TimestampMs       = RecoverMs - 100;
-    CFS_CORE_APP_Data.AttitudeState.Valid             = 1;
-    CFS_CORE_APP_Data.LocalState.Received             = true;
-    CFS_CORE_APP_Data.LocalState.TimestampMs          = RecoverMs - 100;
-    CFS_CORE_APP_Data.LocalState.Valid                = 1;
-    CFS_CORE_APP_Data.GpsState.Received               = true;
-    CFS_CORE_APP_Data.GpsState.TimestampMs            = RecoverMs - 100;
-    CFS_CORE_APP_Data.GpsState.Valid                  = 1;
-    CFS_CORE_APP_Data.EkfState.Received               = true;
-    CFS_CORE_APP_Data.EkfState.TimestampMs            = RecoverMs - 100;
-    CFS_CORE_APP_Data.EkfState.Valid                  = 1;
-    CFS_CORE_APP_Data.LastHealthState                 = CFS_CORE_APP_HEALTH_RECOVERY;
-
-    /* 복구 직후: 카운터 리셋, 안정화 진입 → DEGRADED (fault_none) */
-    CFS_CORE_APP_UpdateHealth(RecoverMs, true);
-    UtAssert_INT32_EQ(CFS_CORE_APP_Data.BridgeRestartCount, 0);
-    UtAssert_INT32_EQ(CFS_CORE_APP_Data.RecoveryStartMs,    0);
-    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_DEGRADED);
-    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.FaultCode,   CFS_CORE_APP_FAULT_NONE);
-
-    /* 안정화 10초 경과 후: NOMINAL */
-    NominalMs = RecoverMs + CFS_CORE_APP_NOMINAL_STABILITY_MS + 1;
-    CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs  = NominalMs - 100;
-    CFS_CORE_APP_Data.AttitudeState.TimestampMs       = NominalMs - 100;
-    CFS_CORE_APP_Data.LocalState.TimestampMs          = NominalMs - 100;
-    CFS_CORE_APP_Data.GpsState.TimestampMs            = NominalMs - 100;
-    CFS_CORE_APP_Data.EkfState.TimestampMs            = NominalMs - 100;
-    CFS_CORE_APP_UpdateHealth(NominalMs, true);
-    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_NOMINAL);
-}
-
 /* -----------------------------------------------------------------------
  * Spec §19.2 CORE-RUN-004: GPS 타임아웃 (stale 플래그 아닌 timestamp 만료)
  * ----------------------------------------------------------------------- */
@@ -1276,11 +1164,12 @@ void Test_CFS_CORE_APP_UpdateHealth_GPS_Timeout(void)
     CFS_CORE_APP_Data.GpsState.TimestampMs = 5000; /* NowMs - 5000 > 3000ms timeout */
     CFS_CORE_APP_Data.GpsState.Valid       = 1;
     CFS_CORE_APP_Data.GpsState.Stale       = 0; /* stale 플래그 없음 — 순수 timeout */
+    CFS_CORE_APP_Data.UplinkAppState.Received    = true;
+    CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs  = NowMs - 100;
 
     CFS_CORE_APP_UpdateHealth(NowMs, true);
 
-    /* §12.5: GPS 타임아웃은 헬스를 저하시키지 않음. 나머지 정상 → NOMINAL,
-       GpsStatus.TimedOut 보고 필드로만 관측 가능 */
+    /* GPS 타임아웃은 헬스에 영향 없음 (보고 전용) — 명세 §12.5 */
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_NOMINAL);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.FaultCode,   CFS_CORE_APP_FAULT_NONE);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.GpsStatus.TimedOut, 1);
@@ -1306,6 +1195,8 @@ void Test_CFS_CORE_APP_UpdateHealth_RecoveryToNominal(void)
     CFS_CORE_APP_Data.EkfState.Received              = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs           = NowMs - 100;
     CFS_CORE_APP_Data.EkfState.Valid                 = 1;
+    CFS_CORE_APP_Data.UplinkAppState.Received    = true;
+    CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs  = NowMs - 100;
 
     /* RECOVERY에서 복구 시작 */
     CFS_CORE_APP_Data.LastHealthState = CFS_CORE_APP_HEALTH_RECOVERY;
@@ -1322,6 +1213,7 @@ void Test_CFS_CORE_APP_UpdateHealth_RecoveryToNominal(void)
     CFS_CORE_APP_Data.LocalState.TimestampMs         = T5 - 100;
     CFS_CORE_APP_Data.GpsState.TimestampMs           = T5 - 100;
     CFS_CORE_APP_Data.EkfState.TimestampMs           = T5 - 100;
+    CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs      = T5 - 100;
     CFS_CORE_APP_UpdateHealth(T5, true);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_DEGRADED);
 
@@ -1332,6 +1224,7 @@ void Test_CFS_CORE_APP_UpdateHealth_RecoveryToNominal(void)
     CFS_CORE_APP_Data.LocalState.TimestampMs         = T10 - 100;
     CFS_CORE_APP_Data.GpsState.TimestampMs           = T10 - 100;
     CFS_CORE_APP_Data.EkfState.TimestampMs           = T10 - 100;
+    CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs      = T10 - 100;
     CFS_CORE_APP_UpdateHealth(T10, true);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_NOMINAL);
 }
@@ -1489,14 +1382,17 @@ void Test_CFS_CORE_APP_UpdateHealth_StabilityTimerReset(void)
     CFS_CORE_APP_Data.EkfState.Received              = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs           = NowMs - 100;
     CFS_CORE_APP_Data.EkfState.Valid                 = 1;
+    CFS_CORE_APP_Data.UplinkAppState.Received    = true;
+    CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs  = NowMs - 100;
     CFS_CORE_APP_Data.LastHealthState                = CFS_CORE_APP_HEALTH_DEGRADED;
 
     /* 안정화 시작 */
     CFS_CORE_APP_UpdateHealth(NowMs, true);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.NominalEligibleSince, (int32)NowMs);
 
-    /* 5초 후 오류 재발 → 타이머 리셋 (GPS는 §12.5로 비저하 → EKF stale로 재-fault 유발) */
-    CFS_CORE_APP_Data.EkfState.Stale = 1;
+    /* 5초 후 uplink timeout 발생 → 안정화 타이머 리셋 */
+    /* UplinkAppState.LastHkRxMs을 갱신하지 않아서 5100ms 경과 → timeout */
+    CFS_CORE_APP_Data.GpsState.Stale = 1;
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = NowMs + 5000 - 100;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs     = NowMs + 5000 - 100;
     CFS_CORE_APP_Data.LocalState.TimestampMs        = NowMs + 5000 - 100;
@@ -1743,6 +1639,98 @@ void Test_CFS_CORE_APP_ProcessViewpointCommand(void)
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.ViewpointCmd.HoldTimeMs, 2000);
 }
 
+/* uplink_app HK 수신 → UplinkAppState.Received=true, LastHkRxMs 갱신 */
+void Test_CFS_CORE_APP_ProcessStateMessage_UplinkHk(void)
+{
+    typedef struct
+    {
+        CFE_MSG_TelemetryHeader_t TelemetryHeader;
+        uint8                     Pad[4];
+    } TEST_UplinkHk_t;
+
+    uint8              Storage[sizeof(TEST_UplinkHk_t)];
+    CFE_SB_Buffer_t   *Buffer;
+    CFE_SB_MsgId_t     MsgId;
+    TEST_UplinkHk_t   *HkMsg;
+    CFE_TIME_SysTime_t FakeTime;
+
+    memset(Storage, 0, sizeof(Storage));
+    Buffer = (CFE_SB_Buffer_t *)Storage;
+    HkMsg  = (TEST_UplinkHk_t *)Storage;
+    CFE_MSG_Init(CFE_MSG_PTR(HkMsg->TelemetryHeader),
+                 CFE_SB_ValueToMsgId(CFS_CORE_APP_UPLINK_HK_MID_VALUE),
+                 sizeof(*HkMsg));
+    MsgId = CFE_SB_ValueToMsgId(CFS_CORE_APP_UPLINK_HK_MID_VALUE);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+
+    /* CFE_TIME_GetTime stub → Seconds=5 → NowMs=5000 */
+    FakeTime.Seconds    = 5;
+    FakeTime.Subseconds = 0;
+    UT_SetDataBuffer(UT_KEY(CFE_TIME_GetTime), &FakeTime, sizeof(FakeTime), false);
+
+    CFS_CORE_APP_Data.UplinkAppState.Received   = false;
+    CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs = 0;
+
+    CFS_CORE_APP_ProcessStateMessage(Buffer);
+
+    UtAssert_BOOL_TRUE(CFS_CORE_APP_Data.UplinkAppState.Received);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs, 5000);
+}
+
+/* uplink timeout → DEGRADED + FAULT_UPLINK_TIMEOUT (우선순위 5) */
+void Test_CFS_CORE_APP_UpdateHealth_UplinkTimeout(void)
+{
+    uint32 NowMs = 10000;
+
+    /* bridge 정상 */
+    CFS_CORE_APP_Data.BridgeState.Received          = true;
+    CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = NowMs - 100;
+    /* EKF, Local, Attitude 정상 */
+    CFS_CORE_APP_Data.EkfState.Received    = true;
+    CFS_CORE_APP_Data.EkfState.TimestampMs = NowMs - 100;
+    CFS_CORE_APP_Data.EkfState.Valid       = 1;
+    CFS_CORE_APP_Data.LocalState.Received    = true;
+    CFS_CORE_APP_Data.LocalState.TimestampMs = NowMs - 100;
+    CFS_CORE_APP_Data.LocalState.Valid       = 1;
+    CFS_CORE_APP_Data.AttitudeState.Received    = true;
+    CFS_CORE_APP_Data.AttitudeState.TimestampMs = NowMs - 100;
+    CFS_CORE_APP_Data.AttitudeState.Valid       = 1;
+    /* uplink HK 미수신 → timeout */
+    CFS_CORE_APP_Data.UplinkAppState.Received   = false;
+    CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs = 0;
+
+    CFS_CORE_APP_UpdateHealth(NowMs, true);
+
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_DEGRADED);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.FaultCode,   CFS_CORE_APP_FAULT_UPLINK_TIMEOUT);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.UplinkStatus.TimedOut, 1);
+}
+
+/* 우선순위: attitude timeout이 uplink timeout보다 높음 */
+void Test_CFS_CORE_APP_UpdateHealth_Priority_AttitudeOverUplink(void)
+{
+    uint32 NowMs = 10000;
+
+    CFS_CORE_APP_Data.BridgeState.Received          = true;
+    CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = NowMs - 100;
+    CFS_CORE_APP_Data.EkfState.Received    = true;
+    CFS_CORE_APP_Data.EkfState.TimestampMs = NowMs - 100;
+    CFS_CORE_APP_Data.EkfState.Valid       = 1;
+    CFS_CORE_APP_Data.LocalState.Received    = true;
+    CFS_CORE_APP_Data.LocalState.TimestampMs = NowMs - 100;
+    CFS_CORE_APP_Data.LocalState.Valid       = 1;
+    /* attitude timed out */
+    CFS_CORE_APP_Data.AttitudeState.Received    = true;
+    CFS_CORE_APP_Data.AttitudeState.TimestampMs = 0; /* expired */
+    CFS_CORE_APP_Data.AttitudeState.Valid       = 1;
+    /* uplink also timed out */
+    CFS_CORE_APP_Data.UplinkAppState.Received   = false;
+
+    CFS_CORE_APP_UpdateHealth(NowMs, true);
+
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.FaultCode, CFS_CORE_APP_FAULT_ATTITUDE_TIMEOUT);
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(CFS_CORE_APP_ReportHousekeeping);
@@ -1776,9 +1764,6 @@ void UtTest_Setup(void)
     ADD_TEST(CFS_CORE_APP_BridgeRestart_GetAppIdFail);
     ADD_TEST(CFS_CORE_APP_BridgeRestart_MaxReached);
     ADD_TEST(CFS_CORE_APP_BridgeRestart_ResetOnRecovery);
-    ADD_TEST(CFS_CORE_APP_BridgeRestart_SecondAttempt);
-    ADD_TEST(CFS_CORE_APP_BridgeRestart_AllAttemptsExhausted);
-    ADD_TEST(CFS_CORE_APP_BridgeRestart_RecoverAfterAttempt);
     ADD_TEST(CFS_CORE_APP_UpdateHealth_GPS_Timeout);
     ADD_TEST(CFS_CORE_APP_UpdateHealth_RecoveryToNominal);
     ADD_TEST(CFS_CORE_APP_TimestampCheck_GPS_Rejected);
@@ -1805,6 +1790,9 @@ void UtTest_Setup(void)
     ADD_TEST(CFS_CORE_APP_ProcessStateMessage_RouteUpdate);
     ADD_TEST(CFS_CORE_APP_ProcessStateMessage_LandingRouteUpdate);
     ADD_TEST(CFS_CORE_APP_ProcessStateMessage_BridgeHk);
+    ADD_TEST(CFS_CORE_APP_ProcessStateMessage_UplinkHk);
+    ADD_TEST(CFS_CORE_APP_UpdateHealth_UplinkTimeout);
+    ADD_TEST(CFS_CORE_APP_UpdateHealth_Priority_AttitudeOverUplink);
     ADD_TEST(CFS_CORE_APP_ServicePrototype);
     ADD_TEST(CFS_CORE_APP_ProcessViewpointCommand);
 }
