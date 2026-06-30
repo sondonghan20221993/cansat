@@ -37,6 +37,9 @@ typedef struct
     float                           AttitudeRollRad;
     float                           AttitudePitchRad;
     float                           AttitudeYawRad;
+    float                           AttitudeRollspeedRps;
+    float                           AttitudePitchspeedRps;
+    float                           AttitudeYawspeedRps;
     float                           LocalX_m;
     float                           LocalY_m;
     float                           LocalZ_m;

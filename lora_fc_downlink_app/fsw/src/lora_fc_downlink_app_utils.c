@@ -285,7 +285,7 @@ static void LORA_FC_DOWNLINK_APP_ServiceLoRa(void)
     else if (LORA_FC_DOWNLINK_APP_Data.AttitudeValid && LORA_FC_DOWNLINK_APP_Data.LocalValid)
     {
         LineLen = snprintf(Line, sizeof(Line),
-                           "FC,%lu,%lu,%.6f,%.6f,%.6f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%ld,%ld,%ld,%u,0\n",
+                           "FC,%lu,%lu,%.6f,%.6f,%.6f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%ld,%ld,%ld,%u,0,%.4f,%.4f,%.4f\n",
                            (unsigned long)(++LORA_FC_DOWNLINK_APP_Data.LoRaTxCount),
                            (unsigned long)LORA_FC_DOWNLINK_APP_Data.LastAttitudeTimestampMs,
                            (double)LORA_FC_DOWNLINK_APP_Data.AttitudeRollRad,
@@ -300,7 +300,10 @@ static void LORA_FC_DOWNLINK_APP_ServiceLoRa(void)
                            (long)LORA_FC_DOWNLINK_APP_Data.GpsLatE7,
                            (long)LORA_FC_DOWNLINK_APP_Data.GpsLonE7,
                            (long)LORA_FC_DOWNLINK_APP_Data.GpsAltMm,
-                           (unsigned int)LORA_FC_DOWNLINK_APP_Data.GpsFixType);
+                           (unsigned int)LORA_FC_DOWNLINK_APP_Data.GpsFixType,
+                           (double)LORA_FC_DOWNLINK_APP_Data.AttitudeRollspeedRps,
+                           (double)LORA_FC_DOWNLINK_APP_Data.AttitudePitchspeedRps,
+                           (double)LORA_FC_DOWNLINK_APP_Data.AttitudeYawspeedRps);
     }
     else
     {
@@ -435,6 +438,9 @@ void LORA_FC_DOWNLINK_APP_ProcessInputMessage(const CFE_SB_Buffer_t *sb_buf_ptr)
         LORA_FC_DOWNLINK_APP_Data.AttitudeRollRad         = Msg->RollRad;
         LORA_FC_DOWNLINK_APP_Data.AttitudePitchRad        = Msg->PitchRad;
         LORA_FC_DOWNLINK_APP_Data.AttitudeYawRad          = Msg->YawRad;
+        LORA_FC_DOWNLINK_APP_Data.AttitudeRollspeedRps    = Msg->RollspeedRps;
+        LORA_FC_DOWNLINK_APP_Data.AttitudePitchspeedRps   = Msg->PitchspeedRps;
+        LORA_FC_DOWNLINK_APP_Data.AttitudeYawspeedRps     = Msg->YawspeedRps;
         LORA_FC_DOWNLINK_APP_Data.PacketType              = LORA_FC_DOWNLINK_APP_FC_STATE_PACKET_TYPE;
     }
     else if (CFE_SB_MsgIdToValue(msg_id) == LORA_FC_DOWNLINK_APP_FC_EKF_LOCAL_STATE_MID_VALUE)
