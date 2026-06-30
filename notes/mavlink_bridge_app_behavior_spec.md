@@ -70,7 +70,7 @@
 
 ## 5. 트리거
 
-유효한 `ROUTE_UPDATE_MID` 수신 시 즉시 FC 업로드 시퀀스를 시작한다.
+유효한 `ROUTE_UPDATE_MID` 수신 시 경로 연산 타입에 따라 Pending buffer를 결정한 뒤 즉시 FC 업로드 시퀀스를 시작한다.
 
 업로드 시작 조건:
 - FC 링크가 CONNECTED 상태 (Heartbeat 수신 완료)
@@ -81,6 +81,20 @@ FC 링크가 연결되지 않은 상태에서 `ROUTE_UPDATE_MID`가 수신되면
 FC가 ARMED 상태이면 업로드를 수행하지 않고 `MAVLINK_BRIDGE_APP_ARMED_WARN_EID` (EID 12) EVS 경고를 발생시킨다. ARMED 여부는 FC Heartbeat의 `base_mode` bit7 (0x80)으로 판단한다.
 
 업로드 진행 중에 새 `ROUTE_UPDATE_MID`가 수신되면 별도 cancel handshake 없이 `MissionUploadState`와 pending waypoint buffer를 새 경로로 덮어쓰고 `MISSION_CLEAR_ALL`부터 재시작한다.
+
+### 5.1 경로 연산 타입 (RouteOpType)
+
+`ROUTE_UPDATE_MID` payload의 `RouteType` 필드(= `UPLINK_APP_RouteOpType_t`)에 따라 Pending buffer 구성 방식이 결정된다.
+
+| 값 | 이름 | Pending buffer 구성 방식 |
+| --- | --- | --- |
+| `1` | `REPLACE` | `Msg->Waypoints[0..N-1]`을 그대로 복사. Active cache 무시. |
+| `2` | `APPEND` | Active cache를 먼저 복사한 뒤 `Msg->Waypoints`를 이어 붙임. 합계가 `MAX_WAYPOINTS`를 초과하면 MAX에서 절단하고 `MAVLINK_BRIDGE_APP_MISSION_UPLOAD_INF_EID` EVS 경고 발생. |
+| `3` | `DELETE` | Active cache에서 마지막 `WaypointCount`개를 제거한 결과를 복사. `WaypointCount >= ActiveCount`이면 0개 업로드(빈 미션). |
+
+Pending buffer가 결정되면 세 연산 모두 동일한 `MISSION_CLEAR_ALL → MISSION_COUNT → ...` 핸드셰이크를 수행한다.
+
+Active cache(`ActiveWaypointX/Y/Z`, `ActiveWaypointCount`)는 `MISSION_ACK ACCEPTED` 수신 시에만 Pending buffer 내용으로 갱신된다(§9.2 참조). 연산 실패 시 Active cache는 변경되지 않는다.
 
 ## 6. MAVLink MISSION 업로드 프로토콜
 
@@ -186,6 +200,7 @@ x/y는 `int32` (× 10000, 0.1mm 단위)이고, z는 `float` meters (부호 반�
 업로드 성공(`MISSION_ACK` = ACCEPTED) 시:
 - EVS 정보 이벤트 발생 (`MAVLINK_BRIDGE_APP_MISSION_UPLOAD_INF_EID`)
 - HK에 성공 카운터 및 마지막 업로드 타임스탬프 갱신
+- **Active waypoint cache 갱신**: `MissionPendingX/Y/Z[0..WpCount-1]` 내용을 `ActiveWaypointX/Y/Z`에 복사하고 `ActiveWaypointCount = MissionUploadWpCount`로 설정. 이후 APPEND/DELETE 연산의 기준 상태가 된다.
 
 `StartMissionUpload` 함수 진입 시에도 동일 EID로 진단 로그를 발생시킨다:
 ```

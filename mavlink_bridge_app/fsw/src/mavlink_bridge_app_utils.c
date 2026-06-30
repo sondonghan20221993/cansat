@@ -1,6 +1,11 @@
 #include "mavlink_bridge_app_utils.h"
 #include "mavlink_bridge_app_eventids.h"
 
+/* Route operation types — must match uplink_app UPLINK_APP_RouteOpType_t */
+#define MAVLINK_BRIDGE_ROUTE_OP_REPLACE 1U
+#define MAVLINK_BRIDGE_ROUTE_OP_APPEND  2U
+#define MAVLINK_BRIDGE_ROUTE_OP_DELETE  3U
+
 #include <errno.h>
 #include <fcntl.h>
 #include <math.h>
@@ -407,10 +412,13 @@ static void MAVLINK_BRIDGE_APP_SendMissionItem(uint8 Seq)
 void MAVLINK_BRIDGE_APP_StartMissionUpload(const MAVLINK_BRIDGE_APP_RouteUpdateMirror_t *Msg)
 {
     uint8 i;
+    uint8 ActiveCount;
+    uint8 NewCount;
 
     CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_MISSION_UPLOAD_INF_EID, CFE_EVS_EventType_INFORMATION,
-                      "MAVLINK_BRIDGE_APP: StartMissionUpload called wp=%u link=%u",
-                      (unsigned int)Msg->WaypointCount,
+                      "MAVLINK_BRIDGE_APP: StartMissionUpload called op=%u wp=%u active=%u link=%u",
+                      (unsigned int)Msg->RouteType, (unsigned int)Msg->WaypointCount,
+                      (unsigned int)MAVLINK_BRIDGE_APP_Data.ActiveWaypointCount,
                       (unsigned int)MAVLINK_BRIDGE_APP_Data.LinkState);
 
     if (MAVLINK_BRIDGE_APP_Data.LinkState != (uint8)MAVLINK_BRIDGE_LINK_CONNECTED)
@@ -434,19 +442,69 @@ void MAVLINK_BRIDGE_APP_StartMissionUpload(const MAVLINK_BRIDGE_APP_RouteUpdateM
                           "MAVLINK_BRIDGE_APP: no GPS ref - uploading with (0,0) origin");
     }
 
-    MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount = Msg->WaypointCount;
-    if (MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount > (uint8)MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS)
+    ActiveCount = MAVLINK_BRIDGE_APP_Data.ActiveWaypointCount;
+
+    if (Msg->RouteType == (uint8)MAVLINK_BRIDGE_ROUTE_OP_APPEND)
     {
-        MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount = (uint8)MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS;
+        /* Append: combine active cache + new waypoints (cap at MAX). */
+        NewCount = ActiveCount + Msg->WaypointCount;
+        if (NewCount > (uint8)MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS)
+        {
+            CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_MISSION_UPLOAD_ERR_EID, CFE_EVS_EventType_ERROR,
+                              "MAVLINK_BRIDGE_APP: append truncated active=%u new=%u max=%u",
+                              (unsigned int)ActiveCount, (unsigned int)Msg->WaypointCount,
+                              (unsigned int)MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS);
+            NewCount = (uint8)MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS;
+        }
+        for (i = 0U; i < ActiveCount && i < NewCount; i++)
+        {
+            MAVLINK_BRIDGE_APP_Data.MissionPendingX[i] = MAVLINK_BRIDGE_APP_Data.ActiveWaypointX[i];
+            MAVLINK_BRIDGE_APP_Data.MissionPendingY[i] = MAVLINK_BRIDGE_APP_Data.ActiveWaypointY[i];
+            MAVLINK_BRIDGE_APP_Data.MissionPendingZ[i] = MAVLINK_BRIDGE_APP_Data.ActiveWaypointZ[i];
+        }
+        for (; i < NewCount; i++)
+        {
+            uint8 SrcIdx = i - ActiveCount;
+            MAVLINK_BRIDGE_APP_Data.MissionPendingX[i] = Msg->Waypoints[SrcIdx].X;
+            MAVLINK_BRIDGE_APP_Data.MissionPendingY[i] = Msg->Waypoints[SrcIdx].Y;
+            MAVLINK_BRIDGE_APP_Data.MissionPendingZ[i] = Msg->Waypoints[SrcIdx].Z;
+        }
+    }
+    else if (Msg->RouteType == (uint8)MAVLINK_BRIDGE_ROUTE_OP_DELETE)
+    {
+        /* Delete: remove last WaypointCount entries from active cache. */
+        if (Msg->WaypointCount >= ActiveCount)
+        {
+            NewCount = 0U;
+        }
+        else
+        {
+            NewCount = ActiveCount - Msg->WaypointCount;
+        }
+        for (i = 0U; i < NewCount; i++)
+        {
+            MAVLINK_BRIDGE_APP_Data.MissionPendingX[i] = MAVLINK_BRIDGE_APP_Data.ActiveWaypointX[i];
+            MAVLINK_BRIDGE_APP_Data.MissionPendingY[i] = MAVLINK_BRIDGE_APP_Data.ActiveWaypointY[i];
+            MAVLINK_BRIDGE_APP_Data.MissionPendingZ[i] = MAVLINK_BRIDGE_APP_Data.ActiveWaypointZ[i];
+        }
+    }
+    else
+    {
+        /* REPLACE (default): discard active cache, use provided waypoints. */
+        NewCount = Msg->WaypointCount;
+        if (NewCount > (uint8)MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS)
+        {
+            NewCount = (uint8)MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS;
+        }
+        for (i = 0U; i < NewCount; i++)
+        {
+            MAVLINK_BRIDGE_APP_Data.MissionPendingX[i] = Msg->Waypoints[i].X;
+            MAVLINK_BRIDGE_APP_Data.MissionPendingY[i] = Msg->Waypoints[i].Y;
+            MAVLINK_BRIDGE_APP_Data.MissionPendingZ[i] = Msg->Waypoints[i].Z;
+        }
     }
 
-    for (i = 0U; i < MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount; i++)
-    {
-        MAVLINK_BRIDGE_APP_Data.MissionPendingX[i] = Msg->Waypoints[i].X;
-        MAVLINK_BRIDGE_APP_Data.MissionPendingY[i] = Msg->Waypoints[i].Y;
-        MAVLINK_BRIDGE_APP_Data.MissionPendingZ[i] = Msg->Waypoints[i].Z;
-    }
-
+    MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount  = NewCount;
     MAVLINK_BRIDGE_APP_Data.MissionUploadState     = (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_CLEARING;
     MAVLINK_BRIDGE_APP_Data.MissionUploadRetry     = 0U;
     MAVLINK_BRIDGE_APP_Data.MissionUploadTimeoutMs =
@@ -1269,13 +1327,22 @@ static void MAVLINK_BRIDGE_APP_HandleFrameComplete(uint32 RxTimestampMs, uint8 C
                 MAVLINK_BRIDGE_APP_Data.MissionUploadState = (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_IDLE;
                 if (Result == (uint8)MAVLINK_MISSION_ACCEPTED)
                 {
+                    uint8 j;
+                    uint8 ConfirmedCount = MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount;
                     MAVLINK_BRIDGE_APP_Data.MissionUploadSuccessCount++;
                     MAVLINK_BRIDGE_APP_Data.LastUploadResult        = (uint8)MAVLINK_BRIDGE_UPLOAD_RESULT_SUCCESS;
                     MAVLINK_BRIDGE_APP_Data.LastUploadTimestampMs   = RxTimestampMs;
-                    MAVLINK_BRIDGE_APP_Data.LastUploadWaypointCount = MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount;
+                    MAVLINK_BRIDGE_APP_Data.LastUploadWaypointCount = ConfirmedCount;
+                    MAVLINK_BRIDGE_APP_Data.ActiveWaypointCount     = ConfirmedCount;
+                    for (j = 0U; j < ConfirmedCount; j++)
+                    {
+                        MAVLINK_BRIDGE_APP_Data.ActiveWaypointX[j] = MAVLINK_BRIDGE_APP_Data.MissionPendingX[j];
+                        MAVLINK_BRIDGE_APP_Data.ActiveWaypointY[j] = MAVLINK_BRIDGE_APP_Data.MissionPendingY[j];
+                        MAVLINK_BRIDGE_APP_Data.ActiveWaypointZ[j] = MAVLINK_BRIDGE_APP_Data.MissionPendingZ[j];
+                    }
                     CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_MISSION_UPLOAD_INF_EID, CFE_EVS_EventType_INFORMATION,
                                       "MAVLINK_BRIDGE_APP: mission upload success wp_count=%u",
-                                      (unsigned int)MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount);
+                                      (unsigned int)ConfirmedCount);
                 }
                 else
                 {

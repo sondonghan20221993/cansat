@@ -69,9 +69,10 @@ void Test_UPLINK_APP_ParseRouteUpdatePayload(void)
     UPLINK_APP_RouteUpdatePayload_t *PayloadSrc;
     uint32                           Index;
 
+    /* --- REPLACE: 기본 성공 케이스 --- */
     memset(&Cmd, 0, sizeof(Cmd));
     PayloadSrc = (UPLINK_APP_RouteUpdatePayload_t *)Cmd.Payload;
-    PayloadSrc->RouteType     = UPLINK_APP_ROUTE_SEGMENT_MISSION_EXTENSION;
+    PayloadSrc->RouteType     = UPLINK_APP_ROUTE_OP_REPLACE;
     PayloadSrc->RouteVersion  = 1;
     PayloadSrc->WaypointCount = 2;
     PayloadSrc->Waypoints[0].X = 0.0f;
@@ -83,44 +84,55 @@ void Test_UPLINK_APP_ParseRouteUpdatePayload(void)
     Cmd.PayloadLength = (uint8)(4U + (2U * sizeof(UPLINK_APP_Waypoint_t)));
 
     UtAssert_BOOL_TRUE(UPLINK_APP_ParseRouteUpdatePayload(&Cmd, &Payload));
-    UtAssert_INT32_EQ(Payload.RouteType, UPLINK_APP_ROUTE_SEGMENT_MISSION_EXTENSION);
+    UtAssert_INT32_EQ(Payload.RouteType, UPLINK_APP_ROUTE_OP_REPLACE);
     UtAssert_INT32_EQ(Payload.WaypointCount, 2);
 
-    PayloadSrc->Waypoints[1].Z = 1.0f;
+    /* APPEND 타입도 동일 검증 경로 */
+    PayloadSrc->RouteType = UPLINK_APP_ROUTE_OP_APPEND;
+    UtAssert_BOOL_TRUE(UPLINK_APP_ParseRouteUpdatePayload(&Cmd, &Payload));
+    UtAssert_INT32_EQ(Payload.RouteType, UPLINK_APP_ROUTE_OP_APPEND);
+
+    /* 잘못된 RouteType */
+    PayloadSrc->RouteType = UPLINK_APP_ROUTE_OP_NONE;
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseRouteUpdatePayload(&Cmd, &Payload));
+    PayloadSrc->RouteType = 99;
     UtAssert_BOOL_FALSE(UPLINK_APP_ParseRouteUpdatePayload(&Cmd, &Payload));
 
-    PayloadSrc->Waypoints[1].Z = 4.0f;
-    PayloadSrc->RouteType = UPLINK_APP_ROUTE_SEGMENT_NONE;
-    UtAssert_BOOL_FALSE(UPLINK_APP_ParseRouteUpdatePayload(&Cmd, &Payload));
-
-    PayloadSrc->RouteType     = UPLINK_APP_ROUTE_SEGMENT_MISSION_EXTENSION;
+    /* WaypointCount=0 거부 */
+    PayloadSrc->RouteType     = UPLINK_APP_ROUTE_OP_REPLACE;
     PayloadSrc->WaypointCount = 0;
     Cmd.PayloadLength         = 4U;
     UtAssert_BOOL_FALSE(UPLINK_APP_ParseRouteUpdatePayload(&Cmd, &Payload));
 
+    /* WaypointCount > MAX 거부 */
     PayloadSrc->WaypointCount = UPLINK_APP_ROUTE_MAX_WAYPOINTS + 1U;
     Cmd.PayloadLength         = 4U;
     UtAssert_BOOL_FALSE(UPLINK_APP_ParseRouteUpdatePayload(&Cmd, &Payload));
 
+    /* 좌표 검증: INF 거부 */
     PayloadSrc->WaypointCount = 2;
     Cmd.PayloadLength = (uint8)(4U + (2U * sizeof(UPLINK_APP_Waypoint_t)));
     PayloadSrc->Waypoints[0].X = INFINITY;
     UtAssert_BOOL_FALSE(UPLINK_APP_ParseRouteUpdatePayload(&Cmd, &Payload));
 
+    /* 인접 waypoint 거리 부족 거부 */
     PayloadSrc->Waypoints[0].X = 0.0f;
     PayloadSrc->Waypoints[1].X = 1.99f;
     PayloadSrc->Waypoints[1].Y = -10.0f;
     PayloadSrc->Waypoints[1].Z = 3.0f;
     UtAssert_BOOL_FALSE(UPLINK_APP_ParseRouteUpdatePayload(&Cmd, &Payload));
 
+    /* 최소 거리 정확히 충족 */
     PayloadSrc->Waypoints[1].X = 2.0f;
     PayloadSrc->Waypoints[1].Y = -10.0f;
     PayloadSrc->Waypoints[1].Z = 3.0f;
     UtAssert_BOOL_TRUE(UPLINK_APP_ParseRouteUpdatePayload(&Cmd, &Payload));
 
+    /* 인접 거리 초과 거부 */
     PayloadSrc->Waypoints[1].X = 2.01f;
     UtAssert_BOOL_FALSE(UPLINK_APP_ParseRouteUpdatePayload(&Cmd, &Payload));
 
+    /* MAX waypoint 경계 성공 */
     PayloadSrc->WaypointCount = UPLINK_APP_ROUTE_MAX_WAYPOINTS;
     for (Index = 0; Index < PayloadSrc->WaypointCount; ++Index)
     {
@@ -131,10 +143,7 @@ void Test_UPLINK_APP_ParseRouteUpdatePayload(void)
     Cmd.PayloadLength = (uint8)(4U + ((size_t)PayloadSrc->WaypointCount * sizeof(UPLINK_APP_Waypoint_t)));
     UtAssert_BOOL_TRUE(UPLINK_APP_ParseRouteUpdatePayload(&Cmd, &Payload));
 
-    PayloadSrc->WaypointCount = UPLINK_APP_ROUTE_MAX_WAYPOINTS + 1U;
-    Cmd.PayloadLength         = 4U;
-    UtAssert_BOOL_FALSE(UPLINK_APP_ParseRouteUpdatePayload(&Cmd, &Payload));
-
+    /* No-fly zone 거부 */
     PayloadSrc->WaypointCount = 2;
     Cmd.PayloadLength         = (uint8)(4U + (2U * sizeof(UPLINK_APP_Waypoint_t)));
     PayloadSrc->Waypoints[0].X = 0.0f;
@@ -144,6 +153,34 @@ void Test_UPLINK_APP_ParseRouteUpdatePayload(void)
     PayloadSrc->Waypoints[1].Y = -10.0f;
     PayloadSrc->Waypoints[1].Z = 4.0f;
     UtAssert_BOOL_FALSE(UPLINK_APP_ParseRouteUpdatePayload(&Cmd, &Payload));
+
+    /* --- DELETE: 정상 케이스 (waypoint 없는 payload) --- */
+    memset(&Cmd, 0, sizeof(Cmd));
+    PayloadSrc = (UPLINK_APP_RouteUpdatePayload_t *)Cmd.Payload;
+    PayloadSrc->RouteType     = UPLINK_APP_ROUTE_OP_DELETE;
+    PayloadSrc->WaypointCount = 2;
+    Cmd.PayloadLength         = 4U;
+    UtAssert_BOOL_TRUE(UPLINK_APP_ParseRouteUpdatePayload(&Cmd, &Payload));
+    UtAssert_INT32_EQ(Payload.RouteType, UPLINK_APP_ROUTE_OP_DELETE);
+    UtAssert_INT32_EQ(Payload.WaypointCount, 2);
+
+    /* DELETE WaypointCount=0 거부 */
+    PayloadSrc->WaypointCount = 0;
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseRouteUpdatePayload(&Cmd, &Payload));
+
+    /* DELETE WaypointCount > MAX 거부 */
+    PayloadSrc->WaypointCount = UPLINK_APP_ROUTE_MAX_WAYPOINTS + 1U;
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseRouteUpdatePayload(&Cmd, &Payload));
+
+    /* DELETE waypoint 데이터가 있는 경우 거부 (PayloadLength != 4) */
+    PayloadSrc->WaypointCount = 1;
+    Cmd.PayloadLength         = (uint8)(4U + sizeof(UPLINK_APP_Waypoint_t));
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseRouteUpdatePayload(&Cmd, &Payload));
+
+    /* DELETE MAX 경계값 성공 */
+    PayloadSrc->WaypointCount = UPLINK_APP_ROUTE_MAX_WAYPOINTS;
+    Cmd.PayloadLength         = 4U;
+    UtAssert_BOOL_TRUE(UPLINK_APP_ParseRouteUpdatePayload(&Cmd, &Payload));
 }
 
 void Test_UPLINK_APP_ResolveRouteTarget(void)

@@ -122,6 +122,132 @@ void Test_StartMissionUpload_LinkNotConnectedBeforeArmedCheck(void)
 }
 
 /* -----------------------------------------------------------------------
+ * StartMissionUpload REPLACE / APPEND / DELETE 동작 테스트
+ * ----------------------------------------------------------------------- */
+
+/* REPLACE: pending에 새 waypoint 복사 */
+void Test_StartMissionUpload_Replace(void)
+{
+    MAVLINK_BRIDGE_APP_RouteUpdateMirror_t Msg;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.RouteType      = 1U; /* ROUTE_OP_REPLACE */
+    Msg.WaypointCount  = 2;
+    Msg.Waypoints[0].X = 10.0f; Msg.Waypoints[0].Y = 20.0f; Msg.Waypoints[0].Z = 5.0f;
+    Msg.Waypoints[1].X = 30.0f; Msg.Waypoints[1].Y = 40.0f; Msg.Waypoints[1].Z = 5.0f;
+
+    MAVLINK_BRIDGE_APP_Data.LinkState           = MAVLINK_BRIDGE_LINK_CONNECTED;
+    MAVLINK_BRIDGE_APP_Data.IsArmed             = 0;
+    MAVLINK_BRIDGE_APP_Data.ActiveWaypointCount = 3; /* active 무시하고 새 것으로 교체 */
+
+    MAVLINK_BRIDGE_APP_StartMissionUpload(&Msg);
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionUploadState,
+                      (int32)MAVLINK_BRIDGE_MISSION_UPLOAD_CLEARING);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount, 2);
+    UtAssert_True(MAVLINK_BRIDGE_APP_Data.MissionPendingX[0] == 10.0f, "Pending[0].X == 10");
+    UtAssert_True(MAVLINK_BRIDGE_APP_Data.MissionPendingX[1] == 30.0f, "Pending[1].X == 30");
+}
+
+/* APPEND: active + 새 waypoint 결합 */
+void Test_StartMissionUpload_Append(void)
+{
+    MAVLINK_BRIDGE_APP_RouteUpdateMirror_t Msg;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.RouteType      = 2U; /* ROUTE_OP_APPEND */
+    Msg.WaypointCount  = 2;
+    Msg.Waypoints[0].X = 50.0f; Msg.Waypoints[0].Y = 0.0f; Msg.Waypoints[0].Z = 5.0f;
+    Msg.Waypoints[1].X = 60.0f; Msg.Waypoints[1].Y = 0.0f; Msg.Waypoints[1].Z = 5.0f;
+
+    MAVLINK_BRIDGE_APP_Data.LinkState = MAVLINK_BRIDGE_LINK_CONNECTED;
+    MAVLINK_BRIDGE_APP_Data.IsArmed   = 0;
+    MAVLINK_BRIDGE_APP_Data.ActiveWaypointCount = 1;
+    MAVLINK_BRIDGE_APP_Data.ActiveWaypointX[0]  = 10.0f;
+    MAVLINK_BRIDGE_APP_Data.ActiveWaypointY[0]  = 0.0f;
+    MAVLINK_BRIDGE_APP_Data.ActiveWaypointZ[0]  = 5.0f;
+
+    MAVLINK_BRIDGE_APP_StartMissionUpload(&Msg);
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount, 3);
+    UtAssert_True(MAVLINK_BRIDGE_APP_Data.MissionPendingX[0] == 10.0f, "Pending[0]=Active[0]");
+    UtAssert_True(MAVLINK_BRIDGE_APP_Data.MissionPendingX[1] == 50.0f, "Pending[1]=new[0]");
+    UtAssert_True(MAVLINK_BRIDGE_APP_Data.MissionPendingX[2] == 60.0f, "Pending[2]=new[1]");
+}
+
+/* APPEND: active + 새 waypoint 합산이 MAX 초과 → 잘라냄 */
+void Test_StartMissionUpload_AppendTruncated(void)
+{
+    MAVLINK_BRIDGE_APP_RouteUpdateMirror_t Msg;
+    uint8 i;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.RouteType     = 2U; /* ROUTE_OP_APPEND */
+    Msg.WaypointCount = 4;
+    for (i = 0; i < 4; i++) { Msg.Waypoints[i].X = (float)(i + 100); }
+
+    MAVLINK_BRIDGE_APP_Data.LinkState           = MAVLINK_BRIDGE_LINK_CONNECTED;
+    MAVLINK_BRIDGE_APP_Data.IsArmed             = 0;
+    MAVLINK_BRIDGE_APP_Data.ActiveWaypointCount = (uint8)MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS - 1;
+    for (i = 0; i < MAVLINK_BRIDGE_APP_Data.ActiveWaypointCount; i++)
+    {
+        MAVLINK_BRIDGE_APP_Data.ActiveWaypointX[i] = (float)i;
+    }
+
+    MAVLINK_BRIDGE_APP_StartMissionUpload(&Msg);
+
+    /* max에서 잘려야 함 */
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount,
+                      (int32)MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS);
+}
+
+/* DELETE: active 뒤에서 N개 제거 */
+void Test_StartMissionUpload_Delete(void)
+{
+    MAVLINK_BRIDGE_APP_RouteUpdateMirror_t Msg;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.RouteType      = 3U; /* ROUTE_OP_DELETE */
+    Msg.WaypointCount  = 2;  /* 뒤에서 2개 삭제 */
+
+    MAVLINK_BRIDGE_APP_Data.LinkState           = MAVLINK_BRIDGE_LINK_CONNECTED;
+    MAVLINK_BRIDGE_APP_Data.IsArmed             = 0;
+    MAVLINK_BRIDGE_APP_Data.ActiveWaypointCount = 4;
+    MAVLINK_BRIDGE_APP_Data.ActiveWaypointX[0]  = 1.0f;
+    MAVLINK_BRIDGE_APP_Data.ActiveWaypointX[1]  = 2.0f;
+    MAVLINK_BRIDGE_APP_Data.ActiveWaypointX[2]  = 3.0f;
+    MAVLINK_BRIDGE_APP_Data.ActiveWaypointX[3]  = 4.0f;
+
+    MAVLINK_BRIDGE_APP_StartMissionUpload(&Msg);
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount, 2);
+    UtAssert_True(MAVLINK_BRIDGE_APP_Data.MissionPendingX[0] == 1.0f, "Pending[0]=Active[0]");
+    UtAssert_True(MAVLINK_BRIDGE_APP_Data.MissionPendingX[1] == 2.0f, "Pending[1]=Active[1]");
+}
+
+/* DELETE: 삭제 수 >= active → WpCount=0 (CLEAR_ALL만) */
+void Test_StartMissionUpload_DeleteAll(void)
+{
+    MAVLINK_BRIDGE_APP_RouteUpdateMirror_t Msg;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.RouteType     = 3U; /* ROUTE_OP_DELETE */
+    Msg.WaypointCount = 5;  /* active(3)보다 많음 */
+
+    MAVLINK_BRIDGE_APP_Data.LinkState           = MAVLINK_BRIDGE_LINK_CONNECTED;
+    MAVLINK_BRIDGE_APP_Data.IsArmed             = 0;
+    MAVLINK_BRIDGE_APP_Data.ActiveWaypointCount = 3;
+
+    MAVLINK_BRIDGE_APP_StartMissionUpload(&Msg);
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount, 0);
+}
+
+/* MISSION_ACK 성공 → Active 캐시 갱신 확인은 ParseMavlinkFrame 레벨에서
+ * 이뤄지므로 여기서는 StartMissionUpload가 Pending을 올바르게 설정하는지만 검증.
+ * (통합 검증은 Pi 실기 테스트에서 수행) */
+
+/* -----------------------------------------------------------------------
  * MissionQuery 테스트
  * ----------------------------------------------------------------------- */
 
@@ -492,6 +618,11 @@ void UtTest_Setup(void)
     ADD_TEST(StartMissionUpload_BlockedWhenArmed);
     ADD_TEST(StartMissionUpload_AllowedWhenDisarmed);
     ADD_TEST(StartMissionUpload_LinkNotConnectedBeforeArmedCheck);
+    ADD_TEST(StartMissionUpload_Replace);
+    ADD_TEST(StartMissionUpload_Append);
+    ADD_TEST(StartMissionUpload_AppendTruncated);
+    ADD_TEST(StartMissionUpload_Delete);
+    ADD_TEST(StartMissionUpload_DeleteAll);
     ADD_TEST(MissionQuery_LinkNotConnected);
     ADD_TEST(MissionQuery_Connected);
     ADD_TEST(MissionQuery_LengthCheckFail);

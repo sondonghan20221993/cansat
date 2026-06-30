@@ -40,10 +40,11 @@ typedef enum
 
 typedef enum
 {
-    UPLINK_APP_ROUTE_SEGMENT_NONE              = 0,
-    UPLINK_APP_ROUTE_SEGMENT_MISSION_EXTENSION = 1,
-    UPLINK_APP_ROUTE_SEGMENT_LANDING           = 2
-} UPLINK_APP_RouteSegmentType_t;
+    UPLINK_APP_ROUTE_OP_NONE    = 0,
+    UPLINK_APP_ROUTE_OP_REPLACE = 1,
+    UPLINK_APP_ROUTE_OP_APPEND  = 2,
+    UPLINK_APP_ROUTE_OP_DELETE  = 3
+} UPLINK_APP_RouteOpType_t;
 
 typedef enum
 {

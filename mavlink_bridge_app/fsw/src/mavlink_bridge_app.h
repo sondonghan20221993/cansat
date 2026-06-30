@@ -54,6 +54,11 @@ typedef struct
     float     MissionPendingX[MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS];
     float     MissionPendingY[MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS];
     float     MissionPendingZ[MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS];
+    float     ActiveWaypointX[MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS];
+    float     ActiveWaypointY[MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS];
+    float     ActiveWaypointZ[MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS];
+    uint8     ActiveWaypointCount;
+    uint8     ActiveWaypointPad[3];
     uint8     MissionDownloadState;
     uint8     MissionDownloadSeq;
     uint8     MissionDownloadExpectedCount;

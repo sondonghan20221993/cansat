@@ -236,13 +236,33 @@ bool UPLINK_APP_ParseRouteUpdatePayload(const UPLINK_APP_ProcessUplinkCmd_t *Cmd
 
     memcpy(Payload, Cmd->Payload, Cmd->PayloadLength);
 
-    if ((Payload->RouteType != UPLINK_APP_ROUTE_SEGMENT_MISSION_EXTENSION) &&
-        (Payload->RouteType != UPLINK_APP_ROUTE_SEGMENT_LANDING))
+    if ((Payload->RouteType != UPLINK_APP_ROUTE_OP_REPLACE) &&
+        (Payload->RouteType != UPLINK_APP_ROUTE_OP_APPEND) &&
+        (Payload->RouteType != UPLINK_APP_ROUTE_OP_DELETE))
     {
         return false;
     }
 
-    if ((Payload->WaypointCount == 0U) || (Payload->WaypointCount > UPLINK_APP_ROUTE_MAX_WAYPOINTS))
+    if (Payload->WaypointCount == 0U)
+    {
+        return false;
+    }
+
+    /* DELETE: WaypointCount = number to remove from end; no waypoint payload. */
+    if (Payload->RouteType == UPLINK_APP_ROUTE_OP_DELETE)
+    {
+        if (Payload->WaypointCount > UPLINK_APP_ROUTE_MAX_WAYPOINTS)
+        {
+            return false;
+        }
+        if ((size_t)Cmd->PayloadLength != 4U)
+        {
+            return false;
+        }
+        return true;
+    }
+
+    if (Payload->WaypointCount > UPLINK_APP_ROUTE_MAX_WAYPOINTS)
     {
         return false;
     }

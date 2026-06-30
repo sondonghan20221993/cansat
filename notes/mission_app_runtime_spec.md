@@ -1178,30 +1178,36 @@ route update payload는 최소한 다음 필드를 포함해야 한다.
 
 | 필드 | 형식 | 의미 | 검증 규칙 |
 | --- | --- | --- | --- |
-| `route_type` | `uint8` | `mission_extension` 또는 `landing` | 승인된 route type만 허용 |
+| `route_op` | `uint8` | 경로 연산 타입: `REPLACE=1`, `APPEND=2`, `DELETE=3` | 승인된 op 값만 허용 |
 | `route_version` | `uint8` | payload 버전 | 현재 지원 버전과 일치 |
-| `waypoint_count` | `uint8` | waypoint 개수 | `1` 이상 최대 waypoint 제한 이하 |
-| `waypoints` | waypoint 배열 | route segment 좌표 | finite, flyable area, altitude, segment distance 조건 충족 |
+| `waypoint_count` | `uint8` | REPLACE/APPEND: 신규 waypoint 개수; DELETE: 제거할 개수 | `1` 이상 최대 waypoint 제한 이하 (DELETE도 동일) |
+| `waypoints` | waypoint 배열 | route segment 좌표 (REPLACE/APPEND에만 존재) | finite, flyable area, altitude, segment distance 조건 충족 |
+
+연산 타입별 의미:
+- **REPLACE**: 기존 active route를 `waypoints` 배열로 완전 대체한다.
+- **APPEND**: `mavlink_bridge_app`의 active waypoint cache 뒤에 `waypoints`를 추가한다. 합계가 MAX를 초과하면 MAX에서 절단된다.
+- **DELETE**: active cache 끝에서 `waypoint_count`개를 제거한다. payload에 waypoint 데이터 없음 (`PayloadLength=4` 고정).
 
 route update baseline 수치 기준:
 
 - `MAX_ROUTE_WAYPOINT_COUNT = 16`
-- 인접 waypoint 간 3D 거리: `2m 이상 2m 이하`
+- 인접 waypoint 간 3D 거리: `2m 이상 2m 이하` (REPLACE/APPEND에 적용; DELETE는 좌표 없음)
 
 출력 계약:
 
 - 유효한 payload는 mission layer가 직접 사용할 수 있는 검증된 route segment 구조로 변환되어야 한다.
-- 최소 출력 필드는 `route_type`, `route_version`, `waypoint_count`, waypoint 배열이다.
+- 최소 출력 필드는 `route_op`, `route_version`, `waypoint_count`, waypoint 배열(REPLACE/APPEND)이다.
 - 현재 구현에서 내부 bus message를 사용하는 경우, 그 message는 raw payload copy가 아니라 검증된 구조 표현이어야 한다.
 
 거부 조건:
 
-- payload 길이 불일치
-- waypoint 수 위반
-- 좌표가 finite가 아님
-- 비행 가능 영역 위반
-- 고도 제약 위반
-- 인접 waypoint 거리 제약 위반
+- payload 길이 불일치 (DELETE는 4바이트, REPLACE/APPEND는 `4 + waypoint_count * 12`)
+- 승인되지 않은 `route_op` 값
+- waypoint 수 위반 (`0` 또는 MAX 초과)
+- 좌표가 finite가 아님 (REPLACE/APPEND)
+- 비행 가능 영역 위반 (REPLACE/APPEND)
+- 고도 제약 위반 (REPLACE/APPEND)
+- 인접 waypoint 거리 제약 위반 (REPLACE/APPEND)
 
 ##### 18.4.6.3 viewpoint update
 
@@ -1380,7 +1386,7 @@ counter management payload는 최소한 다음 필드를 포함해야 한다.
 
 ### 18.5.2 경로 및 viewpoint 명령 처리
 
-경로 수정 및 viewpoint 명령은 runtime configuration과 별도 경로로 처리해야 한다. `route update` 명령은 기존 임무 경로를 대체하는 명령이 아니라, 기존 경로 뒤에 추가 경로 segment를 이어 붙이는 명령으로 해석한다. 본 시스템은 최소한 `mission_extension`과 `landing`의 두 종류의 추가 경로 segment를 지원해야 한다.
+경로 수정 및 viewpoint 명령은 runtime configuration과 별도 경로로 처리해야 한다. `route update` 명령은 경로 연산 타입(`route_op`)에 따라 **전체 대체(REPLACE)**, **끝에 추가(APPEND)**, **끝에서 일부 제거(DELETE)** 중 하나로 처리된다. 세 연산 모두 `mavlink_bridge_app`을 통해 FC에 업로드되며, active waypoint cache는 업로드 성공 확인 시에만 갱신된다.
 
 처리 단계:
 
@@ -1570,12 +1576,14 @@ downlink 텔레메트리 상태는 `lora_tdm_app`의 책임이며
 
 `route` 명령 계약(지상 CLI 측):
 
-- 구문: `route <route_type> <x,y,z> [<x,y,z> ...]`, `route_type ∈ {mission, landing}`
-  (`mission_extension=1`, `landing=2`), waypoint는 LOCAL_NED meters, Z = AGL 양수.
+- 구문: `route <route_op> <x,y,z> [<x,y,z> ...]`
+  - `route_op ∈ {replace=1, append=2, delete=3}`.
+  - REPLACE/APPEND: waypoint를 LOCAL_NED meters로 나열, Z = AGL 양수.
+  - DELETE: waypoint 인수 없이 제거할 개수만 `waypoint_count`로 지정.
 - envelope 프레임: `UP,<version=1>,<command_class=2>,<sequence>,<flags>,<payload_hex>,<crc16_hex>`
   (config/recovery와 동일 형식, CRC16-CCITT 적용 범위도 동일).
-- route payload byte layout(little-endian): `route_type:u8, route_version:u8, waypoint_count:u8, reserved:u8`,
-  이어서 waypoint마다 `x:f32, y:f32, z:f32`. (`tools/uplink_route_update_sender.py`의 `build_route_payload`와 동일.)
+- route payload byte layout(little-endian): `route_op:u8, route_version:u8, waypoint_count:u8, reserved:u8`,
+  이어서 REPLACE/APPEND 시 waypoint마다 `x:f32, y:f32, z:f32`. DELETE는 헤더 4바이트만. (`tools/uplink_route_update_sender.py`의 `build_route_payload`와 동일.)
 - 검증 책임 경계: 지상 CLI는 형식/개수 등 최소 사전 점검만 수행하고, 권위 있는 검증은
   §18.4.4 원칙대로 `uplink_app`이 수행한다.
 - 송신 정책: config/recovery와 동일하게 4개 연속 downlink 슬롯 자동 재전송(§참조 운영 노트),
