@@ -50,6 +50,8 @@ void Test_CFS_CORE_APP_UpdateHealth_Nominal(void)
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 4900;
     CFS_CORE_APP_Data.UplinkAppState.Received    = true;
     CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs  = NowMs - 100;
+    CFS_CORE_APP_Data.LoraAppState.Received      = true;
+    CFS_CORE_APP_Data.LoraAppState.LastHkRxMs    = NowMs - 100;
 
     CFS_CORE_APP_UpdateHealth(NowMs, true);
 
@@ -93,6 +95,8 @@ void Test_CFS_CORE_APP_UpdateHealth_GpsStale(void)
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 4900;
     CFS_CORE_APP_Data.UplinkAppState.Received    = true;
     CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs  = NowMs - 100;
+    CFS_CORE_APP_Data.LoraAppState.Received      = true;
+    CFS_CORE_APP_Data.LoraAppState.LastHkRxMs    = NowMs - 100;
 
     CFS_CORE_APP_UpdateHealth(NowMs, true);
 
@@ -303,6 +307,8 @@ void Test_CFS_CORE_APP_UpdateHealth_NominalStabilization(void)
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = NowMs - 100;
     CFS_CORE_APP_Data.UplinkAppState.Received    = true;
     CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs  = NowMs - 100;
+    CFS_CORE_APP_Data.LoraAppState.Received      = true;
+    CFS_CORE_APP_Data.LoraAppState.LastHkRxMs    = NowMs - 100;
 
     /* Simulate LastHealthState = DEGRADED (coming from a fault) */
     CFS_CORE_APP_Data.LastHealthState = CFS_CORE_APP_HEALTH_DEGRADED;
@@ -320,6 +326,7 @@ void Test_CFS_CORE_APP_UpdateHealth_NominalStabilization(void)
     CFS_CORE_APP_Data.EkfState.TimestampMs          = NowMs + 5000 - 100;
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = NowMs + 5000 - 100;
     CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs     = NowMs + 5000 - 100;
+    CFS_CORE_APP_Data.LoraAppState.LastHkRxMs       = NowMs + 5000 - 100;
     CFS_CORE_APP_UpdateHealth(NowMs + 5000, true);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_DEGRADED);
 
@@ -330,6 +337,7 @@ void Test_CFS_CORE_APP_UpdateHealth_NominalStabilization(void)
     CFS_CORE_APP_Data.EkfState.TimestampMs          = NowMs + 10001 - 100;
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = NowMs + 10001 - 100;
     CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs     = NowMs + 10001 - 100;
+    CFS_CORE_APP_Data.LoraAppState.LastHkRxMs       = NowMs + 10001 - 100;
     CFS_CORE_APP_UpdateHealth(NowMs + 10001, true);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_NOMINAL);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.NominalEligibleSince,        0);
@@ -408,6 +416,8 @@ void Test_CFS_CORE_APP_UpdateHealth_HealthTransition(void)
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 4900;
     CFS_CORE_APP_Data.UplinkAppState.Received    = true;
     CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs  = NowMs - 100;
+    CFS_CORE_APP_Data.LoraAppState.Received      = true;
+    CFS_CORE_APP_Data.LoraAppState.LastHkRxMs    = NowMs - 100;
 
     /* NOMINAL==0 equals initial LastHealthState==0: no transition event */
     UT_CHECKEVENT_SETUP(&EventTest, CFS_CORE_APP_HEALTH_TRANSITION_EID, NULL);
@@ -1011,6 +1021,8 @@ void Test_CFS_CORE_APP_SaveState_OnTransition(void)
     CFS_CORE_APP_Data.EkfState.Valid                 = 1;
     CFS_CORE_APP_Data.UplinkAppState.Received    = true;
     CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs  = NowMs - 100;
+    CFS_CORE_APP_Data.LoraAppState.Received      = true;
+    CFS_CORE_APP_Data.LoraAppState.LastHkRxMs    = NowMs - 100;
 
     /* DEGRADED에서 시작 → NOMINAL로 전이 (즉시, LastHealthState가 NOMINAL이라면) */
     CFS_CORE_APP_Data.LastHealthState = CFS_CORE_APP_HEALTH_NOMINAL;
@@ -1166,6 +1178,8 @@ void Test_CFS_CORE_APP_UpdateHealth_GPS_Timeout(void)
     CFS_CORE_APP_Data.GpsState.Stale       = 0; /* stale 플래그 없음 — 순수 timeout */
     CFS_CORE_APP_Data.UplinkAppState.Received    = true;
     CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs  = NowMs - 100;
+    CFS_CORE_APP_Data.LoraAppState.Received      = true;
+    CFS_CORE_APP_Data.LoraAppState.LastHkRxMs    = NowMs - 100;
 
     CFS_CORE_APP_UpdateHealth(NowMs, true);
 
@@ -1197,6 +1211,8 @@ void Test_CFS_CORE_APP_UpdateHealth_RecoveryToNominal(void)
     CFS_CORE_APP_Data.EkfState.Valid                 = 1;
     CFS_CORE_APP_Data.UplinkAppState.Received    = true;
     CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs  = NowMs - 100;
+    CFS_CORE_APP_Data.LoraAppState.Received      = true;
+    CFS_CORE_APP_Data.LoraAppState.LastHkRxMs    = NowMs - 100;
 
     /* RECOVERY에서 복구 시작 */
     CFS_CORE_APP_Data.LastHealthState = CFS_CORE_APP_HEALTH_RECOVERY;
@@ -1214,6 +1230,7 @@ void Test_CFS_CORE_APP_UpdateHealth_RecoveryToNominal(void)
     CFS_CORE_APP_Data.GpsState.TimestampMs           = T5 - 100;
     CFS_CORE_APP_Data.EkfState.TimestampMs           = T5 - 100;
     CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs      = T5 - 100;
+    CFS_CORE_APP_Data.LoraAppState.LastHkRxMs        = T5 - 100;
     CFS_CORE_APP_UpdateHealth(T5, true);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_DEGRADED);
 
@@ -1225,6 +1242,7 @@ void Test_CFS_CORE_APP_UpdateHealth_RecoveryToNominal(void)
     CFS_CORE_APP_Data.GpsState.TimestampMs           = T10 - 100;
     CFS_CORE_APP_Data.EkfState.TimestampMs           = T10 - 100;
     CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs      = T10 - 100;
+    CFS_CORE_APP_Data.LoraAppState.LastHkRxMs        = T10 - 100;
     CFS_CORE_APP_UpdateHealth(T10, true);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_NOMINAL);
 }
@@ -1384,6 +1402,8 @@ void Test_CFS_CORE_APP_UpdateHealth_StabilityTimerReset(void)
     CFS_CORE_APP_Data.EkfState.Valid                 = 1;
     CFS_CORE_APP_Data.UplinkAppState.Received    = true;
     CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs  = NowMs - 100;
+    CFS_CORE_APP_Data.LoraAppState.Received      = true;
+    CFS_CORE_APP_Data.LoraAppState.LastHkRxMs    = NowMs - 100;
     CFS_CORE_APP_Data.LastHealthState                = CFS_CORE_APP_HEALTH_DEGRADED;
 
     /* 안정화 시작 */
@@ -1731,6 +1751,101 @@ void Test_CFS_CORE_APP_UpdateHealth_Priority_AttitudeOverUplink(void)
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.FaultCode, CFS_CORE_APP_FAULT_ATTITUDE_TIMEOUT);
 }
 
+/* lora_tdm HK 수신 → LoraAppState.Received=true, LastHkRxMs 갱신 */
+void Test_CFS_CORE_APP_ProcessStateMessage_LoraHk(void)
+{
+    typedef struct
+    {
+        CFE_MSG_TelemetryHeader_t TelemetryHeader;
+        uint8                     Pad[4];
+    } TEST_LoraHk_t;
+
+    uint8              Storage[sizeof(TEST_LoraHk_t)];
+    CFE_SB_Buffer_t   *Buffer;
+    CFE_SB_MsgId_t     MsgId;
+    TEST_LoraHk_t     *HkMsg;
+    CFE_TIME_SysTime_t FakeTime;
+
+    memset(Storage, 0, sizeof(Storage));
+    Buffer = (CFE_SB_Buffer_t *)Storage;
+    HkMsg  = (TEST_LoraHk_t *)Storage;
+    CFE_MSG_Init(CFE_MSG_PTR(HkMsg->TelemetryHeader),
+                 CFE_SB_ValueToMsgId(CFS_CORE_APP_LORA_HK_MID_VALUE),
+                 sizeof(*HkMsg));
+    MsgId = CFE_SB_ValueToMsgId(CFS_CORE_APP_LORA_HK_MID_VALUE);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+
+    FakeTime.Seconds    = 7;
+    FakeTime.Subseconds = 0;
+    UT_SetDataBuffer(UT_KEY(CFE_TIME_GetTime), &FakeTime, sizeof(FakeTime), false);
+
+    CFS_CORE_APP_Data.LoraAppState.Received   = false;
+    CFS_CORE_APP_Data.LoraAppState.LastHkRxMs = 0;
+
+    CFS_CORE_APP_ProcessStateMessage(Buffer);
+
+    UtAssert_BOOL_TRUE(CFS_CORE_APP_Data.LoraAppState.Received);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.LoraAppState.LastHkRxMs, 7000);
+}
+
+/* lora timeout → DEGRADED + FAULT_LORA_TIMEOUT (우선순위 6) */
+void Test_CFS_CORE_APP_UpdateHealth_LoraTimeout(void)
+{
+    uint32 NowMs = 10000;
+
+    /* bridge 정상 */
+    CFS_CORE_APP_Data.BridgeState.Received          = true;
+    CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = NowMs - 100;
+    /* EKF, Local, Attitude 정상 */
+    CFS_CORE_APP_Data.EkfState.Received    = true;
+    CFS_CORE_APP_Data.EkfState.TimestampMs = NowMs - 100;
+    CFS_CORE_APP_Data.EkfState.Valid       = 1;
+    CFS_CORE_APP_Data.LocalState.Received    = true;
+    CFS_CORE_APP_Data.LocalState.TimestampMs = NowMs - 100;
+    CFS_CORE_APP_Data.LocalState.Valid       = 1;
+    CFS_CORE_APP_Data.AttitudeState.Received    = true;
+    CFS_CORE_APP_Data.AttitudeState.TimestampMs = NowMs - 100;
+    CFS_CORE_APP_Data.AttitudeState.Valid       = 1;
+    /* uplink 정상 */
+    CFS_CORE_APP_Data.UplinkAppState.Received   = true;
+    CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs = NowMs - 100;
+    /* lora HK 미수신 → timeout */
+    CFS_CORE_APP_Data.LoraAppState.Received   = false;
+    CFS_CORE_APP_Data.LoraAppState.LastHkRxMs = 0;
+
+    CFS_CORE_APP_UpdateHealth(NowMs, true);
+
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_DEGRADED);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.FaultCode,   CFS_CORE_APP_FAULT_LORA_TIMEOUT);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.LoraStatus.TimedOut, 1);
+}
+
+/* 우선순위: uplink timeout이 lora timeout보다 높음 */
+void Test_CFS_CORE_APP_UpdateHealth_Priority_UplinkOverLora(void)
+{
+    uint32 NowMs = 10000;
+
+    CFS_CORE_APP_Data.BridgeState.Received          = true;
+    CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = NowMs - 100;
+    CFS_CORE_APP_Data.EkfState.Received    = true;
+    CFS_CORE_APP_Data.EkfState.TimestampMs = NowMs - 100;
+    CFS_CORE_APP_Data.EkfState.Valid       = 1;
+    CFS_CORE_APP_Data.LocalState.Received    = true;
+    CFS_CORE_APP_Data.LocalState.TimestampMs = NowMs - 100;
+    CFS_CORE_APP_Data.LocalState.Valid       = 1;
+    CFS_CORE_APP_Data.AttitudeState.Received    = true;
+    CFS_CORE_APP_Data.AttitudeState.TimestampMs = NowMs - 100;
+    CFS_CORE_APP_Data.AttitudeState.Valid       = 1;
+    /* uplink timed out */
+    CFS_CORE_APP_Data.UplinkAppState.Received   = false;
+    /* lora also timed out */
+    CFS_CORE_APP_Data.LoraAppState.Received     = false;
+
+    CFS_CORE_APP_UpdateHealth(NowMs, true);
+
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.FaultCode, CFS_CORE_APP_FAULT_UPLINK_TIMEOUT);
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(CFS_CORE_APP_ReportHousekeeping);
@@ -1793,6 +1908,9 @@ void UtTest_Setup(void)
     ADD_TEST(CFS_CORE_APP_ProcessStateMessage_UplinkHk);
     ADD_TEST(CFS_CORE_APP_UpdateHealth_UplinkTimeout);
     ADD_TEST(CFS_CORE_APP_UpdateHealth_Priority_AttitudeOverUplink);
+    ADD_TEST(CFS_CORE_APP_ProcessStateMessage_LoraHk);
+    ADD_TEST(CFS_CORE_APP_UpdateHealth_LoraTimeout);
+    ADD_TEST(CFS_CORE_APP_UpdateHealth_Priority_UplinkOverLora);
     ADD_TEST(CFS_CORE_APP_ServicePrototype);
     ADD_TEST(CFS_CORE_APP_ProcessViewpointCommand);
 }

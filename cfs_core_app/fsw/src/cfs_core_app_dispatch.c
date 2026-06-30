@@ -27,6 +27,7 @@ void CFS_CORE_APP_TaskPipe(CFE_SB_Buffer_t *SBBufPtr)
 
     if (CFE_SB_MsgIdToValue(MsgId) == CFS_CORE_APP_BRIDGE_HK_MID_VALUE ||
         CFE_SB_MsgIdToValue(MsgId) == CFS_CORE_APP_UPLINK_HK_MID_VALUE ||
+        CFE_SB_MsgIdToValue(MsgId) == CFS_CORE_APP_LORA_HK_MID_VALUE ||
         CFE_SB_MsgIdToValue(MsgId) == CFS_CORE_APP_FC_EKF_LOCAL_STATE_MID_VALUE ||
         CFE_SB_MsgIdToValue(MsgId) == CFS_CORE_APP_FC_ATTITUDE_STATE_MID_VALUE ||
         CFE_SB_MsgIdToValue(MsgId) == CFS_CORE_APP_FC_GPS_RAW_STATE_MID_VALUE ||

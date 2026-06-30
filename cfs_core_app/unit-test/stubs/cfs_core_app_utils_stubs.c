@@ -49,6 +49,18 @@ void CFS_CORE_APP_ProcessViewpointCommand(const CFS_CORE_APP_ViewpointCmdTlm_t *
     UT_GenStub_Execute(CFS_CORE_APP_ProcessViewpointCommand, Basic, NULL);
 }
 
+void CFS_CORE_APP_ProcessRecoveryCommand(const CFS_CORE_APP_RecoveryCmdTlm_t *Msg)
+{
+    UT_GenStub_AddParam(CFS_CORE_APP_ProcessRecoveryCommand, const CFS_CORE_APP_RecoveryCmdTlm_t *, Msg);
+    UT_GenStub_Execute(CFS_CORE_APP_ProcessRecoveryCommand, Basic, NULL);
+}
+
+void CFS_CORE_APP_ProcessModeCommand(const CFS_CORE_APP_ModeCmdTlm_t *Msg)
+{
+    UT_GenStub_AddParam(CFS_CORE_APP_ProcessModeCommand, const CFS_CORE_APP_ModeCmdTlm_t *, Msg);
+    UT_GenStub_Execute(CFS_CORE_APP_ProcessModeCommand, Basic, NULL);
+}
+
 void CFS_CORE_APP_LoadState(void)
 {
     UT_GenStub_Execute(CFS_CORE_APP_LoadState, Basic, NULL);
