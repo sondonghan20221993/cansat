@@ -7,7 +7,7 @@
 
 - `mavlink_bridge_app`
 - `cfs_core_app`
-- `downlink_app` (`lora_fc_downlink_app` 기반)
+- `lora_tdm_app`
 - `uplink_app`
 
 `telemetry_app`과 `img_app`은 현재 baseline app set에 포함하지 않는다.
@@ -15,7 +15,7 @@
 ## 목표
 
 - 단일 Raspberry Pi 환경에서 `native_std / cpu1`로 `cFS`를 안정적으로 실행한다.
-- MAVLink를 `FC -> Raspberry Pi -> mavlink_bridge_app -> lora_fc_downlink_app` 경로로 연결한다.
+- MAVLink를 `FC -> Raspberry Pi -> mavlink_bridge_app -> lora_tdm_app` 경로로 연결한다.
 - Windows 측에서 최종 수신 여부를 검증한다.
 
 ## 확인된 문제 요약
@@ -181,7 +181,7 @@ FC USB 연결에서는 `ATTITUDE`, `GLOBAL_POSITION_INT`, `GPS_RAW_INT`, `EKF_ST
   - `GPS_RAW_INT (24)`
   - `EKF_STATUS_REPORT (193)`
 
-### 8. CP2102 LoRa 포트 충돌 (lora_fc_downlink_app ↔ uplink_app)
+### 8. CP2102 LoRa 포트 충돌 (구 lora_fc_downlink_app ↔ uplink_app → lora_tdm_app으로 해결)
 
 `lora_fc_downlink_app`과 `uplink_app`이 동일한 CP2102 USB-UART 포트를 각각 직접 open했다.
 Linux는 같은 tty 동시 open을 막지 않아 `EBUSY` 없이 둘 다 열리지만, 수신 바이트를
@@ -203,7 +203,7 @@ Linux는 같은 tty 동시 open을 막지 않아 `EBUSY` 없이 둘 다 열리�
   쏘지 말고 큐에 적재 후, downlink 라인 수신 직후(= Pi RX 윈도우 열림) 그 슬롯에 송신해야 한다.
   SH가 FC 없이도 ~1Hz로 downlink되므로 슬롯은 항상 열린다. (상세: openMCT `openmct_bridge_notes.md`)
 
-### 9. lora_fc_downlink_app CommandPipe starvation (depth)
+### 9. CommandPipe starvation (구 lora_fc_downlink_app 기록; lora_tdm_app 동일 구조)
 
 `ServiceLoRa()`가 SB 메시지 핸들러(`ProcessInputMessage`) 안에서 TX 후 **300ms 블로킹
 RX 윈도우**를 도는 동안 SB 수신 루프가 멈춰 FC 스트림이 CommandPipe에 누적된다.
@@ -218,6 +218,21 @@ RX 윈도우**를 도는 동안 SB 수신 루프가 멈춰 FC 스트림이 Comma
 - `DEFAULT_LORA_FC_DOWNLINK_APP_PLATFORM_PIPE_DEPTH`를 **32**로 상향(cFS 최대 50 미만).
 - 근본 해결(블로킹 LoRa I/O를 SB 핸들러에서 분리)은 후속 과제로 남긴다.
 - 참고: cFS 파이프 depth 상한은 50. 이를 초과하면(과거 lora_tdm_app의 200) 즉시 종료된다.
+
+### 10. LoRa RX 윈도우 즉시 종료 버그
+
+LoRa 포트가 `VMIN=0/VTIME=0` 설정이라 데이터가 없으면 `read()`가 즉시 0을 반환한다.
+RX 윈도우 코드가 빈 read 시 즉시 `break`하면 윈도우가 열리자마자(UP 프레임이 RF로
+도착하기 전) 닫혀 uplink를 영영 수신하지 못한다.
+
+확인된 증상:
+
+- 지상국 4발 송신 확인인데 Pi `uplink_app` 로그에 아무 수신 기록 없음 (비대칭: downlink는 정상).
+
+해결 기준 (커밋 `cac209f`):
+
+- 빈 read 시 즉시 `break` 대신 `usleep(2ms)` 후 deadline까지 폴링 유지.
+- `lora_tdm_app_utils.c` `ServiceLoRa()` RX 윈도우.
 
 ## Raspberry Pi 재설정 절차
 
@@ -313,7 +328,7 @@ git submodule update --init --recursive
 apps/mavlink_bridge_app
 apps/cfs_core_app
 apps/uplink_app
-apps/lora_fc_downlink_app
+apps/lora_tdm_app
 ```
 
 ### 4. mission app 등록
@@ -341,7 +356,7 @@ apps/lora_fc_downlink_app
 
 기준:
 
-- `mav_bridge_app`, `cfs_core_app`, `uplink_app`, `lora_fc_downlink_app`는 수동 entry로 추가한다.
+- `mav_bridge_app`, `cfs_core_app`, `uplink_app`, `lora_tdm_app`는 수동 entry로 추가한다.
 - 자동 루프 목록에는 `lc`, `cf`, `ds`, `fm`, `hk`, `hs`, `mm`, `sc`, `md`, `cs`만 둔다.
 - `sbn` 계열은 baseline bring-up에서는 제외한다.
 
@@ -393,12 +408,16 @@ make native_std.install SIMULATION=native
 
 ### 12. 런타임 실행
 
-실행은 반드시 `cpu1` 디렉터리 안에서 한다.
+실행은 반드시 `cpu1` 디렉터리 안에서 **`sudo`로** 한다.
 
 ```bash
 cd ~/Desktop/cFS_clean/build-native_std/exe/cpu1
-./core-cpu1
+sudo ./core-cpu1
 ```
+
+> 비-root 실행 시 `OS_API_Init() failure`로 즉시 종료된다. 이전 sudo 실행이
+> `/dev/shm/osal:RAM`을 root 소유로 남기기 때문이며, 재부팅 없이도 발생한다.
+> **항상 sudo로 고정한다.**
 
 기대 결과:
 
@@ -535,3 +554,40 @@ PC에서는 최종 수신기 로그를 파일로 저장한다.
 - 같은 시간대에 PC에서도 반복 수신이 확인된다.
 - 최소 30초 동안 수신 공백이 없다.
 - 자세 또는 위치 변화 시 PC 측 값도 함께 변한다.
+
+## Uplink 통합 검증 절차
+
+지상국(OpenMCT) → LoRa → Pi `uplink_app`까지 명령 도달을 검증하는 절차.
+
+### 경로
+
+```
+OpenMCT CLI
+  → fc_serial_ws_server.py (슬롯정렬 + 자동 재전송)
+    → LoRa RF
+      → Pi CP2102 (lora_tdm_app 단독 소유)
+        → TDM RX 윈도우 → UPLINK_RAW_MID(0x1909) SB publish
+          → uplink_app → ProcessUplink → 대상앱 라우팅
+```
+
+반이중 TDM: Pi RX 윈도우는 downlink TX 직후 300ms만 열림.
+
+### 확인된 동작 (2026-06-15, b3d93dd)
+
+1. **재전송 슬롯 정렬 (완료)**: 단발 전송은 300ms RX 윈도우 타이밍 지터로 종종 미도달.
+   `fc_serial_ws_server.py`가 동일 프레임을 연속 4개 downlink 슬롯에 자동 재전송(`_UPLINK_RETX=4`).
+   `uplink_app`의 `IsSequenceAccepted`가 중복 seq를 거부 → 1발만 적용, 나머지 replay 무해.
+
+2. **RX 윈도우 폴링 (완료, cac209f)**: §10의 즉시 종료 버그 수정으로 UP 프레임 수신 가능.
+
+3. **GPS 분리 런타임 검증 (완료)**: health 전이가 `fault=1(BRIDGE_TIMEOUT)` 단일 원인만 발생.
+   `fault=5(GPS_STALE)` 전이 없음 → GPS가 health 게이트에서 완전 분리됨 실증.
+
+4. **uplink_app health-block 정책 확인**: FAILED(3)는 전 명령 차단, DEGRADED/RECOVERY도
+   CONFIG 차단. CONFIG는 **NOMINAL(0)에서만** 허용 → FC 링크 복구 후 NOMINAL 도달 필요.
+
+### 잔여 이슈
+
+- FC UART 링크 노이즈: `crc fail msgid=24/30`, stream request sysid 흔들림(1/31/58/90/245)
+  → bridge 간헐 stale → health NOMINAL 도달 불가 원인. 별도 해결 필요.
+- CONFIG 명령 최종 검증: NOMINAL 도달 후 CONFIG 1회 → `config activated` EVS 확인.

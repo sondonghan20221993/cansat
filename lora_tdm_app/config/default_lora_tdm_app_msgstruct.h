@@ -71,7 +71,7 @@ typedef struct
     uint8                   PayloadLength;
     uint8                   Flags;
     uint16                  Sequence;
-    uint16                  Reserved;
+    uint16                  Checksum; /* CRC-16/CCITT-FALSE over Version+CommandClass+PayloadLength+Flags+Sequence(LE)+Payload */
     uint8                   Payload[196]; /* LORA_TDM_APP_MAX_PAYLOAD_LENGTH */
 } LORA_TDM_APP_UplinkFwdCmd_t;
 

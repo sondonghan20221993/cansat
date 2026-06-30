@@ -33,7 +33,7 @@ void UPLINK_APP_TaskPipe(CFE_SB_Buffer_t *SBBufPtr)
         return;
     }
 
-    /* raw ground uplink frame forwarded by lora_fc_downlink_app (CP2102 owner):
+    /* raw ground uplink frame forwarded by lora_tdm_app (CP2102 owner):
      * parse the "UP,..." text here (app owns uplink semantics), then process. */
     if (CFE_SB_MsgIdToValue(MsgId) == UPLINK_APP_LORA_RAW_MID_VALUE)
     {

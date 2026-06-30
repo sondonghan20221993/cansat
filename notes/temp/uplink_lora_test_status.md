@@ -68,10 +68,20 @@ OpenMCT Uplink CLI
 - FC UART 링크 노이즈: `crc fail msgid=24/30`, `Parse/data error code=4`, stream request 대상
   sys가 1/31/58/90/245로 흔들림 → FC 시리얼 잡음. 깨진 프레임만 폐기되나 telemetry 간헐 + health 저하 원인.
 
-## 6. 다음 단계
-1. [대기] Pi 재빌드(`cac209f`) 후 CONFIG 1회 → `UPLINK_APP: command blocked ... class=1` 확인(문제 B 해결 검증).
-2. health=3 원인(FC 입력 누락) 해소 → NOMINAL → CONFIG `config activated` 적용 확인(문제 C).
-3. 확정 시 본 노트를 `notes/integration_steps.md` 해당 섹션으로 승격, temp 정리.
+## 6. 런타임 검증 결과 (2026-06-15, b3d93dd)
+- **실행 전제**: Pi에서 `sudo ./core-cpu1` 필수. 비-root 실행 시 `OS_API_Init() failure`
+  (이전 sudo 실행이 남긴 `/dev/shm/osal:RAM` root 소유). 앞으로 **항상 sudo**로 고정.
+- **GPS 분리 PASS**: `fault=5`(GPS_STALE) 전이 **부재**. health `0→2→3` 전부
+  **`fault=1`(BRIDGE_TIMEOUT)** 단일 원인 → GPS는 health 게이트에서 완전 분리됨(실증).
+- **잔여 차단 원인 = `fault=1` BRIDGE_TIMEOUT** (FC 텔레메트리 전체 stale). GPS 무관,
+  별도 작업(§5: FC UART `crc fail` / stream request 흔들림 해소 → bridge fresh).
+- CONFIG 적용(`config activated`)은 NOMINAL 필요 → FC 링크 복구 후 재검증.
+
+## 7. 다음 단계
+1. [별도] FC UART 링크 안정화 → bridge fresh → health NOMINAL 도달 (§5).
+2. NOMINAL 후 CONFIG 1회 → `config activated` 적용 확인(문제 C 최종 마감).
+3. 확정 시 본 노트를 `notes/integration_steps.md`로 승격, temp 정리.
+   integration_steps §11/§12 빌드·실행 절차 stale → 실제(cmake + sudo 실행)로 갱신.
 
 ## 7. 관련 위치
 - 드론: `lora_fc_downlink_app_utils.c`(RX 윈도우/ForwardUplinkFrame),

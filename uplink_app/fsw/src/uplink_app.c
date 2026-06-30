@@ -101,7 +101,7 @@ CFE_Status_t UPLINK_APP_Init(void)
         return Status;
     }
 
-    /* raw ground uplink frames forwarded by lora_fc_downlink_app (CP2102 owner) */
+    /* raw ground uplink frames forwarded by lora_tdm_app (CP2102 owner) */
     Status = CFE_SB_Subscribe(CFE_SB_ValueToMsgId(UPLINK_APP_LORA_RAW_MID_VALUE), UPLINK_APP_Data.CommandPipe);
     if (Status != CFE_SUCCESS)
     {

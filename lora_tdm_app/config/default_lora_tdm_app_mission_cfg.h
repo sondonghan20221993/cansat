@@ -33,4 +33,7 @@
 #define LORA_TDM_APP_PROTOCOL_VERSION          1
 #define LORA_TDM_APP_MAX_PAYLOAD_LENGTH        196
 
+/* uplink_app function code for forwarded UP frames (mirrors UPLINK_APP_PROCESS_UPLINK_CC) */
+#define LORA_TDM_APP_UPLINK_PROCESS_UPLINK_CC  2
+
 #endif

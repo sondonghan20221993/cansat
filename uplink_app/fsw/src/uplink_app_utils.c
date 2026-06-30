@@ -575,7 +575,7 @@ static int UPLINK_APP_HexNibble(char C)
 /* Parse a ground "UP,<ver>,<class>,<seq>,<flags>,<payloadhex>,<crc>" text frame
  * into a UPLINK_APP_ProcessUplinkCmd_t. CRC16 over the canonical prefix is
  * verified. Called from dispatch when a LoRa raw frame arrives over SB.
- * (Transport read is owned by lora_fc_downlink_app; parsing stays here.) */
+ * (Transport read is owned by lora_tdm_app; parsing stays here.) */
 bool UPLINK_APP_ParseLoRaFrame(const char *Line, UPLINK_APP_ProcessUplinkCmd_t *Out)
 {
     char   VersionStr[8], ClassStr[8], SeqStr[8], FlagsStr[8];

@@ -49,6 +49,7 @@ uplink_app           ←  UPLINK_APP_CMD_MID (lora_tdm_app SB) / UDP (테스트�
 | FC MISSION 재조회 (MISSION_QUERY_CC) | 구현됨 |
 | uplink_app 지속 상태 (SaveState/LoadState, atomic write) | 구현됨 |
 | lora_tdm_app LoRa TDM (TX downlink + RX UP frame → uplink_app SB 전달, bridge 프로세스 불필요) | 구현됨 |
+| lora_tdm_app UP 프레임 SB 전달 시 CFE_MSG_SetFcnCode 누락 버그 수정 (FcnCode=0→2) | 수정됨 (2026-06-22) |
 | cfs_core_app CFS_FAILED 상태 + bridge 자동 재시작 (최대 3회) | 구현됨 |
 | cfs_core_app 헬스 상태 파일 지속 (재시작 후 복원) | 구현됨 |
 | cfs_core_app 미래 타임스탬프 거부 | 구현됨 |
@@ -68,7 +69,6 @@ mavlink_bridge_app/   FC MAVLink 브리지 앱
 cfs_core_app/         상태 종합·헬스 관리 앱
 uplink_app/           지상국 uplink 처리 앱
 lora_tdm_app/         LoRa serial 독점 TDM 앱 (downlink TX + uplink RX)
-lora_fc_downlink_app/ [deprecated] lora_tdm_app으로 대체됨
 bridge/               Raspberry Pi host-side 브리지
                         lora_uplink_bridge.py     — [deprecated] lora_tdm_app으로 대체됨
                         lora_telemetry_bridge.py  — [deprecated] lora_tdm_app으로 대체됨

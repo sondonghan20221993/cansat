@@ -256,14 +256,29 @@ static void ProcessUpFrame(const char *Line, LORA_TDM_APP_Data_t *AppData)
     CFE_MSG_Init(CFE_MSG_PTR(FwdCmd.CommandHeader),
                  CFE_SB_ValueToMsgId(LORA_TDM_APP_UPLINK_APP_CMD_MID_VALUE),
                  sizeof(FwdCmd));
-    FwdCmd.Version      = Version;
-    FwdCmd.CommandClass = CommandClass;
+    CFE_MSG_SetFcnCode(CFE_MSG_PTR(FwdCmd.CommandHeader), LORA_TDM_APP_UPLINK_PROCESS_UPLINK_CC);
+    FwdCmd.Version       = Version;
+    FwdCmd.CommandClass  = CommandClass;
     FwdCmd.PayloadLength = (uint8)PayloadLen;
-    FwdCmd.Flags        = Flags;
-    FwdCmd.Sequence     = Seq;
+    FwdCmd.Flags         = Flags;
+    FwdCmd.Sequence      = Seq;
     if (PayloadLen > 0)
     {
         memcpy(FwdCmd.Payload, Payload, PayloadLen);
+    }
+
+    /* CRC-16/CCITT-FALSE over Version+CommandClass+PayloadLength+Flags+Sequence(LE)+Payload
+     * mirrors build_process_uplink_payload() in Python tools */
+    {
+        uint8 CrcBuf[6 + 196];
+        CrcBuf[0] = Version;
+        CrcBuf[1] = CommandClass;
+        CrcBuf[2] = (uint8)PayloadLen;
+        CrcBuf[3] = Flags;
+        CrcBuf[4] = (uint8)(Seq & 0xFF);
+        CrcBuf[5] = (uint8)(Seq >> 8);
+        if (PayloadLen > 0) { memcpy(&CrcBuf[6], Payload, PayloadLen); }
+        FwdCmd.Checksum = LORA_TDM_APP_Crc16(CrcBuf, 6 + PayloadLen);
     }
 
     CFE_SB_TransmitMsg(CFE_MSG_PTR(FwdCmd.CommandHeader), true);
