@@ -61,6 +61,7 @@
 | --- | --- | --- | --- |
 | `LORA_TDM_APP_CMD_MID_VALUE` | `0x18E0` | 명령 입력 (NOOP, RESET_COUNTERS) | `CFE_SB_Subscribe()` (기본) |
 | `LORA_TDM_APP_SEND_HK_MID_VALUE` | `0x18E1` | HK 게시 요청 | `CFE_SB_Subscribe()` (기본) |
+| `LORA_TDM_APP_DIAGNOSTIC_CMD_MID_VALUE` | `0x1910` | uplink_app 라우팅 diagnostic 명령 — payload 미해석, 링크 상태 요약 EVS만 출력 (2026-06-17 추가) | `CFE_SB_Subscribe()` (기본) |
 | `LORA_TDM_APP_SYSTEM_HEALTH_MID_VALUE` | `0x1904` | `cfs_core_app` 시스템 헬스 캐시 갱신 | `CFE_SB_SubscribeEx()`, MsgLim=20 **(예외)** |
 | `LORA_TDM_APP_FC_EKF_LOCAL_STATE_MID_VALUE` | `0x1905` | FC local position/velocity 캐시 갱신 | `CFE_SB_SubscribeEx()`, MsgLim=10 **(예외)** |
 | `LORA_TDM_APP_FC_ATTITUDE_STATE_MID_VALUE` | `0x1906` | FC attitude 캐시 갱신 | `CFE_SB_SubscribeEx()`, MsgLim=10 **(예외)** |
@@ -220,7 +221,48 @@ CRC 통과 시: `LORA_TDM_APP_UplinkFwdCmd_t` 구성 → `CFE_MSG_Init()` + `CFE
 - `PayloadLength = decoded_len`
 - `Payload[0..decoded_len-1] = decoded_bytes`
 
-## 10. 링크 상태 관리
+### 9.2 UFB (Uplink Feedback Byte) 코드 (Phase 3.3)
+
+downlink 패킷의 피드백 바이트(UFB)는 가장 최근 uplink 명령의 처리 결과를 지상국에 알린다 (§18.11.1 SEQ_FAIL).
+
+| UFB 코드 | 값 | 의미 | 발생 조건 |
+|---|---|---|---|
+| `UFB_OK` | 0 | 정상 수신 | uplink frame CRC/길이 검증 통과 |
+| `UFB_CRC_FAIL` | 1 | CRC 오류 | raw frame CRC mismatch, 길이 오류, framing 오류 |
+| `UFB_SEQ_FAIL` | 2 | 시퀀스 거부 | uplink_app의 `UPLINK_STATUS_MID`에서 `LastCommandResult == REJECT_SEQUENCE` (§18.10.1) |
+
+**구현 정책**:
+
+1. **기본 상태**: `PendingUplinkFeedback = UFB_OK` (boot 또는 성공 시)
+2. **CRC 오류 감지**: frame 검증 실패 시 `UFB_CRC_FAIL` 설정 (기존 구현)
+3. **시퀀스 거부 감지** (Phase 3.3 추가):
+   - lora_tdm_app이 `UPLINK_STATUS_MID` 구독
+   - `LastCommandResult == 3 (REJECT_SEQUENCE)`이면 `UFB_SEQ_FAIL` 설정
+4. **downlink 게시**: TDM slot에서 피드백 바이트 포함하여 전송
+
+**신호 흐름**:
+```
+uplink raw frame (lora_tdm_app RX)
+  ↓ [CRC검증]
+  ├─ CRC fail → PendingUplinkFeedback = UFB_CRC_FAIL
+  └─ CRC pass → uplink_app으로 forward
+           ↓
+      uplink_app (ProcessUplinkCommand)
+      [시퀀스검증] → UPLINK_STATUS_MID 발행
+           ↓ (lora_tdm_app 구독)
+      LastCommandResult = REJECT_SEQUENCE
+           ↓
+      PendingUplinkFeedback = UFB_SEQ_FAIL
+           ↓
+      downlink TDM slot에서 포함
+```
+
+**지상국 해석**:
+- UFB=OK: 명령이 수락되었거나, 현재 pending 명령이 없음
+- UFB=CRC_FAIL: 패킷 손상/framing 문제 → 재전송 권장
+- UFB=SEQ_FAIL: 명령의 sequence가 거부됨 → sequence 재설정 또는 recovery 필요
+
+## 11. 링크 상태 관리
 
 `UpdateLinkState(AppData, NowMs)`:
 
@@ -237,7 +279,7 @@ else:
 
 초기 상태: `LastAckTimestampMs = 0`, `NoAckCount = 0` → 앱 시작 직후 `elapsed > 5000`이므로 DISCONNECTED.
 
-## 11. HK 텔레메트리 (`LORA_TDM_APP_HkPayload_t`)
+## 12. HK 텔레메트리 (`LORA_TDM_APP_HkPayload_t`)
 
 `ReportHousekeeping()`이 게시하는 필드:
 
@@ -253,7 +295,7 @@ else:
 | TxCount, RxAckCount, RxCmdCount, RxErrorCount, NoAckCount | 카운터 |
 | LastAckTimestampMs | `LastAckTimestampMs` |
 
-## 12. 링크 상태 텔레메트리 (`LORA_TDM_APP_LinkStatusTlm_t`)
+## 17. 링크 상태 텔레메트리 (`LORA_TDM_APP_LinkStatusTlm_t`)
 
 `ReportLinkStatus()`가 게시하는 필드:
 
@@ -269,7 +311,7 @@ else:
 | RxAckCount | `RxAckCount` |
 | RxCmdCount | `RxCmdCount` |
 
-## 13. 이벤트 ID 목록
+## 17. 이벤트 ID 목록
 
 `lora_tdm_app/fsw/inc/lora_tdm_app_eventids.h` 기준 (코드 권위):
 
@@ -295,7 +337,7 @@ else:
 | 18 | `SB_SEND_ERR_EID` | ERROR | SB 메시지 송신 실패 | ✅ |
 | 19 | `DIAGNOSTIC_CMD_EID` | INFO | `DIAGNOSTIC_CMD_MID` 수신 (2026-06-17 추가) | ✅ |
 
-## 14. Serial 재열기 정책 <!-- 구 §13 -->
+## 17. Serial 재열기 정책 <!-- 구 §13 -->
 
 - `LoRaFd`는 초기화 시 `-1`로 설정한다.
 - `RunCycle()` 진입마다 `LoRaFd < 0`이면 `OpenSerial()` 시도.
@@ -303,7 +345,7 @@ else:
 - 성공 시 O_RDWR, 57600 baud, 8N1, no flow control, blocking 모드로 설정.
 - `RunTx()`와 `RunRxWindow()`는 `LoRaFd < 0`이면 즉시 반환한다.
 
-## 15. 설정 상수 <!-- 구 §14 -->
+## 17. 설정 상수 <!-- 구 §14 -->
 
 | 상수 | 값 | 의미 |
 | --- | --- | --- |
@@ -318,7 +360,7 @@ else:
 | `LORA_TDM_APP_LINK_CONNECTED` | `1` | 링크 상태: 정상 |
 | `LORA_TDM_APP_LINK_DEGRADED` | `2` | 링크 상태: 저하 |
 
-## 16. 미구현 항목 <!-- 구 §15 -->
+## 17. 미구현 항목 <!-- 구 §15 -->
 
 - `SEQ_FAIL` 경로: `UPLINK_FB_SEQ_FAIL` 상수가 정의되어 있으나, sequence 단조 증가 검증 및 피드백 전송 로직이 구현되지 않았다.
 - `PacketType` 전환 명령: 현재 외부 명령으로 `PacketType`을 전환하는 command code가 없다.

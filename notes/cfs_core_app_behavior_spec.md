@@ -17,7 +17,9 @@
 - timestamp/sequence 유효성 검사
 - `SYSTEM_HEALTH_MID` 출력 필드(per-input 상태 포함) 및 게시 타이밍
 - 헬스 상태 분류 로직 (NOMINAL/DEGRADED/RECOVERY/FAILED)
-- bridge, EKF, local-state, attitude-state 입력의 타임아웃 처리 (GPS는 헬스 비반영, 보고 전용 — §12.5)
+- bridge, EKF, local-state, attitude-state 입력의 타임아웃 처리 (GPS는 헬스 비반영, 보고 전용 — §12.7)
+- uplink_app / lora_tdm_app HK 수신 타임아웃 감시 (§12.5, §12.6, §13.6, §13.7)
+- RECOVERY_CMD_MID / MODE_CMD_MID 수신 처리 (§17)
 - bridge 타임아웃 시 `mavlink_bridge_app` 재시작 및 FAILED 에스컬레이션
 - `CONFIG_CMD_MID` 런타임 파라미터 적용 (pending/active 이중버퍼)
 - `VIEWPOINT_CMD_MID` 캐시
@@ -56,6 +58,8 @@
 - 입력이 없을 때 주기적으로 시스템 헬스 재계산
 - `SYSTEM_HEALTH_MID` 게시 (per-input 상태 구조 포함)
 - bridge 타임아웃 지속 시 `mavlink_bridge_app` 재시작 시도 (최대 3회) 및 FAILED 에스컬레이션
+- uplink_app·lora_tdm_app HK 수신 시각 추적, 5초 타임아웃 시 DEGRADED 보고 (자동 재시작 없음)
+- RECOVERY 명령(`RECOVERY_CMD_MID`) 수신 시 bridge 재시작 카운터 리셋, MODE 명령(`MODE_CMD_MID`) 수신 시 모드 값 캐시
 - config 명령으로 런타임 타임아웃/게시주기 파라미터 변경 (pending/active 이중버퍼)
 - viewpoint 명령 캐시
 - 헬스 상태를 파일에 영속화하여 재시작 후 복원
@@ -90,6 +94,8 @@
 | `CFS_CORE_APP_CMD_MID_VALUE` | `0x18C0` | 명령 입력 |
 | `CFS_CORE_APP_SEND_HK_MID_VALUE` | `0x18C1` | HK 요청 |
 | `CFS_CORE_APP_BRIDGE_HK_MID_VALUE` | `0x08A0` | Bridge HK 미러 입력 |
+| `CFS_CORE_APP_UPLINK_HK_MID_VALUE` | `0x08D0` | uplink_app HK 생존 감시 입력 |
+| `CFS_CORE_APP_LORA_HK_MID_VALUE` | `0x08E0` | lora_tdm_app HK 생존 감시 입력 |
 | `CFS_CORE_APP_FC_EKF_LOCAL_STATE_MID_VALUE` | `0x1905` | FC local-state 입력 |
 | `CFS_CORE_APP_FC_ATTITUDE_STATE_MID_VALUE` | `0x1906` | FC attitude-state 입력 |
 | `CFS_CORE_APP_FC_GPS_RAW_STATE_MID_VALUE` | `0x1907` | FC GPS-state 입력 |
@@ -97,6 +103,8 @@
 | `ROUTE_UPDATE_MID` | `0x190B` | 경로 갱신 입력 |
 | `VIEWPOINT_CMD_MID` | `0x190D` | viewpoint 명령 입력 |
 | `CONFIG_CMD_MID` | `0x190E` | 런타임 config 명령 입력 |
+| `RECOVERY_CMD_MID` | `0x190C` | 복구 명령 입력 (bridge 재시작 카운터 리셋) |
+| `MODE_CMD_MID` | `0x190F` | 모드 명령 입력 (모드 값 캐시) |
 
 구독은 단일 파이프 `CFS_CORE_CMD` (`CFS_CORE_APP_PLATFORM_PIPE_DEPTH = 16`)로 수신한다.
 
@@ -245,8 +253,8 @@ attitude/local/gps/ekf/bridge 타임아웃 및 게시 주기(`PROTOTYPE_PERIOD_M
 | `TimestampMs` | 게시 시점의 cFE 시간 (밀리초) |
 | `LastValidInputTimestampMs` | 수신된 attitude/local/GPS/EKF 캐시 중 최대 타임스탬프. 아무것도 수신되지 않은 경우 `NowMs` |
 | `HealthState` | `NOMINAL`, `DEGRADED`, `RECOVERY`, `FAILED` (bridge 타임아웃이 `FAILED_ESCALATION_MS` 초과 시 `FAILED`) |
-| `FaultCode` | `NONE`, `BRIDGE_TIMEOUT`, `EKF_INVALID`, `LOCAL_TIMEOUT`, `ATTITUDE_TIMEOUT` (※ `GPS_STALE`는 enum 유지하나 헬스 저하용으로 미사용 — §12.5) |
-| `AttitudeStatus` / `LocalStatus` / `GpsStatus` / `EkfStatus` | per-input 상태 구조: `Valid`, `Stale`, `ErrorCode`, `TimedOut`(만료 여부). GPS는 보고 전용으로 헬스 비반영 — §12.5 |
+| `FaultCode` | `NONE`, `BRIDGE_TIMEOUT(1)`, `EKF_INVALID(2)`, `LOCAL_TIMEOUT(4)`, `ATTITUDE_TIMEOUT(5)`, `UPLINK_TIMEOUT(6)`, `LORA_TIMEOUT(7)` (※ `GPS_STALE(3)`는 enum 유지하나 헬스 저하용으로 미사용 — §12.7) |
+| `AttitudeStatus` / `LocalStatus` / `GpsStatus` / `EkfStatus` | per-input 상태 구조: `Valid`, `Stale`, `ErrorCode`, `TimedOut`(만료 여부). GPS는 보고 전용으로 헬스 비반영 — §12.7 |
 | `BridgeStatus` | bridge 상태 구조: `LinkState`, `ErrorCode`, `TimedOut` |
 | `RecoveryRequested` | bridge 타임아웃 조건에서만 `1`, 그 외에는 `0` |
 
@@ -260,6 +268,8 @@ attitude/local/gps/ekf/bridge 타임아웃 및 게시 주기(`PROTOTYPE_PERIOD_M
 `cfs_core_app`은 다음 처리 직후 `SYSTEM_HEALTH_MID`를 즉시 게시한다.
 
 - bridge HK
+- uplink_app HK
+- lora_tdm_app HK
 - attitude state
 - local state
 - GPS state
@@ -377,14 +387,14 @@ GPS 가용성(만료 / `Valid == 0` / `Stale != 0`)은 **HealthState를 저하�
 대신:
 
 - GPS 상태는 `SYSTEM_HEALTH_MID`의 per-input 요약 필드(`GpsValid`)로 **계속 보고**한다(관측 가능).
-- 헬스 분류 우선순위 사다리(§12.1~12.4)에서 GPS 분기는 제거한다.
+- 헬스 분류 우선순위 사다리(§12.1~§12.6)에서 GPS 분기는 제거한다.
 - `CFS_CORE_APP_FAULT_GPS_STALE` enum은 호환을 위해 정의를 유지하되 HealthState 저하용으로는 더 이상 생성하지 않는다.
 
 ### 12.8 우선순위 7: 정상
 
 조건:
 
-- §12.1~12.4 조건 중 어느 것도 해당하지 않음 (bridge / EKF / local / attitude 모두 신선)
+- §12.1~§12.6 조건 중 어느 것도 해당하지 않음 (bridge / EKF / local / attitude / uplink HK / lora HK 모두 신선)
 - GPS 가용성은 NOMINAL 판정에 영향을 주지 않는다
 
 출력:
@@ -406,7 +416,7 @@ GPS 가용성(만료 / `Valid == 0` / `Stale != 0`)은 **HealthState를 저하�
 
 효과:
 
-- `RECOVERY` 생성 (단, 타임아웃이 `FAILED_ESCALATION_MS(30000)` 이상 지속되면 `FAILED`로 에스컬레이션 — §12.7)
+- `RECOVERY` 생성 (단, 타임아웃이 `FAILED_ESCALATION_MS(30000)` 이상 지속되면 `FAILED`로 에스컬레이션 — §12.9)
 - `FAULT_BRIDGE_TIMEOUT` 생성
 - `RecoveryRequested = 1` 설정
 - `BRIDGE_RESTART_INTERVAL_MS(5000)` 경과마다 `mavlink_bridge_app` 재시작 시도(`CFE_ES_RestartApp`), 최대 `BRIDGE_MAX_RESTARTS(3)`회. 시도 시 `BRIDGE_RESTART_EID` 발생 (§14.4)
@@ -427,7 +437,7 @@ GPS 가용성(만료 / `Valid == 0` / `Stale != 0`)은 **HealthState를 저하�
 - **HealthState 변화 없음** (DEGRADED를 생성하지 않음)
 - `GpsValid = 0`으로 per-input 요약 필드에 반영 (보고 전용)
 - `FaultCode`는 GPS 사유로 설정하지 않음
-- 근거 및 정책: §12.5 참조
+- 근거 및 정책: §12.7 참조
 
 ### 13.3 EKF invalid
 
@@ -613,6 +623,8 @@ mission route와 landing route는 독립적으로 캐시된다.
 
 - **`CONFIG_CMD_MID` (0x190E)** — 런타임 config 명령 (`CFS_CORE_APP_ProcessConfigCommand`). payload 헤더(`ConfigScope`/`ConfigVersion`/`ParameterId`/`ValueType`/`ValueLength`/`Checksum`) + `uint32` 값을 단계 검증: ① 길이 ② scope(`CONFIG_SCOPE=1`) ③ version(`CONFIG_VERSION=1`) ④ checksum ⑤ 값 범위(`PARAM_MIN_MS 100` ~ `PARAM_MAX_MS 60000`). 통과 시 `ActiveConfig` 기반 `PendingConfig`에 6개 파라미터(attitude/local/gps/ekf/bridge 타임아웃, publish 주기) 중 해당 항목 기록 → 교차 검증 → `PreviousConfig` 백업 후 `ActiveConfig`로 활성화, `ConfigGeneration` 증가. 각 실패는 `ConfigPendingState=REJECTED` + `LastConfigResult`(BAD_LENGTH/SCOPE/VERSION/CHECKSUM/VALUE/PARAM)로 기록. (§21.2)
 - **`VIEWPOINT_CMD_MID` (0x190D)** — viewpoint 명령 (`CFS_CORE_APP_ProcessViewpointCommand`). type/frame/X/Y/Z/Yaw/Pitch/HoldTime를 `ViewpointCmd` 캐시에 저장(`Valid=true`)하고 `VIEWPOINT_EID` 발생. 실제 실행은 미구현(캐시만).
+- **`RECOVERY_CMD_MID` (0x190C)** — 복구 명령 (`CFS_CORE_APP_ProcessRecoveryCommand`). payload 없이 무조건 `RecoveryStartMs=0`, `BridgeRestartCount=0` 리셋, `RecoveryRequestedCount` 증가, `RECOVERY_CMD_EID` 발생. `recovery_action`/`target_component` 구분 검증은 미구현 (mission spec §18.4.6.4는 목표 계약).
+- **`MODE_CMD_MID` (0x190F)** — 모드 명령 (`CFS_CORE_APP_ProcessModeCommand`). `Payload[0]`을 `LastModeValue`로 캐시하고 `MODE_CMD_EID` 발생. 실제 상태 전이·허용 전이 검증은 미구현.
 
 NOOP/RESET은 명령 길이 검사(`VerifyCmdLength`)로 유효성을 검사한다. 텔레메트리 상태 입력은 길이 검사를 하지 않는다. 알 수 없는 함수/MID는 명령 오류 카운터를 증가시킨다.
 
@@ -625,7 +637,8 @@ NOOP/RESET은 명령 길이 검사(`VerifyCmdLength`)로 유효성을 검사한�
 - 헬스 분류: NOMINAL, bridge Recovery, EKF invalid
 - local 타임아웃/invalid/stale → `FAULT_LOCAL_TIMEOUT`
 - attitude 타임아웃/invalid/stale → `FAULT_ATTITUDE_TIMEOUT`
-- GPS stale → 헬스 비저하(NOMINAL) 확인 (§12.5)
+- GPS stale → 헬스 비저하(NOMINAL) 확인 (§12.7)
+- uplink_app / lora_tdm_app HK 타임아웃 → `FAULT_UPLINK_TIMEOUT`/`FAULT_LORA_TIMEOUT` (`UpdateHealth_UplinkTimeout`, `UpdateHealth_LoraTimeout`)
 - FAILED 에스컬레이션 (bridge 타임아웃 30s 경과)
 - NOMINAL 안정화 타이머 (10s, `NominalStabilization`)
 - per-input status 필드 (`InputStatus`)
@@ -653,7 +666,7 @@ NOOP/RESET은 명령 길이 검사(`VerifyCmdLength`)로 유효성을 검사한�
 | --- | --- | --- | --- |
 | CORE-RUN-001 | 정상 | bridge HK와 모든 FC 상태가 `Valid=1`, `Stale=0`으로 신선하게 도착 | `SYSTEM_HEALTH_MID`가 `NOMINAL`, `FAULT_NONE`, `RecoveryRequested=0` 보고 |
 | CORE-RUN-002 | Bridge 타임아웃 | bridge HK 갱신을 `3000 ms` 이상 중단 | `SYSTEM_HEALTH_MID`가 `RECOVERY`, `FAULT_BRIDGE_TIMEOUT`, `RecoveryRequested=1` 보고 |
-| CORE-RUN-003 | GPS stale 플래그 (헬스 비반영) | 신선한 bridge, attitude, local, EKF 전달; GPS `Stale=1`(또는 `Valid=0`) 설정 | `SYSTEM_HEALTH_MID`가 **`NOMINAL`, `FAULT_NONE`** 보고, `GpsValid=0` 반영 (GPS는 헬스 저하 안 함 — §12.5) |
+| CORE-RUN-003 | GPS stale 플래그 (헬스 비반영) | 신선한 bridge, attitude, local, EKF 전달; GPS `Stale=1`(또는 `Valid=0`) 설정 | `SYSTEM_HEALTH_MID`가 **`NOMINAL`, `FAULT_NONE`** 보고, `GpsValid=0` 반영 (GPS는 헬스 저하 안 함 — §12.7) |
 | CORE-RUN-004 | GPS 타임아웃 (헬스 비반영) | bridge와 EKF 관련 입력은 신선하게 유지하면서 GPS 갱신을 `3000 ms` 이상 중단 | `SYSTEM_HEALTH_MID`가 **`NOMINAL`, `FAULT_NONE`** 보고, `GpsValid=0` 반영 |
 | CORE-RUN-005 | EKF invalid 플래그 | 다른 입력은 신선하게 유지하면서 EKF `Valid=0` 설정 | `SYSTEM_HEALTH_MID`가 `DEGRADED`, `FAULT_EKF_INVALID` 보고 |
 | CORE-RUN-006 | Local 타임아웃 | bridge, attitude, GPS, EKF는 신선하게 유지하면서 local-state 갱신을 `2000 ms` 이상 중단 | `SYSTEM_HEALTH_MID`가 `DEGRADED`, `FAULT_LOCAL_TIMEOUT` 보고 |
@@ -685,7 +698,7 @@ EVS 이벤트는 `HealthState` 값이 변경될 때마다 발생하며, 형식�
 
 다음 항목은 이전에 미구현으로 나열됐으나 현재 구현 완료되었다.
 
-- `FAILED` 헬스 출력 상태 → bridge 타임아웃 `FAILED_ESCALATION_MS(30000)` 초과 시 생성 (§12.7)
+- `FAILED` 헬스 출력 상태 → bridge 타임아웃 `FAILED_ESCALATION_MS(30000)` 초과 시 생성 (§12.9)
 - 시퀀스 중복/역행/갭 감지 → `SEQ_ERR_EID`/`SEQ_GAP_EID`, `SeqRejectedCount`/`SeqGapCount` (§7.1)
 - 미래 타임스탬프 거부 → `TIMESTAMP_ERR_EID`, `TimestampRejectedCount` (§7.1)
 - bridge 앱 능동 재시작 → `CFE_ES_RestartApp`, 최대 `BRIDGE_MAX_RESTARTS(3)`회 (§14.4)
@@ -790,7 +803,9 @@ Pi 런타임 로그 노출 여부는 EVS 필터 설정에 따라 달라질 수 �
 | EKF 타임아웃/무효/stale | DEGRADED | FAULT_EKF_INVALID (2) |
 | Local 타임아웃/무효/stale | DEGRADED | FAULT_LOCAL_TIMEOUT (4) |
 | Attitude 타임아웃/무효/stale | DEGRADED | FAULT_ATTITUDE_TIMEOUT (5) |
-| GPS 불가용 | (헬스 비반영) | `GpsStatus.TimedOut=1` 보고만, FaultCode 미설정 — §12.5. `FAULT_GPS_STALE(3)` enum은 정의되나 미생성 |
-| Bridge 타임아웃 30s 초과 | FAILED | FAULT_BRIDGE_TIMEOUT (1) — §12.7 |
+| uplink_app HK 타임아웃 (5s) | DEGRADED | FAULT_UPLINK_TIMEOUT (6) |
+| lora_tdm_app HK 타임아웃 (5s) | DEGRADED | FAULT_LORA_TIMEOUT (7) |
+| GPS 불가용 | (헬스 비반영) | `GpsStatus.TimedOut=1` 보고만, FaultCode 미설정 — §12.7. `FAULT_GPS_STALE(3)` enum은 정의되나 미생성 |
+| Bridge 타임아웃 30s 초과 | FAILED | FAULT_BRIDGE_TIMEOUT (1) — §12.9 |
 
 이전 버전에서 local/attitude/EKF 조건이 모두 `FAULT_EKF_INVALID`로 통합되었던 동작은 A2에서 수정되었다.

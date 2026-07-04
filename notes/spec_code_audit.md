@@ -85,7 +85,7 @@
 ## 4. 교차 통합 패스 ↔ `mission_app_runtime_spec.md`
 
 **배포 baseline (`mission_defs/cpu1_cfe_es_startup.scr`, 2026-06-16 갱신)**: `mav_bridge_app`(prio50), `cfs_core_app`(55), `uplink_app`(57), **`lora_tdm_app`(58, `lora_fc_dl_app` 대체)** + lab apps(ci/to/sch).
-→ **`lora_tdm_app`·`telemetry_app`·`img_app`은 startup 미등록(미배포)**.
+→ **`lora_fc_downlink_app`·`telemetry_app`·`img_app`은 startup 미등록(미배포)**. (`lora_tdm_app`은 2026-06-16부터 startup 등록·배포됨 — 구 문장의 `lora_tdm_app` 표기는 오기, 2026-07-05 정정)
 
 **uplink_app 명령 라우팅 MID (uplink_app/config)**: `UPLINK_STATUS 0x190A`, `ROUTE_UPDATE 0x190B`, `RECOVERY_CMD 0x190C`, `VIEWPOINT_CMD 0x190D`, `CONFIG_CMD 0x190E`, `MODE_CMD 0x190F`, `DIAGNOSTIC_CMD 0x1910`, `UPLINK_APP_LORA_RAW 0x1909`, HK `0x08D0`.
 
@@ -115,18 +115,18 @@
 | `0x08A0` | `MAVLINK_BRIDGE_APP_HK_TLM` | mavlink_bridge_app | ✅ |
 | `0x08C0` | `CFS_CORE_APP_HK_TLM` | cfs_core_app | ✅ |
 | `0x08D0` | `UPLINK_APP_HK_TLM` | uplink_app | ✅ |
-| `0x08E0` | `LORA_TDM_APP_HK_TLM` | lora_tdm_app | 미배포 |
+| `0x08E0` | `LORA_TDM_APP_HK_TLM` | lora_tdm_app | ✅ (2026-06-16 배포) |
 | `0x18A0/A1` | `MAVLINK_BRIDGE_APP_CMD/SEND_HK` | mavlink_bridge_app | ✅ |
-| `0x18B0/B1` | `LORA_FC_DOWNLINK_APP_CMD/SEND_HK` (topic-id) | lora_fc_downlink_app | ✅ |
+| `0x18B0/B1` | `LORA_FC_DOWNLINK_APP_CMD/SEND_HK` (topic-id) | lora_fc_downlink_app | 미배포 (2026-06-16 startup 제거) |
 | `0x18C0/C1` | `CFS_CORE_APP_CMD/SEND_HK` | cfs_core_app | ✅ |
 | `0x18D0/D1` | `UPLINK_APP_CMD/SEND_HK` | uplink_app | ✅ |
-| `0x18E0/E1` | `LORA_TDM_APP_CMD/SEND_HK` | lora_tdm_app | 미배포 |
+| `0x18E0/E1` | `LORA_TDM_APP_CMD/SEND_HK` | lora_tdm_app | ✅ (2026-06-16 배포) |
 | `0x1904` | `SYSTEM_HEALTH_MID` | cfs_core_app | ✅ |
 | `0x1905` | `FC_EKF_LOCAL_STATE_MID` | mavlink_bridge_app | ✅ |
 | `0x1906` | `FC_ATTITUDE_STATE_MID` | mavlink_bridge_app | ✅ |
 | `0x1907` | `FC_GPS_RAW_STATE_MID` | mavlink_bridge_app | ✅ |
 | `0x1908` | `FC_EKF_STATUS_MID` | mavlink_bridge_app | ✅ |
-| `0x1909` | `UPLINK_APP_LORA_RAW_MID` (= `LORA_FC_DOWNLINK..._UPLINK_RAW`) | lora_fc_downlink_app→uplink_app | ✅ |
+| `0x1909` | `UPLINK_APP_LORA_RAW_MID` (= `LORA_FC_DOWNLINK..._UPLINK_RAW`) | lora_fc_downlink_app→uplink_app | 레거시 (uplink 구독만 잔존, publisher 없음 — lora_tdm은 0x18D0 직접 전달) |
 | `0x190A` | `UPLINK_STATUS_MID` | uplink_app | ✅ |
 | `0x190B` | `ROUTE_UPDATE_MID` | uplink_app→cfs_core/mavlink_bridge | ✅ |
 | `0x190C` | `RECOVERY_CMD_MID` | uplink_app → **cfs_core_app** (2026-06-17 구독 추가, §4-7 해소) | ✅ |
@@ -134,7 +134,7 @@
 | `0x190E` | `CONFIG_CMD_MID` | uplink_app→cfs_core/mavlink_bridge | ✅ |
 | `0x190F` | `MODE_CMD_MID` | uplink_app → **cfs_core_app** (2026-06-17 구독 추가, §4-7 해소) | ✅ |
 | `0x1910` | `DIAGNOSTIC_CMD_MID` | uplink_app → **lora_tdm_app** (2026-06-17 구독 추가, §4-7 해소) | ✅ |
-| `0x1911` | `LORA_TDM_APP_LINK_STATUS_MID` (구 `0x190F`, 충돌 해소 재할당) | lora_tdm_app | 미배포 |
+| `0x1911` | `LORA_TDM_APP_LINK_STATUS_MID` (구 `0x190F`, 충돌 해소 재할당) | lora_tdm_app | ✅ (2026-06-16 배포) |
 
 > `0x190C`~`0x1910` 라우팅 명령 MID와 `0x1909`는 `mission_app_runtime_spec.md` MID 표에 미수록(§4-2). `0x190F` 이중 할당은 §4-1.
 

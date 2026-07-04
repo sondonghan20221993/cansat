@@ -332,6 +332,13 @@ CFE_Status_t LORA_TDM_APP_Init(void)
         return Status;
     }
 
+    Status = CFE_SB_Subscribe(CFE_SB_ValueToMsgId(LORA_TDM_APP_UPLINK_STATUS_MID_VALUE),
+                               LORA_TDM_APP_Data.CommandPipe);
+    if (Status != CFE_SUCCESS)
+    {
+        return Status;
+    }
+
     CFE_MSG_Init(CFE_MSG_PTR(LORA_TDM_APP_Data.HkTlm.TelemetryHeader),
                  CFE_SB_ValueToMsgId(LORA_TDM_APP_HK_TLM_MID_VALUE),
                  sizeof(LORA_TDM_APP_Data.HkTlm));

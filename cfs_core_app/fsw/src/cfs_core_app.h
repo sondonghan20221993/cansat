@@ -86,7 +86,8 @@ typedef struct
     uint32                      NominalEligibleSince;
     uint32                      RecoveryStartMs;
     uint32                      RecoveryRequestedCount;
-    uint8                       LastModeValue;
+    uint8                       CurrentModeState;
+    uint32                      LastModeRequestToken;
     uint32                      RunStatus;
     uint32                      SequenceCounter;
     uint32                      PublishCount;

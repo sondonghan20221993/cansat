@@ -75,4 +75,16 @@ typedef struct
     uint8                   Payload[196]; /* LORA_TDM_APP_MAX_PAYLOAD_LENGTH */
 } LORA_TDM_APP_UplinkFwdCmd_t;
 
+/* DIAGNOSTIC_CMD_MID (0x1910) received from uplink_app */
+typedef struct
+{
+    CFE_MSG_TelemetryHeader_t TelemetryHeader;
+    uint32                    Seq;
+    uint32                    TimestampMs;
+    uint16                    SourceSequence;
+    uint8                     DiagAction;
+    uint8                     DiagTarget;
+    uint32                    RequestToken;
+} LORA_TDM_APP_DiagnosticCmdTlm_t;
+
 #endif

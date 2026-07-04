@@ -417,11 +417,43 @@ void LORA_TDM_APP_UpdateCacheFromMsg(CFE_SB_Buffer_t *SBBufPtr, LORA_TDM_APP_Dat
 
 void LORA_TDM_APP_ProcessDiagnosticCommand(CFE_SB_Buffer_t *SBBufPtr)
 {
-    (void)SBBufPtr;
+    const LORA_TDM_APP_DiagnosticCmdTlm_t *Msg = (const LORA_TDM_APP_DiagnosticCmdTlm_t *)SBBufPtr;
+
     LORA_TDM_APP_Data.CmdCounter++;
-    CFE_EVS_SendEvent(LORA_TDM_APP_DIAGNOSTIC_CMD_EID, CFE_EVS_EventType_INFORMATION,
-                      "LORA_TDM_APP: diag cmd link=%u noack=%lu dlseq=%lu",
-                      (unsigned int)LORA_TDM_APP_Data.LinkState,
-                      (unsigned long)LORA_TDM_APP_Data.NoAckCount,
-                      (unsigned long)LORA_TDM_APP_Data.DownlinkSeq);
+
+    switch (Msg->DiagAction)
+    {
+        case LORA_TDM_APP_DIAG_ACTION_LINK_STATUS:
+            CFE_EVS_SendEvent(LORA_TDM_APP_DIAGNOSTIC_CMD_EID, CFE_EVS_EventType_INFORMATION,
+                              "LORA_TDM_APP: diag LINK_STATUS seq=%u link=%u noack=%lu dlseq=%lu token=%lu",
+                              (unsigned int)Msg->SourceSequence, (unsigned int)LORA_TDM_APP_Data.LinkState,
+                              (unsigned long)LORA_TDM_APP_Data.NoAckCount,
+                              (unsigned long)LORA_TDM_APP_Data.DownlinkSeq,
+                              (unsigned long)Msg->RequestToken);
+            break;
+
+        case LORA_TDM_APP_DIAG_ACTION_RX_STATS:
+            CFE_EVS_SendEvent(LORA_TDM_APP_DIAGNOSTIC_CMD_EID, CFE_EVS_EventType_INFORMATION,
+                              "LORA_TDM_APP: diag RX_STATS seq=%u rxcmd=%lu rxack=%lu rxerr=%u token=%lu",
+                              (unsigned int)Msg->SourceSequence,
+                              (unsigned long)LORA_TDM_APP_Data.RxCmdCount,
+                              (unsigned long)LORA_TDM_APP_Data.RxAckCount,
+                              (unsigned int)LORA_TDM_APP_Data.RxErrorCount,
+                              (unsigned long)Msg->RequestToken);
+            break;
+
+        case LORA_TDM_APP_DIAG_ACTION_TX_STATS:
+            CFE_EVS_SendEvent(LORA_TDM_APP_DIAGNOSTIC_CMD_EID, CFE_EVS_EventType_INFORMATION,
+                              "LORA_TDM_APP: diag TX_STATS seq=%u txcount=%lu token=%lu",
+                              (unsigned int)Msg->SourceSequence,
+                              (unsigned long)LORA_TDM_APP_Data.TxCount,
+                              (unsigned long)Msg->RequestToken);
+            break;
+
+        default:
+            CFE_EVS_SendEvent(LORA_TDM_APP_DIAGNOSTIC_CMD_EID, CFE_EVS_EventType_ERROR,
+                              "LORA_TDM_APP: diag UNKNOWN action=%u seq=%u",
+                              (unsigned int)Msg->DiagAction, (unsigned int)Msg->SourceSequence);
+            break;
+    }
 }

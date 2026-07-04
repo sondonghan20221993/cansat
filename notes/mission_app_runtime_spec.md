@@ -788,7 +788,7 @@ FC, 모터 또는 액추에이터 명령 및 비행 제어 매개변수
 > cFS health는 Pi/cFS 통신·파이프라인 상태(§15)이며 GPS fix는 센서/비행 조건이므로 health 게이트의 입력이 아니다.
 > GPS no-fix는 실내/프리플라이트에서 정상 발생하며, 이를 DEGRADED로 처리하면 GPS와 무관한 비위험 uplink 명령(CONFIG/DIAGNOSTIC)까지 차단되어 운용이 막힌다.
 > 따라서 `DEGRADED_GPS`는 폐지하고, GPS 상태는 `GpsValid` per-input 필드로 **보고만** 한다.
-> (구현 상세: `cfs_core_app_behavior_spec.md` §12.5)
+> (구현 상세: `cfs_core_app_behavior_spec.md` §12.7)
 
 ## 16. 테스트 요구 사항
 
@@ -1106,6 +1106,19 @@ route update의 downstream 경계는 다음과 같이 고정한다.
 
 `target_id`가 wire format에 독립 필드로 존재하지 않는 경우, `command_class`와 `payload` 내부의 첫 필드 조합으로 대상 기능을 판별할 수 있다. 그러나 구현은 입력 계약 문서에 대상 식별 방식이 명시되어 있지 않은 payload를 수락해서는 안 된다.
 
+**Flags 비트 정의** (§18.4.3.1):
+
+| Bit | 이름 | 의미 | 정의 시점 |
+|---|---|---|---|
+| [7:6] | `AUTH_LEVEL` | 요청 권한 수준 | §18.11 권한 검증 (Phase 3.2) |
+| [5:0] | 예약 | 향후 확장용 | 0으로 설정 |
+
+`AUTH_LEVEL` 값:
+- `0b00` (0): Level 1 (읽기 전용, NOOP/DIAGNOSTIC)
+- `0b01` (1): Level 2 (구성 명령, runtime cfg/route/viewpoint update)
+- `0b10` (2): Level 3 (복구 명령, recovery/mode/counter management)
+- `0b11` (3): 예약
+
 `uplink_app`은 transport-specific raw frame을 직접 표준 envelope으로 간주해서는 안 된다. LoRa ASCII frame, UDP mock frame, 또는 동등한 승인된 transport-specific 입력은 먼저 transport 계층에서 framing/CRC를 처리한 뒤 표준 envelope으로 변환되어야 한다.
 
 #### 18.4.4 transport 계층과 `uplink_app` 책임 경계
@@ -1258,6 +1271,10 @@ recovery payload는 최소한 다음 필드를 포함해야 한다.
 - 현재 상태에서 금지된 recovery action
 - 권한 부족
 
+> **구현 상태 (2026-07-05)**: 본 계약은 목표 사양이며 현재 구현은 스텁 수준이다.
+> `uplink_app`의 `ForwardRecoveryCommand`는 payload를 **버리고** 헤더(Seq/TimestampMs/SourceSequence)만 `RECOVERY_CMD_MID(0x190C)`로 publish한다 — `recovery_action`/`target_component`/`reason_code`/`request_token`이 소비자에게 전달되지 않는다.
+> `cfs_core_app`의 `ProcessRecoveryCommand`는 action 구분 없이 무조건 bridge 재시작 카운터 리셋만 수행한다.
+
 ##### 18.4.6.5 mode command
 
 mode payload는 최소한 다음 필드를 포함해야 한다.
@@ -1278,6 +1295,8 @@ mode payload는 최소한 다음 필드를 포함해야 한다.
 - 현재 cFS 상태에서 허용되지 않는 전이
 - 권한 부족
 - 승인되지 않은 목표 상태
+
+> **구현 상태 (2026-07-05)**: 본 계약은 목표 사양이다. 현재 `cfs_core_app`의 `ProcessModeCommand`는 `Payload[0]`을 `LastModeValue`로 캐시하고 EVS만 발생 — `mode_action`/`requested_state`/`request_token` 검증, 허용 전이 판단, 실제 모드 전이는 모두 미구현.
 
 ##### 18.4.6.6 diagnostic command
 
@@ -1300,6 +1319,8 @@ diagnostic payload는 최소한 다음 필드를 포함해야 한다.
 - payload 형식 불일치
 - 현재 상태에서 금지된 진단 동작
 
+> **구현 상태 (2026-07-05)**: 본 계약은 목표 사양이다. 현재 구독자 `lora_tdm_app`의 `ProcessDiagnosticCommand`는 payload를 해석하지 않고(`(void)SBBufPtr`) 링크 상태 요약 EVS(`DIAGNOSTIC_CMD_EID`)만 출력 — `diag_action`/`diag_target`/`diag_value` 처리 미구현.
+
 ##### 18.4.6.7 counter management
 
 counter management payload는 최소한 다음 필드를 포함해야 한다.
@@ -1321,7 +1342,53 @@ counter management payload는 최소한 다음 필드를 포함해야 한다.
 - 권한 부족
 - 최소 보고 시작 상태에서 금지된 범위
 
-#### 18.4.7 명령 클래스별 라우팅 대상
+#### 18.4.7 Request Token 계약
+
+**목적**: `request_token` 필드의 역할, 수명 주기, 지상국-탑재 앱 간 계약을 명확히 하여 인증·재설계 단계에서의 혼동을 방지한다.
+
+**적용 범위**: recovery command, mode command 페이로드에 포함된 `request_token` uint32 필드.
+
+##### 기본 역할
+
+`request_token`은 지상국이 생성한 불투명한 요청-응답 상관 식별자이다.
+
+- **생성자**: 지상국(Ground Station) — 명령 전송 시 임의의 uint32 값 선택
+- **전송**: uplink 명령 페이로드(RECOVERY/MODE/DIAGNOSTIC payload)에 포함
+- **탑재 앱 처리**: 값을 해석·검증하지 않으며, 그대로 저장
+- **응답**: 명령 결과를 게시하는 downlink 텔레메트리(`RecoveryCmdTlm_t`, `ModeCmdTlm_t`, `DiagnosticCmdTlm_t`)에 그대로 echo
+- **지상국 수신**: downlink 텔레메트리의 echo token과 자신이 전송한 token을 비교하여 "이 결과가 내 명령에 대한 응답인가"를 확인
+
+##### 미사용 값 약정
+
+- `request_token = 0`은 "추적 불필요(fire-and-forget)" 의미로 예약한다. 지상국은 0을 명령에 담을 수 있지만, 별도의 echo 확인 메커니즘 없이 단순 전송만 수행한다.
+- 추적이 필요한 명령은 항상 0이 아닌 값을 사용한다.
+
+##### Replay 방어와의 관계
+
+`request_token`과 **command sequence** (§17.10)는 상보적이지만 **역할이 다르다**:
+
+- **Command Sequence** (§17.10): 탑재 앱이 관리하는 단조 증가 카운터. 중복 또는 감소한 sequence를 가진 명령은 `uplink_app`이 frame 검증 단계에서 거부한다. 역할: **replay 공격 방어**.
+- **Request Token** (본 섹션): 지상국이 관리하는 추적용 opaque 값. 탑재 앱은 검증하지 않으며, downlink echo만 제공한다. 역할: **요청-응답 상관성 확인**.
+
+replay 방어는 sequence에 전적으로 의존하며, token 값 유무와 무관하다. token을 이용한 별도의 anti-replay 메커니즘은 구현하지 않는다.
+
+##### 인증·서명과의 관계
+
+`request_token`은 인증 메커니즘과 무관하다:
+
+- 본 token 필드는 지상국이 임의로 설정할 수 있으며, 탑재 앱이 검증하지 않으므로 암호학적 보증이 불가능하다.
+- 인증(Authenticity/Authorization)이 필요한 경우 Phase 3.2(권한 검증)에서 별도의 프레임 헤더 Flags 또는 보안 필드를 사용한다.
+- payload 내부 per-command token에 HMAC 서명을 포함시키지 않는다. 이는 명령 클래스마다 인증 로직을 분산시키고, 일부 명령(예: ROUTE_UPDATE)은 인증 대상에서 벗어나는 일관성 문제를 야기한다.
+
+##### 구현 요구사항
+
+1. **Downlink 텔레메트리에 echo 필드 포함** — RecoveryCmdTlm_t, ModeCmdTlm_t, DiagnosticCmdTlm_t의 RequestToken 필드에 수신한 값을 그대로 할당.
+2. **탑재 앱은 token 값에 따라 동작을 변경하지 않음** — 예: "token이 0이면 명령 거부" 같은 로직 금지. token은 메타데이터일 뿐.
+3. **지상국 통신 계층에서 echo 확인** — downlink 수신 시 echo token과 전송 token을 비교하여 상관성 판정. 이는 지상국 CI의 책임.
+
+---
+
+#### 18.4.8 명령 클래스별 라우팅 대상
 
 각 명령 클래스는 최소한 다음 라우팅 기본값을 가져야 한다.
 
@@ -1337,7 +1404,7 @@ counter management payload는 최소한 다음 필드를 포함해야 한다.
 
 구현은 `command_class`만으로 모든 라우팅을 고정해서는 안 되며, 필요한 경우 `target_id` 또는 payload 내부 대상 식별자를 함께 사용해야 한다.
 
-#### 18.4.8 명령 클래스별 최소 테스트 케이스
+#### 18.4.9 명령 클래스별 최소 테스트 케이스
 
 각 명령 클래스는 최소한 다음 테스트 케이스를 가져야 한다.
 
@@ -1477,12 +1544,11 @@ cFS 상태 및 운영자 인증 수준은 전환을 허용합니다. `uplink_app
 
 `uplink_app`은(는) 승인된 호스트로부터 전달된 표준 uplink envelope을 소비하는 역할을 담당한다. transport-specific 입력은 LoRa 직렬, 지상국 무선 링크, 또는 다른 승인된 채널일 수 있으나, Section 18.4.4의 transport 계층이 이를 표준 envelope으로 변환한 뒤 `uplink_app`에 전달해야 한다.
 
-> **[2026-06-14 현재 구현 상태]**
-> - **활성 경로**: `PC LoRa (COM7) → RF → Pi /dev/ttyUSB0 → lora_uplink_bridge.py → UDP:1234 → CI_LAB → uplink_app`
-> - `lora_uplink_bridge.py` (Python, Pi에서 실행)가 transport 계층 역할을 담당.
-> - `uplink_app`의 `ServiceLoRa()` 직접 serial 경로(CP2102 O_RDONLY)는 **비활성화 권고**.
->   이유: `lora_fc_downlink_app`이 같은 CP2102를 O_RDWR로 독점 오픈하여 바이트 분산 발생.
->   참조: `uplink_app/README.md §LoRa serial 직접 경로`
+> **[2026-07-05 현재 구현 상태]** (구 2026-06-14 서술 대체 — `lora_tdm_app` 배포 전환 반영)
+> - **활성 경로**: `지상국 LoRa → RF → Pi LoRa serial → lora_tdm_app (TDM RX 300ms 창) → UPLINK_APP_CMD_MID(0x18D0, PROCESS_UPLINK_CC=2) SB 전달 → uplink_app`
+> - `lora_tdm_app`이 transport 계층 역할(serial 독점 소유, framing/CRC16 검증)을 담당 (2026-06-16 배포 전환, `lora_uplink_bridge.py` 대체).
+> - 테스트용 UDP 경로(`UDP:1234 → CI_LAB → uplink_app`)는 병행 유지.
+> - `uplink_app`의 `ServiceLoRa()` 직접 serial 경로는 **코드에서 제거됨**. 레거시 `UPLINK_APP_LORA_RAW_MID(0x1909)` 구독은 코드에 남아 있으나 현행 배포에서 이 MID를 publish하는 앱은 없다.
 
 `uplink_app` 운송 책임:
 
@@ -1526,17 +1592,110 @@ downlink 텔레메트리 상태는 `lora_tdm_app`의 책임이며
 | --- | --- |
 | `CFS_NOMINAL` | 승인된 모든 명령 클래스를 수락하고 라우팅한다. |
 | `CFS_DEGRADED` | 명령을 수락하고 전달하되, 정상 상태가 필요한 명령은 거부한다. |
-| `CFS_RECOVERY` | 진단 및 상태 확인 명령만 허용하고, 설정 변경 및 모드 관련 명령은 차단한다. |
+| `CFS_RECOVERY` | 진단 명령과 복구 명령만 허용하고, 설정 변경 및 모드 관련 명령은 차단한다. |
+| `CFS_FAILED` | 진단 명령과 복구 명령만 허용한다. **지상 개입(복구 명령) 경로는 어떤 헬스 상태에서도 차단하지 않는다.** (2026-07-05 정책 확정 — FAILED 고착 데드락 해소) |
 | 최소 보고 시작 | 카운터 재설정 및 진단 명령만 허용하며, 그 외 명령 클래스는 차단한다. |
+
+#### 18.10.1 구현된 health-block 매트릭스 (코드 기준, 2026-07-05)
+
+`uplink_app`은 `SYSTEM_HEALTH_MID`를 구독해 `CfsHealthState`를 캐시하고, 라우팅 직전 다음 정책으로 차단한다 (`uplink_app_cmds.c`).
+
+| HealthState | 차단 정책 |
+| --- | --- |
+| `NOMINAL(0)` | 전 클래스 허용 |
+| `DEGRADED(1)` | `VIEWPOINT`, `CONFIG` 차단. `ROUTE_UPDATE` 등 나머지 클래스 허용 |
+| `RECOVERY(2)` | `RECOVERY`, `DIAGNOSTIC` 허용. 나머지 차단 |
+| `FAILED(3)` | `RECOVERY`, `DIAGNOSTIC` 허용. 나머지 차단 |
+| **health 미수신** | **부팅 fail-safe: 첫 `SYSTEM_HEALTH_MID` 수신 전 모든 클래스 차단** |
+
+차단 시 `REJECT_STATE` 결과, `RejectedCount` 증가, `UPLINK_APP_STATE_BLOCK_EID` EVS 발생.
+
+> **✅ 정책 확정 및 코드 반영 완료 (2026-07-05 Phase 3.1)**:
+> - `RECOVERY(2)`/`FAILED(3)` 상태에서 **RECOVERY class(4)와 DIAGNOSTIC class(6)를 허용**하도록 변경하여 데드락 해소. 이제 bridge 타임아웃으로 FAILED에 고착되어도 지상국 RECOVERY 명령이 통과.
+> - **부팅 fail-safe 추가**: health 미수신 상태(부팅 직후)에 모든 명령을 차단. `CfsHealthReceived=false`일 때는 `SYSTEM_HEALTH_MID` 수신 대기.
+> - 코드 변경: `uplink_app_cmds.c` (라인 94 이전 조건 반전 + fail-safe 블록 추가), EVS 메시지 분리 (health 미수신 vs 상태 기반 차단).
+> - 단위 테스트 (미실행, build-ut 환경 부재): `FailSafeBootBlocksAll`, `AllowedRecoveryDiagnosticInFailed` 계열.
 
 ### 18.11 `uplink_app`에 대한 미해결 항목
 
 현재 baseline 구현에서 추가로 세분화가 필요한 항목은 다음과 같다.
 
-- 명령 클래스별 기본 권한 수준은 Section 17.5에서 고정했으며, 개별 command code별 권한 매핑 표만 추가로 작성하면 된다.
+- ✅ 명령 클래스별 기본 권한 수준은 Section 17.5에서 고정했으며, §18.11.1에서 권한 검증 정책 확정 (Phase 3.2 완료 예정).
 - 시퀀스 번호 정책은 strict monotonic increase로 고정했으며, wraparound 허용 여부와 허용 시간 창은 추가 확장 시에만 세분화한다.
 - 명령 라우팅은 Section 17.6과 Section 18.4.7에서 baseline target을 고정했으며, 세부 command code별 MID 매핑 표만 추가하면 된다.
 - 업링크 packet 형식과 version 정책은 Section 18.4.3의 envelope과 현재 `version=1` 기준을 사용한다.
+
+### 18.11.1 권한 검증 정책 (Phase 3.2)
+
+**목적**: 명령 클래스별 기본 권한 수준을 넘어, 지상국이 보내는 개별 명령의 권한 수준을 검증하여 무인증 네트워크에서도 기본적인 출처 제어를 제공한다.
+
+#### 명령 클래스별 권한 수준 맵핑
+
+| 명령 클래스 | 코드 | 권한 수준 | 근거 |
+|---|---|---|---|
+| `NOOP` | 0 | Level 1 | §17.5: 읽기 전용 |
+| `runtime configuration` | 1 | Level 2 | §17.5: 구성 명령 |
+| `route update` | 2 | Level 2 | §17.5: 경로 업데이트 |
+| `viewpoint update` | 3 | Level 2 | §17.5: 뷰포인트 업데이트 |
+| `recovery command` | 4 | Level 3 | §17.5: 복구 명령 |
+| `diagnostic command` | 5 | Level 1 | §17.5 미명시, RECOVERY/FAILED에서도 허용 → 낮은 권한 |
+| `counter management` | 6 | Level 3 | §17.5: 파괴적 동작 |
+| `mode command` | 7 | Level 3 | §17.5: 복구 명령 |
+
+#### 권한 검증 규칙
+
+**기본 규칙**: 요청의 권한 수준 ≥ 명령 클래스 요구 수준
+
+```c
+uint8 auth_level = (Cmd->Flags >> 6) & 0x3;  // Bits[7:6]
+uint8 required_level = get_class_required_level(Cmd->CommandClass);
+
+if (auth_level < required_level) {
+    REJECT("AUTHZ_BLOCK: insufficient auth");
+    EVS: "UPLINK_APP: command blocked (insufficient auth) auth=%u required=%u class=%u seq=%u"
+    return;
+}
+```
+
+**Level 3 추가 제약**: recovery command, mode command, counter management는 request_token ≠ 0 필수
+
+```c
+if (required_level == 3) {
+    // 명령별 payload에서 RequestToken/request_token 필드 파싱
+    if (request_token == 0) {
+        REJECT("AUTHZ_BLOCK: Level 3 requires non-zero token");
+        return;
+    }
+}
+```
+
+#### 구현 위치 및 통합
+
+**Code 위치**: `uplink_app_cmds.c` ProcessUplinkCommand()
+- 현재 위치: health-block → [NEW: 권한 검증] → command class 라우팅
+- 검증 순서: (1) health-block, (2) 권한 검증, (3) class별 상세 검증
+
+**EVS 이벤트**:
+- 새 EID: `UPLINK_APP_AUTHZ_BLOCK_EID`
+- 메시지: `"UPLINK_APP: command blocked (insufficient auth) auth=%u required=%u class=%u seq=%u"`
+
+**Request Token 연계** (§18.4.7):
+- Level 3 명령의 request_token은 §18.4.7 기본안에 따라 지상국이 채번한 불투명 값
+- 탑재 앱은 token 유무만 검증 (값 해석 없음)
+- token echo는 명령 결과 텔레메트리에 포함 (이미 구현)
+
+#### 테스트 케이스 (통합 테스트용, 단위테스트 미실행)
+
+| 시나리오 | 요청 권한 | 명령 클래스 | 부가 조건 | 결과 | EVS |
+|---|---|---|---|---|---|
+| **정상**: L2 request, L2 class | 1 | route_update | — | ✅ 허용 | 없음 |
+| **정상**: L3 request, L3 class | 2 | recovery | token≠0 | ✅ 허용 | 없음 |
+| **정상**: L3 upward compat | 2 | diagnostic(L1) | — | ✅ 허용 | 없음 |
+| **오류**: 권한 부족 | 0 | runtime_config(L2) | — | ❌ 거부 | AUTHZ_BLOCK |
+| **오류**: L2 → L3 | 1 | recovery(L3) | — | ❌ 거부 | AUTHZ_BLOCK |
+| **오류**: L3 token=0 | 2 | counter_mgmt(L3) | token=0 | ❌ 거부 | AUTHZ_BLOCK |
+
+---
 
 ### 18.12 추가 고려사항
 
@@ -1554,7 +1713,7 @@ downlink 텔레메트리 상태는 `lora_tdm_app`의 책임이며
 - persistent state integrity: boot counter, command sequence cache, route cache, active configuration 저장본의 checksum 또는 CRC 오류 처리 정책을 고려해야 한다.
 - route/config 적용 원자성: route update 또는 configuration 변경이 일부만 적용된 상태로 남지 않도록 atomic apply 또는 rollback 필요성을 고려해야 한다.
 - 복구 중 허용 명령: `CFS_RECOVERY` 또는 최소 보고 상태에서 허용되는 명령 클래스의 최소 집합을 별도로 검토해야 한다.
-- 권한 또는 출처 검증: sequence/replay 검증과 별도로, 명령 출처와 권한 수준을 어떻게 결합할지 검토해야 한다.
+- ✅ 권한 검증: §18.11.1에서 명령 클래스별 권한 수준 및 검증 규칙 확정 (Phase 3.2 구현 진행 중).
 
 ### 18.13 지상 Uplink CLI 명령 표면
 
@@ -1610,3 +1769,69 @@ route 생성·전송은 다음 두 가지를 반영하도록 확장한다(현재
 2. **절대 고도 고려**: 현재 Z는 Home(0,0) 기준 상대 고도(AGL)다. 향후 **절대 고도**(MSL 또는
    절대 frame, 예: `MAV_FRAME_GLOBAL_RELATIVE_ALT`/global) 입력·해석을 함께 지원하도록 설계한다.
    route payload에 고도 frame 식별을 추가하고, mavlink_bridge 업로드 frame과 정합시킨다.
+
+---
+
+### 18.14 배포 구성 및 테스트 빌드 (Phase 3.4)
+
+**목표**: 운영 환경(배포)과 개발 환경(테스트)의 startup script를 분리하여 배포 보안 강화 (CI_LAB 제거).
+
+#### 배포 빌드 (production)
+
+**파일**: `cpu1_cfe_es_startup.scr` (기본값)
+
+```
+CFE_LIB, cfe_assert, ...
+CFE_LIB, sample_lib, ...
+CFE_APP, mav_bridge_app, ...
+CFE_APP, cfs_core_app, ...
+CFE_APP, uplink_app, ...
+CFE_APP, lora_tdm_app, ...
+CFE_APP, to_lab, ...        (CI_LAB 제거 ✅)
+CFE_APP, sch_lab, ...
+```
+
+**정책**:
+- CI_LAB 미포함 → localhost UDP 1234 테스트 경로 비활성화
+- LoRa + uplink_app 공식 경로만 활성
+- 공격 표면 최소화
+
+**사용 환경**: 실 배포(무인기, 지상국 운영)
+
+#### 테스트 빌드 (development/testing)
+
+**파일**: `cpu1_cfe_es_startup_test.scr` (신규 추가)
+
+```
+CFE_LIB, cfe_assert, ...
+CFE_LIB, sample_lib, ...
+CFE_APP, mav_bridge_app, ...
+CFE_APP, cfs_core_app, ...
+CFE_APP, uplink_app, ...
+CFE_APP, lora_tdm_app, ...
+CFE_APP, ci_lab, ...         (CI_LAB 포함 ✅)
+CFE_APP, to_lab, ...
+CFE_APP, sch_lab, ...
+```
+
+**정책**:
+- CI_LAB 포함 → localhost UDP 1234 테스트 경로 활성
+- `tools/query_fc_mission.py`, `tools/uplink_*.py` 등 테스트 도구 사용 가능
+- 개발·통합테스트·CI 자동화에 사용
+
+**사용 환경**: 개발, 단위테스트, 통합테스트, CI/CD 파이프라인
+
+#### 빌드 선택
+
+| 시나리오 | Startup Script | CI_LAB | 비고 |
+|---|---|---|---|
+| 실 배포 | `cpu1_cfe_es_startup.scr` | ❌ | 운영 환경, 보안 강화 |
+| 로컬 테스트 | `cpu1_cfe_es_startup_test.scr` | ✅ | UDP 1234 로컬 명령 가능 |
+| CI/CD 자동화 | `cpu1_cfe_es_startup_test.scr` | ✅ | `query_fc_mission.py` 등 사용 |
+| 하드웨어 검증 | `cpu1_cfe_es_startup.scr` | ❌ | LoRa 실제 하드웨어 경로만 |
+
+#### 구현 상태
+
+✅ **완료** (2026-07-05 Phase 3.4):
+- `cpu1_cfe_es_startup.scr`: CI_LAB 제거
+- `cpu1_cfe_es_startup_test.scr`: 신규 작성 (CI_LAB 포함)

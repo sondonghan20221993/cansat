@@ -335,6 +335,15 @@ bool UPLINK_APP_ForwardRecoveryCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
     RecoveryTlm.TimestampMs    = UPLINK_APP_Data.LastRxTimeMs;
     RecoveryTlm.SourceSequence = Cmd->Sequence;
 
+    if (Cmd->PayloadLength >= 8U)
+    {
+        RecoveryTlm.RecoveryAction   = Cmd->Payload[0];
+        RecoveryTlm.TargetComponent  = Cmd->Payload[1];
+        RecoveryTlm.ReasonCode       = (uint16)Cmd->Payload[2] | ((uint16)Cmd->Payload[3] << 8);
+        RecoveryTlm.RequestToken     = (uint32)Cmd->Payload[4] | ((uint32)Cmd->Payload[5] << 8) |
+                                       ((uint32)Cmd->Payload[6] << 16) | ((uint32)Cmd->Payload[7] << 24);
+    }
+
     CFE_SB_TimeStampMsg(CFE_MSG_PTR(RecoveryTlm.TelemetryHeader));
     return (CFE_SB_TransmitMsg(CFE_MSG_PTR(RecoveryTlm.TelemetryHeader), true) == CFE_SUCCESS);
 }
@@ -375,10 +384,13 @@ bool UPLINK_APP_ForwardModeCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
     ModeTlm.Seq            = UPLINK_APP_Data.SequenceCounter + 1U;
     ModeTlm.TimestampMs    = UPLINK_APP_Data.LastRxTimeMs;
     ModeTlm.SourceSequence = Cmd->Sequence;
-    ModeTlm.PayloadLength  = Cmd->PayloadLength;
-    if (Cmd->PayloadLength > 0)
+
+    if (Cmd->PayloadLength >= 6U)
     {
-        memcpy(ModeTlm.Payload, Cmd->Payload, Cmd->PayloadLength);
+        ModeTlm.ModeAction     = Cmd->Payload[0];
+        ModeTlm.RequestedState = Cmd->Payload[1];
+        ModeTlm.RequestToken   = (uint32)Cmd->Payload[2] | ((uint32)Cmd->Payload[3] << 8) |
+                                 ((uint32)Cmd->Payload[4] << 16) | ((uint32)Cmd->Payload[5] << 24);
     }
 
     CFE_SB_TimeStampMsg(CFE_MSG_PTR(ModeTlm.TelemetryHeader));
@@ -396,10 +408,13 @@ bool UPLINK_APP_ForwardDiagnosticCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cm
     DiagTlm.Seq            = UPLINK_APP_Data.SequenceCounter + 1U;
     DiagTlm.TimestampMs    = UPLINK_APP_Data.LastRxTimeMs;
     DiagTlm.SourceSequence = Cmd->Sequence;
-    DiagTlm.PayloadLength  = Cmd->PayloadLength;
-    if (Cmd->PayloadLength > 0)
+
+    if (Cmd->PayloadLength >= 6U)
     {
-        memcpy(DiagTlm.Payload, Cmd->Payload, Cmd->PayloadLength);
+        DiagTlm.DiagAction   = Cmd->Payload[0];
+        DiagTlm.DiagTarget   = Cmd->Payload[1];
+        DiagTlm.RequestToken = (uint32)Cmd->Payload[2] | ((uint32)Cmd->Payload[3] << 8) |
+                               ((uint32)Cmd->Payload[4] << 16) | ((uint32)Cmd->Payload[5] << 24);
     }
 
     CFE_SB_TimeStampMsg(CFE_MSG_PTR(DiagTlm.TelemetryHeader));

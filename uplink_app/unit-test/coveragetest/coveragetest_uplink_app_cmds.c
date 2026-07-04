@@ -552,6 +552,52 @@ void Test_UPLINK_APP_ProcessUplink_BlockedFailed(void)
     UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_REJECT_STATE);
 }
 
+void Test_UPLINK_APP_ProcessUplink_AllowedRecoveryClassInRecovery(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_RECOVERY;
+    TestMsg.PayloadLength = 4;
+    TestMsg.Sequence      = 74;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U;
+    UPLINK_APP_Data.CfsHealthState    = 2U; /* RECOVERY */
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ForwardRecoveryCommand), true);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.AcceptedCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_ROUTED);
+}
+
+void Test_UPLINK_APP_ProcessUplink_AllowedRecoveryClassInFailed(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_RECOVERY;
+    TestMsg.PayloadLength = 4;
+    TestMsg.Sequence      = 75;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U;
+    UPLINK_APP_Data.CfsHealthState    = 3U; /* FAILED */
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ForwardRecoveryCommand), true);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.AcceptedCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_ROUTED);
+}
+
 void Test_UPLINK_APP_ProcessUplink_FailOpenBeforeHealth(void)
 {
     UPLINK_APP_ProcessUplinkCmd_t TestMsg;
@@ -602,5 +648,7 @@ void UtTest_Setup(void)
     ADD_TEST(UPLINK_APP_ProcessUplink_BlockedRecovery);
     ADD_TEST(UPLINK_APP_ProcessUplink_AllowedRecoveryDiagnostic);
     ADD_TEST(UPLINK_APP_ProcessUplink_BlockedFailed);
+    ADD_TEST(UPLINK_APP_ProcessUplink_AllowedRecoveryClassInRecovery);
+    ADD_TEST(UPLINK_APP_ProcessUplink_AllowedRecoveryClassInFailed);
     ADD_TEST(UPLINK_APP_ProcessUplink_FailOpenBeforeHealth);
 }

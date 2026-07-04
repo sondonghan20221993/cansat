@@ -12,6 +12,42 @@ static bool UPLINK_APP_IsSequenceAccepted(uint16 Sequence)
     return (Sequence > UPLINK_APP_Data.LastAcceptedSequence);
 }
 
+static uint8 UPLINK_APP_GetClassRequiredLevel(uint8 CommandClass)
+{
+    /* Return authorization level required for each command class (§18.11.1) */
+    switch (CommandClass)
+    {
+        case 0: return 1; /* NOOP */
+        case 1: return 2; /* runtime configuration */
+        case 2: return 2; /* route update */
+        case 3: return 2; /* viewpoint update */
+        case 4: return 3; /* recovery command */
+        case 5: return 1; /* diagnostic command */
+        case 6: return 3; /* counter management */
+        case 7: return 3; /* mode command */
+        default: return 0xFF; /* unknown */
+    }
+}
+
+static bool UPLINK_APP_IsAuthorized(const UPLINK_APP_ProcessUplinkCmd_t *Cmd, uint32 RequestToken)
+{
+    uint8 auth_level = (Cmd->Flags >> 6) & 0x3; /* Bits[7:6] */
+    uint8 required_level = UPLINK_APP_GetClassRequiredLevel(Cmd->CommandClass);
+
+    if (auth_level < required_level)
+    {
+        return false;
+    }
+
+    /* Level 3 commands require non-zero request_token */
+    if (required_level == 3 && RequestToken == 0U)
+    {
+        return false;
+    }
+
+    return true;
+}
+
 void UPLINK_APP_Noop(const UPLINK_APP_NoopCmd_t *Cmd)
 {
     (void)Cmd;
@@ -91,18 +127,34 @@ void UPLINK_APP_ProcessUplink(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
         return;
     }
 
-    if (UPLINK_APP_Data.CfsHealthReceived)
+    if (!UPLINK_APP_Data.CfsHealthReceived)
+    {
+        /* Policy: block all commands until first SYSTEM_HEALTH_MID is received (fail-safe boot) */
+        UPLINK_APP_Data.ErrCounter++;
+        UPLINK_APP_Data.RejectedCount++;
+        UPLINK_APP_Data.LastCommandResult = UPLINK_APP_RESULT_REJECT_STATE;
+        UPLINK_APP_Data.LinkState         = UPLINK_APP_LINK_DEGRADED;
+        CFE_EVS_SendEvent(UPLINK_APP_STATE_BLOCK_EID, CFE_EVS_EventType_ERROR,
+                          "UPLINK_APP: command blocked (no health yet) class=%u seq=%u",
+                          (unsigned int)Cmd->CommandClass, (unsigned int)Cmd->Sequence);
+        UPLINK_APP_UpdateStatusTelemetry(0);
+        return;
+    }
+
+    /* Health state policy checks */
     {
         uint8 State   = UPLINK_APP_Data.CfsHealthState;
         bool  Blocked = false;
 
-        if (State == 3U) /* FAILED: block all */
+        if (State == 3U) /* FAILED: only RECOVERY + DIAGNOSTIC allowed (ground must retain intervention path) */
         {
-            Blocked = true;
+            Blocked = (Cmd->CommandClass != UPLINK_APP_CLASS_RECOVERY &&
+                       Cmd->CommandClass != UPLINK_APP_CLASS_DIAGNOSTIC);
         }
-        else if (State == 2U) /* RECOVERY: only DIAGNOSTIC allowed */
+        else if (State == 2U) /* RECOVERY: only RECOVERY + DIAGNOSTIC allowed */
         {
-            Blocked = (Cmd->CommandClass != UPLINK_APP_CLASS_DIAGNOSTIC);
+            Blocked = (Cmd->CommandClass != UPLINK_APP_CLASS_RECOVERY &&
+                       Cmd->CommandClass != UPLINK_APP_CLASS_DIAGNOSTIC);
         }
         else if (State == 1U) /* DEGRADED: block VIEWPOINT + CONFIG (§18.10.1) */
         {
@@ -120,6 +172,45 @@ void UPLINK_APP_ProcessUplink(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
                               "UPLINK_APP: command blocked by health state=%u class=%u seq=%u",
                               (unsigned int)State, (unsigned int)Cmd->CommandClass,
                               (unsigned int)Cmd->Sequence);
+            UPLINK_APP_UpdateStatusTelemetry(0);
+            return;
+        }
+    }
+
+    /* Authorization check (§18.11.1) */
+    {
+        uint32 request_token = 0U;
+
+        /* Parse request_token from payload if Level 3 command */
+        uint8 required_level = UPLINK_APP_GetClassRequiredLevel(Cmd->CommandClass);
+        if (required_level == 3 && Cmd->PayloadLength >= 4U)
+        {
+            /* Different classes store request_token at different offsets */
+            if (Cmd->CommandClass == UPLINK_APP_CLASS_RECOVERY && Cmd->PayloadLength >= 8U)
+            {
+                request_token = (uint32)Cmd->Payload[4] | ((uint32)Cmd->Payload[5] << 8) |
+                               ((uint32)Cmd->Payload[6] << 16) | ((uint32)Cmd->Payload[7] << 24);
+            }
+            else if (Cmd->CommandClass == UPLINK_APP_CLASS_MODE && Cmd->PayloadLength >= 6U)
+            {
+                request_token = (uint32)Cmd->Payload[2] | ((uint32)Cmd->Payload[3] << 8) |
+                               ((uint32)Cmd->Payload[4] << 16) | ((uint32)Cmd->Payload[5] << 24);
+            }
+            /* counter management does not use request_token, token stays 0 */
+        }
+
+        if (!UPLINK_APP_IsAuthorized(Cmd, request_token))
+        {
+            UPLINK_APP_Data.ErrCounter++;
+            UPLINK_APP_Data.RejectedCount++;
+            UPLINK_APP_Data.LastCommandResult = UPLINK_APP_RESULT_REJECT_STATE;
+            UPLINK_APP_Data.LinkState         = UPLINK_APP_LINK_DEGRADED;
+            uint8 auth_level = (Cmd->Flags >> 6) & 0x3;
+            uint8 req_level = UPLINK_APP_GetClassRequiredLevel(Cmd->CommandClass);
+            CFE_EVS_SendEvent(UPLINK_APP_AUTHZ_BLOCK_EID, CFE_EVS_EventType_ERROR,
+                              "UPLINK_APP: command blocked (insufficient auth) auth=%u required=%u class=%u seq=%u",
+                              (unsigned int)auth_level, (unsigned int)req_level,
+                              (unsigned int)Cmd->CommandClass, (unsigned int)Cmd->Sequence);
             UPLINK_APP_UpdateStatusTelemetry(0);
             return;
         }

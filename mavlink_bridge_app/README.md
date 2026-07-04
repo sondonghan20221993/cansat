@@ -9,6 +9,7 @@ ArduPilot 호환 비행제어기(FC)와의 MAVLink 통신을 담당하는 cFS �
 | CMD 수신 | `MAVLINK_BRIDGE_APP_CMD_MID` | `0x18A0` | NOOP, RESET_COUNTERS, MISSION_QUERY_CC |
 | CMD 수신 | `MAVLINK_BRIDGE_APP_SEND_HK_MID` | `0x18A1` | HK 요청 |
 | SB 수신 | `ROUTE_UPDATE_MID` | `0x190B` | 검증된 route update → FC MISSION 업로드 트리거 |
+| SB 수신 | `CONFIG_CMD_MID` | `0x190E` | 런타임 config 명령 (stream interval 등) |
 | 게시 | `MAVLINK_BRIDGE_APP_HK_TLM_MID` | `0x08A0` | HK 텔레메트리 |
 | 게시 | `FC_EKF_LOCAL_STATE_MID` | `0x1905` | LOCAL_POSITION_NED 또는 GLOBAL_POSITION_INT 기반 위치/속도 |
 | 게시 | `FC_ATTITUDE_STATE_MID` | `0x1906` | ATTITUDE 기반 롤/피치/요/속도 |
@@ -44,7 +45,7 @@ ArduPilot 호환 비행제어기(FC)와의 MAVLink 통신을 담당하는 cFS �
 - `IsArmed`, `FcBaseMode`, `FcSystemStatus` 필드에 갱신
 - FC가 ARMED 상태이면 mission upload를 차단하고 `MAVLINK_BRIDGE_APP_ARMED_WARN_EID (12)` EVS 경고 발생
 
-> **LoRa 텔레메트리 송신은 이 앱에서 담당하지 않는다.** FC 상태를 SB에 게시하면 `lora_fc_downlink_app`이 구독하여 LoRa로 전송한다. (`notes/mavlink_bridge_app_behavior_spec.md` §2.1 참조)
+> **LoRa 텔레메트리 송신은 이 앱에서 담당하지 않는다.** FC 상태를 SB에 게시하면 `lora_tdm_app`이 구독하여 TDM downlink로 전송한다. (`notes/mavlink_bridge_app_behavior_spec.md` §2.1 참조)
 
 ## 설정 파일
 

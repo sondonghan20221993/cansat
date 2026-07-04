@@ -9,6 +9,8 @@ FC 상태 입력을 종합해 시스템 헬스를 판단하고 `SYSTEM_HEALTH_MI
 | CMD 수신 | `CFS_CORE_APP_CMD_MID` | `0x18C0` | NOOP, RESET_COUNTERS |
 | CMD 수신 | `CFS_CORE_APP_SEND_HK_MID` | `0x18C1` | HK 요청 |
 | SB 수신 | `MAVLINK_BRIDGE_APP_HK_TLM_MID` | `0x08A0` | Bridge HK 미러 입력 |
+| SB 수신 | `UPLINK_APP_HK_TLM_MID` | `0x08D0` | uplink_app HK 생존 감시 입력 |
+| SB 수신 | `LORA_TDM_APP_HK_TLM_MID` | `0x08E0` | lora_tdm_app HK 생존 감시 입력 |
 | SB 수신 | `FC_EKF_LOCAL_STATE_MID` | `0x1905` | FC local-state 입력 |
 | SB 수신 | `FC_ATTITUDE_STATE_MID` | `0x1906` | FC attitude-state 입력 |
 | SB 수신 | `FC_GPS_RAW_STATE_MID` | `0x1907` | FC GPS-state 입력 |
@@ -16,6 +18,8 @@ FC 상태 입력을 종합해 시스템 헬스를 판단하고 `SYSTEM_HEALTH_MI
 | SB 수신 | `ROUTE_UPDATE_MID` | `0x190B` | 경로 갱신 입력 (캐시 저장) |
 | SB 수신 | `CONFIG_CMD_MID` | `0x190E` | runtime configuration 적용 |
 | SB 수신 | `VIEWPOINT_CMD_MID` | `0x190D` | viewpoint 명령 캐시 저장 |
+| SB 수신 | `RECOVERY_CMD_MID` | `0x190C` | 복구 명령 (bridge 재시작 카운터 리셋) |
+| SB 수신 | `MODE_CMD_MID` | `0x190F` | 모드 명령 (모드 값 캐시) |
 | 게시 | `CFS_CORE_APP_HK_TLM_MID` | `0x08C0` | HK 텔레메트리 |
 | 게시 | `SYSTEM_HEALTH_MID` | `0x1904` | 시스템 헬스 텔레메트리 |
 
@@ -34,13 +38,16 @@ FC 상태 입력을 종합해 시스템 헬스를 판단하고 `SYSTEM_HEALTH_MI
 - `SYSTEM_HEALTH_MID` 구독 기반 uplink CLASS_MODE/CLASS_DIAGNOSTIC 블로킹 매트릭스
 - `CONFIG_CMD_MID` 수신 시 scope/version/param ID/checksum 검증 후 `ActiveConfig` 즉시 적용 (6개 파라미터: Attitude/Local/GPS/EKF/Bridge timeout, PublishPeriod)
 - `VIEWPOINT_CMD_MID` 수신 시 typed 필드를 `ViewpointCmd` 캐시에 저장 (`CFS_CORE_APP_VIEWPOINT_EID` 로깅)
+- uplink_app/lora_tdm_app HK 5초 타임아웃 감시 → `DEGRADED` (`FAULT_UPLINK_TIMEOUT(6)`/`FAULT_LORA_TIMEOUT(7)`, 자동 재시작 없음)
+- payload `Seq` 필드 기반 시퀀스 중복·역행 거부 및 갭 감지 (`SEQ_ERR_EID`/`SEQ_GAP_EID`)
+- `RECOVERY_CMD_MID` 수신 시 bridge 재시작 카운터 리셋, `MODE_CMD_MID` 수신 시 모드 값 캐시 (둘 다 payload 검증 없음 — behavior spec §17)
 
 ## 미구현
 
-- 시퀀스 갭 또는 중복 감지 (CCSDS 패킷 시퀀스 카운터 검사)
+- CCSDS 헤더 시퀀스 카운터 검사 (payload `Seq` 기반 검사는 구현됨 — behavior spec §7.1)
 - 시리얼 장치 직접 재열기 (serial 재연결은 `mavlink_bridge_app` 자체 처리)
 - 외부 컴포넌트 재설정
-- 별도 복구 명령 MID 게시
+- MODE 명령의 실제 상태 전이, RECOVERY 명령의 action별 구분 처리
 
 ## 동작 명세 참조
 

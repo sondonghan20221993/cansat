@@ -82,7 +82,7 @@
 | `CFS_CORE_APP_VerifyCmdLength_Impl` | 정상/비정상 길이 판단 |
 | `CFS_CORE_APP_UpdateHealth_Nominal` | 전 입력 정상 시 health `NOMINAL` |
 | `CFS_CORE_APP_UpdateHealth_Recovery` | bridge timeout → health `RECOVERY`, recovery flag 설정 |
-| `CFS_CORE_APP_UpdateHealth_GpsStale` | GPS stale → health **`NOMINAL`** (GPS 헬스 비반영 — §12.5; `GpsStatus.TimedOut=1`만 보고) |
+| `CFS_CORE_APP_UpdateHealth_GpsStale` | GPS stale → health **`NOMINAL`** (GPS 헬스 비반영 — §12.7; `GpsStatus.TimedOut=1`만 보고) |
 | `CFS_CORE_APP_UpdateHealth_EkfInvalid` | EKF invalid → health `DEGRADED`, fault `EKF_INVALID` |
 | `CFS_CORE_APP_UpdateHealth_LocalTimeout` | local position timeout → health `DEGRADED`, fault `LOCAL_TIMEOUT` |
 | `CFS_CORE_APP_UpdateHealth_LocalInvalid` | local position invalid → health `DEGRADED`, fault `LOCAL_TIMEOUT` |
@@ -105,7 +105,8 @@
 | `UpdateHealth_Failed` / `UpdateHealth_FailedRecovery` | bridge timeout `FAILED_ESCALATION_MS(30s)` 초과 → `FAILED` 및 복구 |
 | `UpdateHealth_LocalInvalid` / `LocalStale` | local invalid/stale → `FAULT_LOCAL_TIMEOUT` |
 | `UpdateHealth_AttitudeInvalid` / `AttitudeStale` | attitude invalid/stale → `FAULT_ATTITUDE_TIMEOUT` |
-| `UpdateHealth_GPS_Timeout` | GPS 타임아웃 → **`NOMINAL`** (헬스 비반영, §12.5) |
+| `UpdateHealth_GPS_Timeout` | GPS 타임아웃 → **`NOMINAL`** (헬스 비반영, §12.7) |
+| `UpdateHealth_UplinkTimeout` / `LoraTimeout` | uplink/lora HK 5s 타임아웃 → `DEGRADED`, `FAULT_UPLINK_TIMEOUT(6)`/`FAULT_LORA_TIMEOUT(7)` |
 | `UpdateHealth_Priority_{BridgeOverGps,EkfOverLocal,LocalOverAttitude,AttitudeOverGps}` | 우선순위 사다리 |
 | `UpdateHealth_NominalStabilization` / `StabilityTimerReset` / `RecoveryToNominal` | 10s 안정화 타이머 |
 | `UpdateHealth_Startup_NoBridge` | 시작 시 bridge 미수신 → RECOVERY |
@@ -182,7 +183,7 @@ Init/dispatch 추가:
 | `UPLINK_APP_ProcessUplink_DiagnosticForwardFail` | diagnostic forward 실패 → routing failure |
 | `UPLINK_APP_ProcessUplink_BlockedDegraded` | DEGRADED 상태에서 ROUTE_UPDATE/VIEWPOINT → `REJECT_STATE` |
 | `UPLINK_APP_ProcessUplink_BlockedRecovery` | RECOVERY 상태에서 ROUTE_UPDATE → `REJECT_STATE` |
-| `UPLINK_APP_ProcessUplink_AllowedRecovery` | RECOVERY 상태에서 RECOVERY class → 허용 |
+| `UPLINK_APP_ProcessUplink_AllowedRecoveryDiagnostic` | RECOVERY 상태에서 DIAGNOSTIC class → 허용 (RECOVERY 상태는 DIAGNOSTIC 외 전 클래스 차단 — RECOVERY class 포함) |
 | `UPLINK_APP_ProcessUplink_BlockedFailed` | FAILED 상태에서 일반 명령 → `REJECT_STATE` |
 | `UPLINK_APP_ProcessUplink_FailOpenBefore` | FAILED 상태 진입 전(fail-open 구간) 명령 → 허용 |
 

@@ -44,18 +44,20 @@
 ### UDP 경로 (CI_LAB)
 `bridge/lora_uplink_bridge.py` 또는 `tools/uplink_route_update_sender.py --transport udp`가 CCSDS UDP 패킷을 UDP 1234로 전달한다.
 
-### LoRa SB 경로 (`LORA_RAW_MID` 구독) — ✅ 현행
+### LoRa SB 경로 (`lora_tdm_app` → `0x18D0`) — ✅ 현행 (2026-06-16~)
 
-CP2102 포트는 **`lora_fc_downlink_app`이 단독 소유**(downlink TX + TDM RX 윈도우)한다.
-uplink_app은 더 이상 serial을 직접 열지 않는다(포트 충돌 제거).
+LoRa serial 포트는 **`lora_tdm_app`이 단독 소유**(TDM: downlink TX + 300ms RX 창)한다.
+uplink_app은 serial을 직접 열지 않는다(포트 충돌 제거).
 
 흐름:
-1. `lora_fc_downlink_app`이 RX 윈도우에서 "UP,..." 원문 라인을 읽음
-2. HB가 아니면 `LORA_FC_DOWNLINK_APP_UPLINK_RAW_MID_VALUE`(0x1909)로 원문을 SB publish
-3. `uplink_app`이 같은 MID(`UPLINK_APP_LORA_RAW_MID_VALUE` 0x1909)를 구독
-4. `UPLINK_APP_TaskPipe`가 `UPLINK_APP_ParseLoRaFrame()`로 파싱 → `UPLINK_APP_ProcessUplink()`
+1. `lora_tdm_app`이 TDM RX 창에서 "UP,..." 라인을 읽음
+2. CRC16 검증 + hex 디코딩 후 `LORA_TDM_APP_UplinkFwdCmd_t` 구성
+3. `UPLINK_APP_CMD_MID`(0x18D0), FcnCode=`PROCESS_UPLINK_CC(2)`로 SB 전송
+4. `uplink_app`이 일반 PROCESS_UPLINK 명령으로 수신 → `UPLINK_APP_ProcessUplink()`
 
-파싱·검증(CRC/시퀀스/라우팅)은 uplink_app이 소유(transport=lora, app=uplink, spec §18.4.4).
+frame CRC/framing은 lora_tdm_app(transport), 버전/클래스/시퀀스/payload semantic 검증은 uplink_app 소유(spec §18.4.4).
+
+> **레거시**: 구 `lora_fc_downlink_app` 경로용 `UPLINK_APP_LORA_RAW_MID`(0x1909) 구독과 `ParseLoRaFrame()` 처리 코드는 남아 있으나, 현행 배포에서 0x1909를 publish하는 앱은 없다.
 
 > **TDM 제약(반이중)**: lora RX 윈도우는 downlink TX 후 300ms만 열린다.
 > 지상국은 downlink 수신 직후 그 슬롯 안에 UP 프레임을 송신해야 수신된다.
@@ -78,8 +80,8 @@ UP,<version>,<command_class>,<sequence>,<flags>,<payload_hex>,<crc16_hex>
 
 | 구 Python 프로세스 | 현 cFS 구현 | 상태 |
 | --- | --- | --- |
-| `bridge/lora_uplink_bridge.py` | `lora_fc_downlink_app` RX → SB `LORA_RAW_MID` → uplink 구독 | ✓ 포트 충돌 해소 |
-| — | UDP 경로 (CI_LAB) 유지 | ✓ 병행 가능 |
+| `bridge/lora_uplink_bridge.py` | `lora_tdm_app` TDM RX → `0x18D0` PROCESS_UPLINK 직접 전달 | ✓ 대체 완료 (2026-06-16) |
+| — | UDP 경로 (CI_LAB) 유지 | ✓ 병행 가능 (테스트용) |
 
 ## 동작 명세 참조
 

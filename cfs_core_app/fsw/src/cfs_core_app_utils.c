@@ -671,29 +671,92 @@ void CFS_CORE_APP_ServicePrototype(void)
 
 void CFS_CORE_APP_ProcessRecoveryCommand(const CFS_CORE_APP_RecoveryCmdTlm_t *Msg)
 {
-    CFS_CORE_APP_Data.RecoveryStartMs    = 0;
-    CFS_CORE_APP_Data.BridgeRestartCount = 0;
     CFS_CORE_APP_Data.RecoveryRequestedCount++;
     CFS_CORE_APP_Data.SystemHealthTlm.RecoveryRequested = 1;
     CFS_CORE_APP_Data.CmdCounter++;
 
-    CFE_EVS_SendEvent(CFS_CORE_APP_RECOVERY_CMD_EID, CFE_EVS_EventType_INFORMATION,
-                      "CFS_CORE_APP: recovery cmd seq=%u count=%lu",
-                      (unsigned int)Msg->SourceSequence,
-                      (unsigned long)CFS_CORE_APP_Data.RecoveryRequestedCount);
+    switch (Msg->RecoveryAction)
+    {
+        case CFS_CORE_APP_RECOVERY_ACTION_RESET_COUNTER:
+            CFS_CORE_APP_Data.RecoveryStartMs    = 0;
+            CFS_CORE_APP_Data.BridgeRestartCount = 0;
+            CFE_EVS_SendEvent(CFS_CORE_APP_RECOVERY_CMD_EID, CFE_EVS_EventType_INFORMATION,
+                              "CFS_CORE_APP: recovery cmd RESET_COUNTER seq=%u target=%u reason=%u token=%lu",
+                              (unsigned int)Msg->SourceSequence, (unsigned int)Msg->TargetComponent,
+                              (unsigned int)Msg->ReasonCode, (unsigned long)Msg->RequestToken);
+            break;
+
+        case CFS_CORE_APP_RECOVERY_ACTION_RESTART_BRIDGE:
+            CFE_EVS_SendEvent(CFS_CORE_APP_RECOVERY_CMD_EID, CFE_EVS_EventType_INFORMATION,
+                              "CFS_CORE_APP: recovery cmd RESTART_BRIDGE seq=%u target=%u reason=%u token=%lu",
+                              (unsigned int)Msg->SourceSequence, (unsigned int)Msg->TargetComponent,
+                              (unsigned int)Msg->ReasonCode, (unsigned long)Msg->RequestToken);
+            break;
+
+        case CFS_CORE_APP_RECOVERY_ACTION_PARSER_RESET:
+            CFE_EVS_SendEvent(CFS_CORE_APP_RECOVERY_CMD_EID, CFE_EVS_EventType_INFORMATION,
+                              "CFS_CORE_APP: recovery cmd PARSER_RESET seq=%u target=%u reason=%u token=%lu",
+                              (unsigned int)Msg->SourceSequence, (unsigned int)Msg->TargetComponent,
+                              (unsigned int)Msg->ReasonCode, (unsigned long)Msg->RequestToken);
+            break;
+
+        case CFS_CORE_APP_RECOVERY_ACTION_SERIAL_RECONNECT:
+            CFE_EVS_SendEvent(CFS_CORE_APP_RECOVERY_CMD_EID, CFE_EVS_EventType_INFORMATION,
+                              "CFS_CORE_APP: recovery cmd SERIAL_RECONNECT seq=%u target=%u reason=%u token=%lu",
+                              (unsigned int)Msg->SourceSequence, (unsigned int)Msg->TargetComponent,
+                              (unsigned int)Msg->ReasonCode, (unsigned long)Msg->RequestToken);
+            break;
+
+        default:
+            CFE_EVS_SendEvent(CFS_CORE_APP_RECOVERY_CMD_EID, CFE_EVS_EventType_ERROR,
+                              "CFS_CORE_APP: recovery cmd UNKNOWN action=%u seq=%u",
+                              (unsigned int)Msg->RecoveryAction, (unsigned int)Msg->SourceSequence);
+            break;
+    }
 }
 
 void CFS_CORE_APP_ProcessModeCommand(const CFS_CORE_APP_ModeCmdTlm_t *Msg)
 {
-    if (Msg->PayloadLength >= 1)
-    {
-        CFS_CORE_APP_Data.LastModeValue = Msg->Payload[0];
-    }
-    CFS_CORE_APP_Data.CmdCounter++;
+    bool TransitionAllowed = false;
 
-    CFE_EVS_SendEvent(CFS_CORE_APP_MODE_CMD_EID, CFE_EVS_EventType_INFORMATION,
-                      "CFS_CORE_APP: mode cmd seq=%u mode=%u",
-                      (unsigned int)Msg->SourceSequence,
-                      (unsigned int)CFS_CORE_APP_Data.LastModeValue);
+    CFS_CORE_APP_Data.CmdCounter++;
+    CFS_CORE_APP_Data.LastModeRequestToken = Msg->RequestToken;
+
+    /* Validate state transition */
+    if (Msg->ModeAction == CFS_CORE_APP_MODE_ACTION_ENTER)
+    {
+        /* ENTER mode transitions */
+        if (Msg->RequestedState == CFS_CORE_APP_MODE_STATE_RECOVERY &&
+            CFS_CORE_APP_Data.CurrentModeState == CFS_CORE_APP_MODE_STATE_NORMAL)
+        {
+            TransitionAllowed = true;
+            CFS_CORE_APP_Data.CurrentModeState = CFS_CORE_APP_MODE_STATE_RECOVERY;
+        }
+    }
+    else if (Msg->ModeAction == CFS_CORE_APP_MODE_ACTION_EXIT)
+    {
+        /* EXIT mode transitions */
+        if (Msg->RequestedState == CFS_CORE_APP_MODE_STATE_NORMAL &&
+            CFS_CORE_APP_Data.CurrentModeState == CFS_CORE_APP_MODE_STATE_RECOVERY)
+        {
+            TransitionAllowed = true;
+            CFS_CORE_APP_Data.CurrentModeState = CFS_CORE_APP_MODE_STATE_NORMAL;
+        }
+    }
+
+    if (TransitionAllowed)
+    {
+        CFE_EVS_SendEvent(CFS_CORE_APP_MODE_CMD_EID, CFE_EVS_EventType_INFORMATION,
+                          "CFS_CORE_APP: mode cmd TRANSITION seq=%u action=%u state=%u token=%lu",
+                          (unsigned int)Msg->SourceSequence, (unsigned int)Msg->ModeAction,
+                          (unsigned int)Msg->RequestedState, (unsigned long)Msg->RequestToken);
+    }
+    else
+    {
+        CFE_EVS_SendEvent(CFS_CORE_APP_MODE_CMD_EID, CFE_EVS_EventType_ERROR,
+                          "CFS_CORE_APP: mode cmd REJECTED seq=%u action=%u state=%u current=%u",
+                          (unsigned int)Msg->SourceSequence, (unsigned int)Msg->ModeAction,
+                          (unsigned int)Msg->RequestedState, (unsigned int)CFS_CORE_APP_Data.CurrentModeState);
+    }
 }
 

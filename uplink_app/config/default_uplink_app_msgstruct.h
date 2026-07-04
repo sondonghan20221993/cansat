@@ -63,7 +63,10 @@ typedef struct
     uint32                    Seq;
     uint32                    TimestampMs;
     uint16                    SourceSequence;
-    uint8                     Reserved[2];
+    uint8                     RecoveryAction;
+    uint8                     TargetComponent;
+    uint16                    ReasonCode;
+    uint32                    RequestToken;
 } UPLINK_APP_RecoveryCmdTlm_t;
 
 typedef struct
@@ -113,9 +116,9 @@ typedef struct
     uint32                    Seq;
     uint32                    TimestampMs;
     uint16                    SourceSequence;
-    uint8                     PayloadLength;
-    uint8                     Reserved;
-    uint8                     Payload[UPLINK_APP_MAX_PAYLOAD_LENGTH];
+    uint8                     ModeAction;
+    uint8                     RequestedState;
+    uint32                    RequestToken;
 } UPLINK_APP_ModeCmdTlm_t;
 
 typedef struct
@@ -124,9 +127,9 @@ typedef struct
     uint32                    Seq;
     uint32                    TimestampMs;
     uint16                    SourceSequence;
-    uint8                     PayloadLength;
-    uint8                     Reserved;
-    uint8                     Payload[UPLINK_APP_MAX_PAYLOAD_LENGTH];
+    uint8                     DiagAction;
+    uint8                     DiagTarget;
+    uint32                    RequestToken;
 } UPLINK_APP_DiagnosticCmdTlm_t;
 
 typedef struct
