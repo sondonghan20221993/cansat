@@ -908,6 +908,37 @@ Pi 실환경 동작은 불변** — env var는 테스트 전용이다.
 | RT-HEALTH-001 | FC serial 분리 → BRIDGE_TIMEOUT | `/dev/serial0` 물리 분리 후 3초 대기 | `health 1->2 fault=1` |
 | RT-HEALTH-002 | FC serial 재연결 → NOMINAL 복구 | serial 재연결 | `health 2->1` |
 
+### 🔲 추가 런타임 시험 후보 — FC 장애/깨진 값 (2026-07-09 도출)
+
+mavlink_bridge_app의 FC 장애 처리와 cfs_core_app 보고 경로 검증.
+관측 수단이 실제 코드에 존재하는 항목만 포함 (EVS/HK 필드 기준).
+
+**① FC 보드 장애:**
+
+| ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) |
+|---|---|---|---|
+| RT-FC-004 | FC 전원 차단 (보드 죽음) | stale 마킹 + core_app 보고 | 각 FC TLM `Stale=1` → cfs_core `health 1->2 fault=4(ATTITUDE_TIMEOUT)` |
+| RT-FC-005 | FC 재부팅 (일시 중단 후 복귀) | 자동 재연결 + NOMINAL 복귀 | HK `ReconnectAttemptCount` 증가 → `health 2->1` |
+| RT-FC-006 | FC 부팅 직전 백로그 burst | 재연결 시 `tcflush`로 밀린 데이터 폐기 | SB queue overflow EVS 없음 |
+
+**② 깨진 값 수신:**
+
+| ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) |
+|---|---|---|---|
+| RT-FC-007 | serial 노이즈 (baud 불일치/접촉불량 모사) | CRC 실패 프레임 SB 미게시 | HK `ParseErrorCount` 증가, ATTITUDE 값 불변 |
+| RT-FC-008 | 부분 프레임 (전송 중 절단) | 파서 리셋 후 다음 정상 프레임 파싱 재개 | 이후 ATTITUDE `Seq` 계속 증가 |
+| RT-FC-009 | EKF 상태 불량 (FC 살아있으나 값 신뢰불가) | core_app EKF_INVALID 판단 | `health 1->2 fault=3(EKF_INVALID)` |
+
+**③ cfs_core_app 보고 경로 (연쇄 검증):**
+
+| ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) |
+|---|---|---|---|
+| RT-CORE-001 | FC 타임스탬프 이상 (미래값) | core_app 거부 | `future timestamp rejected` EVS |
+| RT-CORE-002 | 메시지 유실 (seq 건너뜀) | 갭 감지 카운트 | `SeqGapCount` 증가, `SEQ_GAP_EID` |
+
+> **주:** RT-FC-007/008(깨진 바이트 주입)은 실물 재현이 어려워 **E2E(B) PTY 테스트가 더 적합**
+> (PTY로 원하는 깨진 바이트를 정확히 주입 가능). 런타임에서는 ①③이 실물 검증 가치가 높다.
+
 ### 🔲 LoRa 하드웨어 필요
 
 | ID | 시험 항목 | 참조 |
