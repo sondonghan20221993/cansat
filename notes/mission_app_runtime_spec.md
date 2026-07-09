@@ -32,7 +32,7 @@
 **배포 현황 (2026-06-17 기준):**
 - **배포됨** (`cpu1_cfe_es_startup.scr`): `mavlink_bridge_app`(prio50), `cfs_core_app`(55), `uplink_app`(57), `lora_tdm_app`(58) + lab apps(`ci_lab`, `to_lab`, `sch_lab`)
 - **삭제됨**: `lora_fc_downlink_app`(downlink 역할을 `lora_tdm_app`으로 전환 후 저장소에서 제거 — commit `7c080f1`)
-- **미배포·코드 보존**: `telemetry_app`, `img_app`
+- **미배포·코드 보존**: `telemetry_app`, `legacy/img_app`(`img_app`은 향후 항목으로 `legacy/`로 이동)
 - **SCH_LAB 스케줄**: `mission_defs/tables/cpu1_sch_lab_table.c`로 커스텀 앱 4개 SEND_HK ~1Hz 스케줄링 (2026-06-17 추가)
 
 이 초안에서 별도 구현체가 확정되지 않은 공통 기능은 다음 임시 기준을 따른다.
@@ -57,7 +57,7 @@
 | 카메라 및 WiFi 모듈 | 이미지 데이터를 직접 지상국으로 전송하는 독립 통신 경로 제공 |
 | 지상국 서버 | 수신된 이미지 데이터를 복원 연산하고, 복원 결과를 지상국 화면에 표시 |
 
-이미지 데이터 경로(카메라 및 WiFi 모듈 → 지상국 → 지상국 서버)는 cFS 소프트웨어 버스를 거치지 않는 독립 통신 경로이며, 본 cFS 앱 책임 모델(Section 4)의 범위 밖이다. 따라서 이미지 촬영·전송·복원은 어떤 cFS 앱의 publish/subscribe MID 계약에도 포함되지 않는다. 레포지토리의 `img_app`은 현재 baseline 미션 앱 집합에 포함되지 않으며(향후 항목), cFS와의 연계(예: 이미지 메타데이터 또는 카메라 상태의 MID 게시)가 필요해질 경우 별도 MID 계약과 함께 Section 4에 명시적으로 추가한다.
+이미지 데이터 경로(카메라 및 WiFi 모듈 → 지상국 → 지상국 서버)는 cFS 소프트웨어 버스를 거치지 않는 독립 통신 경로이며, 본 cFS 앱 책임 모델(Section 4)의 범위 밖이다. 따라서 이미지 촬영·전송·복원은 어떤 cFS 앱의 publish/subscribe MID 계약에도 포함되지 않는다. 레포지토리의 `legacy/img_app`(향후 항목으로 `legacy/`에 보관)은 현재 baseline 미션 앱 집합에 포함되지 않으며, cFS와의 연계(예: 이미지 메타데이터 또는 카메라 상태의 MID 게시)가 필요해질 경우 별도 MID 계약과 함께 Section 4에 명시적으로 추가한다.
 
 Raspberry Pi에서 실행되는 cFS 앱은 직접적인 전기 제어를 가정하지 않습니다.
 비행 컨트롤러에 연결된 센서를 통해. 센서 재설정, 센서
