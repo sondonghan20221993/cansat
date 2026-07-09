@@ -253,7 +253,7 @@ attitude/local/gps/ekf/bridge 타임아웃 및 게시 주기(`PROTOTYPE_PERIOD_M
 | `TimestampMs` | 게시 시점의 cFE 시간 (밀리초) |
 | `LastValidInputTimestampMs` | 수신된 attitude/local/GPS/EKF 캐시 중 최대 타임스탬프. 아무것도 수신되지 않은 경우 `NowMs` |
 | `HealthState` | `NOMINAL`, `DEGRADED`, `RECOVERY`, `FAILED` (bridge 타임아웃이 `FAILED_ESCALATION_MS` 초과 시 `FAILED`) |
-| `FaultCode` | `NONE`, `BRIDGE_TIMEOUT(1)`, `EKF_INVALID(2)`, `LOCAL_TIMEOUT(4)`, `ATTITUDE_TIMEOUT(5)`, `UPLINK_TIMEOUT(6)`, `LORA_TIMEOUT(7)` (※ `GPS_STALE(3)`는 enum 유지하나 헬스 저하용으로 미사용 — §12.7) |
+| `FaultCode` | `NONE(0)`, `BRIDGE_TIMEOUT(1)`, `EKF_INVALID(3)`, `LOCAL_TIMEOUT(4)`, `ATTITUDE_TIMEOUT(5)`, `UPLINK_TIMEOUT(6)`, `LORA_TIMEOUT(7)` (※ `GPS_STALE(2)`는 enum 유지하나 헬스 저하용으로 미사용 — §12.7) |
 | `AttitudeStatus` / `LocalStatus` / `GpsStatus` / `EkfStatus` | per-input 상태 구조: `Valid`, `Stale`, `ErrorCode`, `TimedOut`(만료 여부). GPS는 보고 전용으로 헬스 비반영 — §12.7 |
 | `BridgeStatus` | bridge 상태 구조: `LinkState`, `ErrorCode`, `TimedOut` |
 | `RecoveryRequested` | bridge 타임아웃 조건에서만 `1`, 그 외에는 `0` |
@@ -800,12 +800,12 @@ Pi 런타임 로그 노출 여부는 EVS 필터 설정에 따라 달라질 수 �
 | 조건 | HealthState | FaultCode |
 | --- | --- | --- |
 | Bridge 타임아웃 | RECOVERY | FAULT_BRIDGE_TIMEOUT (1) |
-| EKF 타임아웃/무효/stale | DEGRADED | FAULT_EKF_INVALID (2) |
+| EKF 타임아웃/무효/stale | DEGRADED | FAULT_EKF_INVALID (3) |
 | Local 타임아웃/무효/stale | DEGRADED | FAULT_LOCAL_TIMEOUT (4) |
 | Attitude 타임아웃/무효/stale | DEGRADED | FAULT_ATTITUDE_TIMEOUT (5) |
 | uplink_app HK 타임아웃 (5s) | DEGRADED | FAULT_UPLINK_TIMEOUT (6) |
 | lora_tdm_app HK 타임아웃 (5s) | DEGRADED | FAULT_LORA_TIMEOUT (7) |
-| GPS 불가용 | (헬스 비반영) | `GpsStatus.TimedOut=1` 보고만, FaultCode 미설정 — §12.7. `FAULT_GPS_STALE(3)` enum은 정의되나 미생성 |
+| GPS 불가용 | (헬스 비반영) | `GpsStatus.TimedOut=1` 보고만, FaultCode 미설정 — §12.7. `FAULT_GPS_STALE(2)` enum은 정의되나 미생성 |
 | Bridge 타임아웃 30s 초과 | FAILED | FAULT_BRIDGE_TIMEOUT (1) — §12.9 |
 
 이전 버전에서 local/attitude/EKF 조건이 모두 `FAULT_EKF_INVALID`로 통합되었던 동작은 A2에서 수정되었다.
