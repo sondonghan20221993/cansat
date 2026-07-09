@@ -802,6 +802,91 @@ Pi 실환경 동작은 불변** — env var는 테스트 전용이다.
 
 ---
 
+## 앱별 × Runtime 테스트 매트릭스
+
+각 앱이 어떤 runtime 레벨에서 무엇을 검증하는지 정의한다.
+
+### 범례
+
+| 레벨 | 설명 | 도구 | 의존성 |
+|---|---|---|---|
+| **Unit** | C 코드 공개 API 함수 단위 | cFS `unit-test/` (coveragetest) | 없음 |
+| **PyUnit (A)** | Python 동등 구현 검증 | pytest `tests/test_*.py` (--cfs 불필요) | 없음 |
+| **E2E (B)** | cFS 실행 + mock serial | pytest `tests/test_*_e2e.py` (--cfs 필요) | WSL x86 빌드 또는 Pi |
+| **Runtime** | Pi 실물 + 하드웨어 | 수동/스크립트 | Pi + FC + LoRa 등 |
+
+---
+
+### **lora_tdm_app** — LoRa TDM (다운링크 TX + 업링크 RX)
+
+| 테스트 레벨 | 검증 항목 | 파일 | TC 범위 | 상태 |
+|---|---|---|---|---|
+| **Unit** | `OpenSerial()` 재시도 로직 | `coveragetest_lora_tdm_app.c` | — | ✓ 있음 |
+| | `ProcessRxLine()` HB/UP 파싱 | `coveragetest_lora_tdm_app_utils.c` | TDM-RX-001~008 | ✓ 있음 |
+| | `BuildFcDownlinkLine()` FC 패킷 포맷 | `coveragetest_lora_tdm_app_utils.c` | TDM-DOWN-001~006 | ✓ 있음 |
+| | `UpdateLinkState()` 링크 상태 전이 | `coveragetest_lora_tdm_app_utils.c` | TDM-LINK-001~005 | ✓ 있음 |
+| **PyUnit (A)** | HB 프레임 파싱 | `test_hb_parse.py` | LORA-HB-001~010, REC-005 | ✓ 구현 |
+| | UP 프레임 파싱 | `test_uplink_lora_frame.py` | LORA-UP-001~013 | ✓ 구현 |
+| | FC/SH 다운링크 패킷 포맷 | `test_lora_fc_downlink_packet.py` | LORA-FRAME-001~008 | ✓ 구현 |
+| **E2E (B)** | PTY mock serial → lora_tdm_app 제어 | `test_rec_serial.py` | REC-001~004 (serial open/disconnect/recover) | ⏸️ pytest.skip() |
+| | cFS SB message → LoRa 실제 출력 | `test_lora_fc_downlink_e2e.py` (재작성) | LORA-FRAME, LORA-FC-006~007 | ⏸️ pytest.skip() |
+| | UP 수신 → SB 라우팅 | `test_uplink_e2e.py` | LORA-UP-011~013, REC-008 | ⏸️ pytest.skip() |
+| **Runtime** | LoRa 하드웨어 TDM 사이클 | 수동 PI 테스트 | TDM-RT-001~009 | 미실행 (LoRa 필요) |
+
+---
+
+### **mavlink_bridge_app** — FC MAVLink 수신/파싱/게시
+
+| 테스트 레벨 | 검증 항목 | 파일 | TC 범위 | 상태 |
+|---|---|---|---|---|
+| **Unit** | `OpenSerial()`, `CloseSerial()` | `coveragetest_mavlink_bridge_app.c` | — | ✓ 있음 |
+| | MAVLink 메시지 파싱 (ATTITUDE 등) | `coveragetest_mavlink_bridge_app_utils.c` | MAV-PARSE-001~010 | ✓ 있음 |
+| | 캐시 업데이트, 스트림 요청 | `coveragetest_mavlink_bridge_app_cmds.c` | MAV-CACHE-001~005 | ✓ 있음 |
+| | heartbeat timeout, link state | `coveragetest_mavlink_bridge_app_dispatch.c` | — | ✓ 있음 |
+| **PyUnit (A)** | MAVLink UART 메시지 디스크립션 | `test_mavlink_uart_bridge.py` | MAV-DESC-001~005 | ✓ 구현 |
+| | parse_args 기본값/커스텀 | `test_mavlink_uart_bridge.py` | MAV-ARGS-001~005 | ✓ 구현 |
+| **E2E (B)** | PTY mock FC serial → ATTITUDE/LOCAL 수신 | `test_mavlink_bridge_e2e.py` (미작성) | MAV-E2E-001~003 (serial open, msg rx, heartbeat timeout) | ❌ 미작성 |
+| | FC serial 분리/재연결 동작 | `test_rec_serial.py` | REC-003~004 (FC serial recover) | ⏸️ pytest.skip() |
+| **Runtime** | FC 실물 연결 (UART /dev/serial0) | Pi 수동 테스트 | RT-FC-001~003 | ✓ 확인됨 |
+
+---
+
+### **uplink_app** — 지상국 명령 수신/검증/라우팅
+
+| 테스트 레벨 | 검증 항목 | 파일 | TC 범위 | 상태 |
+|---|---|---|---|---|
+| **Unit** | `ProcessUplink()` seq 거부 로직 | `coveragetest_uplink_app_utils.c` | UPLINK-SEQ-001~005 | ✓ 있음 |
+| | route update 캐시 및 라우팅 | `coveragetest_uplink_app_utils.c` | UPLINK-ROUTE-001~010 | ✓ 있음 |
+| | config/viewpoint payload 검증 | `coveragetest_uplink_app_utils.c` | UPLINK-CONFIG-001~010 | ✓ 있음 |
+| **PyUnit (A)** | LoRa UP 프레임 파싱 | `test_uplink_lora_frame.py` | LORA-UP-003~013, CFS-CMD-001~008 | ✓ 구현 |
+| | route update sender (Python ↔ C 동등성) | `test_uplink_route_update_sender.py` | UPLINK-ROUTE-PYEQUIV-001~005 | ✓ 구현 |
+| | config sender payload/checksum | `test_uplink_config_sender.py` | UPLINK-CONFIG-PYEQUIV-001~012 | ✓ 구현 |
+| **E2E (B)** | UDP → uplink_app → SB 경로 | `test_uplink_e2e.py` | LORA-UP-011~013 (seq increase/reject/regression) | ⏸️ pytest.skip() |
+| | LoRa serial RX → SB 라우팅 | `test_uplink_e2e.py` | REC-008 (seq regression count) | ⏸️ pytest.skip() |
+| **Runtime** | 지상국 명령 → FC MISSION 업로드 | Pi + FC 수동 테스트 | RT-UPLINK-001~003 | 미실행 (LoRa 필요) |
+
+---
+
+### **cfs_core_app** — 헬스 판단 및 상태 종합
+
+| 테스트 레벨 | 검증 항목 | 파일 | TC 범위 | 상태 |
+|---|---|---|---|---|
+| **Unit** | health state machine (NOMINAL/DEGRADED/FAILED) | `coveragetest_cfs_core_app_utils.c` | HEALTH-STATE-001~010 | ✓ 있음 |
+| | HK 게시 및 상태 캐시 | `coveragetest_cfs_core_app.c` | — | ✓ 있음 |
+| | FC 타임스탐프 검증 (미래값 거부) | `coveragetest_cfs_core_app_utils.c` | HEALTH-TIME-001~005 | ✓ 있음 |
+| **PyUnit (A)** | 없음 (헬스 로직은 상태 머신 — Python 동등 구현 불필요) | — | — | N/A |
+| **E2E (B)** | health state 전이 (FC timeout 시뮬레이션) | `test_cfs_core_health_e2e.py` (미작성) | HEALTH-E2E-001~005 | ❌ 미작성 |
+| **Runtime** | FC 분리 → health 1→2 전이, 재연결 시 복구 | Pi + FC 수동 테스트 | RT-HEALTH-001~002 | ✓ 확인됨 |
+
+---
+
+**Notes:**
+- ✓ = 구현됨 / ⏸️ = 구조 있음, 현재 pytest.skip() / ❌ = 미작성 / N/A = 해당 없음
+- E2E(B) 구현 순서: 공통 harness (B-3, B-4) → REC-001~004 → 각 E2E 테스트
+- Runtime 항목은 Pi 연결 환경에서만 가능
+
+---
+
 ## 현재 실행 가능한 런타임 시험 (2026-06-17 기준)
 
 **전제 조건**: Pi(`192.168.50.65`) + FC 연결 + `sudo ./core-cpu1` 실행 중
