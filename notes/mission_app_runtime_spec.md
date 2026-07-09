@@ -31,7 +31,8 @@
 
 **배포 현황 (2026-06-17 기준):**
 - **배포됨** (`cpu1_cfe_es_startup.scr`): `mavlink_bridge_app`(prio50), `cfs_core_app`(55), `uplink_app`(57), `lora_tdm_app`(58) + lab apps(`ci_lab`, `to_lab`, `sch_lab`)
-- **미배포·코드 보존**: `lora_fc_downlink_app`(downlink 역할을 `lora_tdm_app`으로 전환), `telemetry_app`, `img_app`
+- **삭제됨**: `lora_fc_downlink_app`(downlink 역할을 `lora_tdm_app`으로 전환 후 저장소에서 제거 — commit `7c080f1`)
+- **미배포·코드 보존**: `telemetry_app`, `img_app`
 - **SCH_LAB 스케줄**: `mission_defs/tables/cpu1_sch_lab_table.c`로 커스텀 앱 4개 SEND_HK ~1Hz 스케줄링 (2026-06-17 추가)
 
 이 초안에서 별도 구현체가 확정되지 않은 공통 기능은 다음 임시 기준을 따른다.
@@ -100,7 +101,7 @@ MID 계약을 정의했습니다. 앱은 다른 앱이 소유한 앱을 직접 �
 | `mavlink_bridge_app` | FC가 제공하는 MAVLink 텔레메트리를 수신하고 임무 상태 필드를 추출하여 임무 상태 MID를 게시한다. | `FC_EKF_LOCAL_STATE_MID`, `FC_ATTITUDE_STATE_MID`, `FC_GPS_RAW_STATE_MID`, `FC_EKF_STATUS_MID`, `MAVLINK_BRIDGE_APP_HK_TLM_MID` | FC의 UART 기반 MAVLink 입력 |
 | `cfs_core_app` | 수신된 임무 상태를 검증하고, 상태 및 복구 정책을 관리하며, 시스템 상태를 게시한다. | `SYSTEM_HEALTH_MID` | `FC_EKF_LOCAL_STATE_MID`, `FC_ATTITUDE_STATE_MID`, `FC_GPS_RAW_STATE_MID`, `FC_EKF_STATUS_MID`, 앱 health/status MID |
 | `lora_tdm_app` (**downlink 역할 현재 배포 구현체**, 2026-06-16~) | TDM(Time-Division Multiplexing) 방식으로 FC 상태·시스템 헬스를 LoRa를 통해 지상국으로 다운링크하고, 지상국 uplink 원문을 수신하여 `uplink_app`으로 전달한다. | `LORA_TDM_APP_HK_TLM_MID`(`0x08E0`), `LORA_TDM_APP_LINK_STATUS_MID`(`0x1911`) | `FC_EKF_LOCAL_STATE_MID`, `FC_ATTITUDE_STATE_MID`, `FC_GPS_RAW_STATE_MID`, `FC_EKF_STATUS_MID`, `SYSTEM_HEALTH_MID`, `DIAGNOSTIC_CMD_MID`(`0x1910`) |
-| `lora_fc_downlink_app` (코드 보존·**미배포**, 구 downlink 구현체) | Software Bus에서 승인된 임무 상태 및 텔레메트리 MID를 수집하고, downlink packet을 구성하여 지상국으로 전송한다. `lora_tdm_app`으로 대체되어 `cpu1_cfe_es_startup.scr`에서 제거됨. 코드는 저장소에 보존. | 자체 HK(`LORA_FC_DOWNLINK_APP_HK_TLM_MID`)만 게시 | `FC_EKF_LOCAL_STATE_MID`, `FC_ATTITUDE_STATE_MID`, `FC_GPS_RAW_STATE_MID`, `FC_EKF_STATUS_MID`, `SYSTEM_HEALTH_MID` |
+| `lora_fc_downlink_app` (**삭제됨**, 구 downlink 구현체) | Software Bus에서 승인된 임무 상태 및 텔레메트리 MID를 수집하고, downlink packet을 구성하여 지상국으로 전송했다. `lora_tdm_app`으로 대체되어 `cpu1_cfe_es_startup.scr`에서 제거된 뒤 저장소에서도 삭제됨(commit `7c080f1`). 아래는 이력 참고용. | 자체 HK(`LORA_FC_DOWNLINK_APP_HK_TLM_MID`)만 게시 | `FC_EKF_LOCAL_STATE_MID`, `FC_ATTITUDE_STATE_MID`, `FC_GPS_RAW_STATE_MID`, `FC_EKF_STATUS_MID`, `SYSTEM_HEALTH_MID` |
 | `uplink_app` | 지상국 명령을 수신하고 업링크 패킷을 검증한 뒤, 승인된 런타임 설정, 경로 수정, viewpoint, 복구 명령을 임무 앱으로 전달한다. | `UPLINK_STATUS_MID`, `ROUTE_UPDATE_MID`(검증 후 publish) | `UPLINK_APP_CMD_MID` ingress 또는 승인된 전송 입력 |
 
 별도 recovery authority 앱이 정의되기 전까지 `cfs_core_app`은 시스템 수준 복구 판단과 복구 요청 집계를 담당하는 recovery authority로 간주한다. 본 문서에서 "복구 권한" 또는 "recovery authority"에 요청한다고 기술된 경우, 현재 기준 구현 대상은 `cfs_core_app`이다.

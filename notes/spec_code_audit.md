@@ -85,7 +85,7 @@
 ## 4. 교차 통합 패스 ↔ `mission_app_runtime_spec.md`
 
 **배포 baseline (`mission_defs/cpu1_cfe_es_startup.scr`, 2026-06-16 갱신)**: `mav_bridge_app`(prio50), `cfs_core_app`(55), `uplink_app`(57), **`lora_tdm_app`(58, `lora_fc_dl_app` 대체)** + lab apps(ci/to/sch).
-→ **`lora_fc_downlink_app`·`telemetry_app`·`img_app`은 startup 미등록(미배포)**. (`lora_tdm_app`은 2026-06-16부터 startup 등록·배포됨 — 구 문장의 `lora_tdm_app` 표기는 오기, 2026-07-05 정정)
+→ **`telemetry_app`·`img_app`은 startup 미등록(미배포·코드 보존)**. `lora_fc_downlink_app`은 저장소에서 삭제됨(commit `7c080f1`, 2026-06-30). (`lora_tdm_app`은 2026-06-16부터 startup 등록·배포됨 — 구 문장의 `lora_tdm_app` 표기는 오기, 2026-07-05 정정)
 
 **uplink_app 명령 라우팅 MID (uplink_app/config)**: `UPLINK_STATUS 0x190A`, `ROUTE_UPDATE 0x190B`, `RECOVERY_CMD 0x190C`, `VIEWPOINT_CMD 0x190D`, `CONFIG_CMD 0x190E`, `MODE_CMD 0x190F`, `DIAGNOSTIC_CMD 0x1910`, `UPLINK_APP_LORA_RAW 0x1909`, HK `0x08D0`.
 
@@ -95,7 +95,7 @@
 | 4-2 | MID 인벤토리 | §5.1.1,§17.1 | uplink_app msgid | (누락) | `RECOVERY_CMD 0x190C`, `VIEWPOINT_CMD 0x190D`, `CONFIG_CMD 0x190E`, `MODE_CMD 0x190F`, `DIAGNOSTIC_CMD 0x1910`, `UPLINK_APP_LORA_RAW 0x1909` | ✅ **해결** | §17.1에 FC 상태 MID·라우팅 명령 MID(0x190C~0x1910)·0x1909·0x1911 추가 (2026-06-16) |
 | 4-3 (=1-6) | 게시율 | §5.1.1 | mavlink internal_cfg | ATTITUDE `~20Hz`, EKF `~10Hz`, GPS `~5Hz` | stream req ATTITUDE 5Hz(200ms), EKF 2Hz(500ms), GPS 2Hz(500ms) | ✅ **해결** | §5.1.1 게시율을 코드 stream 요청 간격으로 정정 + "FC 송신율 의존" 명시 (2026-06-16) |
 | 4-4 | 앱 집합 | §4 | startup.scr | downlink 역할 = `lora_fc_downlink_app` | **변경**: startup.scr에서 `lora_fc_dl_app` 제거, `lora_tdm_app` 등록(prio 58) (2026-06-16) | ❌ | §4/§17 등 `lora_fc_downlink_app`을 downlink 역할 구현체로 서술하는 부분을 `lora_tdm_app`으로 갱신 필요 (대규모 — 별도 작업) |
-| 4-5 | 배포 상태 | §2(현황) | startup.scr | — | `lora_tdm_app` baseline 등록됨(2026-06-16), `lora_fc_downlink_app`은 코드 보존·미배포로 전환. `telemetry_app`/`img_app` 미배포 유지 | 📝 | §2 범위/현황 갱신 필요 |
+| 4-5 | 배포 상태 | §2(현황) | startup.scr | — | `lora_tdm_app` baseline 등록됨(2026-06-16), `lora_fc_downlink_app`은 저장소에서 삭제됨(commit `7c080f1`, 2026-06-30). `telemetry_app`/`img_app` 미배포·코드 보존 유지 | 📝 | §2 범위/현황 갱신 필요 |
 
 > **2026-06-16 배포 전환 후속 작업 (코드/문서 외부, 운영 단계):**
 > - Pi에서 `bridge/lora_uplink_bridge.py`, `bridge/lora_telemetry_bridge.py` 프로세스 종료 필요 (둘 다 `lora_tdm_app`과 같은 LoRa serial을 점유하면 충돌).
