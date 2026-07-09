@@ -5,6 +5,7 @@
 #include "common_types.h"
 #include "uplink_app_msgdefs.h"
 #include "uplink_app_mission_cfg.h"
+#include "uplink_app_internal_cfg_values.h" /* UPLINK_APP_MAX_PAYLOAD_LENGTH — msgstruct 자립화 */
 
 typedef struct
 {

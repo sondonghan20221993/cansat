@@ -4,6 +4,7 @@
 #include "lora_tdm_app_utils.h"
 #include "lora_tdm_app_eventids.h"
 #include "lora_tdm_app_fcncodes.h"
+#include "uplink_app_msg.h"  /* UPLINK_APP_StatusTlm_t (cross-app subscribe) */
 
 static bool LORA_TDM_APP_VerifyCmdLength(const CFE_MSG_Message_t *MsgPtr, size_t ExpectedLength)
 {
