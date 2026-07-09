@@ -9,9 +9,24 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 #include <termios.h>
 #include <unistd.h>
+
+/* 테스트 환경(PTY mock 등)에서 serial 경로를 주입할 수 있도록 env var를
+ * 우선 확인한다. 미설정 시 기존 컴파일타임 경로 사용 (실환경 동작 불변).
+ * 상세: tests/TEST_CASES.md "그룹 B 실구현 계획" */
+static const char *MAVLINK_BRIDGE_APP_GetSerialPath(void)
+{
+    const char *EnvPath = getenv("MAVLINK_BRIDGE_SERIAL_PATH");
+
+    if (EnvPath != NULL && EnvPath[0] != '\0')
+    {
+        return EnvPath;
+    }
+    return MAVLINK_BRIDGE_APP_SERIAL_PATH;
+}
 
 #define MAVLINK_STX_V1               0xFE
 #define MAVLINK_STX_V2               0xFD
@@ -794,6 +809,7 @@ static CFE_Status_t MAVLINK_BRIDGE_APP_OpenSerial(void)
     int            Fd;
     struct termios Tio;
     speed_t        BaudConstant;
+    const char    *SerialPath = MAVLINK_BRIDGE_APP_GetSerialPath();
 
     if (!MAVLINK_BRIDGE_APP_GetBaudConstant(MAVLINK_BRIDGE_APP_SERIAL_BAUDRATE, &BaudConstant))
     {
@@ -804,13 +820,13 @@ static CFE_Status_t MAVLINK_BRIDGE_APP_OpenSerial(void)
         return CFE_STATUS_EXTERNAL_RESOURCE_FAIL;
     }
 
-    Fd = open(MAVLINK_BRIDGE_APP_SERIAL_PATH, O_RDWR | O_NOCTTY | O_NONBLOCK);
+    Fd = open(SerialPath, O_RDWR | O_NOCTTY | O_NONBLOCK);
     if (Fd < 0)
     {
         MAVLINK_BRIDGE_APP_Data.LastErrorCode = MAVLINK_BRIDGE_ERROR_SERIAL_OPEN_FAIL;
         CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_LINK_EID, CFE_EVS_EventType_ERROR,
                           "MAVLINK_BRIDGE_APP: open() failed path=%s errno=%d",
-                          MAVLINK_BRIDGE_APP_SERIAL_PATH, errno);
+                          SerialPath, errno);
         return CFE_STATUS_EXTERNAL_RESOURCE_FAIL;
     }
 
@@ -821,7 +837,7 @@ static CFE_Status_t MAVLINK_BRIDGE_APP_OpenSerial(void)
         MAVLINK_BRIDGE_APP_Data.LastErrorCode = MAVLINK_BRIDGE_ERROR_SERIAL_OPEN_FAIL;
         CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_LINK_EID, CFE_EVS_EventType_ERROR,
                           "MAVLINK_BRIDGE_APP: tcgetattr() failed path=%s errno=%d",
-                          MAVLINK_BRIDGE_APP_SERIAL_PATH, SavedErrno);
+                          SerialPath, SavedErrno);
         return CFE_STATUS_EXTERNAL_RESOURCE_FAIL;
     }
 
@@ -846,7 +862,7 @@ static CFE_Status_t MAVLINK_BRIDGE_APP_OpenSerial(void)
         MAVLINK_BRIDGE_APP_Data.LastErrorCode = MAVLINK_BRIDGE_ERROR_SERIAL_OPEN_FAIL;
         CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_LINK_EID, CFE_EVS_EventType_ERROR,
                           "MAVLINK_BRIDGE_APP: tcsetattr() failed path=%s baud=%lu errno=%d",
-                          MAVLINK_BRIDGE_APP_SERIAL_PATH,
+                          SerialPath,
                           (unsigned long)MAVLINK_BRIDGE_APP_SERIAL_BAUDRATE,
                           SavedErrno);
         return CFE_STATUS_EXTERNAL_RESOURCE_FAIL;
@@ -873,7 +889,7 @@ static CFE_Status_t MAVLINK_BRIDGE_APP_OpenSerial(void)
 
     CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_LINK_EID, CFE_EVS_EventType_INFORMATION,
                       "MAVLINK_BRIDGE_APP: opened serial path %s at %lu baud",
-                      MAVLINK_BRIDGE_APP_SERIAL_PATH, (unsigned long)MAVLINK_BRIDGE_APP_SERIAL_BAUDRATE);
+                      SerialPath, (unsigned long)MAVLINK_BRIDGE_APP_SERIAL_BAUDRATE);
     return CFE_SUCCESS;
 }
 
@@ -1804,7 +1820,7 @@ void MAVLINK_BRIDGE_APP_ServiceSerial(void)
             {
                 CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_LINK_EID, CFE_EVS_EventType_INFORMATION,
                                   "MAVLINK_BRIDGE_APP: serial open failed path=%s errno=%d",
-                                  MAVLINK_BRIDGE_APP_SERIAL_PATH, errno);
+                                  MAVLINK_BRIDGE_APP_GetSerialPath(), errno);
             }
         }
 

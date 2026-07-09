@@ -750,6 +750,36 @@ EVS 로그/HK/serial 출력으로 결과를 검증한다.
 - `pytest --cfs` 또는 별도 마커로 A와 분리 실행
 - Pi 환경 또는 Linux native 실행 환경 필요
 
+### 그룹 B 실구현 계획 (2026-07-09 결정)
+
+현재 B그룹은 전부 `pytest.skip()` 스텁. 실제 C 앱의 예외처리(serial 장애/복구 등)를
+자동 검증하도록 아래 순서로 구현한다.
+
+**설계 결정 — serial 경로 env var override:**
+
+serial 경로가 컴파일타임 `#define`이라 테스트가 PTY mock 경로를 주입할 수 없었다.
+아래 env var를 C 코드에 추가한다. **미설정 시 기존 `#define` 경로를 그대로 사용하므로
+Pi 실환경 동작은 불변** — env var는 테스트 전용이다.
+
+| env var | 대상 앱 | 기본값 (미설정 시) |
+|---|---|---|
+| `LORA_TDM_SERIAL_PATH` | `lora_tdm_app` `OpenSerial()` | `LORA_TDM_APP_LORA_SERIAL_PATH` (USB CP2102) |
+| `MAVLINK_BRIDGE_SERIAL_PATH` | `mavlink_bridge_app` `OpenSerial()` | `MAVLINK_BRIDGE_APP_SERIAL_PATH` (`/dev/serial0`) |
+
+**실행 환경 결정:** WSL 로컬 cFS 빌드 (Pi `cFS_clean` 소스 복사 → x86 빌드).
+반복 실행이 빠르고 sudo/하드웨어 의존 없음. 최종 확인은 Pi 실환경에서 별도 수행.
+
+**단계별 목표:**
+
+| Phase | 목표 | 상태 |
+|---|---|---|
+| B-1 | C 코드 env var override 추가 (위 표 2곳) + 본 문서 기록 | 진행 중 |
+| B-2 | WSL에 cFS_clean 소스 복사, x86 빌드 (커스텀 앱 4개 포함) | 미착수 |
+| B-3 | pytest cFS harness fixture — PTY 생성 → env var 설정 → `core-cpu1` subprocess 기동/종료 | 미착수 |
+| B-4 | 관측/주입 인프라 — CI_LAB UDP(1234) 커맨드 주입, TO_LAB/EVS 텔레메트리 수신 검증 헬퍼 | 미착수 |
+| B-5 | `test_rec_serial.py` REC-001~004 실구현 (skip 제거) | 미착수 |
+| B-6 | `test_lora_fc_downlink_e2e.py` → **lora_tdm_app 대상으로 재작성** (원 대상 lora_fc_downlink_app은 baseline 제거됨) + `test_uplink_e2e.py` 실구현 | 미착수 |
+
 ---
 
 ## 미구현/미검증 항목

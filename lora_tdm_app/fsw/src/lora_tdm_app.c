@@ -5,6 +5,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <stdlib.h>
 #include <string.h>
 #include <termios.h>
 #include <unistd.h>
@@ -13,18 +14,33 @@ LORA_TDM_APP_Data_t LORA_TDM_APP_Data;
 
 /* ---- Serial open ---- */
 
+/* 테스트 환경(PTY mock 등)에서 serial 경로를 주입할 수 있도록 env var를
+ * 우선 확인한다. 미설정 시 기존 컴파일타임 경로 사용 (실환경 동작 불변).
+ * 상세: tests/TEST_CASES.md "그룹 B 실구현 계획" */
+static const char *GetLoRaSerialPath(void)
+{
+    const char *EnvPath = getenv("LORA_TDM_SERIAL_PATH");
+
+    if (EnvPath != NULL && EnvPath[0] != '\0')
+    {
+        return EnvPath;
+    }
+    return LORA_TDM_APP_LORA_SERIAL_PATH;
+}
+
 static int OpenSerial(void)
 {
     int            Fd;
     struct termios Tio;
     speed_t        Baud = B57600;
     int            Flags;
+    const char    *SerialPath = GetLoRaSerialPath();
 
-    Fd = open(LORA_TDM_APP_LORA_SERIAL_PATH, O_RDWR | O_NOCTTY | O_NONBLOCK);
+    Fd = open(SerialPath, O_RDWR | O_NOCTTY | O_NONBLOCK);
     if (Fd < 0)
     {
         CFE_EVS_SendEvent(LORA_TDM_APP_SERIAL_OPEN_ERR_EID, CFE_EVS_EventType_ERROR,
-                          "LORA_TDM_APP: open serial failed: %s", LORA_TDM_APP_LORA_SERIAL_PATH);
+                          "LORA_TDM_APP: open serial failed: %s", SerialPath);
         return -1;
     }
 
