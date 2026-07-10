@@ -190,6 +190,34 @@ PB-NBV가 route(waypoint) 생성  ──route update──▶ uplink_app
   - [ ] 새 SB 텔레메트리(또는 기존 메시지 확장)로 `WaypointReachedSeq` 게시.
   - [ ] `uplink_app`이 이 메시지를 구독해 §4 step1의 편차 기록·랩 완료 판정에 사용.
 
+## 3.11 2바퀴 재출발 트리거 — MISSION_SET_CURRENT 온보드 자동 송신 (2026-07-11 확정)
+
+- **문제(코드 확인)**: §3.9로 보정 route를 armed 상태에서 업로드할 수 있게 됐지만,
+  업로드(`MISSION_CLEAR_ALL`→`MISSION_COUNT`→`MISSION_ITEM_INT`×N) 완료가 자동으로
+  비행 재개로 이어지지 않음 — FC는 새 미션을 받아도 여전히 LOITER_UNLIM(§3.9) 상태에
+  머무름. "업로드 완료 후 미션 재개" 커맨드가 현재 코드에 없음.
+- **결정**: `MISSION_ACK`(accepted) 확인 후, mavlink_bridge_app이 FC에
+  **`MISSION_SET_CURRENT(seq=0)`를 직접 전송**해서 LOITER_UNLIM을 깨고 새(보정된)
+  미션의 waypoint 0부터 AUTO 비행을 재개시킨다.
+- **경로 확인**: 이 커맨드는 **지상국을 거치지 않는다.** mavlink_bridge_app↔FC는
+  Pi-FC 직결 serial(UART/USB) 링크(companion computer 패턴)이고, §3.9의 미션 업로드와
+  동일 채널로 온보드에서 직접 송수신됨. 지상(optimalpath)과의 LoRa TDM 링크(`lora_tdm_app`)와는
+  완전히 별개 — §3.1에서 확정한 "지상 링크 상태와 무관하게 온보드 자기완결적으로 동작"
+  원칙과 일치.
+- **전체 2바퀴 재비행 흐름 정리**:
+  1. CORRECTING: 원 피팅(§3.4) → 재검증(§3.5/§3.8)
+  2. 보정 route를 기존 `ROUTE_UPDATE_MID` 경로로 게시(`RouteType=REPLACE`) — 새 메시지
+     타입 아님, 기존 route update 파이프라인 재사용
+  3. cfs_core_app → mavlink_bridge_app 전달 (기존 흐름)
+  4. `StartMissionUpload()` armed 허용(§3.9 조건 충족 시) → 미션 클리어+업로드
+  5. `MISSION_ACK` accepted 확인 → **`MISSION_SET_CURRENT(seq=0)` 송신 (신규 구현)**
+  6. FC가 LOITER_UNLIM 종료, 새 미션 waypoint 0부터 AUTO 재개 = "2바퀴 시작"
+  7. 이후 `MISSION_ITEM_REACHED`(§3.10)로 정상 추적, 마지막 waypoint 도달 시
+     LAP2도 동일하게 LOITER_UNLIM 진입 → DONE (§3.1, 추가 랩 없음)
+- **구현 항목**: `mavlink_bridge_app_utils.c`에 `MISSION_SET_CURRENT` 송신 함수 신규 추가
+  (기존 `MAVLINK_BRIDGE_APP_SendMissionClearAll`/`SendMissionCount`와 동일 패턴),
+  `MissionUploadState`에 "업로드 완료 → SET_CURRENT 송신" 전이 단계 추가.
+
 ## 5. 미결정 사항 (TODO)
 
 - [x] **허용오차 게이트 없음으로 확정 (2026-07-10)** — §3.6 참조.
@@ -201,12 +229,17 @@ PB-NBV가 route(waypoint) 생성  ──route update──▶ uplink_app
       (waypoint 도달 실측치만 사용, 각도 유지 + 중심·반지름 재배치). 원 피팅 알고리즘
       구체 선택 등 세부 구현은 코드 작성 시 결정.
 - [x] **1바퀴 종료 후 armed 상태 재업로드 문제 확정 (2026-07-11)** — §3.9 참조.
-      마지막 waypoint autocontinue=0으로 호버링, 2-pass 경로에 한해 armed 업로드 차단 완화.
-      FC 파라미터(MIS_DONE_BEHAVE 등) 실물 확인은 구현 시 남음.
+      마지막 waypoint를 명시적 `MAV_CMD_NAV_LOITER_UNLIM`으로 전송해 확정적 호버링,
+      2-pass 경로에 한해 armed 업로드 차단 완화. FC 파라미터 의존성 제거됨.
 - [x] **waypoint 도달 판정 방식 확정 (2026-07-11)** — §3.10 참조. FC의
       `MISSION_ITEM_REACHED` 구독·중계로 결정, 자체 반경 계산 안 함.
+- [x] **2-pass 상태머신·진입 조건 확정 (2026-07-11)** — route update payload의
+      미사용 `Reserved` 바이트를 2-pass opt-in 플래그로 재사용 (payload 크기·프로토콜
+      불변, 기존 단일-패스 미션과 호환). IDLE→LAP1_ACTIVE→CORRECTING→LAP2_ACTIVE→DONE.
+- [x] **2바퀴 재출발 트리거 확정 (2026-07-11)** — §3.11 참조. `MISSION_SET_CURRENT(seq=0)`
+      온보드(mavlink_bridge_app→FC 직결) 자동 송신, 지상국 개입 없음.
 
-**설계 미결정 사항 전부 확정 — 스펙/코드 반영 준비 완료. (단, §3.9 FC 파라미터 실물 검증은 구현 단계 확인 필요)**
+**설계 미결정 사항 전부 확정 — 스펙/코드 반영 준비 완료.**
 
 ## 6. 반영 예정 위치 (확정 후)
 
