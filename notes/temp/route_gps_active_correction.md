@@ -171,6 +171,25 @@ PB-NBV가 route(waypoint) 생성  ──route update──▶ uplink_app
         `MISSION_ITEM_INT` 업로드만으로 LOITER를 깨고 자동 진행되는지, 별도 재개
         커맨드(MISSION_SET_CURRENT 등)가 필요한지는 구현 시 FC 동작 확인 필요.
 
+## 3.10 waypoint 도달 판정 — FC MISSION_ITEM_REACHED 구독 (2026-07-11 확정)
+
+- **문제(코드 확인)**: §4 step1("매 waypoint 도달 시 편차 기록")과 §3.1 랩 완료 판정
+  ("마지막 waypoint 도달")이 공통으로 의존하는 "waypoint 도달" 이벤트 자체가 현재
+  코드에 없음 — `mavlink_bridge_app_utils.c`에 `MISSION_ITEM_REACHED`(msg 46)/
+  `MISSION_CURRENT`(msg 42) 파싱이 0곳.
+- **결정**: FC가 보내는 `MISSION_ITEM_REACHED`를 새로 구독·파싱해서 SB로 중계한다.
+  자체 거리 계산으로 도달 반경을 새로 판정하지 않음.
+- **근거**: FC가 이미 자체 `WP_RADIUS` 설정으로 튜닝된 도달 판정 로직을 갖고 있음 —
+  이걸 재사용하면 (a) 온보드에서 별도 도달 반경 상수를 새로 정의·검증할 필요가 없고,
+  (b) FC의 실제 비행 판정과 텔레메트리 판정이 어긋나는 문제가 생기지 않음.
+  마지막 waypoint 여부도 `seq == WaypointCount - 1`로 바로 판정 가능
+  (§3.9 LOITER_UNLIM 전환 시점과도 자연히 일치).
+- **구현 항목**:
+  - [ ] `mavlink_bridge_app_utils.c`에 `MISSION_ITEM_REACHED` 파싱 분기 추가
+        (기존 `MISSION_ACK`/`LOCAL_POSITION_NED` 파싱과 동일한 if-else 체인 패턴).
+  - [ ] 새 SB 텔레메트리(또는 기존 메시지 확장)로 `WaypointReachedSeq` 게시.
+  - [ ] `uplink_app`이 이 메시지를 구독해 §4 step1의 편차 기록·랩 완료 판정에 사용.
+
 ## 5. 미결정 사항 (TODO)
 
 - [x] **허용오차 게이트 없음으로 확정 (2026-07-10)** — §3.6 참조.
@@ -184,6 +203,8 @@ PB-NBV가 route(waypoint) 생성  ──route update──▶ uplink_app
 - [x] **1바퀴 종료 후 armed 상태 재업로드 문제 확정 (2026-07-11)** — §3.9 참조.
       마지막 waypoint autocontinue=0으로 호버링, 2-pass 경로에 한해 armed 업로드 차단 완화.
       FC 파라미터(MIS_DONE_BEHAVE 등) 실물 확인은 구현 시 남음.
+- [x] **waypoint 도달 판정 방식 확정 (2026-07-11)** — §3.10 참조. FC의
+      `MISSION_ITEM_REACHED` 구독·중계로 결정, 자체 반경 계산 안 함.
 
 **설계 미결정 사항 전부 확정 — 스펙/코드 반영 준비 완료. (단, §3.9 FC 파라미터 실물 검증은 구현 단계 확인 필요)**
 
