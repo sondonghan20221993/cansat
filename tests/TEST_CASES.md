@@ -905,8 +905,8 @@ Pi 실환경 동작은 불변** — env var는 테스트 전용이다.
 
 | ID | 시험 항목 | 방법 | 기대 EVS |
 |---|---|---|---|
-| RT-HEALTH-001 | FC serial 분리 → BRIDGE_TIMEOUT | `/dev/serial0` 물리 분리 후 3초 대기 | `health 1->2 fault=1` |
-| RT-HEALTH-002 | FC serial 재연결 → NOMINAL 복구 | serial 재연결 | `health 2->1` |
+| RT-HEALTH-001 | FC serial 분리 → BRIDGE_TIMEOUT | `/dev/serial0` 물리 분리 후 3초 대기 | `health 0->2 fault=1` (NOMINAL→RECOVERY; enum NOMINAL=0/DEGRADED=1/RECOVERY=2/FAILED=3) |
+| RT-HEALTH-002 | FC serial 재연결 → NOMINAL 복구 | serial 재연결 | `health 2->1` → 10초 안정화 후 `health 1->0` |
 
 ### 🔲 추가 런타임 시험 후보 — FC 장애/깨진 값 (2026-07-09 도출)
 
@@ -917,8 +917,8 @@ mavlink_bridge_app의 FC 장애 처리와 cfs_core_app 보고 경로 검증.
 
 | ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) |
 |---|---|---|---|
-| RT-FC-004 | FC 전원 차단 (보드 죽음) | stale 마킹 + core_app 보고 | cfs_core `health 1->2 fault=3(EKF_INVALID)` — Ekf/Local/Attitude 전부 stale 시 우선순위 체인이 EKF 먼저 보고 (`cfs_core_app_utils.c:307`). stale TLM은 SB 재게시 안 됨(`MarkOutputsStale`은 내부 플래그만) → `AttitudeStatus.TimedOut=1` 등 cfs_core HK로 관측 |
-| RT-FC-005 | FC 재부팅 (일시 중단 후 복귀) | 자동 재연결 + NOMINAL 복귀 | HK `ReconnectAttemptCount` 증가 → `health 2->1` |
+| RT-FC-004 | FC 전원 차단 (보드 죽음) | stale 마킹 + core_app 보고 | cfs_core `health 0->1 fault=3(EKF_INVALID)` — Ekf/Local/Attitude 전부 stale 시 우선순위 체인이 EKF 먼저 보고 (`cfs_core_app_utils.c:307`). stale TLM은 SB 재게시 안 됨(`MarkOutputsStale`은 내부 플래그만) → `AttitudeStatus.TimedOut=1` 등 cfs_core HK로 관측 |
+| RT-FC-005 | FC 재부팅 (일시 중단 후 복귀) | stale 해소 + NOMINAL 복귀 | FC 복귀 후 10초 안정화 → `health 1->0`. ⚠️ `ReconnectAttemptCount`는 UART 무신호(EAGAIN) 경로에서 증가 안 함 — read 오류 errno일 때만 close/재연결 (`mavlink_bridge_app_utils.c:1862-1870`) |
 | RT-FC-006 | FC 부팅 직전 백로그 burst | 재연결 시 `tcflush`로 밀린 데이터 폐기 | SB queue overflow EVS 없음 |
 
 **② 깨진 값 수신:**
@@ -927,7 +927,7 @@ mavlink_bridge_app의 FC 장애 처리와 cfs_core_app 보고 경로 검증.
 |---|---|---|---|
 | RT-FC-007 | serial 노이즈 (baud 불일치/접촉불량 모사) | CRC 실패 프레임 SB 미게시 | HK `ParseErrorCount` 증가, ATTITUDE 값 불변 |
 | RT-FC-008 | 부분 프레임 (전송 중 절단) | 파서 리셋 후 다음 정상 프레임 파싱 재개 | 이후 ATTITUDE `Seq` 계속 증가 |
-| RT-FC-009 | EKF 상태 불량 (FC 살아있으나 값 신뢰불가) | core_app EKF_INVALID 판단 | `health 1->2 fault=3(EKF_INVALID)` |
+| RT-FC-009 | EKF 상태 불량 (FC 살아있으나 값 신뢰불가) | core_app EKF_INVALID 판단 | `health 0->1 fault=3(EKF_INVALID)` |
 
 **③ cfs_core_app 보고 경로 (연쇄 검증):**
 
@@ -971,8 +971,8 @@ lora_tdm_app 장애 처리와 uplink_app 명령 검증/차단 경로.
 
 | ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) |
 |---|---|---|---|
-| RT-CORE-003 | uplink_app 정지 (앱 kill) | core_app UPLINK_TIMEOUT 보고 | `health 1->2 fault=6(UPLINK_TIMEOUT)` → 재시작 후 `health 2->1` |
-| RT-CORE-004 | lora_tdm_app 정지 (앱 kill) | core_app LORA_TIMEOUT 보고 | `health 1->2 fault=7(LORA_TIMEOUT)` → 재시작 후 `health 2->1` |
+| RT-CORE-003 | uplink_app 정지 (ES `STOP_APP`, OS kill 불가—스레드) | core_app UPLINK_TIMEOUT 보고 | `health 0->1 fault=6(UPLINK_TIMEOUT)` → `START_APP` 후 `health 1->0` |
+| RT-CORE-004 | lora_tdm_app 정지 (ES `STOP_APP`) | core_app LORA_TIMEOUT 보고 | `health 0->1 fault=7(LORA_TIMEOUT)` → `START_APP` 후 `health 1->0` |
 
 > **주:** RT-LORA-002/003(깨진 ACK·seq 조작)과 RT-UPL-001~007(명령 페이로드 조작)은
 > 프레임/명령을 바이트 단위로 제어해야 하므로 **E2E(B) PTY/CI_LAB 주입이 더 적합**.
@@ -985,23 +985,32 @@ lora_tdm_app 장애 처리와 uplink_app 명령 검증/차단 경로.
 매 단계 NOMINAL 복귀를 확인한 뒤 다음 단계로 진행. 물리 세팅(Pi+FC+LoRa 연결) 반복 비용을 줄이고,
 앱 간 순차 전환이 서로 간섭하지 않는지(잔여 상태 누수 등) 확인하는 것이 목적.
 
-**사전조건**: 4개 앱 기동, `health=NOMINAL(0)` 확인, LoRa 페어링 완료.
+**사전조건**:
+- 4개 앱 기동, `health=NOMINAL(0)` 확인, LoRa 페어링 완료.
+- **테스트용 startup script(`cpu1_cfe_es_startup_test.scr`, CI_LAB 포함) 사용** — cFS 앱은 core-cpu1 내
+  스레드라 OS `kill`로 개별 정지 불가. 단계 3·4의 앱 정지/재시작은 CI_LAB(UDP 1234) 경유
+  ES `STOP_APP`/`START_APP` 명령으로 주입.
 
 | 단계 | 참조 ID | 주입 | 판정 기준 | 다음 단계 전 확인 |
 |---|---|---|---|---|
 | 1 | — | 세션 시작, 전체 기동 | `health 0(NOMINAL)`, TDM 다운링크 주기 수신 (TDM-RT-001) | NOMINAL 유지 |
-| 2 | RT-FC-004→005 | FC 전원 차단 → 재연결 | `health 0->1 fault=3(EKF_INVALID)` → `ReconnectAttemptCount` 증가 → `health 1->0` | NOMINAL 복귀 확인 후 진행 |
-| 3 | RT-CORE-003 | uplink_app kill → 재시작 | `health 0->1 fault=6(UPLINK_TIMEOUT)` → 재시작 후 `health 1->0` | NOMINAL 복귀 확인 |
-| 4 | RT-CORE-004 | lora_tdm_app kill → 재시작 | `health 0->1 fault=7(LORA_TIMEOUT)` → 재시작 후 `health 1->0` | NOMINAL 복귀 + TDM 다운링크 재개 확인 |
-| 5 | RT-LORA-004 | 지상국 정지→재개 | `LINK_DEGRADED_EID(14)`→`LINK_LOST_EID(13)`→`LINK_RESTORED_EID(15)`, HK `LinkState` 일치 | CONNECTED 복귀 |
-| 6 | RT-UPL-002, 001 | 재연결 직후 명령 1건, 동일 seq 재전송 | `STATE_BLOCK_EID(6)`(health 수신 전이면) 또는 정상 수락 → 동일 seq는 `COMMAND_ERR_EID(2)` replay 거부 | `RejectedCount` 증가 확인 |
-| 7 | — | 세션 종료 | 전 구간 `health=NOMINAL`, 4개 앱 HK `CommandErrorCounter`류 누적치 기록 | — |
+| 2 | RT-FC-004→005 | FC 전원 차단 → 재연결 | `health 0->1 fault=3(EKF_INVALID)` → FC 복귀 후 stale 해소 → `health 1->0` | NOMINAL 복귀 확인 후 진행 |
+| 3 | RT-CORE-003 | ES `STOP_APP UPLINK_APP` → 5초+ 대기 → `START_APP` | `health 0->1 fault=6(UPLINK_TIMEOUT)` → 재기동 후 `health 1->0` | NOMINAL 복귀 확인 |
+| 4 | RT-CORE-004 | ES `STOP_APP LORA_TDM_APP` → 5초+ 대기 → `START_APP` | `health 0->1 fault=7(LORA_TIMEOUT)` → 재기동 후 `health 1->0` | NOMINAL 복귀 + TDM 다운링크 재개 확인 |
+| 5 | RT-LORA-004 | 지상국 정지→재개 | `LINK_DEGRADED_EID(14)`→`LINK_LOST_EID(13)`→`LINK_RESTORED_EID(15)`, HK `LinkState` 일치. **링크 단절 중 `health=NOMINAL` 유지 확인** (LORA_TIMEOUT은 앱 HK 기준, 링크 상태 무관) | CONNECTED 복귀 |
+| 6 | RT-UPL-001 | 정상 명령 1건 수락 → 동일 seq 재전송 | 수락 `PUBLISH_EID(5)` → 재전송은 `COMMAND_ERR_EID(2)` replay 거부 + `RejectedCount` 증가 | — |
+| 7 | — | 세션 종료 | 전 구간(단계별 주입 구간 제외) `health=NOMINAL`, 4개 앱 HK 누적 카운터 기록 | — |
 
 **설계 메모**:
 - 단계 2~4는 cfs_core 우선순위 체인상 서로 다른 fault를 순차 유발 — 이전 fault 완전 해소(NOMINAL 복귀) 확인 후 다음 주입해야 원인 오귀속 방지.
+- 단계 2 판정에서 `ReconnectAttemptCount` **제외**: FC 전원 차단 시 UART는 무신호(EAGAIN) 경로로
+  빠져 serial close/재연결이 발생하지 않음 (`mavlink_bridge_app_utils.c:1862-1870`, close는 read
+  오류 errno일 때만). 재연결 카운트는 USB serial 분리 유형에서만 유효.
+- RT-UPL-002(no-health-yet 차단)는 **이 세션에서 제외**: uplink 재기동 후 health TLM 수신까지
+  수백 ms라 수동 명령 주입으로 그 창을 맞출 수 없음 → E2E(B)에서 검증.
 - RT-LORA-001(USB 런타임 분리)은 [[lora_tdm_serial_reopen_gap]] 구현 갭 해소 전까지 이 세션에서 **제외**.
-- 단계 6은 RT-UPL 전체(007개)가 아닌 대표 2건만 — 나머지는 E2E(B) PTY/CI_LAB에서 커버(§ 위 주 참조).
-- 세션 실패 시 어느 단계에서 끊겼는지로 회귀 원인 국소화 가능 (예: 단계 4에서만 실패 → lora_tdm 재시작 경로 문제).
+- 단계 6 replay는 GS 툴이 동일 seq 재전송을 지원해야 함 (GS 측 기능 확인 선행).
+- 세션 실패 시 어느 단계에서 끊겼는지로 회귀 원인 국소화 가능 (예: 단계 4에서만 실패 → lora_tdm 재기동 경로 문제).
 
 ### 🔲 LoRa 하드웨어 필요
 
