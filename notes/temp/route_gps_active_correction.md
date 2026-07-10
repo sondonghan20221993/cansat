@@ -36,26 +36,54 @@ PB-NBV가 route(waypoint) 생성  ──route update──▶ uplink_app
 - 기능 본체는 **cfs-telemetry-app `uplink_app`의 route 검증/보정 단계**.
 - optimalpath는 원본 route 생성만 담당. `drone_runner_node.cpp:87`
   `current_pose = nbv`는 이번 범위에서 수정 대상 아님.
+- **새 앱 아님.** 기존 4개 앱(mavlink_bridge/cfs_core/uplink/lora_tdm) 책임 경계상
+  route 처리는 이미 uplink_app 소유. 새 앱을 만들면 route 소유권이 갈라지고
+  SB 메시지/MID/EDS를 새로 만들어야 하는데 얻는 이득이 없음.
 
-## 4. "능동적 보정 과정" — 채워야 할 부분
+## 3.1 미션 구조 — 2-pass (원형 촬영 → 오차 보정 → 재비행) (2026-07-10 확정)
 
-단순 평행이동 한 방으로 끝나지 않고 아래 단계로 확장 예정 (초안):
+```
+1바퀴: 업로드된 route(원형 촬영 경로) 비행
+  → 각 waypoint 도달 시 실측 pose vs 계획 waypoint 편차 기록
+  → 마지막 waypoint 도달 = "1바퀴 완료" (판정 기준, 아래 §3.2)
+2바퀴 준비: uplink_app이 온보드에서 기록된 편차로 보정 route 계산 (아래 §3.3/§3.4)
+2바퀴: 보정된 route로 동일 경로 재비행
+```
 
-1. 실측 위치(직전 downlink pose) 확보 / 신선도 판단
-2. 수신 route waypoint 대비 편차 계산
-3. 편차가 허용 오차(±Xm) 이내 → 통과 / 초과 → 보정 진입
-4. 보정: (편차만큼 평행이동? / 오차 벗어난 구간만 재정렬?) — **미결정**
-5. 보정된 route 재검증 (flyable area, altitude, segment distance 재확인)
+- **랩 완료 판정**: route의 **마지막 waypoint 도달**(허용반경 이내)로 판정.
+  지상 명시 명령이나 시간/거리 기준은 채택하지 않음 — 온보드에서 자기완결적으로 판단 가능해야
+  지상 링크 상태와 무관하게 동작하기 때문.
+- **보정 계산 주체**: **온보드(uplink_app)**. 지상 재계산 후 재업로드는 LoRa 반이중 TDM
+  (300ms RX 윈도우) 왕복 지연이 커서 "1바퀴 끝나자마자 2바퀴 시작"에 부적합.
+  구간별 보간에 필요한 연산은 가벼워 온보드 처리로 충분.
+- **보정 방식**: **구간별 보간 보정**. 1바퀴 동안 각 waypoint에서 기록한 편차(복수)를
+  구간(segment)별로 보간해 적용 — 단일 평행이동(uniform shift)보다 정확하지만
+  구현 복잡도는 더 높음. (아래 §3.4에서 구체화 필요)
+
+## 4. "능동적 보정 과정" — 단계 (갱신)
+
+1. 1바퀴 비행 중 각 waypoint 도달 시 실측 pose(직전 downlink) vs 계획 waypoint 편차를 기록
+   (신선도 판단 포함 — 몇 초 이내만 유효로 볼지는 §5 미결정)
+2. 마지막 waypoint 도달 시 "1바퀴 완료" 판정, 기록된 편차 목록으로 보정 단계 진입
+3. 구간별 보간으로 2바퀴 route 계산 (계산식은 §3.4 확정 필요)
+4. 보정된 route 재검증 (flyable area, altitude, segment distance 재확인)
+5. 재검증 통과 → 2바퀴 route를 active route로 전환 + 자동 비행 시작
+   재검증 실패 → §5 처리 정책에 따름
 6. 보정 결과 상태 게시 (`UPLINK_STATUS_MID`) + 로그
+
+## 3.4 구간별 보간 — 구체화 필요 (신규 미결정)
+
+- [ ] 보간 입력: waypoint별 편차 벡터 전부 사용 vs 일부(예: 급격한 이상치 제외)만 사용?
+- [ ] 보간 함수: 선형 보간 vs 스플라인 등?
+- [ ] 편차 기록 저장 위치/최대 개수 (route 1~16 waypoint 한도와 연동)
 
 ## 5. 미결정 사항 (TODO)
 
 - [ ] 허용 오차 기준값 ±Xm (config 상수로? `UPLINK_APP_ROUTE_*`)
-- [ ] "보정" 정의: (a) 편차만큼 waypoint 평행이동 vs (b) 오차 초과 route reject
-      vs (c) 능동 재정렬 — 어느 것 / 조합?
 - [ ] 실측 pose 소스·신선도: 몇 초 이내 downlink만 유효로 볼지
-- [ ] 보정 후 재검증 실패 시 처리 (기존 active route 유지 / reject)
-- [ ] "능동적 과정"의 단계 확정 (위 4절 초안 구체화)
+- [ ] 보정 후 재검증 실패 시 처리 (기존 active route 유지 / reject / 1바퀴 route로 재비행)
+- [ ] 2바퀴 완료 후: 3바퀴는 없는지, 있다면 몇 회까지 반복하는지
+- [ ] §3.4 보간 세부 방식
 
 ## 6. 반영 예정 위치 (확정 후)
 
