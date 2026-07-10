@@ -954,7 +954,7 @@ lora_tdm_app 장애 처리와 uplink_app 명령 검증/차단 경로.
 
 | ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) | 검증 상태 |
 |---|---|---|---|---|
-| RT-LORA-001 | LoRa USB 모듈 런타임 분리 (동작 중 뽑기) | write/read 오류 감지 + 재오픈 시도 | `SERIAL_WRITE_ERR_EID(8)`/`SERIAL_READ_ERR_EID(9)`. ⚠️ **구현 갭**: 오류 시 fd close/재오픈 없음 (`lora_tdm_app.c:184`, 재오픈은 `LoRaFd<0`일 때만) → 분리 시 영구 write 실패. 오류 시 close+`fd=-1` 처리 **구현 선행 필요** | ⚠️ 구현갭 ([[lora_tdm_serial_reopen_gap]]) |
+| RT-LORA-001 | LoRa USB 모듈 런타임 분리 (동작 중 뽑기) | write/read 오류 감지 + 재오픈 시도 | `SERIAL_WRITE_ERR_EID(8)`/`SERIAL_READ_ERR_EID(9)` → `CloseSerial()`로 `fd=-1` → 다음 RunCycle 재오픈 → TxCount 재개. (구현 완료 2026-07-10, `lora_tdm_app.c` `RunTx`/`RunRxWindow`; [[lora_tdm_serial_reopen_gap]]) | ✅ 실물 (B-2 x86 빌드 검증 후) |
 | RT-LORA-002 | 깨진 ACK 수신 (형식 불일치) | ACK 파싱 실패 처리 | `ACK_PARSE_ERR_EID(10)` + HK `RxErrorCount` 증가, `RxAckCount` 불변 | 🔵 E2E(B) (깨진 ACK 바이트 주입) |
 | RT-LORA-003 | UP 프레임 seq 재사용/역행 (재전송 공격 모사) | 시퀀스 검증 거부 | uplink `COMMAND_ERR_EID(2)` replay 거부 + 다음 다운링크 `UFB=SEQ_FAIL`(`LastCommandResult==REJECT_SEQUENCE`, §18.11.1). lora_tdm은 UP 프레임 자체 seq 검증을 하지 않고 uplink_app 판정 결과만 피드백 전달(`lora_tdm_app_dispatch.c:91-96`) — **`SEQ_FAIL_EID(12)`와는 무관**: EID 12는 ACK 응답의 `SeqEcho` 불일치 검출용으로 별도 미구현 갭 (`SeqEcho` 파싱 후 `(void)` 무시, `lora_tdm_app_utils.c:295`) | 🔵 E2E(B) (UP 프레임 seq 조작) |
 | RT-LORA-004 | 링크 상태 전이 EVS 관측 (GS 정지→재개) | DEGRADED→DISCONNECTED→CONNECTED 전이 이벤트 | `LINK_DEGRADED_EID(14)` → `LINK_LOST_EID(13)` → `LINK_RESTORED_EID(15)`, HK `LinkState`/`NoAckCount` 일치 | ✅ 실물 (GS 정지/재개) |

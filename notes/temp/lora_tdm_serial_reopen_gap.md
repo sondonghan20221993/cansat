@@ -30,6 +30,11 @@ LORA_TDM_APP_Data.LoRaFd = -1;   /* 다음 RunCycle에서 OpenSerial() 자동 �
 
 ## 상태
 
-- [ ] 오류 시 close+fd=-1 구현
-- [ ] coveragetest 추가
-- [ ] RT-LORA-001 실물 검증
+- [x] 오류 시 close+fd=-1 구현 (2026-07-10) — `CloseSerial()` 헬퍼 추가,
+      `RunTx` write 실패 및 `RunRxWindow` read 실제오류(EINTR/EAGAIN 제외) 경로에서 호출.
+      read `Rc<=0` 분기를 `Rc==0`(정상 무데이터) / `Rc<0`(errno 판별) 로 분리.
+      SERIAL_READ_ERR_EID(9)도 실오류 시 송출하도록 추가.
+- [ ] coveragetest 추가 — `RunTx`/`RunRxWindow`는 static이라 직접 커버 불가.
+      write/read stub 반환값 주입으로 CloseSerial 경로 유도하려면 함수 노출 리팩터 선행 필요.
+- [ ] x86 빌드 검증 (B-2 cFS 번들 반입 후) — 현재 앱 단독 컴파일 불가
+- [ ] RT-LORA-001 실물 검증 (재오픈 후 TxCount 재개 확인)
