@@ -917,7 +917,7 @@ mavlink_bridge_app의 FC 장애 처리와 cfs_core_app 보고 경로 검증.
 
 | ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) |
 |---|---|---|---|
-| RT-FC-004 | FC 전원 차단 (보드 죽음) | stale 마킹 + core_app 보고 | 각 FC TLM `Stale=1` → cfs_core `health 1->2 fault=5(ATTITUDE_TIMEOUT)` |
+| RT-FC-004 | FC 전원 차단 (보드 죽음) | stale 마킹 + core_app 보고 | cfs_core `health 1->2 fault=3(EKF_INVALID)` — Ekf/Local/Attitude 전부 stale 시 우선순위 체인이 EKF 먼저 보고 (`cfs_core_app_utils.c:307`). stale TLM은 SB 재게시 안 됨(`MarkOutputsStale`은 내부 플래그만) → `AttitudeStatus.TimedOut=1` 등 cfs_core HK로 관측 |
 | RT-FC-005 | FC 재부팅 (일시 중단 후 복귀) | 자동 재연결 + NOMINAL 복귀 | HK `ReconnectAttemptCount` 증가 → `health 2->1` |
 | RT-FC-006 | FC 부팅 직전 백로그 burst | 재연결 시 `tcflush`로 밀린 데이터 폐기 | SB queue overflow EVS 없음 |
 
@@ -934,7 +934,7 @@ mavlink_bridge_app의 FC 장애 처리와 cfs_core_app 보고 경로 검증.
 | ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) |
 |---|---|---|---|
 | RT-CORE-001 | FC 타임스탬프 이상 (미래값) | core_app 거부 | `future timestamp rejected` EVS |
-| RT-CORE-002 | 메시지 유실 (seq 건너뜀) | 갭 감지 카운트 | `SeqGapCount` 증가, `SEQ_GAP_EID` |
+| RT-CORE-002 | 메시지 유실 (seq 건너뜀) | 갭 감지 카운트 | HK `SeqGapCount` 증가. `SEQ_GAP_EID`는 **DEBUG 타입**이라 EVS DEBUG enable 선행 필요 |
 
 > **주:** RT-FC-007/008(깨진 바이트 주입)은 실물 재현이 어려워 **E2E(B) PTY 테스트가 더 적합**
 > (PTY로 원하는 깨진 바이트를 정확히 주입 가능). 런타임에서는 ①③이 실물 검증 가치가 높다.
@@ -950,9 +950,9 @@ lora_tdm_app 장애 처리와 uplink_app 명령 검증/차단 경로.
 
 | ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) |
 |---|---|---|---|
-| RT-LORA-001 | LoRa USB 모듈 런타임 분리 (동작 중 뽑기) | write/read 오류 감지 + 재오픈 시도 | `SERIAL_WRITE_ERR_EID(8)`/`SERIAL_READ_ERR_EID(9)` → 재연결 후 `SERIAL_OPEN` 재시도, TxCount 재개 |
+| RT-LORA-001 | LoRa USB 모듈 런타임 분리 (동작 중 뽑기) | write/read 오류 감지 + 재오픈 시도 | `SERIAL_WRITE_ERR_EID(8)`/`SERIAL_READ_ERR_EID(9)`. ⚠️ **구현 갭**: 오류 시 fd close/재오픈 없음 (`lora_tdm_app.c:184`, 재오픈은 `LoRaFd<0`일 때만) → 분리 시 영구 write 실패. 오류 시 close+`fd=-1` 처리 **구현 선행 필요** |
 | RT-LORA-002 | 깨진 ACK 수신 (형식 불일치) | ACK 파싱 실패 처리 | `ACK_PARSE_ERR_EID(10)` + HK `RxErrorCount` 증가, `RxAckCount` 불변 |
-| RT-LORA-003 | UP 프레임 seq 재사용/역행 (재전송 공격 모사) | 시퀀스 검증 거부 | `SEQ_FAIL_EID(12)` + HK `RxErrorCount` 증가, SB 미게시 |
+| RT-LORA-003 | UP 프레임 seq 재사용/역행 (재전송 공격 모사) | 시퀀스 검증 거부 | uplink `COMMAND_ERR_EID(2)` replay 거부 + 다음 다운링크 `UFB=SEQ_FAIL`. ⚠️ `SEQ_FAIL_EID(12)`는 정의만 있고 송출 미구현 — lora_tdm 자체 seq 검증 없음(uplink_app 결과 피드백만, `lora_tdm_app_dispatch.c:91-96`) |
 | RT-LORA-004 | 링크 상태 전이 EVS 관측 (GS 정지→재개) | DEGRADED→DISCONNECTED→CONNECTED 전이 이벤트 | `LINK_DEGRADED_EID(14)` → `LINK_LOST_EID(13)` → `LINK_RESTORED_EID(15)`, HK `LinkState`/`NoAckCount` 일치 |
 
 **② uplink_app — 명령 검증/차단 (ProcessUplink 거부 파이프라인):**
