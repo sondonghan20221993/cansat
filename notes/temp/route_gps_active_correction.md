@@ -61,6 +61,10 @@ PB-NBV가 route(waypoint) 생성  ──route update──▶ uplink_app
 - **보정 방식**: **구간별 보간 보정**. 1바퀴 동안 각 waypoint에서 기록한 편차(복수)를
   구간(segment)별로 보간해 적용 — 단일 평행이동(uniform shift)보다 정확하지만
   구현 복잡도는 더 높음. (아래 §3.4에서 구체화 필요)
+- **보정 축 = X/Y(수평)만. 고도(Z)는 유지** (2026-07-10 확정). 원형 촬영 경로는
+  고정 고도를 도는 것이 전제이므로, GPS 편차 보정은 수평 위치에만 적용하고
+  Z는 1바퀴 원본 waypoint 값을 그대로 사용한다. → 고도는 애초에 안 바뀌므로
+  보정 후 altitude 재검증(2~8m)은 항상 통과(원본이 이미 검증 통과한 값이므로).
 
 ## 4. "능동적 보정 과정" — 단계 (갱신)
 
@@ -68,7 +72,8 @@ PB-NBV가 route(waypoint) 생성  ──route update──▶ uplink_app
    (신선도 판단 포함 — 몇 초 이내만 유효로 볼지는 §5 미결정)
 2. 마지막 waypoint 도달 시 "1바퀴 완료" 판정, 기록된 편차 목록으로 보정 단계 진입
 3. 구간별 보간으로 2바퀴 route 계산 (계산식은 §3.4 확정 필요)
-4. 보정된 route 재검증 (flyable area, altitude — segment distance 규칙은 §3.5에 따라 제외)
+4. 보정된 route 재검증 (flyable area(X/Y)만 실질 대상 — altitude는 Z 미변경으로 항상 통과,
+   segment distance 규칙은 §3.5에 따라 제외)
 5. 재검증 통과 → 2바퀴 route를 active route로 전환 + 자동 비행 시작
    재검증 실패 → §5 처리 정책에 따름
 6. 보정 결과 상태 게시 (`UPLINK_STATUS_MID`) + 로그
