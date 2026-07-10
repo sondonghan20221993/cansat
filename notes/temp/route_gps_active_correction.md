@@ -75,7 +75,7 @@ PB-NBV가 route(waypoint) 생성  ──route update──▶ uplink_app
 4. 보정된 route 재검증 (flyable area(X/Y)만 실질 대상 — altitude는 Z 미변경으로 항상 통과,
    segment distance 규칙은 §3.5에 따라 제외)
 5. 재검증 통과 → 2바퀴 route를 active route로 전환 + 자동 비행 시작
-   재검증 실패 → §5 처리 정책에 따름
+   재검증 실패 → 원안(1바퀴) route 유지, 2바퀴도 원안으로 재비행 (§3.8)
 6. 보정 결과 상태 게시 (`UPLINK_STATUS_MID`) + 로그
 
 ## 3.5 segment 거리 규칙과의 충돌 — 해소 (2026-07-10)
@@ -118,13 +118,23 @@ PB-NBV가 route(waypoint) 생성  ──route update──▶ uplink_app
   동일 메시지. 새 기준을 따로 만들면 "health는 fresh인데 보정 기능은 stale로 본다"
   같은 모순이 생길 수 있어, 기존 값과 일치시킴.
 
+## 3.8 재검증 실패 시 처리 — 확정 (2026-07-10)
+
+- **결정**: 보정된(2바퀴) route가 flyable area(X/Y) 재검증에 실패하면, 보정 route는
+  버리고 **원안(1바퀴) route를 그대로 유지해 2바퀴도 원안으로 재비행**한다.
+  reject로 미션 자체를 중단시키지 않는다.
+- **근거**: 기존 uplink_app route update 검증 실패 처리(`uplink_app_cmds.c:217-227`,
+  `UPLINK_APP_RESULT_REJECT_ROUTE`)와 동일한 패턴 — 새 route가 무효하면 그냥 반환하고
+  기존 active route를 손대지 않는다. 원안 route는 이미 1바퀴 때 검증을 통과한 안전한
+  경로이므로, 보정 실패 시 "보정 없이 원래 계획대로 계속 진행"이 합리적.
+
 ## 5. 미결정 사항 (TODO)
 
 - [x] **허용오차 게이트 없음으로 확정 (2026-07-10)** — §3.6 참조.
 - [x] **실측 pose 신선도 확정 (2026-07-10)** — §3.7 참조. 2000ms, `CFS_CORE_APP_LOCAL_TIMEOUT_MS` 재사용.
-- [ ] 보정 후 재검증 실패 시 처리 (기존 active route 유지 / reject / 1바퀴 route로 재비행)
+- [x] **재검증 실패 시 처리 확정 (2026-07-10)** — §3.8 참조. 원안(1바퀴) route 유지, reject 아님.
 - [x] **2바퀴로 종료 확정 (2026-07-10)** — 3바퀴 이상 반복 없음. 2바퀴 완료 후 재검증 실패 시에도
-      추가 랩을 돌리지 않고 §5 처리 정책(기존 route 유지/reject 등)으로 종결.
+      추가 랩을 돌리지 않고 원안 route로 종결(§3.8과 동일 정책).
 - [ ] §3.4 보간 세부 방식
 
 ## 6. 반영 예정 위치 (확정 후)
