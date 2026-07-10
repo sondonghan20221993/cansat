@@ -107,11 +107,27 @@ PB-NBV가 route(waypoint) 생성  ──route update──▶ uplink_app
   `LOCAL_POSITION_NED` 스트림 전체가 아니라, §4 step1에서 이미 기록하기로 한
   waypoint별 실측 pose만 재사용). 추가 스트리밍 샘플까지 쓰는 건 저장/처리 구조가
   더 필요해 이번 범위에서 제외.
+- **θ_i 계산 방식 확정 (2026-07-11)**: 계획 waypoint 배열에도 **동일한 원 피팅 알고리즘을
+  한 번 더 적용**해서 계획 중심(cx_plan, cy_plan)을 구하고,
+  `θ_i = atan2(Y_i − cy_plan, X_i − cx_plan)`로 계산한다. 별도의 "균등 간격 가정" 같은
+  편법 없이 실측 피팅과 동일 로직 재사용 — 계산 일관성 확보.
+- **저장 구조 신규 필요 (2026-07-11 확인)**: uplink_app은 현재 route를 저장하지 않는
+  무상태 검증기(`UPLINK_APP_Data_t`에 waypoint 배열 없음, `uplink_app.h:15-42`)이므로,
+  이번 기능을 위해 아래 필드를 신규 추가해야 함 (정적 배열, 동적 할당 없음, 총 500바이트
+  남짓):
+  - `PlannedWaypoints[UPLINK_APP_ROUTE_MAX_WAYPOINTS]` — 1바퀴 업로드한 계획 waypoint 보관
+  - `MeasuredWaypoints[UPLINK_APP_ROUTE_MAX_WAYPOINTS]` + 신선도 타임스탬프 — waypoint별
+    실측 pose (§4 step1, §3.10과 연동)
+  - §3.11 상태머신 현재 상태(IDLE/LAP1_ACTIVE/CORRECTING/LAP2_ACTIVE/DONE), 현재 랩 번호
+- **보정 범위 확인 (2026-07-11)**: `cfs_core_app`은 route를 이미
+  `CFS_CORE_APP_ROUTE_SEGMENT_MISSION_EXTENSION`(원형 촬영 waypoint, `MissionRoute`
+  캐시)과 `_LANDING`(착륙지점, `LandingRoute` 별도 캐시)으로 분리 보관 중
+  (`cfs_core_app.h:103-104`, `default_cfs_core_app_msgdefs.h:53-56`). 원 피팅 보정은
+  `MissionRoute`에만 적용되며 착륙지점은 애초에 섞여 들어가지 않음. 이륙(TAKEOFF/ARM)은
+  이 시스템 route 관리 범위 밖(코드에 관련 커맨드 없음)이라 원 피팅 입력에 포함될 일도 없음.
 - **잔여 세부사항 (구현 시)**:
   - [ ] 원 피팅 알고리즘 구체 선택 (예: Kasa method 등 대수적 최소자승 원 피팅)
-  - [ ] 최소 몇 개 점부터 원 피팅이 유효한지 (route가 최대 16 waypoint 한도)
-  - [ ] θ_i를 원래 계획 waypoint에서 어떻게 구할지 (원래 waypoint 자체도 이미
-        계획상 원 중심 기준 각도를 가지므로, 그 값 재사용 여부)
+  - [ ] 최소 몇 개 점부터 원 피팅이 유효한지 (route가 최대 16 waypoint 한도) — §3.12에서 다룸
 
 ## 3.6 허용오차 게이트 — 없음 (2026-07-10 확정)
 
@@ -163,13 +179,8 @@ PB-NBV가 route(waypoint) 생성  ──route update──▶ uplink_app
      한해 완화**한다 — 범용으로 armed 업로드를 다 허용하는 게 아니라, "마지막 항목이
      LOITER_UNLIM 상태에서 대기 중"이라는 조건이 성립할 때만 통과시킴 (일반 비행 중
      임의 route 재업로드로 인한 위험한 경로 급변경은 여전히 차단 유지).
-- **잔여 확인사항 (구현 시)**:
-  - [ ] "LOITER 대기 중"임을 무엇으로 판정할지 — 현재 mission sequence(마지막 waypoint
-        도달 여부)를 추적하는 상태가 mavlink_bridge_app에 없음. `MISSION_CURRENT`
-        구독 또는 온보드 도달 판정(§4 step1과 동일 로직)으로 추적 구조 신규 필요.
-  - [ ] armed 상태에서 보정 route 재업로드 후 자동으로 새 미션이 시작되는지 확인 필요 —
-        `MISSION_ITEM_INT` 업로드만으로 LOITER를 깨고 자동 진행되는지, 별도 재개
-        커맨드(MISSION_SET_CURRENT 등)가 필요한지는 구현 시 FC 동작 확인 필요.
+- **잔여 확인사항**: "LOITER 대기 중" 판정은 §3.10의 `MISSION_ITEM_REACHED`(마지막 seq)로
+  해소, 업로드 후 재개 트리거는 §3.11의 `MISSION_SET_CURRENT`로 해소 — 둘 다 확정 완료.
 
 ## 3.10 waypoint 도달 판정 — FC MISSION_ITEM_REACHED 구독 (2026-07-11 확정)
 
@@ -238,6 +249,10 @@ PB-NBV가 route(waypoint) 생성  ──route update──▶ uplink_app
       불변, 기존 단일-패스 미션과 호환). IDLE→LAP1_ACTIVE→CORRECTING→LAP2_ACTIVE→DONE.
 - [x] **2바퀴 재출발 트리거 확정 (2026-07-11)** — §3.11 참조. `MISSION_SET_CURRENT(seq=0)`
       온보드(mavlink_bridge_app→FC 직결) 자동 송신, 지상국 개입 없음.
+- [x] **계획 원 중심(θ_i) 계산 방식 + 저장 구조 확정 (2026-07-11)** — §3.4 참조.
+      계획 waypoint에도 동일 원 피팅 적용해 중심 산출, uplink_app에 정적 배열(~500B)로
+      계획/실측 waypoint 신규 보관. 보정 대상은 `MISSION_EXTENSION` route만 —
+      착륙지점(`LANDING`, 별도 캐시)·이륙(범위 밖)은 원 피팅에 섞이지 않음(기존 구조 확인).
 
 **설계 미결정 사항 전부 확정 — 스펙/코드 반영 준비 완료.**
 
