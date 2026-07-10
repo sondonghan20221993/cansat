@@ -78,6 +78,18 @@ static int OpenSerial(void)
     return Fd;
 }
 
+/* ---- Serial close ----
+ * write/read 오류(예: LoRa USB 런타임 분리) 시 fd를 닫고 -1로 되돌려
+ * 다음 RunCycle의 재오픈 경로(LoRaFd < 0)가 동작하도록 한다. */
+static void CloseSerial(void)
+{
+    if (LORA_TDM_APP_Data.LoRaFd >= 0)
+    {
+        close(LORA_TDM_APP_Data.LoRaFd);
+        LORA_TDM_APP_Data.LoRaFd = -1;
+    }
+}
+
 /* ---- Get timestamp in ms ---- */
 
 static uint32 GetTimeMs(void)
@@ -116,8 +128,24 @@ static void RunRxWindow(void)
         }
 
         Rc = read(LORA_TDM_APP_Data.LoRaFd, &C, 1);
-        if (Rc <= 0)
+        if (Rc == 0)
         {
+            break; /* 이번 폴에 데이터 없음 (정상) */
+        }
+        if (Rc < 0)
+        {
+            if (errno == EINTR)
+            {
+                continue;
+            }
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+            {
+                break; /* 데이터 없음 */
+            }
+            /* 실제 오류 (USB 분리 등) → 닫아서 다음 사이클 재오픈 유도 */
+            CFE_EVS_SendEvent(LORA_TDM_APP_SERIAL_READ_ERR_EID, CFE_EVS_EventType_ERROR,
+                              "LORA_TDM_APP: serial read failed errno=%d, closing for reopen", errno);
+            CloseSerial();
             break;
         }
 
@@ -181,8 +209,10 @@ static void RunTx(void)
         }
         else
         {
+            /* write 실패 (USB 분리 등) → 닫아서 다음 사이클 재오픈 유도 */
             CFE_EVS_SendEvent(LORA_TDM_APP_SERIAL_WRITE_ERR_EID, CFE_EVS_EventType_ERROR,
-                              "LORA_TDM_APP: serial write failed");
+                              "LORA_TDM_APP: serial write failed errno=%d, closing for reopen", errno);
+            CloseSerial();
         }
     }
 }
