@@ -913,28 +913,32 @@ Pi 실환경 동작은 불변** — env var는 테스트 전용이다.
 mavlink_bridge_app의 FC 장애 처리와 cfs_core_app 보고 경로 검증.
 관측 수단이 실제 코드에 존재하는 항목만 포함 (EVS/HK 필드 기준).
 
+**검증 상태 범례** (2026-07-10 코드·설계 대조 결과):
+`✅ 실물` = Pi+FC/LoRa 실물로 즉시 검증 · `🔧 CI_LAB` = 테스트 startup scr(CI_LAB) 명령 주입 필요 ·
+`🔵 E2E(B)` = 바이트/타이밍 정밀 제어 필요, PTY/CI_LAB 하네스가 적합 · `⚠️ 구현갭` = 코드 구현 선행 후에만 검증 가능
+
 **① FC 보드 장애:**
 
-| ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) |
-|---|---|---|---|
-| RT-FC-004 | FC 전원 차단 (보드 죽음) | stale 마킹 + core_app 보고 | cfs_core `health 0->1 fault=3(EKF_INVALID)` — Ekf/Local/Attitude 전부 stale 시 우선순위 체인이 EKF 먼저 보고 (`cfs_core_app_utils.c:307`). stale TLM은 SB 재게시 안 됨(`MarkOutputsStale`은 내부 플래그만) → `AttitudeStatus.TimedOut=1` 등 cfs_core HK로 관측 |
-| RT-FC-005 | FC 재부팅 (일시 중단 후 복귀) | stale 해소 + NOMINAL 복귀 | FC 복귀 후 10초 안정화 → `health 1->0`. ⚠️ `ReconnectAttemptCount`는 UART 무신호(EAGAIN) 경로에서 증가 안 함 — read 오류 errno일 때만 close/재연결 (`mavlink_bridge_app_utils.c:1862-1870`) |
-| RT-FC-006 | FC 부팅 직전 백로그 burst | 재연결 시 `tcflush`로 밀린 데이터 폐기 | SB queue overflow EVS 없음 |
+| ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) | 검증 상태 |
+|---|---|---|---|---|
+| RT-FC-004 | FC 전원 차단 (보드 죽음) | stale 마킹 + core_app 보고 | cfs_core `health 0->1 fault=3(EKF_INVALID)` — Ekf/Local/Attitude 전부 stale 시 우선순위 체인이 EKF 먼저 보고 (`cfs_core_app_utils.c:307`). stale TLM은 SB 재게시 안 됨(`MarkOutputsStale`은 내부 플래그만) → `AttitudeStatus.TimedOut=1` 등 cfs_core HK로 관측 | ✅ 실물 |
+| RT-FC-005 | FC 재부팅 (일시 중단 후 복귀) | stale 해소 + NOMINAL 복귀 | FC 복귀 후 10초 안정화 → `health 1->0`. ⚠️ `ReconnectAttemptCount`는 UART 무신호(EAGAIN) 경로에서 증가 안 함 — read 오류 errno일 때만 close/재연결 (`mavlink_bridge_app_utils.c:1862-1870`) | ✅ 실물 (Reconnect 카운트 판정 제외) |
+| RT-FC-006 | FC 부팅 직전 백로그 burst | 재연결 시 `tcflush`로 밀린 데이터 폐기 | SB queue overflow EVS 없음 | ✅ 실물 |
 
 **② 깨진 값 수신:**
 
-| ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) |
-|---|---|---|---|
-| RT-FC-007 | serial 노이즈 (baud 불일치/접촉불량 모사) | CRC 실패 프레임 SB 미게시 | HK `ParseErrorCount` 증가, ATTITUDE 값 불변 |
-| RT-FC-008 | 부분 프레임 (전송 중 절단) | 파서 리셋 후 다음 정상 프레임 파싱 재개 | 이후 ATTITUDE `Seq` 계속 증가 |
-| RT-FC-009 | EKF 상태 불량 (FC 살아있으나 값 신뢰불가) | core_app EKF_INVALID 판단 | `health 0->1 fault=3(EKF_INVALID)` |
+| ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) | 검증 상태 |
+|---|---|---|---|---|
+| RT-FC-007 | serial 노이즈 (baud 불일치/접촉불량 모사) | CRC 실패 프레임 SB 미게시 | HK `ParseErrorCount` 증가, ATTITUDE 값 불변 | 🔵 E2E(B) PTY |
+| RT-FC-008 | 부분 프레임 (전송 중 절단) | 파서 리셋 후 다음 정상 프레임 파싱 재개 | 이후 ATTITUDE `Seq` 계속 증가 | 🔵 E2E(B) PTY |
+| RT-FC-009 | EKF 상태 불량 (FC 살아있으나 값 신뢰불가) | core_app EKF_INVALID 판단 | `health 0->1 fault=3(EKF_INVALID)` | ✅ 실물 (FC EKF 불량 유발 조건 필요) |
 
 **③ cfs_core_app 보고 경로 (연쇄 검증):**
 
-| ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) |
-|---|---|---|---|
-| RT-CORE-001 | FC 타임스탬프 이상 (미래값) | core_app 거부 | `future timestamp rejected` EVS |
-| RT-CORE-002 | 메시지 유실 (seq 건너뜀) | 갭 감지 카운트 | HK `SeqGapCount` 증가. `SEQ_GAP_EID`는 **DEBUG 타입**이라 EVS DEBUG enable 선행 필요 |
+| ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) | 검증 상태 |
+|---|---|---|---|---|
+| RT-CORE-001 | FC 타임스탬프 이상 (미래값) | core_app 거부 | `future timestamp rejected` EVS | 🔵 E2E(B) (미래 ts 주입 필요) |
+| RT-CORE-002 | 메시지 유실 (seq 건너뜀) | 갭 감지 카운트 | HK `SeqGapCount` 증가. `SEQ_GAP_EID`는 **DEBUG 타입**이라 EVS DEBUG enable 선행 필요 | 🔵 E2E(B) (seq 조작 + DEBUG enable) |
 
 > **주:** RT-FC-007/008(깨진 바이트 주입)은 실물 재현이 어려워 **E2E(B) PTY 테스트가 더 적합**
 > (PTY로 원하는 깨진 바이트를 정확히 주입 가능). 런타임에서는 ①③이 실물 검증 가치가 높다.
@@ -948,31 +952,31 @@ lora_tdm_app 장애 처리와 uplink_app 명령 검증/차단 경로.
 
 **① lora_tdm_app — LoRa 모듈 장애/깨진 프레임 (TDM-RT-001~009 이후 갭):**
 
-| ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) |
-|---|---|---|---|
-| RT-LORA-001 | LoRa USB 모듈 런타임 분리 (동작 중 뽑기) | write/read 오류 감지 + 재오픈 시도 | `SERIAL_WRITE_ERR_EID(8)`/`SERIAL_READ_ERR_EID(9)`. ⚠️ **구현 갭**: 오류 시 fd close/재오픈 없음 (`lora_tdm_app.c:184`, 재오픈은 `LoRaFd<0`일 때만) → 분리 시 영구 write 실패. 오류 시 close+`fd=-1` 처리 **구현 선행 필요** |
-| RT-LORA-002 | 깨진 ACK 수신 (형식 불일치) | ACK 파싱 실패 처리 | `ACK_PARSE_ERR_EID(10)` + HK `RxErrorCount` 증가, `RxAckCount` 불변 |
-| RT-LORA-003 | UP 프레임 seq 재사용/역행 (재전송 공격 모사) | 시퀀스 검증 거부 | uplink `COMMAND_ERR_EID(2)` replay 거부 + 다음 다운링크 `UFB=SEQ_FAIL`(`LastCommandResult==REJECT_SEQUENCE`, §18.11.1). lora_tdm은 UP 프레임 자체 seq 검증을 하지 않고 uplink_app 판정 결과만 피드백 전달(`lora_tdm_app_dispatch.c:91-96`) — **`SEQ_FAIL_EID(12)`와는 무관**: EID 12는 ACK 응답의 `SeqEcho` 불일치 검출용으로 별도 미구현 갭 (`SeqEcho` 파싱 후 `(void)` 무시, `lora_tdm_app_utils.c:295`) |
-| RT-LORA-004 | 링크 상태 전이 EVS 관측 (GS 정지→재개) | DEGRADED→DISCONNECTED→CONNECTED 전이 이벤트 | `LINK_DEGRADED_EID(14)` → `LINK_LOST_EID(13)` → `LINK_RESTORED_EID(15)`, HK `LinkState`/`NoAckCount` 일치 |
+| ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) | 검증 상태 |
+|---|---|---|---|---|
+| RT-LORA-001 | LoRa USB 모듈 런타임 분리 (동작 중 뽑기) | write/read 오류 감지 + 재오픈 시도 | `SERIAL_WRITE_ERR_EID(8)`/`SERIAL_READ_ERR_EID(9)`. ⚠️ **구현 갭**: 오류 시 fd close/재오픈 없음 (`lora_tdm_app.c:184`, 재오픈은 `LoRaFd<0`일 때만) → 분리 시 영구 write 실패. 오류 시 close+`fd=-1` 처리 **구현 선행 필요** | ⚠️ 구현갭 ([[lora_tdm_serial_reopen_gap]]) |
+| RT-LORA-002 | 깨진 ACK 수신 (형식 불일치) | ACK 파싱 실패 처리 | `ACK_PARSE_ERR_EID(10)` + HK `RxErrorCount` 증가, `RxAckCount` 불변 | 🔵 E2E(B) (깨진 ACK 바이트 주입) |
+| RT-LORA-003 | UP 프레임 seq 재사용/역행 (재전송 공격 모사) | 시퀀스 검증 거부 | uplink `COMMAND_ERR_EID(2)` replay 거부 + 다음 다운링크 `UFB=SEQ_FAIL`(`LastCommandResult==REJECT_SEQUENCE`, §18.11.1). lora_tdm은 UP 프레임 자체 seq 검증을 하지 않고 uplink_app 판정 결과만 피드백 전달(`lora_tdm_app_dispatch.c:91-96`) — **`SEQ_FAIL_EID(12)`와는 무관**: EID 12는 ACK 응답의 `SeqEcho` 불일치 검출용으로 별도 미구현 갭 (`SeqEcho` 파싱 후 `(void)` 무시, `lora_tdm_app_utils.c:295`) | 🔵 E2E(B) (UP 프레임 seq 조작) |
+| RT-LORA-004 | 링크 상태 전이 EVS 관측 (GS 정지→재개) | DEGRADED→DISCONNECTED→CONNECTED 전이 이벤트 | `LINK_DEGRADED_EID(14)` → `LINK_LOST_EID(13)` → `LINK_RESTORED_EID(15)`, HK `LinkState`/`NoAckCount` 일치 | ✅ 실물 (GS 정지/재개) |
 
 **② uplink_app — 명령 검증/차단 (ProcessUplink 거부 파이프라인):**
 
-| ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) |
-|---|---|---|---|
-| RT-UPL-001 | 동일 seq 재전송 (replay) | 시퀀스 재사용 거부 | `COMMAND_ERR_EID(2)` "rejected replay seq=..." + HK `RejectedCount` 증가 |
-| RT-UPL-002 | 부팅 직후 health 미수신 상태에서 명령 | fail-safe 차단 (health 수신 전 전면 거부) | `STATE_BLOCK_EID(6)` "command blocked (no health yet)" |
-| RT-UPL-003 | health DEGRADED 중 VIEWPOINT/CONFIG 명령 | 상태 기반 클래스 차단 (§18.10.1) | `STATE_BLOCK_EID(6)` "blocked by health state=..." + `RejectedCount` 증가 |
-| RT-UPL-004 | health RECOVERY/FAILED 중 일반 명령 | RECOVERY+DIAGNOSTIC 클래스만 허용 | 일반 명령 `STATE_BLOCK_EID(6)`, RECOVERY 명령은 통과(`PUBLISH_EID(5)`) |
-| RT-UPL-005 | 권한 부족 명령 (auth_level < required) | 인가 차단, Level-3은 request_token 검증 | `AUTHZ_BLOCK_EID(7)` "insufficient auth auth=... required=..." |
-| RT-UPL-006 | 미지원 class 명령 | 라우팅 실패 처리 | HK `RoutingFailureCount` 증가 |
-| RT-UPL-007 | uplink_app 재시작 후 구 seq 재전송 | LastAcceptedSequence 영속(Magic+Checksum) 확인 | 재시작 후에도 구 seq `COMMAND_ERR_EID(2)` replay 거부 |
+| ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) | 검증 상태 |
+|---|---|---|---|---|
+| RT-UPL-001 | 동일 seq 재전송 (replay) | 시퀀스 재사용 거부 | `COMMAND_ERR_EID(2)` "rejected replay seq=..." + HK `RejectedCount` 증가 | 🔵 E2E(B)/🔧 CI_LAB (GS 동일 seq 재전송 기능 시 ✅) |
+| RT-UPL-002 | 부팅 직후 health 미수신 상태에서 명령 | fail-safe 차단 (health 수신 전 전면 거부) | `STATE_BLOCK_EID(6)` "command blocked (no health yet)" | 🔵 E2E(B) (수백 ms 타이밍 창, 수동 불가) |
+| RT-UPL-003 | health DEGRADED 중 VIEWPOINT/CONFIG 명령 | 상태 기반 클래스 차단 (§18.10.1) | `STATE_BLOCK_EID(6)` "blocked by health state=..." + `RejectedCount` 증가 | 🔵 E2E(B)/🔧 CI_LAB (DEGRADED 유발 + 명령 주입) |
+| RT-UPL-004 | health RECOVERY/FAILED 중 일반 명령 | RECOVERY+DIAGNOSTIC 클래스만 허용 | 일반 명령 `STATE_BLOCK_EID(6)`, RECOVERY 명령은 통과(`PUBLISH_EID(5)`) | 🔵 E2E(B)/🔧 CI_LAB |
+| RT-UPL-005 | 권한 부족 명령 (auth_level < required) | 인가 차단, Level-3은 request_token 검증 | `AUTHZ_BLOCK_EID(7)` "insufficient auth auth=... required=..." | 🔵 E2E(B)/🔧 CI_LAB (auth 필드 조작) |
+| RT-UPL-006 | 미지원 class 명령 | 라우팅 실패 처리 | HK `RoutingFailureCount` 증가 | 🔵 E2E(B)/🔧 CI_LAB |
+| RT-UPL-007 | uplink_app 재시작 후 구 seq 재전송 | LastAcceptedSequence 영속(Magic+Checksum) 확인 | 재시작 후에도 구 seq `COMMAND_ERR_EID(2)` replay 거부 | 🔧 CI_LAB (STOP_APP/START_APP + seq 주입) |
 
 **③ cfs_core_app 보고 경로 (연쇄 검증):**
 
-| ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) |
-|---|---|---|---|
-| RT-CORE-003 | uplink_app 정지 (ES `STOP_APP`, OS kill 불가—스레드) | core_app UPLINK_TIMEOUT 보고 | `health 0->1 fault=6(UPLINK_TIMEOUT)` → `START_APP` 후 `health 1->0` |
-| RT-CORE-004 | lora_tdm_app 정지 (ES `STOP_APP`) | core_app LORA_TIMEOUT 보고 | `health 0->1 fault=7(LORA_TIMEOUT)` → `START_APP` 후 `health 1->0` |
+| ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) | 검증 상태 |
+|---|---|---|---|---|
+| RT-CORE-003 | uplink_app 정지 (ES `STOP_APP`, OS kill 불가—스레드) | core_app UPLINK_TIMEOUT 보고 | `health 0->1 fault=6(UPLINK_TIMEOUT)` → `START_APP` 후 `health 1->0` | 🔧 CI_LAB (startup_test.scr) |
+| RT-CORE-004 | lora_tdm_app 정지 (ES `STOP_APP`) | core_app LORA_TIMEOUT 보고 | `health 0->1 fault=7(LORA_TIMEOUT)` → `START_APP` 후 `health 1->0` | 🔧 CI_LAB (startup_test.scr) |
 
 > **주:** RT-LORA-002/003(깨진 ACK·seq 조작)과 RT-UPL-001~007(명령 페이로드 조작)은
 > 프레임/명령을 바이트 단위로 제어해야 하므로 **E2E(B) PTY/CI_LAB 주입이 더 적합**.
