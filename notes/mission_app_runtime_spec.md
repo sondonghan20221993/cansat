@@ -1223,6 +1223,67 @@ route update baseline 수치 기준:
 - 고도 제약 위반 (REPLACE/APPEND)
 - 인접 waypoint 거리 제약 위반 (REPLACE/APPEND)
 
+##### 18.4.6.2.1 route update — 2-pass GPS 능동 보정 (2026-07-11 설계 확정)
+
+REPLACE 연산에 한해, payload의 `reserved` 필드를 2-pass 보정 활성화 플래그로 사용한다.
+활성화된 route update는 아래 상태머신을 따른다: `IDLE → LAP1_ACTIVE → CORRECTING →
+LAP2_ACTIVE → DONE`. 총 랩 수는 2로 고정하며 추가 반복은 없다.
+
+**대상 범위**: 보정은 `MISSION_EXTENSION` 세그먼트에만 적용된다. `LANDING` 세그먼트
+(별도 route 캐시)와 이륙 절차(이 시스템의 route 관리 범위 밖)는 영향받지 않는다.
+
+**lap 1 — 데이터 수집**:
+- FC가 발행하는 `LOCAL_POSITION_NED`(200ms 주기)를 lap 1 비행 내내 정적 원형
+  버퍼(최대 1500 샘플, 초과 시 오래된 샘플 덮어쓰기)에 축적한다.
+- lap 1의 마지막 waypoint는 일반 `MAV_CMD_NAV_WAYPOINT` 대신 `MAV_CMD_NAV_LOITER_UNLIM`으로
+  전송해, FC 파라미터(RTL/착륙 등 mission-done 설정)와 무관하게 확정적으로 제자리
+  호버링 상태가 되도록 한다.
+- lap 1 완료 판정은 FC가 발행하는 `MISSION_ITEM_REACHED`가 마지막 waypoint의 seq를
+  보고하는 시점으로 한다(자체 도달 반경 재계산 없음, FC의 판정을 그대로 사용).
+
+**CORRECTING — 보정 계산**:
+1. 버퍼된 스트림 샘플에 최소자승 원 피팅을 적용해 실측 중심(cx, cy)과 반지름(r)을 구한다.
+   유효 샘플이 3개 미만이면 원 피팅을 수행하지 않고 원본(lap 1) route를 유지한 채
+   lap 2를 재비행한다(아래 실패 처리와 동일).
+2. 계획 waypoint 배열에도 동일한 원 피팅을 적용해 계획 중심(cx_plan, cy_plan)을 구하고,
+   각 waypoint의 각도 `θ_i = atan2(Y_i − cy_plan, X_i − cx_plan)`를 계산한다.
+3. 보정 waypoint `i` = `(cx + r·cosθ_i, cy + r·sinθ_i)`. 고도(Z)는 원본 값을 그대로
+   유지한다 — 수평(X/Y) 보정만 수행하며, 이에 따라 고도 재검증은 항상 통과한다.
+4. 보정된 route는 §18.4.6.2의 REPLACE 검증을 다시 거치되, 인접 waypoint 거리 제약
+   (`2m 이상 2m 이하`)은 적용하지 않는다 — 이 규칙은 이전 프로토타입 단계의 잔재로
+   간주하고 보정 route 재검증에서 제외한다. 비행 가능 영역(X/Y) 및 finite 검사는
+   그대로 적용한다.
+5. 이 게이트는 §18.4.6.2의 허용오차/편차 크기 게이트와 무관한 별개 유효성 체크다 —
+   편차 크기에 대한 임계값(±Xm)은 두지 않으며, 측정된 편차는 크기와 무관하게 항상
+   보정 계산에 반영한다(노이즈 상쇄는 원 피팅의 다중 샘플 평균화 효과에 의존).
+
+**LAP2_ACTIVE 전이**:
+- 검증 통과 시: 보정 route를 기존 route update 경로로 게시하고, 마지막 waypoint에서
+  호버링 중인 상태에 한해 armed 상태에서의 미션 업로드를 허용한다(일반 비행 중 임의
+  route 재업로드는 계속 차단). 업로드 완료(`MISSION_ACK` accepted) 확인 후
+  `MISSION_SET_CURRENT(0)`을 FC에 전송해 호버링을 해제하고 lap 2를 시작한다. 이
+  트리거는 지상국을 거치지 않고 온보드(companion computer ↔ FC 직결 링크)에서
+  자동으로 수행된다.
+- 검증 실패 또는 원 피팅 무효(샘플 부족) 시: 보정 route는 폐기하고, 원본(lap 1)
+  route를 그대로 재업로드해 lap 2를 원본 경로로 재비행한다. 미션을 reject하거나
+  중단하지 않는다.
+
+**lap 2 종료**: lap 2의 마지막 waypoint 도달 시 동일하게 호버링 상태로 전환하고 DONE으로
+종료한다 — 추가 보정이나 3회차 이상의 반복 비행은 수행하지 않는다.
+
+**출력**: 랩 번호, 보정 성공/폴백 여부, 산출된 (cx, cy, r)를 `UPLINK_STATUS_MID`에 반영한다.
+
+**알려진 제약(추후 해결 과제)**:
+- waypoint 개수 상한(`MAX_ROUTE_WAYPOINT_COUNT=16`)은 임의 값이 아니라 LoRa 프레임
+  페이로드(196바이트)에 정확히 맞춘 하드 리밋이다(`4 + 16×12 = 196`). APPEND 연산으로
+  여러 LoRa 프레임에 나눠 보내도 최종 합계는 여전히 16에서 절단되므로, 미션 전체를
+  통틀어 16 waypoint가 절대 상한이다. 원형 촬영 밀도 요구량이 이보다 많은 지점을
+  필요로 하는지, 필요하다면 메시지 구조체(3개 앱 공통) 재설계가 선행돼야 하는지는
+  별도 검토가 필요하다.
+- `MISSION_ITEM_INT`(INT 업로드 경로) 가 ArduPilot에서 거부될 수 있는 frame 호환성
+  문제가 별도로 발견됨 — 이 보정 기능의 업로드 자체가 영향받을 수 있으므로 §13.1
+  frame 변환 수정과 함께 확인 필요.
+
 ##### 18.4.6.3 viewpoint update
 
 viewpoint payload는 최소한 다음 필드를 포함해야 한다.
@@ -1713,6 +1774,7 @@ if (required_level == 3) {
 - 부분 장애 상태 정의: Section 15의 `DEGRADED_*` fault code 구분을 유지하되, 필요한 경우 세부 fault code 집합만 확장한다.
 - persistent state integrity: boot counter, command sequence cache, route cache, active configuration 저장본의 checksum 또는 CRC 오류 처리 정책을 고려해야 한다.
 - route/config 적용 원자성: route update 또는 configuration 변경이 일부만 적용된 상태로 남지 않도록 atomic apply 또는 rollback 필요성을 고려해야 한다.
+- **waypoint 개수 상한 재검토 (2026-07-11 도출)**: `MAX_ROUTE_WAYPOINT_COUNT=16`은 LoRa 프레임 페이로드(196바이트)에 정확히 맞춰 역산된 값(§18.4.6.2.1 참조)이며, APPEND로 여러 프레임에 나눠도 최종 합계는 16에서 절단된다. 원형 촬영 등 고밀도 waypoint가 필요한 미션 요구가 늘어나면, LoRa 프레임 분할 프로토콜 또는 메시지 구조체(3개 앱 공통) 재설계가 필요한지 검토해야 한다.
 - 복구 중 허용 명령: `CFS_RECOVERY` 또는 최소 보고 상태에서 허용되는 명령 클래스의 최소 집합을 별도로 검토해야 한다.
 - ✅ 권한 검증: §18.11.1에서 명령 클래스별 권한 수준 및 검증 규칙 확정 (Phase 3.2 구현 진행 중).
 
