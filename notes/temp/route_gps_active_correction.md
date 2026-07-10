@@ -66,17 +66,29 @@ PB-NBV가 route(waypoint) 생성  ──route update──▶ uplink_app
   Z는 1바퀴 원본 waypoint 값을 그대로 사용한다. → 고도는 애초에 안 바뀌므로
   보정 후 altitude 재검증(2~8m)은 항상 통과(원본이 이미 검증 통과한 값이므로).
 
-## 4. "능동적 보정 과정" — 단계 (갱신)
+## 4. "능동적 보정 과정" — 단계 (2026-07-11 전면 갱신, §3.4/§3.9~§3.11 반영)
 
-1. 1바퀴 비행 중 각 waypoint 도달 시 실측 pose(직전 downlink) vs 계획 waypoint 편차를 기록
-   (신선도 판단 포함 — 몇 초 이내만 유효로 볼지는 §5 미결정)
-2. 마지막 waypoint 도달 시 "1바퀴 완료" 판정, 기록된 편차 목록으로 보정 단계 진입
-3. 구간별 보간으로 2바퀴 route 계산 (계산식은 §3.4 확정 필요)
-4. 보정된 route 재검증 (flyable area(X/Y)만 실질 대상 — altitude는 Z 미변경으로 항상 통과,
-   segment distance 규칙은 §3.5에 따라 제외)
-5. 재검증 통과 → 2바퀴 route를 active route로 전환 + 자동 비행 시작
-   재검증 실패 → 원안(1바퀴) route 유지, 2바퀴도 원안으로 재비행 (§3.8)
-6. 보정 결과 상태 게시 (`UPLINK_STATUS_MID`) + 로그
+1. route update(`Reserved` 2-pass 플래그) 수신 → IDLE→LAP1_ACTIVE. 계획 waypoint를
+   `PlannedWaypoints`에 보관.
+2. LAP1_ACTIVE 동안 `LOCAL_POSITION_NED` 스트림(5Hz)을 정적 원형 버퍼에 계속 축적
+   (§3.4 스트림 전환 결정 — waypoint 도달 이벤트와 무관하게 계속 버퍼링).
+3. `MISSION_ITEM_REACHED`(§3.10)로 waypoint 도달 추적, 마지막 waypoint(seq=count-1)
+   도달 시 "1바퀴 완료" → CORRECTING. 동시에 마지막 waypoint는 FC에 이미
+   `MAV_CMD_NAV_LOITER_UNLIM`으로 전송돼 호버링 중(§3.9).
+4. CORRECTING: 버퍼된 스트림 샘플로 원 피팅 → 실측 중심(cx,cy)·반지름(r).
+   계획 waypoint에도 동일 피팅 적용해 각 waypoint의 θ_i 산출.
+   `보정_i = (cx + r·cosθ_i, cy + r·sinθ_i)` (Z는 원본 유지, §3.1).
+5. 보정된 route 재검증 (flyable area(X/Y)만 실질 대상 — altitude는 Z 미변경으로 항상 통과,
+   segment distance 규칙은 §3.5에 따라 제외). 원 피팅 자체의 유효성(최소 샘플 수 등)도
+   이 단계에서 같이 확인 — §3.12에서 다룸.
+6. 검증+피팅 모두 통과 → 보정 route를 기존 `ROUTE_UPDATE_MID`(RouteType=REPLACE) 경로로
+   게시 → cfs_core_app → mavlink_bridge_app이 armed 업로드(§3.9) →
+   `MISSION_SET_CURRENT(0)`으로 LOITER 해제, LAP2_ACTIVE 시작(§3.11).
+   실패(재검증 또는 피팅 무효) → 원안(1바퀴) route 유지, 원안으로 2바퀴 재비행(§3.8) —
+   단 이 경우도 호버링 해제는 필요하므로 원안 route를 그대로 재업로드 후 SET_CURRENT(0).
+7. LAP2_ACTIVE 중 마지막 waypoint 도달 → 동일하게 LOITER_UNLIM 진입 → DONE
+   (추가 보정·재비행 없음, §3.1).
+8. 보정 결과 상태 게시 (`UPLINK_STATUS_MID`: 랩 번호, 보정 성공/폴백 여부, cx/cy/r) + 로그
 
 ## 3.5 segment 거리 규칙과의 충돌 — 해소 (2026-07-10)
 
@@ -103,21 +115,31 @@ PB-NBV가 route(waypoint) 생성  ──route update──▶ uplink_app
 - **근거**: "구간별 보간"보다 원의 전체 구조(중심/반지름 단 2~3개 파라미터)에
   최소자승으로 한 번에 피팅하므로 노이즈 상쇄 효과가 더 크고, 계산도 더 명확함.
   §3.6(노이즈를 게이트 없이 다 반영)의 전제(평균화로 노이즈 상쇄)와도 정확히 부합.
-- **원 피팅 입력**: **waypoint 도달 시점 실측치만 사용** (1바퀴 동안 계속 들어오는
-  `LOCAL_POSITION_NED` 스트림 전체가 아니라, §4 step1에서 이미 기록하기로 한
-  waypoint별 실측 pose만 재사용). 추가 스트리밍 샘플까지 쓰는 건 저장/처리 구조가
-  더 필요해 이번 범위에서 제외.
+- **원 피팅 입력 — 스트림 전체로 확장 (2026-07-11 결정 변경)**: 애초 "waypoint 도달
+  시점 실측치만 사용"에서, **1바퀴 비행 내내 들어오는 `LOCAL_POSITION_NED` 스트림
+  전체**로 확장한다. 보정 대상은 waypoint 16개 각각이 아니라 그 점들을 이은 **원형
+  경로 자체**이므로, 원의 모양(중심·반지름)을 구할 땐 조밀한 데이터가 더 정확함.
+  - **비용 확인(2026-07-11)**: `LOCAL_POSITION_NED` 발행 주기 200ms(5Hz,
+    `MAVLINK_BRIDGE_APP_LOCAL_POSITION_INTERVAL_US`) 기준 1바퀴(1~2분)당
+    300~600 샘플, X/Y float만 저장 시 5KB 이하 — 정적 버퍼로 충분.
+    A-1에서 이미 이 메시지 구독을 확정했으므로 스트림 수신 자체는 추가 비용 없음.
+    최소자승 원 피팅은 O(n)이라 점 개수 증가에 따른 연산 비용도 무의미.
+  - **θ_i와는 분리**: 원 피팅 입력을 스트림으로 바꿔도 각 waypoint의 보정 각도 θ_i는
+    여전히 계획 waypoint 자체의 각도에서 구함(위 항목, 변경 없음) — 스트림은 오직
+    원의 중심(cx,cy)·반지름(r)을 더 촘촘하게 추정하는 데만 쓰임.
+  - **구현 항목**: uplink_app에 LAP1_ACTIVE 동안 스트림 샘플을 담을 정적 원형 버퍼
+    신규 필요(크기·오버플로 처리는 §3.12에서 다룸).
 - **θ_i 계산 방식 확정 (2026-07-11)**: 계획 waypoint 배열에도 **동일한 원 피팅 알고리즘을
   한 번 더 적용**해서 계획 중심(cx_plan, cy_plan)을 구하고,
   `θ_i = atan2(Y_i − cy_plan, X_i − cx_plan)`로 계산한다. 별도의 "균등 간격 가정" 같은
   편법 없이 실측 피팅과 동일 로직 재사용 — 계산 일관성 확보.
-- **저장 구조 신규 필요 (2026-07-11 확인)**: uplink_app은 현재 route를 저장하지 않는
-  무상태 검증기(`UPLINK_APP_Data_t`에 waypoint 배열 없음, `uplink_app.h:15-42`)이므로,
-  이번 기능을 위해 아래 필드를 신규 추가해야 함 (정적 배열, 동적 할당 없음, 총 500바이트
-  남짓):
+- **저장 구조 신규 필요 (2026-07-11 확인, 스트림 전환으로 갱신)**: uplink_app은 현재
+  route를 저장하지 않는 무상태 검증기(`UPLINK_APP_Data_t`에 waypoint 배열 없음,
+  `uplink_app.h:15-42`)이므로, 이번 기능을 위해 아래 필드를 신규 추가해야 함
+  (정적 배열/버퍼, 동적 할당 없음, 총 수 KB 수준):
   - `PlannedWaypoints[UPLINK_APP_ROUTE_MAX_WAYPOINTS]` — 1바퀴 업로드한 계획 waypoint 보관
-  - `MeasuredWaypoints[UPLINK_APP_ROUTE_MAX_WAYPOINTS]` + 신선도 타임스탬프 — waypoint별
-    실측 pose (§4 step1, §3.10과 연동)
+  - `MeasuredStreamBuffer[N]` (X/Y만, 위 원 피팅 입력 스트림 전환에 따라 정적 원형 버퍼로
+    변경 — 개별 waypoint 1:1 대응 아님. 크기 N·오버플로 처리는 §3.12에서 다룸)
   - §3.11 상태머신 현재 상태(IDLE/LAP1_ACTIVE/CORRECTING/LAP2_ACTIVE/DONE), 현재 랩 번호
 - **보정 범위 확인 (2026-07-11)**: `cfs_core_app`은 route를 이미
   `CFS_CORE_APP_ROUTE_SEGMENT_MISSION_EXTENSION`(원형 촬영 waypoint, `MissionRoute`
@@ -126,8 +148,8 @@ PB-NBV가 route(waypoint) 생성  ──route update──▶ uplink_app
   `MissionRoute`에만 적용되며 착륙지점은 애초에 섞여 들어가지 않음. 이륙(TAKEOFF/ARM)은
   이 시스템 route 관리 범위 밖(코드에 관련 커맨드 없음)이라 원 피팅 입력에 포함될 일도 없음.
 - **잔여 세부사항 (구현 시)**:
-  - [ ] 원 피팅 알고리즘 구체 선택 (예: Kasa method 등 대수적 최소자승 원 피팅)
-  - [ ] 최소 몇 개 점부터 원 피팅이 유효한지 (route가 최대 16 waypoint 한도) — §3.12에서 다룸
+  - [ ] 원 피팅 알고리즘 구체 선택 (예: Kasa method 등 대수적 최소자승 원 피팅) —
+        최소 샘플 수·버퍼 상한은 §3.12에서 확정됨
 
 ## 3.6 허용오차 게이트 — 없음 (2026-07-10 확정)
 
@@ -141,13 +163,31 @@ PB-NBV가 route(waypoint) 생성  ──route update──▶ uplink_app
   성립. 만약 waypoint별 단순 1:1 치환(평균화 없는 보간)으로 구현되면 노이즈가 그대로
   전파되므로, §3.4 구현 시 평균화 성격을 유지하도록 확인 필요.
 
-## 3.7 실측 pose 신선도 — 확정 (2026-07-10)
+## 3.7 실측 pose 신선도 — 무효화 (2026-07-11, 스트림 전환에 따라 폐기)
 
-- **결정**: 신선도 기준 = **2000ms**, 기존 `cfs_core_app`의
-  `CFS_CORE_APP_LOCAL_TIMEOUT_MS`(=2000) 재사용.
-- **근거**: 편차 계산에 쓰는 실측 위치가 health 판정에 쓰는 `LOCAL_POSITION_NED`와
-  동일 메시지. 새 기준을 따로 만들면 "health는 fresh인데 보정 기능은 stale로 본다"
-  같은 모순이 생길 수 있어, 기존 값과 일치시킴.
+- **원결정(2026-07-10, 폐기)**: 신선도 기준 = 2000ms, `CFS_CORE_APP_LOCAL_TIMEOUT_MS` 재사용.
+  이건 "waypoint 도달 시점에 쓸 last-known pose가 오래된 값일 수 있다"는 전제였음.
+- **폐기 사유(2026-07-11)**: §3.4에서 원 피팅 입력을 waypoint 도달 시점 스냅샷에서
+  1바퀴 내내 실시간 수신되는 `LOCAL_POSITION_NED` 스트림 버퍼링으로 바꾸면서, 이 전제가
+  없어짐 — 매 샘플이 도착 즉시 버퍼에 쌓이므로 "오래된 값을 나중에 참조"하는 상황 자체가
+  발생하지 않음. 통신 두절 등으로 샘플이 아예 안 들어오는 구간은 "신선도 실패"가 아니라
+  "샘플 개수 부족" 문제로 재분류되어 §3.12(원 피팅 유효성 게이트)로 이관됨.
+- `CFS_CORE_APP_LOCAL_TIMEOUT_MS`는 health 판정 용도로는 계속 유효 — 이번 기능만 이
+  기준을 더 이상 쓰지 않는다는 뜻.
+
+## 3.12 원 피팅 유효성 게이트 — 버퍼 상한·최소 샘플 수 (2026-07-11 확정)
+
+- **버퍼 크기**: `LOCAL_POSITION_NED` 발행 주기 200ms(5Hz) 기준 정적 원형 버퍼
+  **1500 샘플**(X/Y float, 약 12KB) — 5분 분량, 정상적인 원형 촬영 1바퀴보다 충분히
+  넉넉한 여유. 버퍼가 차면 오래된 샘플을 덮어씀(원 피팅 결과는 최근 샘플만으로도
+  유효, 오래된 샘플이 더 정확한 것도 아님). 버퍼 오버플로 발생 시 이벤트 로그 기록
+  (비정상적으로 랩이 길어진 신호일 수 있음).
+- **최소 샘플 수**: 원 피팅(최소자승 원 정의의 수학적 최소치)이 유효하려면 **최소 3개**
+  버퍼 샘플 필요. 이보다 적으면(예: 통신 두절로 1바퀴 동안 샘플을 거의 못 받은 경우)
+  원 피팅을 수행하지 않고 §3.8과 동일하게 원안(1바퀴) route 유지·재비행으로 폴백.
+- **참고**: §3.6(허용오차 게이트 없음)과 모순되지 않음 — §3.6은 "편차 크기"에 대한
+  게이트를 없앤 것이고, 이건 "원을 수학적으로 정의할 수 있는가"라는 별개의 유효성
+  체크(degenerate-case 방어)임.
 
 ## 3.8 재검증 실패 시 처리 — 확정 (2026-07-10)
 
@@ -232,7 +272,8 @@ PB-NBV가 route(waypoint) 생성  ──route update──▶ uplink_app
 ## 5. 미결정 사항 (TODO)
 
 - [x] **허용오차 게이트 없음으로 확정 (2026-07-10)** — §3.6 참조.
-- [x] **실측 pose 신선도 확정 (2026-07-10)** — §3.7 참조. 2000ms, `CFS_CORE_APP_LOCAL_TIMEOUT_MS` 재사용.
+- [x] **실측 pose 신선도 — 무효화 (2026-07-11)** — §3.7 참조. 스트림 전환으로 개념 자체가
+      불필요해짐. 대신 §3.12(버퍼 상한·최소 샘플 수)로 대체.
 - [x] **재검증 실패 시 처리 확정 (2026-07-10)** — §3.8 참조. 원안(1바퀴) route 유지, reject 아님.
 - [x] **2바퀴로 종료 확정 (2026-07-10)** — 3바퀴 이상 반복 없음. 2바퀴 완료 후 재검증 실패 시에도
       추가 랩을 돌리지 않고 원안 route로 종결(§3.8과 동일 정책).
@@ -250,9 +291,17 @@ PB-NBV가 route(waypoint) 생성  ──route update──▶ uplink_app
 - [x] **2바퀴 재출발 트리거 확정 (2026-07-11)** — §3.11 참조. `MISSION_SET_CURRENT(seq=0)`
       온보드(mavlink_bridge_app→FC 직결) 자동 송신, 지상국 개입 없음.
 - [x] **계획 원 중심(θ_i) 계산 방식 + 저장 구조 확정 (2026-07-11)** — §3.4 참조.
-      계획 waypoint에도 동일 원 피팅 적용해 중심 산출, uplink_app에 정적 배열(~500B)로
-      계획/실측 waypoint 신규 보관. 보정 대상은 `MISSION_EXTENSION` route만 —
-      착륙지점(`LANDING`, 별도 캐시)·이륙(범위 밖)은 원 피팅에 섞이지 않음(기존 구조 확인).
+      계획 waypoint에도 동일 원 피팅 적용해 중심 산출. 보정 대상은 `MISSION_EXTENSION`
+      route만 — 착륙지점(`LANDING`, 별도 캐시)·이륙(범위 밖)은 원 피팅에 섞이지 않음
+      (기존 구조 확인).
+- [x] **좌표계 확인 (2026-07-11)** — 계획 waypoint는 `MAV_FRAME_LOCAL_NED`로 업로드되어
+      실측 `LOCAL_POSITION_NED`와 동일 프레임·원점, X/Y는 별도 변환 없이 직접 비교 가능
+      (`mavlink_bridge_app_utils.c:380`). Z 부호만 반대(계획=고도-양수, NED=아래-양수)이나
+      보정은 Z 미변경(§3.1)이라 영향 없음. 단, MISSION_ITEM_INT 업로드 자체가 ArduPilot에서
+      거부될 수 있는 별도 코드 버그를 발견해 `[[mission_item_int_frame_gap]]`으로 분리 기록.
+- [x] **원 피팅 입력 스트림 전환 + 유효성 게이트 확정 (2026-07-11)** — §3.4/§3.12 참조.
+      waypoint 도달 스냅샷 대신 1바퀴 내내 `LOCAL_POSITION_NED` 스트림을 정적 원형
+      버퍼(1500 샘플 상한)에 축적, 최소 3개 미만이면 §3.8과 동일 폴백.
 
 **설계 미결정 사항 전부 확정 — 스펙/코드 반영 준비 완료.**
 
