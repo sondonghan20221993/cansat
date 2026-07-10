@@ -917,7 +917,7 @@ mavlink_bridge_app의 FC 장애 처리와 cfs_core_app 보고 경로 검증.
 
 | ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) |
 |---|---|---|---|
-| RT-FC-004 | FC 전원 차단 (보드 죽음) | stale 마킹 + core_app 보고 | 각 FC TLM `Stale=1` → cfs_core `health 1->2 fault=4(ATTITUDE_TIMEOUT)` |
+| RT-FC-004 | FC 전원 차단 (보드 죽음) | stale 마킹 + core_app 보고 | 각 FC TLM `Stale=1` → cfs_core `health 1->2 fault=5(ATTITUDE_TIMEOUT)` |
 | RT-FC-005 | FC 재부팅 (일시 중단 후 복귀) | 자동 재연결 + NOMINAL 복귀 | HK `ReconnectAttemptCount` 증가 → `health 2->1` |
 | RT-FC-006 | FC 부팅 직전 백로그 burst | 재연결 시 `tcflush`로 밀린 데이터 폐기 | SB queue overflow EVS 없음 |
 
@@ -938,6 +938,45 @@ mavlink_bridge_app의 FC 장애 처리와 cfs_core_app 보고 경로 검증.
 
 > **주:** RT-FC-007/008(깨진 바이트 주입)은 실물 재현이 어려워 **E2E(B) PTY 테스트가 더 적합**
 > (PTY로 원하는 깨진 바이트를 정확히 주입 가능). 런타임에서는 ①③이 실물 검증 가치가 높다.
+
+### 🔲 추가 런타임 시험 후보 — LoRa 링크/지상 명령 (2026-07-10 도출)
+
+lora_tdm_app 장애 처리와 uplink_app 명령 검증/차단 경로.
+기존 TDM-RT-001~009 (다운링크 주기, ACK→CONNECTED, no-ACK→DEGRADED/DISCONNECTED,
+정상 UP 프레임 라우팅, CRC 오류 UFB, RX 윈도우, serial open 재시도)와 중복 없는 항목만 도출.
+관측 수단이 실제 코드에 존재하는 항목만 포함 (EVS EID / HK 필드 기준).
+
+**① lora_tdm_app — LoRa 모듈 장애/깨진 프레임 (TDM-RT-001~009 이후 갭):**
+
+| ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) |
+|---|---|---|---|
+| RT-LORA-001 | LoRa USB 모듈 런타임 분리 (동작 중 뽑기) | write/read 오류 감지 + 재오픈 시도 | `SERIAL_WRITE_ERR_EID(8)`/`SERIAL_READ_ERR_EID(9)` → 재연결 후 `SERIAL_OPEN` 재시도, TxCount 재개 |
+| RT-LORA-002 | 깨진 ACK 수신 (형식 불일치) | ACK 파싱 실패 처리 | `ACK_PARSE_ERR_EID(10)` + HK `RxErrorCount` 증가, `RxAckCount` 불변 |
+| RT-LORA-003 | UP 프레임 seq 재사용/역행 (재전송 공격 모사) | 시퀀스 검증 거부 | `SEQ_FAIL_EID(12)` + HK `RxErrorCount` 증가, SB 미게시 |
+| RT-LORA-004 | 링크 상태 전이 EVS 관측 (GS 정지→재개) | DEGRADED→DISCONNECTED→CONNECTED 전이 이벤트 | `LINK_DEGRADED_EID(14)` → `LINK_LOST_EID(13)` → `LINK_RESTORED_EID(15)`, HK `LinkState`/`NoAckCount` 일치 |
+
+**② uplink_app — 명령 검증/차단 (ProcessUplink 거부 파이프라인):**
+
+| ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) |
+|---|---|---|---|
+| RT-UPL-001 | 동일 seq 재전송 (replay) | 시퀀스 재사용 거부 | `COMMAND_ERR_EID(2)` "rejected replay seq=..." + HK `RejectedCount` 증가 |
+| RT-UPL-002 | 부팅 직후 health 미수신 상태에서 명령 | fail-safe 차단 (health 수신 전 전면 거부) | `STATE_BLOCK_EID(6)` "command blocked (no health yet)" |
+| RT-UPL-003 | health DEGRADED 중 VIEWPOINT/CONFIG 명령 | 상태 기반 클래스 차단 (§18.10.1) | `STATE_BLOCK_EID(6)` "blocked by health state=..." + `RejectedCount` 증가 |
+| RT-UPL-004 | health RECOVERY/FAILED 중 일반 명령 | RECOVERY+DIAGNOSTIC 클래스만 허용 | 일반 명령 `STATE_BLOCK_EID(6)`, RECOVERY 명령은 통과(`PUBLISH_EID(5)`) |
+| RT-UPL-005 | 권한 부족 명령 (auth_level < required) | 인가 차단, Level-3은 request_token 검증 | `AUTHZ_BLOCK_EID(7)` "insufficient auth auth=... required=..." |
+| RT-UPL-006 | 미지원 class 명령 | 라우팅 실패 처리 | HK `RoutingFailureCount` 증가 |
+| RT-UPL-007 | uplink_app 재시작 후 구 seq 재전송 | LastAcceptedSequence 영속(Magic+Checksum) 확인 | 재시작 후에도 구 seq `COMMAND_ERR_EID(2)` replay 거부 |
+
+**③ cfs_core_app 보고 경로 (연쇄 검증):**
+
+| ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) |
+|---|---|---|---|
+| RT-CORE-003 | uplink_app 정지 (앱 kill) | core_app UPLINK_TIMEOUT 보고 | `health 1->2 fault=6(UPLINK_TIMEOUT)` → 재시작 후 `health 2->1` |
+| RT-CORE-004 | lora_tdm_app 정지 (앱 kill) | core_app LORA_TIMEOUT 보고 | `health 1->2 fault=7(LORA_TIMEOUT)` → 재시작 후 `health 2->1` |
+
+> **주:** RT-LORA-002/003(깨진 ACK·seq 조작)과 RT-UPL-001~007(명령 페이로드 조작)은
+> 프레임/명령을 바이트 단위로 제어해야 하므로 **E2E(B) PTY/CI_LAB 주입이 더 적합**.
+> 런타임 실물 검증 가치가 높은 것은 RT-LORA-001(USB 분리), RT-LORA-004(링크 전이), ③ 연쇄 항목.
 
 ### 🔲 LoRa 하드웨어 필요
 
