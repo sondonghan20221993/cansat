@@ -36,5 +36,7 @@ LORA_TDM_APP_Data.LoRaFd = -1;   /* 다음 RunCycle에서 OpenSerial() 자동 �
       SERIAL_READ_ERR_EID(9)도 실오류 시 송출하도록 추가.
 - [ ] coveragetest 추가 — `RunTx`/`RunRxWindow`는 static이라 직접 커버 불가.
       write/read stub 반환값 주입으로 CloseSerial 경로 유도하려면 함수 노출 리팩터 선행 필요.
-- [ ] x86 빌드 검증 (B-2 cFS 번들 반입 후) — 현재 앱 단독 컴파일 불가
-- [ ] RT-LORA-001 실물 검증 (재오픈 후 TxCount 재개 확인)
+- [x] 빌드 검증 (2026-07-10, Pi `~/cFS_clean`, GCC 14.2.0 native) — UT 빌드 에러·경고 0,
+      coverage 전체 78 PASS/0 FAIL (`lora_tdm_app` 3, `_utils` 47, `_cmds` 8, `_dispatch` 20).
+      런타임 `build/` 재빌드·재시작(systemd `cfs.service`) 후 기동 회귀 없음 — lora_tdm 시리얼 오류 무.
+- [ ] RT-LORA-001 실물 검증 (물리 USB 분리 → 재오픈 후 TxCount 재개 확인) — Pi 물리 접근 시 수동
