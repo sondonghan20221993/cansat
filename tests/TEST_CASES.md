@@ -978,6 +978,31 @@ lora_tdm_app 장애 처리와 uplink_app 명령 검증/차단 경로.
 > 프레임/명령을 바이트 단위로 제어해야 하므로 **E2E(B) PTY/CI_LAB 주입이 더 적합**.
 > 런타임 실물 검증 가치가 높은 것은 RT-LORA-001(USB 분리), RT-LORA-004(링크 전이), ③ 연쇄 항목.
 
+### 🔲 통합 런타임 시나리오 — 전체 앱 순차 세션 (2026-07-10 도출)
+
+**목적**: 개별 검증된 단일 시나리오(RT-FC/RT-CORE/RT-LORA/RT-UPL)를 **하나의 연속 Pi 세션**에서
+순서대로 실행 — 동시 장애(복합검증, 추후 별도 설계)가 아니라 **한 번에 한 결함만** 주입하고
+매 단계 NOMINAL 복귀를 확인한 뒤 다음 단계로 진행. 물리 세팅(Pi+FC+LoRa 연결) 반복 비용을 줄이고,
+앱 간 순차 전환이 서로 간섭하지 않는지(잔여 상태 누수 등) 확인하는 것이 목적.
+
+**사전조건**: 4개 앱 기동, `health=NOMINAL(0)` 확인, LoRa 페어링 완료.
+
+| 단계 | 참조 ID | 주입 | 판정 기준 | 다음 단계 전 확인 |
+|---|---|---|---|---|
+| 1 | — | 세션 시작, 전체 기동 | `health 0(NOMINAL)`, TDM 다운링크 주기 수신 (TDM-RT-001) | NOMINAL 유지 |
+| 2 | RT-FC-004→005 | FC 전원 차단 → 재연결 | `health 0->1 fault=3(EKF_INVALID)` → `ReconnectAttemptCount` 증가 → `health 1->0` | NOMINAL 복귀 확인 후 진행 |
+| 3 | RT-CORE-003 | uplink_app kill → 재시작 | `health 0->1 fault=6(UPLINK_TIMEOUT)` → 재시작 후 `health 1->0` | NOMINAL 복귀 확인 |
+| 4 | RT-CORE-004 | lora_tdm_app kill → 재시작 | `health 0->1 fault=7(LORA_TIMEOUT)` → 재시작 후 `health 1->0` | NOMINAL 복귀 + TDM 다운링크 재개 확인 |
+| 5 | RT-LORA-004 | 지상국 정지→재개 | `LINK_DEGRADED_EID(14)`→`LINK_LOST_EID(13)`→`LINK_RESTORED_EID(15)`, HK `LinkState` 일치 | CONNECTED 복귀 |
+| 6 | RT-UPL-002, 001 | 재연결 직후 명령 1건, 동일 seq 재전송 | `STATE_BLOCK_EID(6)`(health 수신 전이면) 또는 정상 수락 → 동일 seq는 `COMMAND_ERR_EID(2)` replay 거부 | `RejectedCount` 증가 확인 |
+| 7 | — | 세션 종료 | 전 구간 `health=NOMINAL`, 4개 앱 HK `CommandErrorCounter`류 누적치 기록 | — |
+
+**설계 메모**:
+- 단계 2~4는 cfs_core 우선순위 체인상 서로 다른 fault를 순차 유발 — 이전 fault 완전 해소(NOMINAL 복귀) 확인 후 다음 주입해야 원인 오귀속 방지.
+- RT-LORA-001(USB 런타임 분리)은 [[lora_tdm_serial_reopen_gap]] 구현 갭 해소 전까지 이 세션에서 **제외**.
+- 단계 6은 RT-UPL 전체(007개)가 아닌 대표 2건만 — 나머지는 E2E(B) PTY/CI_LAB에서 커버(§ 위 주 참조).
+- 세션 실패 시 어느 단계에서 끊겼는지로 회귀 원인 국소화 가능 (예: 단계 4에서만 실패 → lora_tdm 재시작 경로 문제).
+
 ### 🔲 LoRa 하드웨어 필요
 
 | ID | 시험 항목 | 참조 |
