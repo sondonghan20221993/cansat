@@ -143,6 +143,34 @@ PB-NBV가 route(waypoint) 생성  ──route update──▶ uplink_app
   기존 active route를 손대지 않는다. 원안 route는 이미 1바퀴 때 검증을 통과한 안전한
   경로이므로, 보정 실패 시 "보정 없이 원래 계획대로 계속 진행"이 합리적.
 
+## 3.9 1바퀴 종료 후 처리 — 호버링 대기, armed 업로드 허용 (2026-07-11 확정)
+
+- **문제(코드 확인)**: 2-pass는 "1바퀴 끝나자마자 armed(비행 중) 상태에서 보정 route를
+  업로드"해야 하는데, 현재 코드에 두 가지 장애물이 있음.
+  1. `mavlink_bridge_app_utils.c` `MAVLINK_BRIDGE_APP_StartMissionUpload()` —
+     `IsArmed`일 때 미션 업로드 자체를 거부하고 return (`MAVLINK_BRIDGE_APP_ARMED_WARN_EID`).
+  2. `MAVLINK_BRIDGE_APP_SendMissionItemInt`/`SendMissionItem` — `autocontinue`가
+     모든 waypoint에 대해 `1U`로 하드코딩. 마지막 waypoint도 autocontinue=1이므로
+     1바퀴 완료 시 FC가 자동으로 다음 동작(RTL/착륙 등, FC 파라미터에 따라 다름)으로
+     넘어감 — "호버링 대기"가 보장되지 않음.
+- **결정**: 1바퀴 마지막 waypoint 자체를 **명시적 호버링 커맨드**(`MAV_CMD_NAV_LOITER_UNLIM`
+  등, 제자리 무기한 대기)로 전송한다. `autocontinue=1`의 일반 WAYPOINT로 두고 FC의
+  미션-종료-후 기본 동작(RTL/착륙 등, FC 파라미터에 따라 달라짐)에 기대는 대신,
+  마지막 항목 자체를 호버링 명령으로 만들어 **FC 파라미터 설정과 무관하게 확정적으로
+  제자리 대기**하도록 함.
+  1. 마지막 waypoint 위치에서 `MAV_CMD_NAV_LOITER_UNLIM`(또는 동등한 hold 커맨드)로 전송.
+  2. `StartMissionUpload()`의 `IsArmed` 차단은 **이 2-pass 보정 route 업로드 경로에
+     한해 완화**한다 — 범용으로 armed 업로드를 다 허용하는 게 아니라, "마지막 항목이
+     LOITER_UNLIM 상태에서 대기 중"이라는 조건이 성립할 때만 통과시킴 (일반 비행 중
+     임의 route 재업로드로 인한 위험한 경로 급변경은 여전히 차단 유지).
+- **잔여 확인사항 (구현 시)**:
+  - [ ] "LOITER 대기 중"임을 무엇으로 판정할지 — 현재 mission sequence(마지막 waypoint
+        도달 여부)를 추적하는 상태가 mavlink_bridge_app에 없음. `MISSION_CURRENT`
+        구독 또는 온보드 도달 판정(§4 step1과 동일 로직)으로 추적 구조 신규 필요.
+  - [ ] armed 상태에서 보정 route 재업로드 후 자동으로 새 미션이 시작되는지 확인 필요 —
+        `MISSION_ITEM_INT` 업로드만으로 LOITER를 깨고 자동 진행되는지, 별도 재개
+        커맨드(MISSION_SET_CURRENT 등)가 필요한지는 구현 시 FC 동작 확인 필요.
+
 ## 5. 미결정 사항 (TODO)
 
 - [x] **허용오차 게이트 없음으로 확정 (2026-07-10)** — §3.6 참조.
@@ -153,8 +181,11 @@ PB-NBV가 route(waypoint) 생성  ──route update──▶ uplink_app
 - [x] **보정 계산 방식 확정 (2026-07-11)** — §3.4 참조. 원 피팅 기반 보정으로 교체
       (waypoint 도달 실측치만 사용, 각도 유지 + 중심·반지름 재배치). 원 피팅 알고리즘
       구체 선택 등 세부 구현은 코드 작성 시 결정.
+- [x] **1바퀴 종료 후 armed 상태 재업로드 문제 확정 (2026-07-11)** — §3.9 참조.
+      마지막 waypoint autocontinue=0으로 호버링, 2-pass 경로에 한해 armed 업로드 차단 완화.
+      FC 파라미터(MIS_DONE_BEHAVE 등) 실물 확인은 구현 시 남음.
 
-**설계 미결정 사항 전부 확정 — 스펙/코드 반영 준비 완료.**
+**설계 미결정 사항 전부 확정 — 스펙/코드 반영 준비 완료. (단, §3.9 FC 파라미터 실물 검증은 구현 단계 확인 필요)**
 
 ## 6. 반영 예정 위치 (확정 후)
 
