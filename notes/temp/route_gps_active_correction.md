@@ -68,10 +68,24 @@ PB-NBV가 route(waypoint) 생성  ──route update──▶ uplink_app
    (신선도 판단 포함 — 몇 초 이내만 유효로 볼지는 §5 미결정)
 2. 마지막 waypoint 도달 시 "1바퀴 완료" 판정, 기록된 편차 목록으로 보정 단계 진입
 3. 구간별 보간으로 2바퀴 route 계산 (계산식은 §3.4 확정 필요)
-4. 보정된 route 재검증 (flyable area, altitude, segment distance 재확인)
+4. 보정된 route 재검증 (flyable area, altitude — segment distance 규칙은 §3.5에 따라 제외)
 5. 재검증 통과 → 2바퀴 route를 active route로 전환 + 자동 비행 시작
    재검증 실패 → §5 처리 정책에 따름
 6. 보정 결과 상태 게시 (`UPLINK_STATUS_MID`) + 로그
+
+## 3.5 segment 거리 규칙과의 충돌 — 해소 (2026-07-10)
+
+- **문제**: 기존 route 검증(`uplink_app_utils.c` `UPLINK_APP_IsWaypointSegmentDistanceValid`)은
+  인접 waypoint 간 거리를 **정확히 2.0m ± 0.0001m**로 강제(`UPLINK_APP_ROUTE_SEGMENT_DIST_M`/
+  `_TOL_M`). 구간별 보간 보정은 waypoint마다 다른 양만큼 이동시키므로 이 규칙과 충돌해
+  거의 항상 재검증 실패로 이어짐.
+- **결정**: 이 segment 거리 고정 규칙은 **이전 프로토타입 단계의 잔재로 판단, 제외**한다.
+  보정된(2바퀴) route 재검증에서는 segment 거리 체크를 적용하지 않음 — flyable area/altitude/
+  finite 체크만 유지.
+- **영향 범위(구현 시 확인 필요)**: `default_uplink_app_mission_cfg.h`의
+  `UPLINK_APP_ROUTE_SEGMENT_DIST_M`/`_TOL_M`이 1바퀴(원본) route 검증에도 쓰이고 있어,
+  이 규칙을 완전히 제거할지 아니면 "보정 route 재검증 경로에서만 우회"할지는 구현 시
+  코드 구조를 보고 정할 것.
 
 ## 3.4 구간별 보간 — 구체화 필요 (신규 미결정)
 
