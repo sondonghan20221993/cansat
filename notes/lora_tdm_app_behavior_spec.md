@@ -46,6 +46,7 @@
 - Config: `lora_tdm_app/config/default_lora_tdm_app_mission_cfg.h` — 타이밍 상수, 링크 임계값
 - Config: `lora_tdm_app/config/default_lora_tdm_app_topicid_values.h` — MID 값
 - Config: `lora_tdm_app/config/default_lora_tdm_app_msgstruct.h` — 메시지 구조체
+- 차기 프로토콜: `notes/lora_protocol_v2_spec.md` — 바이너리 프레임(DL2/UP2/ACK2) 및 TDM 200ms 설계 (미구현 초안). 본 문서 §8의 텍스트 프레임과 §7의 1000ms 주기는 v2 이행 시 대체 예정.
 
 ## 5. 인터페이스
 
