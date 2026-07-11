@@ -19,6 +19,7 @@
 - HK 추가 필드
 - FC MISSION 조회 명령 (MISSION_QUERY_CC)
 - 알려진 FC 호환성 제약 (MAV_FRAME_LOCAL_NED)
+- FC SYSTEM_TIME 수신 및 시각 동기 설계 (§16)
 
 이 명세는 다음을 다루지 않는다.
 
@@ -426,3 +427,76 @@ python3 tools/mission_upload_diag.py --port /dev/serial0 --baud 57600
 
 - mid-flight 경로 변경 안전 검사 → FC ARMED 상태 시 업로드 차단 구현 (`UpdateFromHeartbeat`, `IsArmed` 필드, `MAVLINK_BRIDGE_APP_ARMED_WARN_EID`)
 - **Legacy 경로(msg 39)** 한정 Global mission frame (`MAV_FRAME_GLOBAL_RELATIVE_ALT`) 변환 및 업로드 (`SendMissionItem`, `mavlink_bridge_app_utils.c:368`). INT 경로(msg 73, `SendMissionItemInt`)는 위 미구현 항목대로 `MAV_FRAME_LOCAL_NED` 그대로 송신한다 — 두 항목은 서로 다른 경로를 가리키므로 모순이 아니다.
+
+## 16. FC SYSTEM_TIME 수신 및 시각 동기 설계
+
+### 16.1 목적
+
+FPV 영상(OSD 번인 타임스탬프)과 텔레메트리 로그를 GPS 절대시각(UTC) 기준으로 대조하기 위해, FC의 `SYSTEM_TIME (msg 2)`을 수신하여 GPS 기반 UNIX epoch 시각을 확보한다. 최종 목표는 Pi(CM) 시스템 시계를 이 시각에 동기시켜 전 구간(영상·SB 로그·LoRa 다운링크 로그)이 동일한 UTC 시간축을 공유하는 것이다.
+
+### 16.2 수신 파싱 (구현 완료, 2026-07-12, commit 30a8d7b)
+
+**Stream 요청**: `RequestTelemetryStreams()`에서 `MAV_CMD_SET_MESSAGE_INTERVAL`로 `SYS_TIME`을 1 Hz(`MAVLINK_BRIDGE_APP_SYS_TIME_INTERVAL_US = 1000000`) 요청한다. 다른 스트림과 달리 런타임 CONFIG 파라미터가 아닌 컴파일 타임 상수를 사용한다 (CONFIG 이중버퍼 미적용 — `ConfigParams_t` wire 구조 변경 회피).
+
+**payload 디코드** (`HandleSysTime`, `mavlink_bridge_app_utils.c`):
+
+| Byte | 필드 | 형식 |
+| --- | --- | --- |
+| `[0..7]` | `time_unix_usec` | `uint64` LE — GPS 기반 UNIX epoch (µs) |
+| `[8..11]` | `time_boot_ms` | `uint32` LE — FC 부팅 후 경과 (미사용) |
+
+**파싱 규칙**:
+
+1. MAVLink v2 zero-trimming 대응: 후행 0바이트가 잘려 12바이트 미만으로 수신될 수 있으므로(예: `time_boot_ms` 상위 바이트 0) 12바이트 버퍼에 zero-extend 후 디코드한다. 12바이트 **초과**만 길이 오류(`RecordLengthError`) 처리.
+2. `time_unix_usec == 0`은 FC가 아직 GPS(또는 GCS 주입) 시각을 확보하지 못한 상태 → **무시**하고 필드를 갱신하지 않는다.
+3. CRC 불일치 → `RecordParseError` (CRC_EXTRA = 137).
+
+**내부 상태 필드** (`MAVLINK_BRIDGE_APP_Data_t`):
+
+| 필드 | 형식 | 의미 |
+| --- | --- | --- |
+| `LastSysTimeUnixUsec` | `uint64` | 마지막 유효 수신한 GPS UNIX epoch (µs) |
+| `LastSysTimeRxMs` | `uint32` | 해당 수신 시각 (bridge 로컬 ms) |
+
+**단위테스트** (`coveragetest_mavlink_bridge_app_utils.c`, non-blocking pipe로 `ServiceSerial()` 경유 프레임 주입):
+
+| 테스트 | 검증 |
+| --- | --- |
+| `SysTime_FullPayload` | 12바이트 정상 프레임 → 필드 갱신 |
+| `SysTime_TrimmedPayload` | 8바이트 트림 프레임 → zero-extend 디코드 |
+| `SysTime_ZeroClockIgnored` | `unix_usec=0` → 무시 |
+| `SysTime_CrcFail` | CRC 불일치 → `ParseErrorCount` 증가, 필드 미갱신 |
+
+> Pi 실빌드/UT 실행 검증은 미완 (작성 시점 Pi 오프라인).
+
+### 16.3 SB 발행 — SysTimeTlm (미구현, 예정)
+
+다른 FC 상태 MID(`FC_ATTITUDE_STATE_MID` 등)와 동일한 패턴으로 발행한다.
+
+| 항목 | 값 (제안) |
+| --- | --- |
+| MID | `FC_SYS_TIME_MID = 0x1909` (0x1905~0x1908 다음 미사용 값) |
+| 발행 조건 | 유효 SYSTEM_TIME 수신 시 (`unix_usec != 0`, CRC OK) |
+| payload | `TimeUnixUsec`(uint64), `Seq`(uint32), `Valid`/`Stale`/`ErrorCode`/`Reserved` — 기존 Tlm 공통 필드 관례 |
+| 구독자(예상) | 호스트 시각 동기 프로세스 (CI_LAB/TO 경유), 필요시 `cfs_core_app` |
+
+`mission_app_runtime_spec.md` §5.1.1 MID 계약 테이블에는 구현 시점에 행을 추가한다 (현재 baseline 8개 유지).
+
+### 16.4 호스트 시계 반영 — cFS 외부 책임 (미구현, 예정)
+
+Pi 시스템 시계 설정은 **cFS 앱이 수행하지 않는다.** 근거:
+
+1. `clock_settime()`은 시스템 전역 부작용을 가지는 호스트 관리 작업 — SB publish가 책임인 앱 경계를 벗어남 (§4 책임 분리, `mission_app_runtime_spec.md` §10.1 transport 경계와 동일한 원칙).
+2. 1 Hz 수신마다 시계를 step 하면 로그 타임스탬프 역행/점프 위험. 점진 보정(slew)은 chrony 등 NTP 데몬의 전문 영역.
+
+**예정 구조**: `bridge/` 또는 `tools/`에 호스트 파이썬 프로세스를 두고 SysTimeTlm(또는 CI_LAB 다운링크)을 구독 → 최초 1회 step(`timedatectl set-time` 상당) 후 chrony SOCK refclock으로 지속 주입. GPS fix 미확보 구간(`unix_usec=0`)에서는 아무 동작도 하지 않는다.
+
+### 16.5 정확도 한계
+
+| 구간 | 예상 오차 |
+| --- | --- |
+| GPS → FC | ~ms |
+| FC → bridge (UART 115200, 1 Hz 폴링) | ~수십 ms 지터 |
+| bridge → 호스트 시계 반영 | 반영 방식에 따름 (chrony slew 시 수렴 후 ~수십 ms) |
+
+영상 프레임 ↔ 텔레메트리 로그 대조 용도 기준 ~100 ms급이면 충분하다는 전제. PPS급 정밀도가 필요해지면 별도 하드웨어(GPS PPS 직결)로 이관한다.
