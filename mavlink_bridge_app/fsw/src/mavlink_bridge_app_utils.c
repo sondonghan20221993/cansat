@@ -52,6 +52,8 @@ static const char *MAVLINK_BRIDGE_APP_GetSerialPath(void)
 #define MAVLINK_ATTITUDE_CRC_EXTRA            39U
 #define MAVLINK_EKF_STATUS_MIN_PAYLOAD_LEN    21U
 #define MAVLINK_EKF_STATUS_CRC_EXTRA          71U
+#define MAVLINK_SYS_TIME_PAYLOAD_LEN          12U
+#define MAVLINK_SYS_TIME_CRC_EXTRA           137U
 #define MAVLINK_HEARTBEAT_CRC_EXTRA           50U
 #define MAVLINK_COMMAND_LONG_CRC_EXTRA       152U
 #define MAVLINK_COMMAND_ACK_CRC_EXTRA        143U
@@ -762,6 +764,16 @@ void MAVLINK_BRIDGE_APP_RequestTelemetryStreams(void)
         return;
     }
 
+    Status = MAVLINK_BRIDGE_APP_RequestMessageInterval(MAVLINK_MSG_ID_SYS_TIME, MAVLINK_BRIDGE_APP_SYS_TIME_INTERVAL_US);
+    if (Status != CFE_SUCCESS)
+    {
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_STREAM_EID, CFE_EVS_EventType_ERROR,
+                          "MAVLINK_BRIDGE_APP: request failed msgid=%u status=0x%08lX",
+                          (unsigned int)MAVLINK_MSG_ID_SYS_TIME,
+                          (unsigned long)Status);
+        return;
+    }
+
     MAVLINK_BRIDGE_APP_Data.LastStreamRequestMs  = MAVLINK_BRIDGE_APP_GetTimeMs();
     CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_STREAM_EID, CFE_EVS_EventType_INFORMATION,
                       "MAVLINK_BRIDGE_APP: requested telemetry streams from sys=%u comp=%u",
@@ -883,6 +895,8 @@ static CFE_Status_t MAVLINK_BRIDGE_APP_OpenSerial(void)
     MAVLINK_BRIDGE_APP_Data.LastEkfLocalRxMs = 0;
     MAVLINK_BRIDGE_APP_Data.LastGpsRawRxMs = 0;
     MAVLINK_BRIDGE_APP_Data.LastEkfStatusRxMs = 0;
+    MAVLINK_BRIDGE_APP_Data.LastSysTimeRxMs = 0;
+    MAVLINK_BRIDGE_APP_Data.LastSysTimeUnixUsec = 0;
     MAVLINK_BRIDGE_APP_Data.StreamRequestPending = 1;
     MAVLINK_BRIDGE_APP_SetLinkState(MAVLINK_BRIDGE_LINK_CONNECTED);
     MAVLINK_BRIDGE_APP_ResetParser();
@@ -1129,6 +1143,48 @@ static void MAVLINK_BRIDGE_APP_PublishEkfStatus(uint32 BridgeTimestampMs)
     }
 }
 
+static void MAVLINK_BRIDGE_APP_HandleSysTime(uint32 BridgeTimestampMs)
+{
+    /* MAVLink v2 trims trailing zero payload bytes, so a valid SYSTEM_TIME
+     * frame may arrive shorter than 12 bytes; zero-extend before decoding. */
+    uint8  Payload[MAVLINK_SYS_TIME_PAYLOAD_LEN] = {0};
+    uint64 TimeUnixUsec;
+    uint32 Seq;
+    uint8  CopyLen;
+
+    if (MAVLINK_BRIDGE_APP_Parser.PayloadLen > MAVLINK_SYS_TIME_PAYLOAD_LEN)
+    {
+        MAVLINK_BRIDGE_APP_RecordLengthError(MAVLINK_MSG_ID_SYS_TIME,
+                                             MAVLINK_BRIDGE_APP_Parser.PayloadLen,
+                                             MAVLINK_SYS_TIME_PAYLOAD_LEN);
+        return;
+    }
+
+    CopyLen = MAVLINK_BRIDGE_APP_Parser.PayloadLen;
+    memcpy(Payload, MAVLINK_BRIDGE_APP_Parser.Payload, CopyLen);
+
+    TimeUnixUsec = MAVLINK_BRIDGE_APP_ReadU64LE(&Payload[0]);
+
+    /* time_unix_usec is 0 until the FC has a GPS-derived (or GCS-injected) clock */
+    if (TimeUnixUsec == 0ULL)
+    {
+        return;
+    }
+
+    MAVLINK_BRIDGE_APP_Data.LastSysTimeUnixUsec = TimeUnixUsec;
+    MAVLINK_BRIDGE_APP_Data.LastSysTimeRxMs     = BridgeTimestampMs;
+
+    Seq = ++MAVLINK_BRIDGE_APP_Data.SequenceCounter;
+    if (MAVLINK_BRIDGE_APP_ShouldLogDecoded(Seq))
+    {
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_PARSE_EID, CFE_EVS_EventType_INFORMATION,
+                          "MAVLINK_BRIDGE_APP: SYSTEM_TIME decoded seq=%lu unix_us=%llu rx_ms=%lu",
+                          (unsigned long)Seq,
+                          (unsigned long long)TimeUnixUsec,
+                          (unsigned long)BridgeTimestampMs);
+    }
+}
+
 static void MAVLINK_BRIDGE_APP_HandleFrameComplete(uint32 RxTimestampMs, uint8 CrcHigh)
 {
     uint16 ComputedCrc;
@@ -1275,6 +1331,26 @@ static void MAVLINK_BRIDGE_APP_HandleFrameComplete(uint32 RxTimestampMs, uint8 C
             MAVLINK_BRIDGE_APP_Data.LastRxTimestampMs = RxTimestampMs;
             MAVLINK_BRIDGE_APP_SetLinkState(MAVLINK_BRIDGE_LINK_CONNECTED);
             MAVLINK_BRIDGE_APP_PublishEkfStatus(RxTimestampMs);
+        }
+        else
+        {
+            CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_PARSE_EID, CFE_EVS_EventType_INFORMATION,
+                              "MAVLINK_BRIDGE_APP: crc fail msgid=%lu got=0x%04X expected=0x%04X",
+                              (unsigned long)MAVLINK_BRIDGE_APP_Parser.MsgId,
+                              (unsigned int)ReceivedCrc,
+                              (unsigned int)ComputedCrc);
+            MAVLINK_BRIDGE_APP_RecordParseError(MAVLINK_BRIDGE_ERROR_PARSE_FAIL);
+        }
+    }
+    else if (MAVLINK_BRIDGE_APP_Parser.MsgId == MAVLINK_MSG_ID_SYS_TIME)
+    {
+        ComputedCrc = MAVLINK_BRIDGE_APP_ComputeFrameCrc(&MAVLINK_BRIDGE_APP_Parser, MAVLINK_SYS_TIME_CRC_EXTRA);
+        if (ComputedCrc == ReceivedCrc)
+        {
+            MAVLINK_BRIDGE_APP_Data.LastErrorCode     = MAVLINK_BRIDGE_ERROR_NONE;
+            MAVLINK_BRIDGE_APP_Data.LastRxTimestampMs = RxTimestampMs;
+            MAVLINK_BRIDGE_APP_SetLinkState(MAVLINK_BRIDGE_LINK_CONNECTED);
+            MAVLINK_BRIDGE_APP_HandleSysTime(RxTimestampMs);
         }
         else
         {

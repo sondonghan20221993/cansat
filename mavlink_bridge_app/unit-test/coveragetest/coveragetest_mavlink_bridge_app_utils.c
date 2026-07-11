@@ -608,6 +608,166 @@ void Test_ProcessConfig_ReconnectInterval(void)
                       (int32)MAVLINK_BRIDGE_CONFIG_RESULT_OK);
 }
 
+/* -----------------------------------------------------------------------
+ * SYSTEM_TIME (SYS_TIME) 수신 테스트
+ *
+ * static 파서에 직접 접근할 수 없으므로 non-blocking pipe를 SerialFd로
+ * 물려 ServiceSerial() 경유로 프레임 바이트를 주입한다.
+ * ----------------------------------------------------------------------- */
+
+#include <unistd.h>
+#include <fcntl.h>
+
+#define UT_SYS_TIME_MSGID     2U
+#define UT_SYS_TIME_CRC_EXTRA 137U
+
+static void UT_MavCrcAccumulate(uint8 Data, uint16 *Crc)
+{
+    uint8 Tmp = Data ^ (uint8)(*Crc & 0xFFU);
+    Tmp ^= (uint8)(Tmp << 4);
+    *Crc = (uint16)((*Crc >> 8) ^ ((uint16)Tmp << 8) ^ ((uint16)Tmp << 3) ^ ((uint16)Tmp >> 4));
+}
+
+/* MAVLink v2 SYS_TIME 프레임 생성. CRC 바이트가 STX(0xFD/0xFE)와 겹치면
+ * 파서가 리셋되므로 seq를 바꿔가며 안전한 프레임을 찾는다. */
+static size_t UT_BuildSysTimeFrame(uint8 *Frame, const uint8 *Payload, uint8 PayloadLen, bool CorruptCrc)
+{
+    uint16 Crc;
+    uint8  Seq;
+    uint8  i;
+
+    for (Seq = 0;; Seq++)
+    {
+        Crc = 0xFFFFU;
+        UT_MavCrcAccumulate(PayloadLen, &Crc);
+        UT_MavCrcAccumulate(0, &Crc); /* incompat */
+        UT_MavCrcAccumulate(0, &Crc); /* compat */
+        UT_MavCrcAccumulate(Seq, &Crc);
+        UT_MavCrcAccumulate(1, &Crc);  /* sysid */
+        UT_MavCrcAccumulate(1, &Crc);  /* compid */
+        UT_MavCrcAccumulate(UT_SYS_TIME_MSGID, &Crc);
+        UT_MavCrcAccumulate(0, &Crc);  /* msgid mid */
+        UT_MavCrcAccumulate(0, &Crc);  /* msgid high */
+        for (i = 0; i < PayloadLen; i++)
+        {
+            UT_MavCrcAccumulate(Payload[i], &Crc);
+        }
+        UT_MavCrcAccumulate(UT_SYS_TIME_CRC_EXTRA, &Crc);
+
+        if (CorruptCrc)
+        {
+            Crc ^= 0x0101U; /* 양쪽 바이트를 깨뜨리되 STX와 겹치지 않게 아래에서 재검사 */
+        }
+
+        if ((Crc & 0xFFU) != 0xFDU && (Crc & 0xFFU) != 0xFEU &&
+            (Crc >> 8)    != 0xFDU && (Crc >> 8)    != 0xFEU)
+        {
+            break;
+        }
+    }
+
+    Frame[0] = 0xFD; /* STX v2 */
+    Frame[1] = PayloadLen;
+    Frame[2] = 0; /* incompat */
+    Frame[3] = 0; /* compat */
+    Frame[4] = Seq;
+    Frame[5] = 1; /* sysid */
+    Frame[6] = 1; /* compid */
+    Frame[7] = UT_SYS_TIME_MSGID;
+    Frame[8] = 0;
+    Frame[9] = 0;
+    memcpy(&Frame[10], Payload, PayloadLen);
+    Frame[10 + PayloadLen]     = (uint8)(Crc & 0xFFU);
+    Frame[10 + PayloadLen + 1] = (uint8)(Crc >> 8);
+
+    return (size_t)(10 + PayloadLen + 2);
+}
+
+/* 프레임 바이트를 non-blocking pipe로 주입하고 ServiceSerial()로 소비 */
+static void UT_FeedSerial(const uint8 *Bytes, size_t Length)
+{
+    int Fds[2];
+
+    UtAssert_INT32_EQ(pipe(Fds), 0);
+    UtAssert_INT32_EQ(fcntl(Fds[0], F_SETFL, O_NONBLOCK), 0);
+    UtAssert_True(write(Fds[1], Bytes, Length) == (ssize_t)Length, "pipe write");
+
+    MAVLINK_BRIDGE_APP_Data.SerialFd = Fds[0];
+    /* NowMs=0(스텁)에서 heartbeat/stream request 부수 동작이 없도록 */
+    MAVLINK_BRIDGE_APP_Data.TargetSystemId       = 0;
+    MAVLINK_BRIDGE_APP_Data.StreamRequestPending = 0;
+
+    MAVLINK_BRIDGE_APP_ServiceSerial();
+
+    close(Fds[0]);
+    close(Fds[1]);
+    MAVLINK_BRIDGE_APP_Data.SerialFd = -1;
+}
+
+/* 정상: 12바이트 전체 페이로드, unix_usec != 0 → 필드 갱신 */
+void Test_SysTime_FullPayload(void)
+{
+    uint8  Payload[12] = {0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, /* unix_usec */
+                          0x10, 0x20, 0x30, 0x01};                        /* boot_ms */
+    uint8  Frame[32];
+    size_t Len;
+
+    Len = UT_BuildSysTimeFrame(Frame, Payload, sizeof(Payload), false);
+    UT_FeedSerial(Frame, Len);
+
+    UtAssert_True(MAVLINK_BRIDGE_APP_Data.LastSysTimeUnixUsec == 0x0102030405060708ULL,
+                  "LastSysTimeUnixUsec == 0x0102030405060708");
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ParseErrorCount, 0);
+}
+
+/* MAVLink v2 zero-trimming: 8바이트로 잘린 페이로드 → zero-extend 후 정상 갱신 */
+void Test_SysTime_TrimmedPayload(void)
+{
+    uint8  Payload[8] = {0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01};
+    uint8  Frame[32];
+    size_t Len;
+
+    Len = UT_BuildSysTimeFrame(Frame, Payload, sizeof(Payload), false);
+    UT_FeedSerial(Frame, Len);
+
+    UtAssert_True(MAVLINK_BRIDGE_APP_Data.LastSysTimeUnixUsec == 0x0102030405060708ULL,
+                  "trimmed frame decoded via zero-extend");
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ParseErrorCount, 0);
+}
+
+/* unix_usec == 0 (GPS 시각 없음) → 무시, 필드 미갱신 */
+void Test_SysTime_ZeroClockIgnored(void)
+{
+    /* unix_usec=0, boot_ms=5 → trailing-zero trim 시 9바이트 */
+    uint8  Payload[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0x05};
+    uint8  Frame[32];
+    size_t Len;
+
+    Len = UT_BuildSysTimeFrame(Frame, Payload, sizeof(Payload), false);
+    UT_FeedSerial(Frame, Len);
+
+    UtAssert_True(MAVLINK_BRIDGE_APP_Data.LastSysTimeUnixUsec == 0ULL,
+                  "zero unix time ignored");
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.LastSysTimeRxMs, 0);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ParseErrorCount, 0);
+}
+
+/* CRC 불일치 → parse error 기록, 필드 미갱신 */
+void Test_SysTime_CrcFail(void)
+{
+    uint8  Payload[12] = {0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01,
+                          0x10, 0x20, 0x30, 0x01};
+    uint8  Frame[32];
+    size_t Len;
+
+    Len = UT_BuildSysTimeFrame(Frame, Payload, sizeof(Payload), true);
+    UT_FeedSerial(Frame, Len);
+
+    UtAssert_True(MAVLINK_BRIDGE_APP_Data.LastSysTimeUnixUsec == 0ULL,
+                  "crc fail leaves fields untouched");
+    UtAssert_True(MAVLINK_BRIDGE_APP_Data.ParseErrorCount >= 1, "parse error recorded");
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(UpdateFromHeartbeat_Armed);
@@ -640,4 +800,8 @@ void UtTest_Setup(void)
     ADD_TEST(SetLinkState_Disconnected);
     ADD_TEST(RecordParseError);
     ADD_TEST(RecordParseError_Cumulative);
+    ADD_TEST(SysTime_FullPayload);
+    ADD_TEST(SysTime_TrimmedPayload);
+    ADD_TEST(SysTime_ZeroClockIgnored);
+    ADD_TEST(SysTime_CrcFail);
 }

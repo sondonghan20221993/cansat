@@ -29,6 +29,9 @@ typedef struct
     uint32    LastEkfLocalRxMs;
     uint32    LastGpsRawRxMs;
     uint32    LastEkfStatusRxMs;
+    uint32    LastSysTimeRxMs;
+    uint32    SysTimePad;
+    uint64    LastSysTimeUnixUsec;
     uint32    ReconnectAttemptCount;
     uint32    ParseErrorCount;
     uint32    BytesReceived;
