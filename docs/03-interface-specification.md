@@ -509,12 +509,12 @@ Prototype session-state resource policy:
 
 #### 3.6.3 Timestamp Consistency Rule
 
-control/health 링크의 메시지는 vehicle-generated `cFS_TIME` timestamp를 authoritative event time으로 사용해야 한다. image/video 링크의 timestamp policy는 현재 baseline에서 최종 확정되지 않았다.
+control/health 링크의 메시지는 vehicle-generated `cFS_TIME` timestamp를 authoritative event time으로 사용해야 한다. image/video 링크의 timestamp policy는 2026-07-13 확정되었다 (아래).
 
 - 모든 downlink 및 uplink 메시지의 `timestamp` 필드는 차량 측 생성 시점에 cFS_TIME으로 설정되어야 한다.
-- image/video metadata 메시지의 최종 timestamp 기준은 현재 미정이며, image capture를 기체 측에서 직접 제어하지 않는 baseline에서는 ground-side receive-time approximation을 사용할 수 있다.
-- ground-side reception time은 진단 목적으로 별도 `rx_timestamp` 필드에 기록할 수 있다. image/video 경로에서는 최종 정책이 확정되기 전까지 이 값을 근사 event time으로 사용할 수 있다.
-- 소비 모듈은 control/health 링크에 대해서는 vehicle-generated `timestamp`를 기준으로 시간 순서와 상관관계를 판단해야 한다. image/video 경로의 최종 authoritative timestamp rule은 추후 확정한다.
+- **image/video 링크의 authoritative event time은 기체 측 UTC 번인이다** (§6.1 동기 체인 기준): ① 카메라(OpenIPC majestic) OSD 타임스탬프 번인 — 카메라 시계가 NTP 동기된 후 유효, ② FC GPS 시각 OSD 요소(msposd) — GPS fix 즉시 유효. 구현: `cfs-telemetry-app/camera/`.
+- ground-side reception time은 진단 목적으로 별도 `rx_timestamp` 필드에 기록할 수 있다. 카메라 시계 동기 체인(§6.1)이 가동되기 전까지의 과도기에는 이 값을 근사 event time으로 사용할 수 있다.
+- 소비 모듈은 양 링크 모두 vehicle-generated UTC 기준으로 시간 순서와 상관관계를 판단해야 한다. 크로스 링크 대조(영상 프레임 ↔ LoRa 텔레메트리 로그)는 §6 Synchronization tolerance(~100ms급)를 전제한다.
 
 #### 3.6.4 Cross-Link Correlation Fields
 
@@ -562,13 +562,30 @@ Correlation rules:
 ## 6. Timestamp Standard
 
 - **Timestamp source**: cFS_TIME (cFS 시스템 클럭)
-- **Reference clock**: TBD (01-system-requirements.md에서 확정)
-- **Time zone handling**: N/A (절대 시각 기준)
-- **Synchronization tolerance**: TBD
+- **Reference clock**: **GPS UTC** (2026-07-13 확정 — §6.1 동기 체인 참조)
+- **Time zone handling**: 전 구간 UTC 통일 (GPS 시각은 원래 UTC)
+- **Synchronization tolerance**: 구간별 상이 — GPS→FC ~ms, FC→CM(Pi) ~수십 ms(MAVLink 지터), 영상 OSD 번인 ~100ms. 크로스 링크 상관관계 판단은 ~100ms급 허용 오차를 전제한다.
 
 Timestamp origin rule:
 
 - 링크별 timestamp 및 correlation rule은 Section 3.6.3과 Section 3.6.4를 따른다.
+
+### 6.1 Reference Clock 동기 체인 (2026-07-13 확정)
+
+```
+GPS ─▶ FC ──MAVLink SYSTEM_TIME(msg 2, 1Hz)──▶ CM(Pi) 시스템 시계
+                                                  │
+                                                  └─이더넷 NTP(chrony)──▶ 카메라(WiFiLink) 시계
+```
+
+| 구간 | 상태 | 상세 spec (단일 원본) |
+| --- | --- | --- |
+| FC SYSTEM_TIME 수신 파싱 | 구현 완료 | `cfs-telemetry-app/notes/mavlink_bridge_app_behavior_spec.md` §16.2 |
+| SB 발행 (`FC_SYS_TIME_MID 0x1909`) | 미구현(예정) | 동 §16.3 |
+| CM 시계 반영 (호스트 chrony) | 미구현(예정) | 동 §16.4 — cFS 외부 책임 |
+| 카메라 NTP 동기 | 프로토타입 | `cfs-telemetry-app/camera/pi_chrony_camera.conf` |
+
+- GPS fix 미확보 구간(`time_unix_usec == 0`)에서는 동기를 수행하지 않으며, 각 시계는 마지막 동기 시점부터의 드리프트를 허용한다.
 
 ## 7. Error Propagation
 

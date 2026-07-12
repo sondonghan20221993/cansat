@@ -99,6 +99,10 @@
 - 모듈 간 인터페이스 정의는 일관되게 유지해야 한다.
 - 요구사항과 검증 사이의 traceability를 보존해야 한다.
 - 가능하면 모듈 책임을 분리해야 한다.
+- **주파수 대역 분리 (2026-07-13 확정)**: 두 통신 링크는 물리 대역을 분리해야 한다.
+  `CONTROL_HEALTH_LINK`(LoRa) = MicoAir LR24-F, **2.4GHz** (FHSS, air rate 2.4KByte/s 기본) /
+  `PAYLOAD_LINK`(영상) = RunCam WiFiLink V2(OpenIPC WFB-ng), **5.8GHz 채널 필수**.
+  동일 대역 운용 시 텔레메트리-영상 상호 간섭이 발생하므로 WFB-ng의 2.4GHz 채널 사용을 금지한다.
 
 ## 7. 미정 항목
 

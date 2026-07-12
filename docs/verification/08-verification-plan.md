@@ -124,6 +124,21 @@ Additional reconstruction verification cases:
 - Fault scenario
 - Degraded mode scenario
 
+### 5.1 크로스 리포 링크 통합 테스트 (2026-07-13 추가)
+
+리포 경계(기체 `cfs-telemetry-app` ↔ 지상 `openMCT`)에서만 드러나는 결함을 검증한다.
+단위 테스트로 대체 불가 — 실링크(LR24-F 페어) 또는 시리얼 루프백 필요.
+배경: `docs/04-repository-map.md` §5 (알려진 크로스 리포 갭).
+
+| TC ID | Test Name | Input Condition | Expected Output | Requirement |
+| --- | --- | --- | --- | --- |
+| TC-LINK-01 | ACK 왕복 링크 확립 | 지상 브리지 기동 + 기체 downlink 수신 | 지상이 ACK(v1) / ACK2(v2) 회신, 기체 `LinkState = CONNECTED` 전이 | 03-interface §3.6.2 |
+| TC-LINK-02 | v1/v2 혼합 스트림 공존 | v2 이행 2단계(기체 CONFIG로 포맷 전환) 중 혼합 수신 | 지상 파서가 양 포맷을 무손실 분기 (magic/ASCII) | lora_protocol_v2_spec §8 |
+| TC-LINK-03 | v2 5Hz soak (1h) | TDM 200ms + DL2 46B, 1시간 연속 | 프레임 손실률 및 `NoAckCount` 추이가 링크 임계 미만 | lora_protocol_v2_spec §9 |
+| TC-LINK-04 | 대형 업링크 분할 수신 | ROUTE_UPDATE(payload>100ms 에어타임) 송신 | 여러 RX창에 걸친 UP2가 조립되어 `UPLINK_APP_CMD_MID` 도달 | lora_protocol_v2_spec §7.1 |
+| TC-LINK-05 | 시각 동기 종단 검증 | GPS fix + SYSTEM_TIME 체인 가동 + 카메라 NTP | 영상 OSD UTC ↔ 지상 CSV 로그 UTC 편차 ≤ 100ms | 03-interface §6.1 |
+| TC-LINK-06 | 대역 간섭 회피 | LoRa(2.4GHz) + WFB-ng 영상 동시 송출, WFB 5.8GHz 설정 | LoRa 프레임 손실률이 영상 off 대비 유의미한 증가 없음 | 02-architecture §6 |
+
 ---
 
 ## 6. Hardware Test Plan

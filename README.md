@@ -13,6 +13,7 @@ docs/
   01-system-requirements.md
   02-system-architecture.md
   03-interface-specification.md
+  04-repository-map.md
   modules/
     05-reconstruction-requirements.md
     06-pose-frame-alignment-requirements.md
@@ -26,11 +27,12 @@ docs/
 1. [시스템 요구사항](docs/01-system-requirements.md)
 2. [시스템 아키텍처](docs/02-system-architecture.md)
 3. [인터페이스 명세](docs/03-interface-specification.md)
-4. [복원 모듈 요구사항](docs/modules/05-reconstruction-requirements.md)
-5. [Pose / Frame 정렬 요구사항](docs/modules/06-pose-frame-alignment-requirements.md)
-6. [cFS 연동 요구사항](docs/modules/07-cfs-integration-requirements.md)
-7. [검증 계획](docs/verification/08-verification-plan.md)
-8. [모듈 담당 가이드](docs/module-ownership-guide.md)
+4. [리포 대응표 — 논리 모듈 ↔ 구현 리포](docs/04-repository-map.md)
+5. [복원 모듈 요구사항](docs/modules/05-reconstruction-requirements.md)
+6. [Pose / Frame 정렬 요구사항](docs/modules/06-pose-frame-alignment-requirements.md)
+7. [cFS 연동 요구사항](docs/modules/07-cfs-integration-requirements.md)
+8. [검증 계획](docs/verification/08-verification-plan.md)
+9. [모듈 담당 가이드](docs/module-ownership-guide.md)
 
 ## 역할 분리 기반 개발 구조
 
