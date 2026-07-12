@@ -23,6 +23,7 @@ typedef struct
     int32    LonE7;
     int32    AltMm;
     uint8    GpsFix;
+    uint8    SatellitesVisible;
     uint8    AttitudeValid;
     uint8    LocalValid;
     uint8    GpsValid;

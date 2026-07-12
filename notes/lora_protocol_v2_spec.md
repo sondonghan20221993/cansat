@@ -52,12 +52,13 @@ FC 상태 + 시스템 헬스를 **하나의 프레임**으로 매 TDM 주기 전
 | 28 | lat, lon | i32 ×2 | deg ×10⁷ (v1과 동일) |
 | 36 | alt_mm | i32 | mm |
 | 40 | fix | u8 | GPS fix type |
-| 41 | health | u8 | SystemHealthState |
-| 42 | fault | u8 | FaultCode |
-| 43 | linkstate | u8 | LoRa LinkState |
-| 44 | crc | u16 | CRC-16/CCITT |
+| 41 | sats | u8 | SatellitesVisible (2026-07-13 추가 — v1과 동일하게 fix 옆에 배치) |
+| 42 | health | u8 | SystemHealthState |
+| 43 | fault | u8 | FaultCode |
+| 44 | linkstate | u8 | LoRa LinkState |
+| 45 | crc | u16 | CRC-16/CCITT |
 
-기본 길이 **46B** (에어타임 ~19ms @2.4KB/s).
+기본 길이 **47B** (에어타임 ~20ms @2.4KB/s, sats 1바이트 추가로 46B→47B).
 
 ### 4.1 위치 saturation 정책
 
@@ -66,7 +67,7 @@ FC 상태 + 시스템 헬스를 **하나의 프레임**으로 매 TDM 주기 전
 
 ### 4.2 SysTime 확장 블록 (선택)
 
-`flags` bit0 = 1이면 offset 44에 8바이트 블록을 삽입하고 CRC가 그 뒤로 밀린다:
+`flags` bit0 = 1이면 offset 45(=sats 추가로 44→45로 밀림)에 8바이트 블록을 삽입하고 CRC가 그 뒤로 밀린다:
 
 | 필드 | 형식 | 의미 |
 | --- | --- | --- |
@@ -153,3 +154,7 @@ RX창 100ms에 들어가는 UP2 최대 크기는 ~240B(에어타임 100ms). payl
 - FC 스트림 상향(ATTITUDE 10Hz) 시 `CYCLE_PERIOD_MS` 100ms 재검토 — 본 spec 범위 외
 - LR24-F 모듈 설정(air rate/채널/패킷화 지연)의 공식 문서화 — `notes/test_environment.md`에 추가 필요
 - 2.4GHz 대역 간섭: WFB-ng 영상 링크는 5.8GHz 채널 사용 필수 (LR24-F와 대역 분리) — 시스템 통합 노트에 명시 필요
+- **참조 구현 미동기화 (2026-07-13)**: `bridge/lora_downlink_decoder.py`의 `DL2_BASE_LEN`(44)과
+  `decode_dl2`/`encode_dl2`의 오프셋 언패킹이 아직 §4의 sats 추가(46B→47B, offset 41)를
+  반영하지 못했다. v1(`lora_tdm_app`)에는 이미 sats를 반영했지만 v2는 설계만 갱신된 상태 —
+  실제 v2 구현(기체 C 인코더 + 참조 디코더) 착수 시 이 offset을 최신 표대로 맞춰야 한다.

@@ -67,14 +67,17 @@ LORA_TDM_AckResult_t LORA_TDM_APP_ParseAckFrame(const char *Line, uint32 *SeqEch
 
 /* ---- Build FC downlink line ---- */
 /*
- * Format: FC,<seq>,<ts>,<roll>,<pitch>,<yaw>,<x>,<y>,<z>,<vx>,<vy>,<vz>,<lat>,<lon>,<alt>,<fix>,<ufb>\n
+ * Format: FC,<seq>,<ts>,<roll>,<pitch>,<yaw>,<x>,<y>,<z>,<vx>,<vy>,<vz>,<lat>,<lon>,<alt>,<fix>,<ufb>,<sats>\n
+ *
+ * <sats> appended as field 18 (2026-07-13) — 기존 필드 순서/개수를 바꾸지 않고 끝에 추가해
+ * 구 파서(17필드 고정 파싱)와의 호환을 유지한다. 지상 파서는 len(parts)>=18일 때만 읽는다.
  */
 int LORA_TDM_APP_BuildFcDownlinkLine(char *Buf, size_t BufLen, const LORA_TDM_APP_Data_t *AppData)
 {
     int Len;
 
     Len = snprintf(Buf, BufLen,
-                   "FC,%lu,%lu,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%ld,%ld,%ld,%u,%u\n",
+                   "FC,%lu,%lu,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%ld,%ld,%ld,%u,%u,%u\n",
                    (unsigned long)AppData->DownlinkSeq,
                    (unsigned long)AppData->FcState.TimestampMs,
                    (double)AppData->FcState.RollRad,
@@ -90,7 +93,8 @@ int LORA_TDM_APP_BuildFcDownlinkLine(char *Buf, size_t BufLen, const LORA_TDM_AP
                    (long)AppData->FcState.LonE7,
                    (long)AppData->FcState.AltMm,
                    (unsigned)AppData->FcState.GpsFix,
-                   (unsigned)AppData->PendingUplinkFeedback);
+                   (unsigned)AppData->PendingUplinkFeedback,
+                   (unsigned)AppData->FcState.SatellitesVisible);
 
     if (Len <= 0 || (size_t)Len >= BufLen)
     {
@@ -387,6 +391,7 @@ void LORA_TDM_APP_UpdateCacheFromMsg(CFE_SB_Buffer_t *SBBufPtr, LORA_TDM_APP_Dat
         AppData->FcState.LonE7       = M->LonE7;
         AppData->FcState.AltMm       = M->AltMm;
         AppData->FcState.GpsFix      = M->FixType;
+        AppData->FcState.SatellitesVisible = M->SatellitesVisible;
     }
     else if (CFE_SB_MsgId_Equal(MsgId, CFE_SB_ValueToMsgId(LORA_TDM_APP_SYSTEM_HEALTH_MID_VALUE)))
     {

@@ -176,11 +176,28 @@ void Test_BuildFcDownlinkLine_UplinkFeedbackField(void)
     char *UfbPtr;
 
     LORA_TDM_APP_Data.PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_CRC_FAIL;
+    LORA_TDM_APP_Data.FcState.SatellitesVisible = 0;
     LORA_TDM_APP_BuildFcDownlinkLine(Buf, sizeof(Buf), &LORA_TDM_APP_Data);
 
-    /* The UFB field must appear in the line; scan for ",1," or ends with ",1\n" */
-    UfbPtr = strstr(Buf, ",1\n");
-    UtAssert_True(UfbPtr != NULL, "CRC_FAIL feedback (1) encoded in FC line");
+    /* ufb는 이제 마지막-1 필드(sats가 새 마지막 필드, 2026-07-13 추가).
+     * ",1,<sats>\n" 형태로 등장해야 한다. */
+    UfbPtr = strstr(Buf, ",1,0\n");
+    UtAssert_True(UfbPtr != NULL, "CRC_FAIL feedback (1) encoded before sats field in FC line");
+}
+
+/* sats(SatellitesVisible)가 새 마지막 필드로 인코딩되는지 확인 (2026-07-13 추가) */
+void Test_BuildFcDownlinkLine_SatellitesField(void)
+{
+    char Buf[LORA_TDM_APP_LINE_BUF_LEN];
+    char *SatsPtr;
+
+    LORA_TDM_APP_Data.PendingUplinkFeedback     = LORA_TDM_APP_UPLINK_FB_OK;
+    LORA_TDM_APP_Data.FcState.SatellitesVisible = 12;
+    LORA_TDM_APP_BuildFcDownlinkLine(Buf, sizeof(Buf), &LORA_TDM_APP_Data);
+
+    /* 마지막 필드가 sats=12로 줄 끝(",12\n")에 나와야 한다 */
+    SatsPtr = strstr(Buf, ",12\n");
+    UtAssert_True(SatsPtr != NULL, "sats=12 encoded as last field in FC line");
 }
 
 void Test_BuildFcDownlinkLine_BufferTooSmall(void)
@@ -362,12 +379,13 @@ void Test_UpdateCacheFromMsg_Gps(void)
     Msg    = (TEST_GpsRawTlm_t *)Storage;
     CFE_MSG_Init(CFE_MSG_PTR(Msg->TelemetryHeader),
                  CFE_SB_ValueToMsgId(LORA_TDM_APP_FC_GPS_RAW_STATE_MID_VALUE), sizeof(*Msg));
-    Msg->TimestampMs = 3333;
-    Msg->Valid       = 1;
-    Msg->FixType     = 3;
-    Msg->LatE7       = 374530000;
-    Msg->LonE7       = 1269850000;
-    Msg->AltMm       = 50000;
+    Msg->TimestampMs       = 3333;
+    Msg->Valid             = 1;
+    Msg->FixType           = 3;
+    Msg->SatellitesVisible = 12;
+    Msg->LatE7             = 374530000;
+    Msg->LonE7             = 1269850000;
+    Msg->AltMm             = 50000;
 
     MsgId = CFE_SB_ValueToMsgId(LORA_TDM_APP_FC_GPS_RAW_STATE_MID_VALUE);
     UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
@@ -377,6 +395,7 @@ void Test_UpdateCacheFromMsg_Gps(void)
     UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.FcState.LonE7, 1269850000);
     UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.FcState.AltMm, 50000);
     UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.FcState.GpsFix, 3);
+    UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.FcState.SatellitesVisible, 12);
 }
 
 void Test_UpdateCacheFromMsg_SystemHealth(void)
@@ -436,6 +455,7 @@ void UtTest_Setup(void)
     ADD_TEST(ParseAckFrame_MalformedNoSeq);
     ADD_TEST(BuildFcDownlinkLine_Basic);
     ADD_TEST(BuildFcDownlinkLine_UplinkFeedbackField);
+    ADD_TEST(BuildFcDownlinkLine_SatellitesField);
     ADD_TEST(BuildFcDownlinkLine_BufferTooSmall);
     ADD_TEST(BuildShDownlinkLine_Basic);
     ADD_TEST(UpdateLinkState_Connected);
