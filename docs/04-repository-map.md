@@ -55,7 +55,7 @@ LoRa wire format(또는 링크 계약)이 바뀔 때 함께 갱신해야 하는 
 | --- | --- | --- |
 | ~~지상국이 ACK 프레임을 송신하지 않음~~ | openMCT `fc_serial_ws_server.py` | **해소** — Stage 1로 `_send_ack` 구현 완료, 실링크 검증은 `lora_stage_measurement_runbook.md` Stage 1 진행 중 |
 | ws 서버 수신 루프가 `readline()` 기반 | openMCT | v2 바이너리(종단 문자 없음) 수신 불가 — 바이트 스트림 상태머신으로 교체 필요 (Stage 3 게이트) |
-| `FC_SYS_TIME_MID` SB 발행 미구현 | cfs-telemetry-app | 시각 동기 체인(03-interface §6.1) 미가동 |
+| ~~`FC_SYS_TIME_MID` SB 발행 미구현~~ | cfs-telemetry-app | **해소** — 2026-07-13 구현 완료(commit `38c2f22`), UT 105/105+14/14 PASS. Pi 실기 SYSTEM_TIME 수신·발행 검증은 미완, 아래 STX 이스케이프 결함의 영향권(프레임 유실 시 미발행) |
 | mavlink_bridge 파서 STX 이스케이프 결함 | cfs-telemetry-app | 페이로드 내 0xFD/0xFE에서 프레임 유실 (~20%/28B 프레임) — P1 수정 대기 |
 
 ### 5.1 오판으로 결론난 항목 (기록용)
