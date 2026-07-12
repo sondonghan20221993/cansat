@@ -1,12 +1,23 @@
 #!/usr/bin/env bash
 # WiFiLink V2(OpenIPC)에 프로토타입 설정 적용
-# 사용법: ./apply_camera_config.sh [카메라IP]   (기본 192.168.1.10)
+# 사용법: ./apply_camera_config.sh [카메라IP] [Pi경유호스트(옵션)]
+#   직결:    ./apply_camera_config.sh 192.168.1.10
+#   Pi 경유: ./apply_camera_config.sh 192.168.1.10 sdh2983@192.168.50.65
 # 전제: 카메라 이더넷 접속 가능, ssh root 로그인 (OpenIPC 기본 암호 12345 — TODO(bench))
+#       Pi 경유 시 check_ethernet_access.sh 로 선행 확인 권장
 set -euo pipefail
 
 CAM_IP="${1:-192.168.1.10}"
-SSH="ssh -o StrictHostKeyChecking=no root@${CAM_IP}"
+PROXY="${2:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if [ -n "$PROXY" ]; then
+    SSH="ssh -o StrictHostKeyChecking=no -J ${PROXY} root@${CAM_IP}"
+    SCP="scp -o StrictHostKeyChecking=no -J ${PROXY}"
+else
+    SSH="ssh -o StrictHostKeyChecking=no root@${CAM_IP}"
+    SCP="scp -o StrictHostKeyChecking=no"
+fi
 
 echo "== [1/4] 접속 확인 =="
 $SSH 'echo "firmware: $(cat /etc/os-release 2>/dev/null | head -1)"; ipcinfo -c 2>/dev/null || true'
@@ -25,7 +36,7 @@ $SSH 'cli -s .rtsp.enabled true'
 $SSH 'cli -s .records.path /mnt/mmcblk0p1/records || true'
 
 echo "== [3/4] msposd 기동 스크립트 배포 =="
-scp -o StrictHostKeyChecking=no "${SCRIPT_DIR}/msposd_air.sh" "root@${CAM_IP}:/usr/bin/msposd_air.sh"
+$SCP "${SCRIPT_DIR}/msposd_air.sh" "root@${CAM_IP}:/usr/bin/msposd_air.sh"
 $SSH 'chmod +x /usr/bin/msposd_air.sh'
 # TODO(bench): RunCam 이미지의 기존 msposd 서비스 여부 확인 후 부팅 훅 결정
 #   (예: /etc/rc.local 에 /usr/bin/msposd_air.sh 추가)
@@ -33,5 +44,5 @@ $SSH 'chmod +x /usr/bin/msposd_air.sh'
 echo "== [4/4] majestic 재시작 =="
 $SSH 'killall -1 majestic || true'
 
-echo "완료. 다음: ./verify_camera.sh ${CAM_IP}"
+echo "완료. 다음: ./verify_camera.sh ${CAM_IP} ${PROXY}"
 echo "주의: WFB 채널(5.8GHz) 설정은 OpenIPC Configurator에서 별도 수행 (README §적용순서 1)"

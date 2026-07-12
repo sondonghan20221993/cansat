@@ -28,6 +28,21 @@ Pi ──이더넷──▶ WiFiLink (chrony NTP: Pi 시각 → 카메라 시계
 | `verify_camera.sh` | 적용 후 검증 (ping, 스냅샷, RTSP, msposd 프로세스) | 벤치 PC/Pi에서 실행 |
 | `pi_chrony_camera.conf` | Pi를 카메라의 NTP 서버로 (§시각 동기) | Pi `/etc/chrony/conf.d/` |
 
+## 페이즈별 목표 및 확인 코드
+
+기체 장착 상태(PC 직결 불가) 기준. Pi(192.168.50.65)를 이더넷 경유(jump host)로 사용.
+
+| 페이즈 | 목표 | 확인 코드 | 상태 |
+| --- | --- | --- | --- |
+| P0 영상 링크 | WFB-ng RF로 지상에서 영상 수신 | (fpv4win 육안 확인, 스크립트화 불필요) | ✅ 완료 |
+| P1 대역분리 | WFB-ng 채널이 5.8GHz대(LoRa 2.4GHz와 비중첩) | `./check_band_separation.sh <카메라IP> [Pi경유]` | ⬜ 미확인 |
+| P2 이더넷 접근 | 기체 장착 상태로 Pi 경유 SSH 접속 가능 | `./check_ethernet_access.sh [Pi호스트] [카메라IP]` | ⬜ 미확인 (Pi 오프라인 확인됨) |
+| P3 설정 적용 | majestic OSD/녹화 설정 + msposd 배포 | `./apply_camera_config.sh <카메라IP> [Pi경유]` → `./verify_camera.sh <카메라IP> [Pi경유]` | ⬜ P2 선행 필요 |
+| P4 SD 녹화 실물 확인 | 설정 적용 후 실제 녹화 파일 생성 | `./check_sd_recording.sh <카메라IP> [Pi경유] [분]` | ⬜ P3 선행 필요 |
+| P5 시각동기 | 카메라 OSD 타임스탬프를 절대시각으로 | (보류 — Pi GPS 동기 `mavlink_bridge_app_behavior_spec.md` §16.4 선행 필요) | ⬜ 차단 |
+
+각 스크립트는 `<Pi경유>` 인자를 생략하면 PC 직결을 시도한다 (예: `sdh2983@192.168.50.65` 형식으로 지정 시 `ssh -J`로 Pi를 경유).
+
 ## 적용 순서
 
 1. **대역 분리 (최우선)**: WFB-ng 채널을 5.8GHz로. OpenIPC Configurator 또는 카메라에서
