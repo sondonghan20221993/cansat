@@ -188,7 +188,7 @@ typedef struct
 mavlink STX 결함(`mavlink_bridge_app_behavior_spec.md` §17)의 재답습을 막는다. **magic 바이트는 `WAIT_MAGIC` 상태에서만 프레임 시작으로 인식**하고, 본문 소비 중(`READING_BODY`)에는 magic 값과 무관하게 위치 기반으로 `BodyLen`바이트를 채운다.
 
 - 프레임 경계는 `len` 필드로 확정(§3 재동기화 규칙과 동일).
-- CRC 불일치 → 해당 프레임 폐기 후 `WAIT_MAGIC`로 복귀, **버려진 바이트 스트림에서 다음 magic부터 재스캔**(§8 첫 바이트 분기 재적용). 이때 `bridge/lora_downlink_decoder.py`의 `DownlinkStream`(참조 구현)과 **동일한 재동기 규칙**을 따라 C↔Python 동작이 일치해야 한다.
+- CRC 불일치 → 해당 프레임 폐기 후 `WAIT_MAGIC`로 복귀, **버려진 바이트 스트림에서 다음 magic부터 재스캔**(§8 첫 바이트 분기 재적용). 이때 `bridge/lora_downlink_decoder.py`의 `DownlinkStream`(참조 구현)과 **동일한 재동기 규칙**을 따른다. 주의: C는 UP2/ACK2(수신)을, DownlinkStream은 DL2(수신)를 파싱하므로 다른 프레임을 본다 — **공유되는 건 프레이밍 규율(magic 위치, len 기반 경계, CRC 방식, 재동기 알고리즘)이지, 같은 프레임을 양쪽이 파싱하는 게 아니다**.
 - v1 공존: 첫 바이트가 ASCII면 기존 `\n` 줄버퍼 경로로 분기(§8). 즉 이 상태머신은 magic(0xD2/0xB2/0xA2) 진입 시에만 동작.
 
 ### 11.3 CRC16 C ↔ Python 교차검증 UT
