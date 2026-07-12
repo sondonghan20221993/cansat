@@ -158,3 +158,46 @@ RX창 100ms에 들어가는 UP2 최대 크기는 ~240B(에어타임 100ms). payl
   `decode_dl2`/`encode_dl2`의 오프셋 언패킹이 아직 §4의 sats 추가(46B→47B, offset 41)를
   반영하지 못했다. v1(`lora_tdm_app`)에는 이미 sats를 반영했지만 v2는 설계만 갱신된 상태 —
   실제 v2 구현(기체 C 인코더 + 참조 디코더) 착수 시 이 offset을 최신 표대로 맞춰야 한다.
+
+## 11. 기체 C 수신 구현 세부 (Stage 3 착수 게이트)
+
+`lora_stage_measurement_runbook.md` Stage 3의 3개 선행 게이트를 구현 수준으로 확정한다. 모두 실측과 무관한 로컬 코드/UT 작업이며, 아래 순서대로 진행한다.
+
+### 11.1 `RunRxWindow` 버퍼 static/전역화
+
+**현재 결함**: `lora_tdm_app.c:106` `RunRxWindow()`가 `char Buf[LINE_BUF_LEN]`를 호출마다 스택에 재선언 → RX창(현 300ms) 경계를 넘어가는 프레임의 중간 수신 상태가 유실. v2는 payload 255B 프레임이 RX창(100ms)을 초과할 수 있으므로(§7.1) **주기 간 수신 상태 유지가 필수**다.
+
+**설계**: 파서 상태를 앱 데이터(또는 파일 static)로 승격한 수신 컨텍스트 구조체로 분리한다.
+
+```c
+typedef struct
+{
+    uint8  State;                     /* WAIT_MAGIC / GOT_MAGIC / GOT_LEN / READING_BODY / GOT_CRC1 */
+    uint8  Magic;                     /* 0xD2/0xB2/0xA2 — v1 분기는 별도(§8) */
+    uint16 BodyLen;                   /* magic·len 확정 후 남은 본문 길이 */
+    uint16 BodyIndex;                 /* 지금까지 채운 본문 바이트 수 */
+    uint16 Crc;                       /* 누적 CRC (본문 소비하며 갱신) */
+    uint8  Body[LORA_TDM_APP_RX_MAX_FRAME];  /* 정적 최대 프레임 버퍼 */
+} LORA_TDM_APP_RxParser_t;
+```
+
+`RunRxWindow()`는 이 구조체를 **리셋하지 않고** 창마다 이어서 채운다. 프레임 완료(CRC 일치) 또는 리셋 조건에서만 `State=WAIT_MAGIC`, `BodyIndex=0`로 되돌린다. `LORA_TDM_APP_RX_MAX_FRAME`은 UP2 최대(262B, §7.1)를 수용.
+
+### 11.2 길이 기반 상태머신 (magic-collision 금지)
+
+mavlink STX 결함(`mavlink_bridge_app_behavior_spec.md` §17)의 재답습을 막는다. **magic 바이트는 `WAIT_MAGIC` 상태에서만 프레임 시작으로 인식**하고, 본문 소비 중(`READING_BODY`)에는 magic 값과 무관하게 위치 기반으로 `BodyLen`바이트를 채운다.
+
+- 프레임 경계는 `len` 필드로 확정(§3 재동기화 규칙과 동일).
+- CRC 불일치 → 해당 프레임 폐기 후 `WAIT_MAGIC`로 복귀, **버려진 바이트 스트림에서 다음 magic부터 재스캔**(§8 첫 바이트 분기 재적용). 이때 `bridge/lora_downlink_decoder.py`의 `DownlinkStream`(참조 구현)과 **동일한 재동기 규칙**을 따라 C↔Python 동작이 일치해야 한다.
+- v1 공존: 첫 바이트가 ASCII면 기존 `\n` 줄버퍼 경로로 분기(§8). 즉 이 상태머신은 magic(0xD2/0xB2/0xA2) 진입 시에만 동작.
+
+### 11.3 CRC16 C ↔ Python 교차검증 UT
+
+**현재 결함**: C `LORA_TDM_APP_Crc16`(`lora_tdm_app_utils.c:21`)와 Python `crc16_ccitt`(`bridge/` 3개 파일에 각각 구현)가 같은 표준 테스트 벡터로 맞대본 적이 없다.
+
+**요구**:
+- 표준 벡터 고정: CRC-16/CCITT-FALSE `"123456789"` → `0x29B1`을 C UT와 Python 테스트 양쪽에 assert.
+- 추가 공유 벡터(빈 입력, 1바이트, 실제 DL2/UP2 본문 샘플 몇 개)를 `tests/`에 공용 픽스처로 두고 C·Python이 동일 기대값을 검증.
+- `bridge/`의 CRC 구현 3중복은 이 기회에 단일 모듈로 통합 검토(§10 참조 구현 정리와 함께).
+
+> 세 게이트 모두 통과 후 §9 검증 요구사항(왕복·분할 수신·재동기·공존)으로 진행한다. 본 절은 설계 확정(2026-07-13)이며 코드는 미착수.

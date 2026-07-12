@@ -500,7 +500,7 @@ typedef struct
 | 발행 조건 | `HandleSysTime()`에서 유효 SYSTEM_TIME 수신 시 (`unix_usec != 0`, CRC OK) — 즉 `LastSysTimeUnixUsec` 갱신과 같은 지점에서 발행 |
 | 초기화 | `MAVLINK_BRIDGE_APP_Init()`에서 다른 FC Tlm과 동일하게 `CFE_MSG_Init()` 1회 |
 | 발행 함수 | `CFE_SB_TransmitMsg(CFE_MSG_PTR(MAVLINK_BRIDGE_APP_Data.SysTimeTlm.TelemetryHeader), true)` — 기존 4개 FC Tlm 발행 호출과 동일 패턴 |
-| 구독자(예상) | 호스트 시각 동기 프로세스 (§16.4, CI_LAB/TO 경유), 필요시 `cfs_core_app` |
+| 구독자(예상) | cFS 내부 시각 규율 소비자 (§16.4 — `CFE_TIME_ExternalGPS` 호출), 지상 진단용 다운링크(선택) |
 
 **단위테스트 검증**: 기존 `SysTime_*` 4개 테스트(§16.2) + `mavlink_bridge_app` Init 테스트가 새 `CFE_MSG_Init()` 호출 경로를 포함해 회귀 없이 통과. 로컬 `~/verify-build/cFS_verify` 재빌드 결과: `coverage-mav_bridge_app-mavlink_bridge_app_utils-testrunner` 105/105 PASS, `coverage-mav_bridge_app-mavlink_bridge_app-testrunner` 14/14 PASS.
 
@@ -508,14 +508,43 @@ typedef struct
 
 **남은 유의사항**: §16.2에서 서술한 mavlink_bridge STX 이스케이프 결함(P1, 04-repository-map.md §5)이 아직 해결되지 않은 상태 — SysTimeTlm 발행은 살아있지만 페이로드 내 `0xFD`/`0xFE` 우연 출현 시 SYSTEM_TIME 프레임 자체가 유실될 수 있다. 또한 Pi 실기 연결 검증(실제 FC로부터 SYSTEM_TIME 수신 → SB 발행 확인)은 아직 미완 — 지금까지는 로컬 UT 검증만 완료된 상태.
 
-### 16.4 호스트 시계 반영 — cFS 외부 책임 (미구현, 예정)
+### 16.4 시각 반영 — 두 시계 도메인 (설계 정정 2026-07-13)
 
-Pi 시스템 시계 설정은 **cFS 앱이 수행하지 않는다.** 근거:
+**핵심**: 이 시스템에는 GPS UTC로 규율해야 할 시계가 **두 개**이고, 서로 다른 밑바탕 소스를 쓴다. 이전 판(호스트 파이썬 데몬으로 OS 시계만 맞춤)은 cFS 로그용 시계와 카메라용 시계를 혼동한 오류였다.
 
-1. `clock_settime()`은 시스템 전역 부작용을 가지는 호스트 관리 작업 — SB publish가 책임인 앱 경계를 벗어남 (§4 책임 분리, `mission_app_runtime_spec.md` §10.1 transport 경계와 동일한 원칙).
-2. 1 Hz 수신마다 시계를 step 하면 로그 타임스탬프 역행/점프 위험. 점진 보정(slew)은 chrony 등 NTP 데몬의 전문 영역.
+| 시계 도메인 | 소비처 | 밑바탕 | 규율 방법 |
+| --- | --- | --- | --- |
+| **cFS 내부 시각** (`CFE_TIME`) | 모든 cFS 로그 타임스탬프 — SB 로그, LoRa 다운링크 로그(`CFE_TIME_GetTime()`) | MET(부팅 후 단조) + STCF 오프셋. 우리 PSP 타임베이스는 `CLOCK_MONOTONIC`(`cfe_psp_timebase_posix_clock.c:60`) — **NTP/`clock_settime`에 영향 안 받음** | §16.4.1 — `CFE_TIME_ExternalGPS()` (순수 C, cFS 안) |
+| **리눅스 OS 시계** (`CLOCK_REALTIME`) | 카메라 OSD (NTP 경유) | OS realtime clock | §16.4.2 — chrony (OS 관리, cFS 밖). **카메라 때문에만 필요** |
 
-**예정 구조**: `bridge/` 또는 `tools/`에 호스트 파이썬 프로세스를 두고 SysTimeTlm(또는 CI_LAB 다운링크)을 구독 → 최초 1회 step(`timedatectl set-time` 상당) 후 chrony SOCK refclock으로 지속 주입. GPS fix 미확보 구간(`unix_usec=0`)에서는 아무 동작도 하지 않는다.
+두 도메인은 밑바탕이 다르므로 한쪽을 맞춰도 다른 쪽은 안 바뀐다(OS 시계를 맞춰도 cFS 로그는 MONOTONIC 기반이라 불변). 둘 다 같은 GPS UTC로 규율하면 sync tolerance(§6, ~100ms) 안에서 일치한다.
+
+#### 16.4.1 cFS 내부 시각 규율 — `CFE_TIME_ExternalGPS` (권장, C in-cFS)
+
+cFS가 제공하는 외부 시각 주입 API로 STCF를 GPS UTC에 맞춘다. 이러면 `CFE_TIME_GetTime()`을 쓰는 **모든 cFS 로그 타임스탬프가 자동으로 GPS UTC 축**이 된다. 호스트 데몬·chrony·root 불필요.
+
+```c
+void CFE_TIME_ExternalGPS(CFE_TIME_SysTime_t NewTime, int16 NewLeaps);   /* cfe_time.h:581 */
+```
+
+- **입력 변환**: §16.2에서 확보한 `TimeUnixUsec`(GPS UNIX epoch µs)를 `CFE_TIME_SysTime_t`(Seconds/Subseconds)로 변환. UNIX epoch → cFS epoch(기본 1980 TAI 등 `CFE_MISSION` epoch) 오프셋과 leap seconds(`NewLeaps`) 처리 주의.
+- **호출 주체(설계 선택)**:
+  - (권장) `mavlink_bridge_app`의 `HandleSysTime()`에서 직접 호출 — 값이 이미 그 자리에 있고, `CFE_TIME_ExternalGPS`는 OS 전역 부작용이 아니라 cFS 내부 API라 §4 앱 경계를 벗어나지 않음. CONFIG 파라미터로 on/off.
+  - (대안) SysTimeTlm(§16.3)을 구독하는 별도 소비자(예: `cfs_core_app`)에서 호출 — 시각 권한을 한 곳에 모으고 싶을 때. 결합도 증가.
+- **플랫폼 선행조건**: 이 CPU가 TIME 서버이고 시각 소스가 외부(`CFE_PLATFORM_TIME_CFG_SOURCE` 계열, `CFE_TIME_SourceSelect_EXTERNAL`)로 설정돼 있어야 `ExternalGPS`가 유효. 현 빌드 설정 확인 필요(미확인).
+- **fallback**: `TimeUnixUsec == 0`(GPS 미확보) → 호출 안 함(§16.2 규칙). GPS 상실 시 cFS는 MET(monotonic)로 자유 구동, STCF는 마지막 값 유지.
+
+> 이전 판의 기각 근거였던 "① `clock_settime` 전역 부작용 ② step으로 로그 점프"는 **OS 시계(`clock_settime`)에만** 해당한다. `CFE_TIME_ExternalGPS`는 cFS 내부 STCF 상관만 갱신하고 점프 처리는 CFE_TIME 상태머신이 담당하므로 두 근거 모두 비적용 → cFS 로그 규율은 C로 cFS 안에서 하는 것이 맞다.
+
+#### 16.4.2 리눅스 OS 시계 — chrony (카메라 NTP 전용)
+
+카메라(WiFiLink)는 이더넷 NTP로 **Pi의 OS realtime 시계**에 동기하므로(§6.1 체인), 이 시계는 별도로 규율해야 한다. cFS 로그는 이 시계에 의존하지 않으므로(위 표) **오직 카메라를 위해서만** 필요하다.
+
+- OS 시계 설정은 시스템 전역·root 권한 작업이라 cFS 앱이 하지 않는다(원래 §16.4 근거 유효). chrony가 담당.
+- 규율 소스: GPS 시각을 chrony에 넣는 방법은 두 가지 — (a) OS에 이미 GPS/gpsd가 있으면 chrony가 직접 그 refclock을 사용, (b) 없으면 cFS가 아는 GPS 시각을 chrony SOCK refclock으로 주입하는 작은 유틸리티. **어느 쪽인지 미결정** — 실기에서 Pi에 GPS 수신기 직결 여부에 달림.
+- 카메라 NTP 서버 설정은 `camera/pi_chrony_camera.conf`(프로토타입). Pi OS 시계가 위 경로로 규율된 뒤에야 카메라 OSD 타임스탬프가 UTC로서 의미를 가진다.
+
+> 정정 요지(2026-07-13): SysTimeTlm의 1차 소비자는 "호스트 데몬"이 아니라 **cFS 내부 `CFE_TIME_ExternalGPS` 호출**이다. chrony/OS-시계 경로는 카메라 전용으로 범위 축소. 양쪽 모두 코드 미착수 — 16.4.1의 epoch/leap 변환과 플랫폼 TIME 소스 설정 확인이 착수 선행조건.
 
 ### 16.5 정확도 한계
 
@@ -523,6 +552,35 @@ Pi 시스템 시계 설정은 **cFS 앱이 수행하지 않는다.** 근거:
 | --- | --- |
 | GPS → FC | ~ms |
 | FC → bridge (UART 115200, 1 Hz 폴링) | ~수십 ms 지터 |
-| bridge → 호스트 시계 반영 | 반영 방식에 따름 (chrony slew 시 수렴 후 ~수십 ms) |
+| bridge → cFS 내부 시각 (`CFE_TIME_ExternalGPS`) | STCF 상관 갱신 — 수신 지터 수준(~수십 ms) |
+| bridge → OS 시계 (카메라용, chrony) | chrony slew 수렴 후 ~수십 ms |
 
 영상 프레임 ↔ 텔레메트리 로그 대조 용도 기준 ~100 ms급이면 충분하다는 전제. PPS급 정밀도가 필요해지면 별도 하드웨어(GPS PPS 직결)로 이관한다.
+
+## 17. MAVLink 파서 STX 이스케이프 결함 (P1, 수정 방안 확정 · 코드 미적용)
+
+### 17.1 결함
+
+`MAVLINK_BRIDGE_APP_ProcessReceivedByte()`(`mavlink_bridge_app_utils.c:1549`)는 함수 진입부에서 **모든 수신 바이트에 대해, 파서 상태와 무관하게** STX 검사를 수행한다:
+
+```c
+if (Byte == MAVLINK_STX_V1)  /* 0xFE */ { ResetParser(); ... return; }
+else if (Byte == MAVLINK_STX_V2)  /* 0xFD */ { ResetParser(); ... return; }
+switch (Parser.State) { ... }
+```
+
+MAVLink는 바이트 스터핑(escape)이 없으므로 페이로드 데이터에 `0xFD`/`0xFE`가 그대로 실려 온다. 파서가 `READING_PAYLOAD` 상태로 페이로드를 읽는 도중 해당 값을 만나면, 진행 중이던 프레임을 버리고 새 프레임 시작으로 오인하여 **프레임을 유실**한다. 페이로드 바이트 랜덤 분포 가정 시 28바이트 프레임 기준 ~20% 유실률. SYSTEM_TIME(§16) 포함 모든 수신 경로가 영향권.
+
+### 17.2 채택 방안 — 길이 기반 소비 (방안 A)
+
+프레임의 `LEN` 필드는 이미 `Parser.PayloadLen`으로 수신되어 있다. **STX는 `WAIT_STX` 상태에서만 프레임 시작 신호로 인식**하고, 그 외 상태(특히 `READING_PAYLOAD`)에서는 내용과 무관하게 위치 기반으로 정확히 `PayloadLen`바이트를 소비한다. 이는 표준 mavlink 파서(`mavlink_parse_char`)의 동작이며, LoRa v2 spec이 요구한 "길이 기반 상태머신" 방향과 동일하다.
+
+- 손상/절단 프레임 재동기: `LEN`이 어긋나거나 프레임이 잘리면 CRC 검사에서 실패 → 파서 리셋 → `WAIT_STX`로 복귀 → 다음 STX부터 재동기. 즉 **재동기는 STX-mid-frame 리셋이 아니라 CRC 실패에 위임**한다.
+- 트레이드오프: 와이어 글리치로 프레임이 절단되면 다음 1~2 프레임까지 유실될 수 있으나, 절단은 드물고(글리치 시에만) 페이로드 0xFD/0xFE 충돌은 상시 발생하므로 실익이 압도적으로 크다.
+
+**기각한 방안 B(버퍼 재파싱)**: 표준 `mavlink_frame_char_buffer`처럼 수신 바이트를 버퍼링하고 CRC 실패 시 STX 다음 바이트부터 재파싱. 절단 복구도 빠르지만 구현 복잡도·버퍼 관리 비용 대비 실익(드문 절단의 빠른 복구)이 작아 채택하지 않음.
+
+### 17.3 검증 계획 (코드 적용 시)
+
+- 기존 `UT_FeedSerial`/`UT_BuildSysTimeFrame` 헬퍼로 **페이로드에 `0xFD`/`0xFE`를 포함한 프레임**을 주입해 정상 디코드되는지 회귀 테스트 추가.
+- 프레임 절단 후 다음 정상 프레임이 CRC 재동기로 복구되는지 확인하는 테스트 추가.

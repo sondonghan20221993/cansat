@@ -92,10 +92,10 @@ python3 tools/analyze_downlink_csv.py "<telemetry_logs 경로>/telemetry_YYYYMMD
 근거를 갖는다. 400ms에서 이미 실패하면 200ms는 시도하지 않는다 — 대신 Stage 2의
 성공한 값을 잠정 운용값으로 채택하고 v2는 보류.
 
-**착수 전 게이트 (코드 작업, 실측과 별개로 선행)**:
-- [ ] lora_tdm `RunRxWindow` 버퍼를 static/전역으로 리팩터링 (RX창 간 파서 상태 유지)
-- [ ] C 파서를 길이(len) 기반 상태머신으로 구현 (mavlink STX 버그 재답습 금지)
-- [ ] C `Crc16` ↔ Python `crc16_ccitt` 표준 벡터(`"123456789"→0x29B1`) 교차 검증 UT
+**착수 전 게이트 (코드 작업, 실측과 별개로 선행)** — 구현 세부는 `lora_protocol_v2_spec.md` §11:
+- [ ] lora_tdm `RunRxWindow` 버퍼를 static/전역으로 리팩터링 (RX창 간 파서 상태 유지) — §11.1
+- [ ] C 파서를 길이(len) 기반 상태머신으로 구현 (mavlink STX 버그 재답습 금지) — §11.2
+- [ ] C `Crc16` ↔ Python `crc16_ccitt` 표준 벡터(`"123456789"→0x29B1`) 교차 검증 UT — §11.3
 
 이 게이트 통과 후 `lora_protocol_v2_spec.md` §9 검증 요구사항대로 진행.
 
