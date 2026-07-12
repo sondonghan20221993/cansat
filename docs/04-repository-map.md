@@ -49,11 +49,24 @@ LoRa wire format(또는 링크 계약)이 바뀔 때 함께 갱신해야 하는 
 4. 지상 구현: `openMCT/fc_serial_ws_server.py` (+ 대시보드 필드 변경 시 `my_openmct_app/`)
 5. 본 리포: 03-interface (계약 변경 시에만), 08-verification (크로스 리포 TC)
 
-## 5. 알려진 크로스 리포 갭 (2026-07-13 기준)
+## 5. 알려진 크로스 리포 갭 (갱신: 2026-07-13)
 
 | 갭 | 위치 | 영향 |
 | --- | --- | --- |
-| 지상국이 ACK 프레임을 송신하지 않음 | openMCT `fc_serial_ws_server.py` | 기체 `LinkState`가 CONNECTED로 전이 불가 (lora_tdm spec §11) — v2 통합 시 ACK2 회신으로 해소 예정 |
-| ws 서버 수신 루프가 `readline()` 기반 | openMCT | v2 바이너리(종단 문자 없음) 수신 불가 — 바이트 스트림 상태머신으로 교체 필요 |
+| ~~지상국이 ACK 프레임을 송신하지 않음~~ | openMCT `fc_serial_ws_server.py` | **해소** — Stage 1로 `_send_ack` 구현 완료, 실링크 검증은 `lora_stage_measurement_runbook.md` Stage 1 진행 중 |
+| ws 서버 수신 루프가 `readline()` 기반 | openMCT | v2 바이너리(종단 문자 없음) 수신 불가 — 바이트 스트림 상태머신으로 교체 필요 (Stage 3 게이트) |
 | `FC_SYS_TIME_MID` SB 발행 미구현 | cfs-telemetry-app | 시각 동기 체인(03-interface §6.1) 미가동 |
 | mavlink_bridge 파서 STX 이스케이프 결함 | cfs-telemetry-app | 페이로드 내 0xFD/0xFE에서 프레임 유실 (~20%/28B 프레임) — P1 수정 대기 |
+
+### 5.1 오판으로 결론난 항목 (기록용)
+
+"packet_loss를 FC/SH source별로 분리해야 한다"는 항목이 openMCT 리포에 오래
+"미구현 계획"으로 남아 있었으나, 2026-07-13 `lora_tdm_app.c` 코드 확인 결과
+FC/SH는 독립 seq가 아니라 **단일 공유 카운터를 짝/홀로 교대**하는 설계였음이
+밝혀져 폐기됨 (분리하면 정상 링크도 항상 ~50% 손실로 오판). 상세:
+openMCT `openmct_bridge_notes.md` §"packet_loss per-source 분리".
+
+**교훈**: 문서에 오래 남아있는 "미구현 계획"이라도 실제 소스 코드로 전제를
+재검증하지 않고 그대로 실행하면 오히려 정상 동작을 깨뜨릴 수 있다 — §3
+위임 규칙(wire format은 cfs-telemetry-app이 단일 원본)뿐 아니라, **"미구현
+갭"으로 기록된 항목도 착수 전 코드 재확인이 필요**하다는 사례로 남긴다.
