@@ -581,7 +581,7 @@ GPS ─▶ FC ──MAVLink SYSTEM_TIME(msg 2, 1Hz)──▶ CM(Pi) 시스템 �
 | 구간 | 상태 | 상세 spec (단일 원본) |
 | --- | --- | --- |
 | FC SYSTEM_TIME 수신 파싱 | 구현 완료 | `cfs-telemetry-app/notes/mavlink_bridge_app_behavior_spec.md` §16.2 |
-| SB 발행 (`FC_SYS_TIME_MID 0x1909`) | 미구현(예정) | 동 §16.3 |
+| SB 발행 (`FC_SYS_TIME_MID 0x1909`) | 구현 완료 (2026-07-13, commit `38c2f22`), Pi 실기 검증 미완 | 동 §16.3 |
 | CM 시계 반영 (호스트 chrony) | 미구현(예정) | 동 §16.4 — cFS 외부 책임 |
 | 카메라 NTP 동기 | 프로토타입 | `cfs-telemetry-app/camera/pi_chrony_camera.conf` |
 
