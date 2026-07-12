@@ -570,22 +570,30 @@ Timestamp origin rule:
 
 - 링크별 timestamp 및 correlation rule은 Section 3.6.3과 Section 3.6.4를 따른다.
 
-### 6.1 Reference Clock 동기 체인 (2026-07-13 확정)
+### 6.1 Reference Clock 동기 체인 (2026-07-13 확정, 시계 도메인 정정)
+
+GPS UTC로 규율할 시계는 **두 도메인**이며 밑바탕 소스가 다르다(한쪽을 맞춰도 다른 쪽은 불변).
 
 ```
-GPS ─▶ FC ──MAVLink SYSTEM_TIME(msg 2, 1Hz)──▶ CM(Pi) 시스템 시계
-                                                  │
-                                                  └─이더넷 NTP(chrony)──▶ 카메라(WiFiLink) 시계
+GPS ─▶ FC ──SYSTEM_TIME(msg2,1Hz)──▶ CM(Pi) mavlink_bridge (파싱·SB 발행)
+                                          │
+        (A) cFS 내부 ────────────────────┤ CFE_TIME_ExternalGPS (C, cFS 안)
+            = SB/LoRa 로그 타임스탬프      │   → cFS 로그가 GPS UTC 축
+                                          │
+        (B) 리눅스 OS 시계 ───────────────┘ chrony (cFS 밖, 카메라 전용)
+            └─이더넷 NTP──▶ 카메라(WiFiLink) OSD 시계
 ```
 
 | 구간 | 상태 | 상세 spec (단일 원본) |
 | --- | --- | --- |
 | FC SYSTEM_TIME 수신 파싱 | 구현 완료 | `cfs-telemetry-app/notes/mavlink_bridge_app_behavior_spec.md` §16.2 |
 | SB 발행 (`FC_SYS_TIME_MID 0x1909`) | 구현 완료 (2026-07-13, commit `38c2f22`), Pi 실기 검증 미완 | 동 §16.3 |
-| CM 시계 반영 (호스트 chrony) | 미구현(예정) | 동 §16.4 — cFS 외부 책임 |
+| (A) cFS 내부 시각 규율 (`CFE_TIME_ExternalGPS`) | 미구현(예정) — C, cFS 안 | 동 §16.4.1 |
+| (B) OS 시계 규율 (chrony, 카메라 전용) | 미구현(예정) — cFS 밖 | 동 §16.4.2 |
 | 카메라 NTP 동기 | 프로토타입 | `cfs-telemetry-app/camera/pi_chrony_camera.conf` |
 
-- GPS fix 미확보 구간(`time_unix_usec == 0`)에서는 동기를 수행하지 않으며, 각 시계는 마지막 동기 시점부터의 드리프트를 허용한다.
+- cFS 로그(SB·LoRa)는 도메인 (A), 카메라 OSD는 도메인 (B)에 속한다. 둘 다 같은 GPS UTC로 규율돼야 크로스 링크 대조(§3.6.3)가 성립한다.
+- GPS fix 미확보 구간(`time_unix_usec == 0`)에서는 양쪽 모두 동기를 수행하지 않으며, 각 시계는 마지막 동기 시점부터의 드리프트를 허용한다.
 
 ## 7. Error Propagation
 
