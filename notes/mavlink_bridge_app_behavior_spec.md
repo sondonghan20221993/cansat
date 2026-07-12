@@ -469,18 +469,44 @@ FPV 영상(OSD 번인 타임스탬프)과 텔레메트리 로그를 GPS 절대�
 
 > Pi 실빌드/UT 실행 검증은 미완 (작성 시점 Pi 오프라인).
 
-### 16.3 SB 발행 — SysTimeTlm (미구현, 예정)
+### 16.3 SB 발행 — SysTimeTlm (구현 완료, 2026-07-13)
 
-다른 FC 상태 MID(`FC_ATTITUDE_STATE_MID` 등)와 동일한 패턴으로 발행한다.
+다른 FC 상태 MID(`FC_ATTITUDE_STATE_MID` 등, `default_mavlink_bridge_app_msgstruct.h`의 `EkfLocalTlm_t`/`AttitudeTlm_t`/`GpsRawTlm_t`/`EkfStatusTlm_t`와 동일한 필드 관례)와 동일한 패턴으로 발행한다.
 
-| 항목 | 값 (제안) |
+**MID** (`default_mavlink_bridge_app_interface_cfg_values.h`에 추가, 기존 `FC_EKF_LOCAL_STATE_MID_VALUE 0x1905` ~ `FC_EKF_STATUS_MID_VALUE 0x1908` 다음 미사용 값):
+
+```c
+#define FC_SYS_TIME_MID_VALUE 0x1909
+```
+
+**payload 구조체** (`default_mavlink_bridge_app_msgstruct.h`에 추가, 기존 4개 FC Tlm 공통 헤더 필드 `TimestampMs`/`Seq`/`Valid`/`Stale`/`ErrorCode`/`Reserved` 그대로 유지):
+
+```c
+typedef struct
+{
+    CFE_MSG_TelemetryHeader_t TelemetryHeader;
+    uint32                    TimestampMs;   /* = LastSysTimeRxMs (bridge 로컬 수신 시각, ms) */
+    uint32                    Seq;
+    uint8                     Valid;
+    uint8                     Stale;
+    uint8                     ErrorCode;
+    uint8                     Reserved;
+    uint64                    TimeUnixUsec;  /* = LastSysTimeUnixUsec (GPS 기반 UNIX epoch, us) */
+} MAVLINK_BRIDGE_APP_SysTimeTlm_t;
+```
+
+| 항목 | 값 |
 | --- | --- |
-| MID | `FC_SYS_TIME_MID = 0x1909` (0x1905~0x1908 다음 미사용 값) |
-| 발행 조건 | 유효 SYSTEM_TIME 수신 시 (`unix_usec != 0`, CRC OK) |
-| payload | `TimeUnixUsec`(uint64), `Seq`(uint32), `Valid`/`Stale`/`ErrorCode`/`Reserved` — 기존 Tlm 공통 필드 관례 |
-| 구독자(예상) | 호스트 시각 동기 프로세스 (CI_LAB/TO 경유), 필요시 `cfs_core_app` |
+| 발행 조건 | `HandleSysTime()`에서 유효 SYSTEM_TIME 수신 시 (`unix_usec != 0`, CRC OK) — 즉 `LastSysTimeUnixUsec` 갱신과 같은 지점에서 발행 |
+| 초기화 | `MAVLINK_BRIDGE_APP_Init()`에서 다른 FC Tlm과 동일하게 `CFE_MSG_Init()` 1회 |
+| 발행 함수 | `CFE_SB_TransmitMsg(CFE_MSG_PTR(MAVLINK_BRIDGE_APP_Data.SysTimeTlm.TelemetryHeader), true)` — 기존 4개 FC Tlm 발행 호출과 동일 패턴 |
+| 구독자(예상) | 호스트 시각 동기 프로세스 (§16.4, CI_LAB/TO 경유), 필요시 `cfs_core_app` |
 
-`mission_app_runtime_spec.md` §5.1.1 MID 계약 테이블에는 구현 시점에 행을 추가한다 (현재 baseline 8개 유지).
+**단위테스트 검증**: 기존 `SysTime_*` 4개 테스트(§16.2) + `mavlink_bridge_app` Init 테스트가 새 `CFE_MSG_Init()` 호출 경로를 포함해 회귀 없이 통과. 로컬 `~/verify-build/cFS_verify` 재빌드 결과: `coverage-mav_bridge_app-mavlink_bridge_app_utils-testrunner` 105/105 PASS, `coverage-mav_bridge_app-mavlink_bridge_app-testrunner` 14/14 PASS.
+
+`mission_app_runtime_spec.md` §5.1.1 MID 계약 테이블에 `FC_SYS_TIME_MID (0x1909)` 행 추가 필요 (미반영).
+
+**남은 유의사항**: §16.2에서 서술한 mavlink_bridge STX 이스케이프 결함(P1, 04-repository-map.md §5)이 아직 해결되지 않은 상태 — SysTimeTlm 발행은 살아있지만 페이로드 내 `0xFD`/`0xFE` 우연 출현 시 SYSTEM_TIME 프레임 자체가 유실될 수 있다. 또한 Pi 실기 연결 검증(실제 FC로부터 SYSTEM_TIME 수신 → SB 발행 확인)은 아직 미완 — 지금까지는 로컬 UT 검증만 완료된 상태.
 
 ### 16.4 호스트 시계 반영 — cFS 외부 책임 (미구현, 예정)
 

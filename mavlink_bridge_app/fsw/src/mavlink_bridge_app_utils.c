@@ -1148,8 +1148,8 @@ static void MAVLINK_BRIDGE_APP_HandleSysTime(uint32 BridgeTimestampMs)
     /* MAVLink v2 trims trailing zero payload bytes, so a valid SYSTEM_TIME
      * frame may arrive shorter than 12 bytes; zero-extend before decoding. */
     uint8  Payload[MAVLINK_SYS_TIME_PAYLOAD_LEN] = {0};
+    MAVLINK_BRIDGE_APP_SysTimeTlm_t *Tlm;
     uint64 TimeUnixUsec;
-    uint32 Seq;
     uint8  CopyLen;
 
     if (MAVLINK_BRIDGE_APP_Parser.PayloadLen > MAVLINK_SYS_TIME_PAYLOAD_LEN)
@@ -1174,12 +1174,24 @@ static void MAVLINK_BRIDGE_APP_HandleSysTime(uint32 BridgeTimestampMs)
     MAVLINK_BRIDGE_APP_Data.LastSysTimeUnixUsec = TimeUnixUsec;
     MAVLINK_BRIDGE_APP_Data.LastSysTimeRxMs     = BridgeTimestampMs;
 
-    Seq = ++MAVLINK_BRIDGE_APP_Data.SequenceCounter;
-    if (MAVLINK_BRIDGE_APP_ShouldLogDecoded(Seq))
+    Tlm = &MAVLINK_BRIDGE_APP_Data.SysTimeTlm;
+
+    Tlm->TimestampMs  = BridgeTimestampMs;
+    Tlm->Seq          = ++MAVLINK_BRIDGE_APP_Data.SequenceCounter;
+    Tlm->Valid        = 1;
+    Tlm->Stale        = 0;
+    Tlm->ErrorCode    = MAVLINK_BRIDGE_ERROR_NONE;
+    Tlm->Reserved     = 0;
+    Tlm->TimeUnixUsec = TimeUnixUsec;
+
+    CFE_SB_TimeStampMsg(CFE_MSG_PTR(Tlm->TelemetryHeader));
+    CFE_SB_TransmitMsg(CFE_MSG_PTR(Tlm->TelemetryHeader), true);
+
+    if (MAVLINK_BRIDGE_APP_ShouldLogDecoded(Tlm->Seq))
     {
         CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_PARSE_EID, CFE_EVS_EventType_INFORMATION,
                           "MAVLINK_BRIDGE_APP: SYSTEM_TIME decoded seq=%lu unix_us=%llu rx_ms=%lu",
-                          (unsigned long)Seq,
+                          (unsigned long)Tlm->Seq,
                           (unsigned long long)TimeUnixUsec,
                           (unsigned long)BridgeTimestampMs);
     }

@@ -101,6 +101,18 @@ typedef struct
     uint16                    Flags;
 } MAVLINK_BRIDGE_APP_EkfStatusTlm_t;
 
+typedef struct
+{
+    CFE_MSG_TelemetryHeader_t TelemetryHeader;
+    uint32                    TimestampMs;
+    uint32                    Seq;
+    uint8                     Valid;
+    uint8                     Stale;
+    uint8                     ErrorCode;
+    uint8                     Reserved;
+    uint64                    TimeUnixUsec;
+} MAVLINK_BRIDGE_APP_SysTimeTlm_t;
+
 #define MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS 16U
 
 typedef struct

@@ -8,5 +8,6 @@
 #define FC_ATTITUDE_STATE_MID_VALUE          0x1906
 #define FC_GPS_RAW_STATE_MID_VALUE           0x1907
 #define FC_EKF_STATUS_MID_VALUE              0x1908
+#define FC_SYS_TIME_MID_VALUE                0x1909
 
 #endif

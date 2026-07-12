@@ -114,6 +114,14 @@ CFE_Status_t MAVLINK_BRIDGE_APP_Init(void)
         return Status;
     }
 
+    Status = CFE_MSG_Init(CFE_MSG_PTR(MAVLINK_BRIDGE_APP_Data.SysTimeTlm.TelemetryHeader),
+                          CFE_SB_ValueToMsgId(FC_SYS_TIME_MID_VALUE),
+                          sizeof(MAVLINK_BRIDGE_APP_Data.SysTimeTlm));
+    if (Status != CFE_SUCCESS)
+    {
+        return Status;
+    }
+
     Status = CFE_SB_CreatePipe(&MAVLINK_BRIDGE_APP_Data.CommandPipe, MAVLINK_BRIDGE_APP_PLATFORM_PIPE_DEPTH,
                                MAVLINK_BRIDGE_APP_PLATFORM_PIPE_NAME);
     if (Status != CFE_SUCCESS)
