@@ -1704,9 +1704,45 @@ downlink 텔레메트리 상태는 `lora_tdm_app`의 책임이며
 FAILED/RECOVERY 상태 차단은 실비행 안전상 존재 이유가 있음 — 이 플래그로 그 의도를
 무시하고 상시 사용하지 않을 것).
 
-**미결정**: 지상(openMCT `fc_serial_ws_server.py`)에서 이 플래그를 세워 보내는 UI/API
-경로는 아직 설계만 됐고 코드 없음 — `_build_lora_frame(..., flags=...)`에 이미 파라미터가
-있으니 호출부만 `flags=1`로 넘기면 됨. GUI에 "force" 체크박스 추가 여부는 미결정.
+**구현 완료 (2026-07-13)**: 지상(openMCT `fc_serial_ws_server.py`) `/api/uplink/config`에
+`force`(bool) 파라미터 추가, GUI에 "force" 체크박스 추가(경고 문구 포함, 기본 꺼짐).
+`uplink_app_cmds.c`에 `Cmd->Flags & UPLINK_APP_FORCE_FLAG` 체크 및 UT(음성 대조 1종) 추가.
+실기체 배포 후 실측: **health gate(§18.10.1)는 정상 우회 확인**("FORCED THROUGH" 로그).
+
+#### 18.10.3 실측 중 발견 — §18.11.1 권한 레벨이 지상에서 전혀 전송되지 않고 있었음 (2026-07-13)
+
+**증상**: FORCE_FLAG로 §18.10.1 health gate는 통과했으나, 곧바로 §18.11.1 권한검증에서
+재차단됨 (`UPLINK_APP: command blocked (insufficient auth) auth=0 required=2`).
+
+**원인**: `flags` 바이트는 **독립된 두 안전장치가 서로 다른 비트를 씀**:
+- bit0 = `UPLINK_APP_FORCE_FLAG`(§18.10.2, health gate 우회, 오늘 구현)
+- bit[7:6] = 권한 레벨(§18.11.1, `UPLINK_APP_IsAuthorized`가 검사, 이전부터 있던 요구사항)
+
+지상 코드는 지금까지 `flags` 파라미터 자체를 항상 0으로만 호출해왔다(`_build_lora_frame`
+호출부 어디에도 bit[7:6] 설정 코드가 없었음) — 즉 **CONFIG류 명령은 health가 NOMINAL이었던
+과거에도 권한검증에서 막혔을 가능성**이 있다(이번 세션 전엔 CONFIG 클래스를 지상에서
+실제로 쏴본 적이 없어서 발견되지 않았던 것으로 추정).
+
+**설계(적용 예정)**: FORCE 옵션을 체크하면, health gate 우회(bit0)와 **더불어** 해당
+명령 클래스가 요구하는 권한 레벨(bit[7:6])도 같이 채워서 보낸다 — 기체측
+`UPLINK_APP_GetClassRequiredLevel()`에 이미 정의된 값을 그대로 미러링:
+
+| 명령 클래스 | 요구 레벨 |
+| --- | --- |
+| CONFIG(1) | 2 |
+| ROUTE_UPDATE(2) | 2 |
+| RECOVERY(4) | 3 |
+
+이건 **새 권한을 부여하는 게 아니라, 기체가 원래 요구하던 값을 지상이 이제야 채워
+보내는 것**이다 — 권한 레벨 자체를 낮추거나 검증 로직을 바꾸지 않는다. FORCE 체크
+없이 보낼 때도 이 레벨은 항상 채워야 정상 동작한다(별도 버그 수정, health gate 우회와
+무관하게 필요).
+
+**미해결**: `UPLINK_APP_GetClassRequiredLevel()`의 switch문 case 값이 실제
+`UPLINK_APP_CLASS_*` enum과 불일치하는 것으로 보임(예: case 5="diagnostic"이라
+쓰여있으나 실제 `DIAGNOSTIC=6`, case 7="mode"인데 실제 `MODE=5`, class=7은 enum에
+존재하지 않음) — CONFIG(1)/ROUTE_UPDATE(2)/RECOVERY(4)는 일치해서 위 표엔 영향 없지만,
+VIEWPOINT/MODE/DIAGNOSTIC 권한 레벨은 별도로 재확인 필요(범위 밖, 이슈로만 기록).
 
 ### 18.11 `uplink_app`에 대한 미해결 항목
 
