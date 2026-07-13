@@ -123,6 +123,81 @@ void Test_RunRxWindow_LineSpansAcrossWindows(void)
     LORA_TDM_APP_Data.LoRaFd = -1;
 }
 
+/* §11.2/§8: 첫 바이트가 v2 매직(0xA2=ACK2)이면 개행 대기 없이 길이(5B) 기반으로
+ * 완성 판단해서 ProcessRxBinaryFrame으로 넘어가야 한다. */
+void Test_RunRxWindow_Ack2MagicDispatchesToBinaryHandler(void)
+{
+    int                PipeFd[2];
+    CFE_TIME_SysTime_t FakeTime;
+    uint8              Frame[5] = {0xA2, 0x2A, 0x00, 0x00, 0x00}; /* 내용은 임의, 프레이밍만 검증 */
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Init(), CFE_SUCCESS);
+
+    UtAssert_True(pipe(PipeFd) == 0, "pipe() 생성");
+    UtAssert_True(fcntl(PipeFd[0], F_SETFL, O_NONBLOCK) == 0, "read fd 논블로킹 설정");
+    LORA_TDM_APP_Data.LoRaFd = PipeFd[0];
+
+    memset(&FakeTime, 0, sizeof(FakeTime));
+    FakeTime.Seconds = 100U;
+    UT_SetDataBuffer(UT_KEY(CFE_TIME_GetTime), &FakeTime, sizeof(FakeTime), false);
+
+    UtAssert_True(write(PipeFd[1], Frame, sizeof(Frame)) == (ssize_t)sizeof(Frame), "ACK2 프레임 write");
+    UT_SetDeferredRetcode(UT_KEY(CFE_SB_ReceiveBuffer), 1, CFE_SB_NO_MESSAGE);
+    LORA_TDM_APP_RunCycle();
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.RxLineBufLen, 0);
+    UtAssert_True(UT_GetStubCount(UT_KEY(LORA_TDM_APP_ProcessRxBinaryFrame)) == 1,
+                  "ACK2 매직으로 ProcessRxBinaryFrame 1회 호출");
+    UtAssert_True(UT_GetStubCount(UT_KEY(LORA_TDM_APP_ProcessRxLine)) == 0,
+                  "v2 프레임은 v1 텍스트 파서로 안 감");
+
+    close(PipeFd[0]);
+    close(PipeFd[1]);
+    LORA_TDM_APP_Data.LoRaFd = -1;
+}
+
+/* UP2 헤더(magic+plen)가 1차 창에, payload+CRC가 2차 창에 걸쳐 와도(§7.1) 상태(모드+목표
+ * 길이)가 유지돼 정확히 완성 판단해야 한다. */
+void Test_RunRxWindow_Up2FrameSpansAcrossWindows(void)
+{
+    int                PipeFd[2];
+    CFE_TIME_SysTime_t FakeTime;
+    /* plen=2, 나머지 바이트는 프레이밍 검증용이라 값은 임의 */
+    uint8 Header[2] = {0xB2, 0x02};
+    uint8 Rest[9]   = {0x02, 0x01, 0x00, 0x00, 0x00, 0xAA, 0xBB, 0x00, 0x00}; /* ver,class,seq2,flags,payload2,crc2 */
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Init(), CFE_SUCCESS);
+
+    UtAssert_True(pipe(PipeFd) == 0, "pipe() 생성");
+    UtAssert_True(fcntl(PipeFd[0], F_SETFL, O_NONBLOCK) == 0, "read fd 논블로킹 설정");
+    LORA_TDM_APP_Data.LoRaFd = PipeFd[0];
+
+    memset(&FakeTime, 0, sizeof(FakeTime));
+    FakeTime.Seconds = 100U;
+    UT_SetDataBuffer(UT_KEY(CFE_TIME_GetTime), &FakeTime, sizeof(FakeTime), false);
+
+    /* 1차 창: magic+plen만 도착 */
+    UtAssert_True(write(PipeFd[1], Header, sizeof(Header)) == (ssize_t)sizeof(Header), "1차 창 헤더 write");
+    UT_SetDeferredRetcode(UT_KEY(CFE_SB_ReceiveBuffer), 1, CFE_SB_NO_MESSAGE);
+    LORA_TDM_APP_RunCycle();
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.RxLineBufLen, 2);
+    UtAssert_True(UT_GetStubCount(UT_KEY(LORA_TDM_APP_ProcessRxBinaryFrame)) == 0,
+                  "헤더만 와서 아직 미완성");
+
+    /* 2차 창: 나머지(ver..crc) 도착 -> plen=2 기준 목표 길이(11B) 도달, 완성 */
+    UtAssert_True(write(PipeFd[1], Rest, sizeof(Rest)) == (ssize_t)sizeof(Rest), "2차 창 나머지 write");
+    UT_SetDataBuffer(UT_KEY(CFE_TIME_GetTime), &FakeTime, sizeof(FakeTime), false);
+    UT_SetDeferredRetcode(UT_KEY(CFE_SB_ReceiveBuffer), 1, CFE_SB_NO_MESSAGE);
+    LORA_TDM_APP_RunCycle();
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.RxLineBufLen, 0);
+    UtAssert_True(UT_GetStubCount(UT_KEY(LORA_TDM_APP_ProcessRxBinaryFrame)) == 1,
+                  "창 경계 넘어 이어받아 완성 시 1회 호출");
+
+    close(PipeFd[0]);
+    close(PipeFd[1]);
+    LORA_TDM_APP_Data.LoRaFd = -1;
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(Init);
@@ -130,4 +205,6 @@ void UtTest_Setup(void)
     ADD_TEST(RunCycle_TxWriteFailClosesFd);
     ADD_TEST(RunCycle_RxReadFailClosesFd);
     ADD_TEST(RunRxWindow_LineSpansAcrossWindows);
+    ADD_TEST(RunRxWindow_Ack2MagicDispatchesToBinaryHandler);
+    ADD_TEST(RunRxWindow_Up2FrameSpansAcrossWindows);
 }

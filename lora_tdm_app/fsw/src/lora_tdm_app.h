@@ -66,6 +66,11 @@ typedef struct
     char   RxLineBuf[LORA_TDM_APP_LINE_BUF_LEN];
     uint16 RxLineBufLen;
 
+    /* RX 프레임 모드 — 첫 바이트로 v1(ASCII 줄) vs v2(매직바이트) 판별 §11.2/§8.
+     * LORA_TDM_RxFrameMode_t 값 저장(uint8로 보관, enum 크기 이식성 회피). */
+    uint8  RxFrameMode;
+    uint16 RxFrameTargetLen; /* v2 모드에서 이 길이(바이트)까지 모이면 프레임 완성 */
+
     /* SB */
     uint32           RunStatus;
     CFE_SB_PipeId_t  CommandPipe;

@@ -101,7 +101,14 @@ static uint32 GetTimeMs(void)
     return (uint32)Ms;
 }
 
-/* ---- RX window: read until timeout or newline ---- */
+/* ---- RX frame mode — 첫 바이트로 v1(ASCII 줄)/v2(매직바이트) 판별. §11.2/§8 ---- */
+#define LORA_TDM_RXFRAME_NONE     0u /* 첫 바이트 대기 */
+#define LORA_TDM_RXFRAME_TEXT     1u /* v1, '\n' 대기 */
+#define LORA_TDM_RXFRAME_ACK2     2u /* 고정 5B */
+#define LORA_TDM_RXFRAME_UP2_HDR  3u /* plen(2번째 바이트) 확정 전 */
+#define LORA_TDM_RXFRAME_UP2_BODY 4u /* plen 확정, 길이만큼 채우는 중 */
+
+/* ---- RX window: read until timeout or newline/frame 완성 ---- */
 
 static void RunRxWindow(void)
 {
@@ -148,23 +155,73 @@ static void RunRxWindow(void)
         }
 
         /* [[lora_tdm_serial_reopen_gap]] §11.1: 버퍼가 앱 데이터(RunRxWindow 호출 경계를
-         * 넘어 유지)라, 이번 창에서 개행이 안 와도 다음 창에서 이어받는다. */
+         * 넘어 유지)라, 이번 창에서 완성이 안 돼도(개행 미도달/바이너리 프레임 중간)
+         * 다음 창에서 이어받는다 — v2 UP2가 여러 RX창에 걸쳐 와도 유실 안 됨(§7.1). */
         if (LORA_TDM_APP_Data.RxLineBufLen < sizeof(LORA_TDM_APP_Data.RxLineBuf) - 1)
         {
             LORA_TDM_APP_Data.RxLineBuf[LORA_TDM_APP_Data.RxLineBufLen++] = C;
         }
         else
         {
-            /* 오버플로: 다음 개행까지 버리고 재동기화 (그렇지 않으면 잘못 이어붙은
-             * 줄이 영구적으로 계속 폐기됨). */
-            LORA_TDM_APP_Data.RxLineBufLen = 0;
+            /* 오버플로: 재동기화 (그렇지 않으면 잘못 이어붙은 프레임이 영구 폐기됨). */
+            LORA_TDM_APP_Data.RxLineBufLen  = 0;
+            LORA_TDM_APP_Data.RxFrameMode   = LORA_TDM_RXFRAME_NONE;
+            continue;
         }
 
-        if (C == '\n')
+        /* 첫 바이트로 모드 확정 — magic이면 v2, 아니면(ASCII) v1 텍스트 (§8) */
+        if (LORA_TDM_APP_Data.RxLineBufLen == 1)
         {
-            LORA_TDM_APP_Data.RxLineBuf[LORA_TDM_APP_Data.RxLineBufLen] = '\0';
-            LORA_TDM_APP_ProcessRxLine(LORA_TDM_APP_Data.RxLineBuf, &LORA_TDM_APP_Data);
-            LORA_TDM_APP_Data.RxLineBufLen = 0;
+            if ((uint8)C == (uint8)LORA_TDM_APP_ACK2_MAGIC)
+            {
+                LORA_TDM_APP_Data.RxFrameMode      = LORA_TDM_RXFRAME_ACK2;
+                LORA_TDM_APP_Data.RxFrameTargetLen = 5;
+            }
+            else if ((uint8)C == (uint8)LORA_TDM_APP_UP2_MAGIC)
+            {
+                LORA_TDM_APP_Data.RxFrameMode = LORA_TDM_RXFRAME_UP2_HDR;
+            }
+            else
+            {
+                LORA_TDM_APP_Data.RxFrameMode = LORA_TDM_RXFRAME_TEXT;
+            }
+        }
+
+        switch (LORA_TDM_APP_Data.RxFrameMode)
+        {
+            case LORA_TDM_RXFRAME_TEXT:
+                if (C == '\n')
+                {
+                    LORA_TDM_APP_Data.RxLineBuf[LORA_TDM_APP_Data.RxLineBufLen] = '\0';
+                    LORA_TDM_APP_ProcessRxLine(LORA_TDM_APP_Data.RxLineBuf, &LORA_TDM_APP_Data);
+                    LORA_TDM_APP_Data.RxLineBufLen = 0;
+                    LORA_TDM_APP_Data.RxFrameMode  = LORA_TDM_RXFRAME_NONE;
+                }
+                break;
+
+            case LORA_TDM_RXFRAME_UP2_HDR:
+                /* 2번째 바이트(plen) 도착 시 최종 길이 확정 후 BODY로 전환 */
+                if (LORA_TDM_APP_Data.RxLineBufLen == 2)
+                {
+                    uint8 Plen = (uint8)LORA_TDM_APP_Data.RxLineBuf[1];
+                    LORA_TDM_APP_Data.RxFrameTargetLen = (uint16)(7u + (uint16)Plen + 2u);
+                    LORA_TDM_APP_Data.RxFrameMode      = LORA_TDM_RXFRAME_UP2_BODY;
+                }
+                break;
+
+            case LORA_TDM_RXFRAME_ACK2:
+            case LORA_TDM_RXFRAME_UP2_BODY:
+                if (LORA_TDM_APP_Data.RxLineBufLen >= LORA_TDM_APP_Data.RxFrameTargetLen)
+                {
+                    LORA_TDM_APP_ProcessRxBinaryFrame((const uint8 *)LORA_TDM_APP_Data.RxLineBuf,
+                                                       LORA_TDM_APP_Data.RxLineBufLen, &LORA_TDM_APP_Data);
+                    LORA_TDM_APP_Data.RxLineBufLen = 0;
+                    LORA_TDM_APP_Data.RxFrameMode  = LORA_TDM_RXFRAME_NONE;
+                }
+                break;
+
+            default:
+                break;
         }
     }
 

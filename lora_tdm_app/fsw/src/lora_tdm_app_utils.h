@@ -39,6 +39,11 @@ typedef struct
 /* Parse UP2 프레임 — CRC 검증 포함, 성공 시 *Out 채움 */
 LORA_TDM_AckResult_t LORA_TDM_APP_ParseUp2Frame(const uint8 *Buf, size_t Len, LORA_TDM_APP_Up2Decoded_t *Out);
 
+/* 완성된 v2 바이너리 프레임 1개 처리 — Buf[0](magic)로 ACK2/UP2 분기, AppData 상태 갱신.
+ * ProcessRxLine(v1)과 대응되는 v2 진입점. RunRxWindow의 길이기반 상태머신이 프레임을
+ * 다 모으면 호출한다. */
+void LORA_TDM_APP_ProcessRxBinaryFrame(const uint8 *Buf, size_t Len, LORA_TDM_APP_Data_t *AppData);
+
 /* Build FC downlink line into Buf (size BufLen); returns bytes written or <0 on error */
 int LORA_TDM_APP_BuildFcDownlinkLine(char *Buf, size_t BufLen,
                                       const LORA_TDM_APP_Data_t *AppData);

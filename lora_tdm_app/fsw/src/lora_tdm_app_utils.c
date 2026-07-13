@@ -519,6 +519,98 @@ void LORA_TDM_APP_ProcessRxLine(const char *Line, LORA_TDM_APP_Data_t *AppData)
     /* Unknown frame type — ignore silently */
 }
 
+/* ---- Forward UP2 결과를 uplink_app으로 SB 전달 (ProcessUpFrame의 v2 대응) ---- */
+
+static void ForwardUp2ToUplinkApp(const LORA_TDM_APP_Up2Decoded_t *Decoded, LORA_TDM_APP_Data_t *AppData)
+{
+    LORA_TDM_APP_UplinkFwdCmd_t FwdCmd;
+
+    memset(&FwdCmd, 0, sizeof(FwdCmd));
+    CFE_MSG_Init(CFE_MSG_PTR(FwdCmd.CommandHeader),
+                 CFE_SB_ValueToMsgId(LORA_TDM_APP_UPLINK_APP_CMD_MID_VALUE),
+                 sizeof(FwdCmd));
+    CFE_MSG_SetFcnCode(CFE_MSG_PTR(FwdCmd.CommandHeader), LORA_TDM_APP_UPLINK_PROCESS_UPLINK_CC);
+    FwdCmd.Version       = Decoded->Version;
+    FwdCmd.CommandClass  = Decoded->CommandClass;
+    FwdCmd.PayloadLength = Decoded->PayloadLen;
+    FwdCmd.Flags         = 0;
+    FwdCmd.Sequence      = Decoded->Seq;
+    if (Decoded->PayloadLen > 0)
+    {
+        memcpy(FwdCmd.Payload, Decoded->Payload, Decoded->PayloadLen);
+    }
+
+    /* ProcessUpFrame과 동일한 CRC 대상 구성 (Version+CommandClass+PayloadLength+Flags+Seq(LE)+Payload) */
+    {
+        uint8 CrcBuf[6 + 196];
+        CrcBuf[0] = Decoded->Version;
+        CrcBuf[1] = Decoded->CommandClass;
+        CrcBuf[2] = Decoded->PayloadLen;
+        CrcBuf[3] = 0;
+        CrcBuf[4] = (uint8)(Decoded->Seq & 0xFF);
+        CrcBuf[5] = (uint8)(Decoded->Seq >> 8);
+        if (Decoded->PayloadLen > 0)
+        {
+            memcpy(&CrcBuf[6], Decoded->Payload, Decoded->PayloadLen);
+        }
+        FwdCmd.Checksum = LORA_TDM_APP_Crc16(CrcBuf, 6u + Decoded->PayloadLen);
+    }
+
+    CFE_SB_TransmitMsg(CFE_MSG_PTR(FwdCmd.CommandHeader), true);
+
+    AppData->PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_OK;
+    AppData->RxCmdCount++;
+}
+
+/* ---- 완성된 v2 바이너리 프레임 1개 처리 (ProcessRxLine의 v2 대응) ---- */
+
+void LORA_TDM_APP_ProcessRxBinaryFrame(const uint8 *Buf, size_t Len, LORA_TDM_APP_Data_t *AppData)
+{
+    uint32                    SeqEcho;
+    LORA_TDM_APP_Up2Decoded_t Decoded;
+
+    if (Buf == NULL || Len == 0 || AppData == NULL)
+    {
+        return;
+    }
+
+    if (Buf[0] == (uint8)LORA_TDM_APP_ACK2_MAGIC)
+    {
+        if (LORA_TDM_APP_ParseAck2Frame(Buf, Len, &SeqEcho) == LORA_TDM_ACK_OK)
+        {
+            AppData->RxAckCount++;
+            AppData->NoAckCount         = 0;
+            AppData->LastAckTimestampMs = UtilsGetTimeMs();
+            (void)SeqEcho;
+        }
+        else
+        {
+            AppData->RxErrorCount++;
+            CFE_EVS_SendEvent(LORA_TDM_APP_ACK_PARSE_ERR_EID, CFE_EVS_EventType_ERROR,
+                              "LORA_TDM_APP: bad ACK2 frame");
+        }
+        return;
+    }
+
+    if (Buf[0] == (uint8)LORA_TDM_APP_UP2_MAGIC)
+    {
+        if (LORA_TDM_APP_ParseUp2Frame(Buf, Len, &Decoded) == LORA_TDM_ACK_OK)
+        {
+            ForwardUp2ToUplinkApp(&Decoded, AppData);
+        }
+        else
+        {
+            AppData->PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_CRC_FAIL;
+            AppData->RxErrorCount++;
+            CFE_EVS_SendEvent(LORA_TDM_APP_CRC_FAIL_EID, CFE_EVS_EventType_ERROR,
+                              "LORA_TDM_APP: UP2 frame parse error");
+        }
+        return;
+    }
+
+    /* Unknown magic — ignore silently */
+}
+
 /* ---- Update FC state cache from SB message ---- */
 
 void LORA_TDM_APP_UpdateCacheFromMsg(CFE_SB_Buffer_t *SBBufPtr, LORA_TDM_APP_Data_t *AppData)
