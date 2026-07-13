@@ -22,6 +22,23 @@ typedef enum
 /* Parse "ACK,<seq>\n" → fills *SeqEcho; returns LORA_TDM_ACK_OK on success */
 LORA_TDM_AckResult_t LORA_TDM_APP_ParseAckFrame(const char *Line, uint32 *SeqEcho);
 
+/* Parse ACK2(v2 바이너리, 5B) — lora_protocol_v2_spec.md §6. CRC 검증 포함. */
+LORA_TDM_AckResult_t LORA_TDM_APP_ParseAck2Frame(const uint8 *Buf, size_t Len, uint32 *SeqEcho);
+
+/* UP2(v2 바이너리 업링크) 디코드 결과 — lora_protocol_v2_spec.md §5 */
+typedef struct
+{
+    uint8  Version;
+    uint8  CommandClass;
+    uint16 Seq;
+    uint8  Flags;
+    uint8  PayloadLen;
+    uint8  Payload[196]; /* ProcessUpFrame 최대 페이로드와 동일 크기 */
+} LORA_TDM_APP_Up2Decoded_t;
+
+/* Parse UP2 프레임 — CRC 검증 포함, 성공 시 *Out 채움 */
+LORA_TDM_AckResult_t LORA_TDM_APP_ParseUp2Frame(const uint8 *Buf, size_t Len, LORA_TDM_APP_Up2Decoded_t *Out);
+
 /* Build FC downlink line into Buf (size BufLen); returns bytes written or <0 on error */
 int LORA_TDM_APP_BuildFcDownlinkLine(char *Buf, size_t BufLen,
                                       const LORA_TDM_APP_Data_t *AppData);

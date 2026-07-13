@@ -544,12 +544,147 @@ void Test_BuildDl2Frame_BufferTooSmall(void)
     UtAssert_True(Len < 0, "BufLen 부족 시 음수 반환");
 }
 
+/* ---- ParseAck2Frame — lora_protocol_v2_spec.md §6 ---- */
+
+static void PutU16LE_Test(uint8 *P, uint16 V)
+{
+    P[0] = (uint8)(V & 0xFFu);
+    P[1] = (uint8)((V >> 8) & 0xFFu);
+}
+
+void Test_ParseAck2Frame_Valid(void)
+{
+    uint8  Buf[5];
+    uint16 Crc;
+    uint32 SeqEcho = 0;
+
+    Buf[0] = LORA_TDM_APP_ACK2_MAGIC;
+    PutU16LE_Test(&Buf[1], 42);
+    Crc = LORA_TDM_APP_Crc16(Buf, 3);
+    PutU16LE_Test(&Buf[3], Crc);
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_ParseAck2Frame(Buf, sizeof(Buf), &SeqEcho), LORA_TDM_ACK_OK);
+    UtAssert_INT32_EQ((int)SeqEcho, 42);
+}
+
+void Test_ParseAck2Frame_WrongMagic(void)
+{
+    uint8  Buf[5] = {0x00, 0, 0, 0, 0};
+    uint32 SeqEcho = 0;
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_ParseAck2Frame(Buf, sizeof(Buf), &SeqEcho), LORA_TDM_ACK_INVALID);
+}
+
+void Test_ParseAck2Frame_CrcFail(void)
+{
+    uint8  Buf[5];
+    uint32 SeqEcho = 0;
+
+    Buf[0] = LORA_TDM_APP_ACK2_MAGIC;
+    PutU16LE_Test(&Buf[1], 42);
+    PutU16LE_Test(&Buf[3], 0xDEAD); /* 틀린 CRC */
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_ParseAck2Frame(Buf, sizeof(Buf), &SeqEcho), LORA_TDM_ACK_INVALID);
+}
+
+void Test_ParseAck2Frame_TooShort(void)
+{
+    uint8  Buf[4] = {LORA_TDM_APP_ACK2_MAGIC, 0, 0, 0};
+    uint32 SeqEcho = 0;
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_ParseAck2Frame(Buf, sizeof(Buf), &SeqEcho), LORA_TDM_ACK_INVALID);
+}
+
+/* ---- ParseUp2Frame — lora_protocol_v2_spec.md §5 ---- */
+
+void Test_ParseUp2Frame_ValidWithPayload(void)
+{
+    uint8                     Buf[16];
+    uint16                    Crc;
+    LORA_TDM_APP_Up2Decoded_t Out;
+
+    Buf[0] = LORA_TDM_APP_UP2_MAGIC;
+    Buf[1] = 3;    /* plen */
+    Buf[2] = 2;    /* version */
+    Buf[3] = 1;    /* command_class */
+    PutU16LE_Test(&Buf[4], 99); /* seq */
+    Buf[6] = 0;    /* flags */
+    Buf[7] = 0xAA;
+    Buf[8] = 0xBB;
+    Buf[9] = 0xCC;
+    Crc = LORA_TDM_APP_Crc16(Buf, 7 + 3);
+    PutU16LE_Test(&Buf[10], Crc);
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_ParseUp2Frame(Buf, 12, &Out), LORA_TDM_ACK_OK);
+    UtAssert_INT32_EQ(Out.Version, 2);
+    UtAssert_INT32_EQ(Out.CommandClass, 1);
+    UtAssert_INT32_EQ((int)Out.Seq, 99);
+    UtAssert_INT32_EQ(Out.PayloadLen, 3);
+    UtAssert_INT32_EQ(Out.Payload[0], 0xAA);
+    UtAssert_INT32_EQ(Out.Payload[2], 0xCC);
+}
+
+void Test_ParseUp2Frame_ZeroPayload(void)
+{
+    uint8                     Buf[9];
+    uint16                    Crc;
+    LORA_TDM_APP_Up2Decoded_t Out;
+
+    Buf[0] = LORA_TDM_APP_UP2_MAGIC;
+    Buf[1] = 0;
+    Buf[2] = 2;
+    Buf[3] = 4;
+    PutU16LE_Test(&Buf[4], 7);
+    Buf[6] = 0;
+    Crc = LORA_TDM_APP_Crc16(Buf, 7);
+    PutU16LE_Test(&Buf[7], Crc);
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_ParseUp2Frame(Buf, sizeof(Buf), &Out), LORA_TDM_ACK_OK);
+    UtAssert_INT32_EQ(Out.PayloadLen, 0);
+}
+
+void Test_ParseUp2Frame_CrcFail(void)
+{
+    /* plen=0 프레임(8B: magic,plen,ver,class,seq_lo,seq_hi,flags,crc_lo)에
+     * 틀린 CRC(0xDEAD)를 심음 */
+    uint8                     Buf[9] = {LORA_TDM_APP_UP2_MAGIC, 0, 2, 1, 0, 0, 0, 0xDE, 0xAD};
+    LORA_TDM_APP_Up2Decoded_t Out;
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_ParseUp2Frame(Buf, sizeof(Buf), &Out), LORA_TDM_ACK_INVALID);
+}
+
+void Test_ParseUp2Frame_TooShort(void)
+{
+    uint8                     Buf[4] = {LORA_TDM_APP_UP2_MAGIC, 0, 2, 1};
+    LORA_TDM_APP_Up2Decoded_t Out;
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_ParseUp2Frame(Buf, sizeof(Buf), &Out), LORA_TDM_ACK_INVALID);
+}
+
+void Test_ParseUp2Frame_PayloadLenExceedsBuf(void)
+{
+    /* plen이 실제 Len보다 큰 값을 주장 — 자를 판단 없이 거부해야 함 */
+    uint8                     Buf[8] = {LORA_TDM_APP_UP2_MAGIC, 250, 2, 1, 0, 0, 0, 0};
+    LORA_TDM_APP_Up2Decoded_t Out;
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_ParseUp2Frame(Buf, sizeof(Buf), &Out), LORA_TDM_ACK_INVALID);
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(Crc16_KnownVector);
     ADD_TEST(BuildDl2Frame_Basic);
     ADD_TEST(BuildDl2Frame_PositionSaturation);
     ADD_TEST(BuildDl2Frame_BufferTooSmall);
+    ADD_TEST(ParseAck2Frame_Valid);
+    ADD_TEST(ParseAck2Frame_WrongMagic);
+    ADD_TEST(ParseAck2Frame_CrcFail);
+    ADD_TEST(ParseAck2Frame_TooShort);
+    ADD_TEST(ParseUp2Frame_ValidWithPayload);
+    ADD_TEST(ParseUp2Frame_ZeroPayload);
+    ADD_TEST(ParseUp2Frame_CrcFail);
+    ADD_TEST(ParseUp2Frame_TooShort);
+    ADD_TEST(ParseUp2Frame_PayloadLenExceedsBuf);
     ADD_TEST(ParseAckFrame_Valid);
     ADD_TEST(ParseAckFrame_ZeroSeq);
     ADD_TEST(ParseAckFrame_WrongPrefix);

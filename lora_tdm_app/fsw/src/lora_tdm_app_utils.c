@@ -105,6 +105,11 @@ int LORA_TDM_APP_BuildFcDownlinkLine(char *Buf, size_t BufLen, const LORA_TDM_AP
 
 /* ---- DL2 binary frame helpers (little-endian packing, portable) ---- */
 
+static uint16 GetU16LE(const uint8 *P)
+{
+    return (uint16)(P[0] | ((uint16)P[1] << 8));
+}
+
 static void PutU16LE(uint8 *P, uint16 V)
 {
     P[0] = (uint8)(V & 0xFFu);
@@ -211,6 +216,79 @@ int LORA_TDM_APP_BuildDl2Frame(uint8 *Buf, size_t BufLen, const LORA_TDM_APP_Dat
     PutU16LE(&Buf[LORA_TDM_APP_DL2_LEN_FIELD], Crc);
 
     return (int)LORA_TDM_APP_DL2_FRAME_LEN;
+}
+
+/* ---- Parse ACK2 frame (v2 바이너리, 5B) — lora_protocol_v2_spec.md §6 ---- */
+
+LORA_TDM_AckResult_t LORA_TDM_APP_ParseAck2Frame(const uint8 *Buf, size_t Len, uint32 *SeqEcho)
+{
+    uint16 ExpectedCrc;
+    uint16 ActualCrc;
+
+    if (Buf == NULL || SeqEcho == NULL || Len < 5)
+    {
+        return LORA_TDM_ACK_INVALID;
+    }
+    if (Buf[0] != (uint8)LORA_TDM_APP_ACK2_MAGIC)
+    {
+        return LORA_TDM_ACK_INVALID;
+    }
+
+    ActualCrc   = LORA_TDM_APP_Crc16(Buf, 3);
+    ExpectedCrc = GetU16LE(&Buf[3]);
+    if (ActualCrc != ExpectedCrc)
+    {
+        return LORA_TDM_ACK_INVALID;
+    }
+
+    *SeqEcho = GetU16LE(&Buf[1]);
+    return LORA_TDM_ACK_OK;
+}
+
+/* ---- Parse UP2 frame (v2 바이너리 업링크) — lora_protocol_v2_spec.md §5 ---- */
+
+LORA_TDM_AckResult_t LORA_TDM_APP_ParseUp2Frame(const uint8 *Buf, size_t Len, LORA_TDM_APP_Up2Decoded_t *Out)
+{
+    uint8  Plen;
+    size_t FrameLen;
+    uint16 ExpectedCrc;
+    uint16 ActualCrc;
+
+    /* 최소 프레임(plen=0): magic+plen+version+class+seq(2)+flags+crc(2) = 8B */
+    if (Buf == NULL || Out == NULL || Len < 8)
+    {
+        return LORA_TDM_ACK_INVALID;
+    }
+    if (Buf[0] != (uint8)LORA_TDM_APP_UP2_MAGIC)
+    {
+        return LORA_TDM_ACK_INVALID;
+    }
+
+    Plen     = Buf[1];
+    FrameLen = 7u + (size_t)Plen + 2u;
+    if (Len < FrameLen || Plen > sizeof(Out->Payload))
+    {
+        return LORA_TDM_ACK_INVALID;
+    }
+
+    ActualCrc   = LORA_TDM_APP_Crc16(Buf, 7u + Plen);
+    ExpectedCrc = GetU16LE(&Buf[7u + Plen]);
+    if (ActualCrc != ExpectedCrc)
+    {
+        return LORA_TDM_ACK_INVALID;
+    }
+
+    Out->Version      = Buf[2];
+    Out->CommandClass = Buf[3];
+    Out->Seq          = GetU16LE(&Buf[4]);
+    Out->Flags        = Buf[6];
+    Out->PayloadLen   = Plen;
+    if (Plen > 0)
+    {
+        memcpy(Out->Payload, &Buf[7], Plen);
+    }
+
+    return LORA_TDM_ACK_OK;
 }
 
 /* ---- Build SH downlink line ---- */
