@@ -107,9 +107,20 @@ source 간 간격) 것으로 추정 — 손실률엔 영향 없었으나 Stage 3
 성공한 값을 잠정 운용값으로 채택하고 v2는 보류.
 
 **착수 전 게이트 (코드 작업, 실측과 별개로 선행)** — 구현 세부는 `lora_protocol_v2_spec.md` §11:
-- [ ] lora_tdm `RunRxWindow` 버퍼를 static/전역으로 리팩터링 (RX창 간 파서 상태 유지) — §11.1
-- [ ] C 파서를 길이(len) 기반 상태머신으로 구현 (mavlink STX 버그 재답습 금지) — §11.2
-- [ ] C `Crc16` ↔ Python `crc16_ccitt` 표준 벡터(`"123456789"→0x29B1`) 교차 검증 UT — §11.3
+- [x] lora_tdm `RunRxWindow` 버퍼를 static/전역으로 리팩터링 (RX창 간 파서 상태 유지) — §11.1 (2026-07-13, Pi 배포됨)
+- [x] C 파서를 길이(len) 기반 상태머신으로 구현 — §11.2 (2026-07-13, ACK2/UP2 첫바이트 분기, Pi 배포됨)
+- [x] C `Crc16` ↔ Python `crc16_ccitt` 표준 벡터 교차 검증 UT — §11.3 (2026-07-13)
+
+**추가 완료 (게이트 범위 밖, 같은 날 진행)**:
+- [x] DL2(다운링크 통합 프레임) C 인코더 + UT — `LORA_TDM_APP_BuildDl2Frame()`
+- [x] UP2/ACK2 C 디코더 + UT — `LORA_TDM_APP_ParseUp2Frame()`/`ParseAck2Frame()`
+- [x] RunTx에 `UseV2Downlink` 플래그로 DL2 실송신 연결 (기본값 0=v1, 안전)
+- [x] `bridge/lora_downlink_decoder.py` sats 필드 미동기화 갭 해소 (spec §10에 있던 기존 이슈)
+
+**아직 남음** (5Hz 실측 전 필요):
+- [ ] CONFIG 명령으로 v1/v2 런타임 전환 (지금은 코드 값 직접 변경만 가능)
+- [ ] 지상 Python UP2 인코더 + ACK2 파서 (지금 `lora_downlink_decoder.py`는 수신+ACK2 송신만, UP2 송신 없음)
+- [ ] `CYCLE_PERIOD_MS` 200ms로 변경 + 실기체 5Hz soak
 
 이 게이트 통과 후 `lora_protocol_v2_spec.md` §9 검증 요구사항대로 진행.
 

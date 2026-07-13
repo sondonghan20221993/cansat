@@ -154,10 +154,11 @@ RX창 100ms에 들어가는 UP2 최대 크기는 ~240B(에어타임 100ms). payl
 - FC 스트림 상향(ATTITUDE 10Hz) 시 `CYCLE_PERIOD_MS` 100ms 재검토 — 본 spec 범위 외
 - LR24-F 모듈 설정(air rate/채널/패킷화 지연)의 공식 문서화 — `notes/test_environment.md`에 추가 필요
 - 2.4GHz 대역 간섭: WFB-ng 영상 링크는 5.8GHz 채널 사용 필수 (LR24-F와 대역 분리) — 시스템 통합 노트에 명시 필요
-- **참조 구현 미동기화 (2026-07-13)**: `bridge/lora_downlink_decoder.py`의 `DL2_BASE_LEN`(44)과
-  `decode_dl2`/`encode_dl2`의 오프셋 언패킹이 아직 §4의 sats 추가(46B→47B, offset 41)를
-  반영하지 못했다. v1(`lora_tdm_app`)에는 이미 sats를 반영했지만 v2는 설계만 갱신된 상태 —
-  실제 v2 구현(기체 C 인코더 + 참조 디코더) 착수 시 이 offset을 최신 표대로 맞춰야 한다.
+- ~~참조 구현 미동기화 (2026-07-13)~~ — **해소 (2026-07-13)**: `bridge/lora_downlink_decoder.py`
+  `DL2_BASE_LEN` 44→45, `decode_dl2`/`encode_dl2`에 sats(offset 41) 반영 완료.
+  기체측 C `LORA_TDM_APP_BuildDl2Frame()`(`lora_tdm_app_utils.c`, §4 §11.1/§11.2 게이트와
+  함께 구현)과 오프셋 동일 확인. 남은 것: UP2 인코더/ACK2 파서는 아직 지상 Python에 없음
+  (지상은 UP2 송신/ACK2 수신 쪽), CONFIG로 v1/v2 런타임 전환, 실기체 5Hz 검증.
 
 ## 11. 기체 C 수신 구현 세부 (Stage 3 착수 게이트)
 
