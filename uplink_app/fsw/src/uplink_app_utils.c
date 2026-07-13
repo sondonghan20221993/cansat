@@ -112,7 +112,7 @@ uint16 UPLINK_APP_ComputeProxyCrc(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
     {
         Len = (uint16)sizeof(Buf);
     }
-    memcpy(&Buf[6], Cmd->Payload, Cmd->PayloadLength);
+    memcpy(&Buf[6], Cmd->Payload, (size_t)(Len - 6U));
 
     return UPLINK_APP_CRC16(Buf, Len);
 }
