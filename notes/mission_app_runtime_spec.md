@@ -1679,6 +1679,35 @@ downlink 텔레메트리 상태는 `lora_tdm_app`의 책임이며
 > - 코드 변경: `uplink_app_cmds.c` (라인 94 이전 조건 반전 + fail-safe 블록 추가), EVS 메시지 분리 (health 미수신 vs 상태 기반 차단).
 > - 단위 테스트 (미실행, build-ut 환경 부재): `FailSafeBootBlocksAll`, `AllowedRecoveryDiagnosticInFailed` 계열.
 
+#### 18.10.2 벤치 테스트용 FORCE 플래그 (설계, 2026-07-13 — 코드 미착수)
+
+**배경**: GPS 없는 실내 벤치 환경에서는 `EKF_STATUS_REPORT`의 flags가 0(unhealthy)으로
+남아 `cfs_core_app`의 `EkfState.Valid`가 계속 false → `EkfTimedOut=true` → health가
+구조적으로 `NOMINAL`에 도달하지 못한다. §18.10.1 정책상 `DEGRADED`에서 `CONFIG` 클래스가
+차단되므로, DL2 프로토콜(§lora_protocol_v2_spec.md §8 `downlink_protocol` 전환 등)을
+실내에서 검증할 방법이 없다.
+
+**설계**: UP 프레임의 기존 `flags` 필드(현재 항상 0, 예약)의 **비트0**을
+`UPLINK_APP_FORCE_FLAG(0x01)`로 정의한다. `uplink_app_cmds.c`의 §18.10.1 차단 판정 직후,
+`Blocked==true`이면서 `Cmd->Flags & UPLINK_APP_FORCE_FLAG`가 설정된 경우에 한해 그 명령
+**하나만** 차단을 우회한다.
+
+**안전 설계 근거**:
+- 컴파일타임 상수(항상 켜짐/꺼짐)가 아니라 **매 명령마다 무선으로 실제 전송되는 값** —
+  기본값이 위험한 상태로 빌드/배포될 여지가 없음
+- 지상에서 매번 명시적으로 세워야 하고, 우회될 때마다 `UPLINK_APP_STATE_BLOCK_EID`를
+  INFORMATION 레벨로 발생시켜 항상 로그에 흔적이 남음(§18.10.1 표의 REJECT_STATE 로그와
+  대비되는 별도 문구 "FORCED THROUGH"로 구분)
+- 새 명령 클래스나 새 MID 구독을 추가하지 않음 — 기존 wire format의 예약 필드만 사용
+
+**범위**: 벤치/지상 테스트 목적. 실비행 운용 절차에는 포함하지 않는다(§18.10.1의
+FAILED/RECOVERY 상태 차단은 실비행 안전상 존재 이유가 있음 — 이 플래그로 그 의도를
+무시하고 상시 사용하지 않을 것).
+
+**미결정**: 지상(openMCT `fc_serial_ws_server.py`)에서 이 플래그를 세워 보내는 UI/API
+경로는 아직 설계만 됐고 코드 없음 — `_build_lora_frame(..., flags=...)`에 이미 파라미터가
+있으니 호출부만 `flags=1`로 넘기면 됨. GUI에 "force" 체크박스 추가 여부는 미결정.
+
 ### 18.11 `uplink_app`에 대한 미해결 항목
 
 현재 baseline 구현에서 추가로 세분화가 필요한 항목은 다음과 같다.
