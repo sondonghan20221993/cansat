@@ -83,6 +83,10 @@ typedef struct
     uint32                      TimestampRejectedCount;
     uint32                      BridgeRestartCount;
     uint32                      NextBridgeRestartMs;
+    uint32                      UplinkRestartCount;
+    uint32                      NextUplinkRestartMs;
+    uint32                      LoraRestartCount;
+    uint32                      NextLoraRestartMs;
     uint32                      NominalEligibleSince;
     uint32                      RecoveryStartMs;
     uint32                      RecoveryRequestedCount;
