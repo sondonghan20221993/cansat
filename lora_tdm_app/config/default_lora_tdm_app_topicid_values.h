@@ -15,6 +15,7 @@
 #define LORA_TDM_APP_FC_EKF_STATUS_MID_VALUE         0x1908
 #define LORA_TDM_APP_UPLINK_APP_CMD_MID_VALUE        0x18D0
 #define LORA_TDM_APP_UPLINK_STATUS_MID_VALUE         0x190A
+#define LORA_TDM_APP_CONFIG_CMD_MID_VALUE            0x190E
 
 /* Own MID values */
 #define LORA_TDM_APP_CMD_MID_VALUE                   0x18E0

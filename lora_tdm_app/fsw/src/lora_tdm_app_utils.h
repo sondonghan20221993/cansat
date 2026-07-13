@@ -44,6 +44,10 @@ LORA_TDM_AckResult_t LORA_TDM_APP_ParseUp2Frame(const uint8 *Buf, size_t Len, LO
  * 다 모으면 호출한다. */
 void LORA_TDM_APP_ProcessRxBinaryFrame(const uint8 *Buf, size_t Len, LORA_TDM_APP_Data_t *AppData);
 
+/* CONFIG_CMD_MID 수신 처리 — scope(LORA_TDM_APP_CONFIG_SCOPE) 아니면 조용히 무시,
+ * 맞으면 checksum 검증 후 파라미터 적용(§8, openMCT UPLINK_CLASS_CONFIG 경로). */
+void LORA_TDM_APP_ProcessConfigCommand(const LORA_TDM_APP_ConfigCmdTlm_t *Msg);
+
 /* Build FC downlink line into Buf (size BufLen); returns bytes written or <0 on error */
 int LORA_TDM_APP_BuildFcDownlinkLine(char *Buf, size_t BufLen,
                                       const LORA_TDM_APP_Data_t *AppData);

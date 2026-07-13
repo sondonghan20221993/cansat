@@ -55,6 +55,12 @@ void LORA_TDM_APP_ProcessRxBinaryFrame(const uint8 *Buf, size_t Len, LORA_TDM_AP
     UT_GenStub_Execute(LORA_TDM_APP_ProcessRxBinaryFrame, Basic, NULL);
 }
 
+void LORA_TDM_APP_ProcessConfigCommand(const LORA_TDM_APP_ConfigCmdTlm_t *Msg)
+{
+    UT_GenStub_AddParam(LORA_TDM_APP_ProcessConfigCommand, const LORA_TDM_APP_ConfigCmdTlm_t *, Msg);
+    UT_GenStub_Execute(LORA_TDM_APP_ProcessConfigCommand, Basic, NULL);
+}
+
 void LORA_TDM_APP_UpdateLinkState(LORA_TDM_APP_Data_t *AppData, uint32 NowMs)
 {
     UT_GenStub_AddParam(LORA_TDM_APP_UpdateLinkState, LORA_TDM_APP_Data_t *, AppData);

@@ -94,6 +94,10 @@ void LORA_TDM_APP_ProcessCommandPacket(CFE_SB_Buffer_t *SBBufPtr)
     {
         LORA_TDM_APP_ProcessDiagnosticCommand(SBBufPtr);
     }
+    else if (CFE_SB_MsgId_Equal(MsgId, CFE_SB_ValueToMsgId(LORA_TDM_APP_CONFIG_CMD_MID_VALUE)))
+    {
+        LORA_TDM_APP_ProcessConfigCommand((const LORA_TDM_APP_ConfigCmdTlm_t *)SBBufPtr);
+    }
     else if (CFE_SB_MsgId_Equal(MsgId, CFE_SB_ValueToMsgId(LORA_TDM_APP_UPLINK_STATUS_MID_VALUE)))
     {
         /* Phase 3.3: Update uplink feedback based on uplink_app result (§18.11.1 SEQ_FAIL) */

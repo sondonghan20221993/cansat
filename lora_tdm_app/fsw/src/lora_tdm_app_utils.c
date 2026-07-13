@@ -611,6 +611,89 @@ void LORA_TDM_APP_ProcessRxBinaryFrame(const uint8 *Buf, size_t Len, LORA_TDM_AP
     /* Unknown magic — ignore silently */
 }
 
+/* ---- CONFIG_CMD_MID 처리 (§8, openMCT UPLINK_CLASS_CONFIG 경로) ---- */
+
+static uint16 ConfigChecksum(const LORA_TDM_APP_ConfigPayloadHdr_t *Hdr, const uint8 *ValueBytes, uint8 ValueLength)
+{
+    uint16 Sum = 0;
+    uint8  i;
+
+    Sum += (uint16)Hdr->ConfigScope;
+    Sum += (uint16)Hdr->ConfigVersion;
+    Sum += (uint16)(Hdr->ParameterId & 0xFFU);
+    Sum += (uint16)((Hdr->ParameterId >> 8U) & 0xFFU);
+    Sum += (uint16)Hdr->ValueType;
+    Sum += (uint16)Hdr->ValueLength;
+    for (i = 0; i < ValueLength; i++)
+    {
+        Sum += (uint16)ValueBytes[i];
+    }
+    return Sum;
+}
+
+void LORA_TDM_APP_ProcessConfigCommand(const LORA_TDM_APP_ConfigCmdTlm_t *Msg)
+{
+    const LORA_TDM_APP_ConfigPayloadHdr_t *Hdr;
+    const uint8                           *ValueBytes;
+    uint32                                  Value;
+    uint16                                  Expected;
+
+    if (Msg == NULL || Msg->PayloadLength < (uint8)sizeof(LORA_TDM_APP_ConfigPayloadHdr_t))
+    {
+        return;
+    }
+
+    Hdr = (const LORA_TDM_APP_ConfigPayloadHdr_t *)Msg->Payload;
+
+    /* scope가 다르면 (cfs_core_app/mavlink_bridge_app 대상) 조용히 무시 — 여러 앱이
+     * 같은 MID를 구독하는 정상 상황이라 에러가 아니다. */
+    if (Hdr->ConfigScope != (uint8)LORA_TDM_APP_CONFIG_SCOPE)
+    {
+        return;
+    }
+
+    if (Hdr->ConfigVersion != (uint8)LORA_TDM_APP_CONFIG_VERSION)
+    {
+        LORA_TDM_APP_Data.ErrCounter++;
+        return;
+    }
+
+    if (Hdr->ValueLength != sizeof(uint32) ||
+        (uint8)(sizeof(*Hdr) + Hdr->ValueLength) > Msg->PayloadLength)
+    {
+        LORA_TDM_APP_Data.ErrCounter++;
+        return;
+    }
+
+    ValueBytes = Msg->Payload + sizeof(*Hdr);
+    Expected   = ConfigChecksum(Hdr, ValueBytes, Hdr->ValueLength);
+    if (Hdr->Checksum != Expected)
+    {
+        LORA_TDM_APP_Data.ErrCounter++;
+        CFE_EVS_SendEvent(LORA_TDM_APP_CRC_FAIL_EID, CFE_EVS_EventType_ERROR,
+                          "LORA_TDM_APP: config checksum mismatch got=0x%04X expected=0x%04X",
+                          (unsigned int)Hdr->Checksum, (unsigned int)Expected);
+        return;
+    }
+
+    memcpy(&Value, ValueBytes, sizeof(Value));
+
+    switch (Hdr->ParameterId)
+    {
+        case LORA_TDM_APP_PARAM_DOWNLINK_PROTOCOL:
+            LORA_TDM_APP_Data.UseV2Downlink = (Value != 0U) ? 1U : 0U;
+            LORA_TDM_APP_Data.CmdCounter++;
+            CFE_EVS_SendEvent(LORA_TDM_APP_SET_DL_PROTO_INF_EID, CFE_EVS_EventType_INFORMATION,
+                              "LORA_TDM_APP: downlink protocol set to %s (via CONFIG_CMD_MID)",
+                              LORA_TDM_APP_Data.UseV2Downlink ? "v2(DL2)" : "v1(text)");
+            break;
+
+        default:
+            LORA_TDM_APP_Data.ErrCounter++;
+            break;
+    }
+}
+
 /* ---- Update FC state cache from SB message ---- */
 
 void LORA_TDM_APP_UpdateCacheFromMsg(CFE_SB_Buffer_t *SBBufPtr, LORA_TDM_APP_Data_t *AppData)

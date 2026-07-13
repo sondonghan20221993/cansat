@@ -36,4 +36,11 @@
 /* uplink_app function code for forwarded UP frames (mirrors UPLINK_APP_PROCESS_UPLINK_CC) */
 #define LORA_TDM_APP_UPLINK_PROCESS_UPLINK_CC  2
 
+/* CONFIG_CMD_MID scope routing (cfs_core_app=1, mavlink_bridge_app=2와 공존) —
+ * openMCT fc_serial_ws_server.py의 UPLINK_CLASS_CONFIG 경로로 도달 가능한 유일한
+ * 실제 지상->기체 커맨드 채널 (uplink_app의 6개 CommandClass 중 CONFIG만 여기로 옴). */
+#define LORA_TDM_APP_CONFIG_SCOPE               3U
+#define LORA_TDM_APP_CONFIG_VERSION             1U
+#define LORA_TDM_APP_PARAM_DOWNLINK_PROTOCOL    0U /* value: 0=v1, 1=v2(DL2) */
+
 #endif

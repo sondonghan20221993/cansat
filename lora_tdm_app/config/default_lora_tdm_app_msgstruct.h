@@ -95,4 +95,30 @@ typedef struct
     uint32                    RequestToken;
 } LORA_TDM_APP_DiagnosticCmdTlm_t;
 
+/* CONFIG_CMD_MID(0x190E) 수신용 — uplink_app UPLINK_APP_ConfigCmdTlm_t와 동일 레이아웃
+ * (cfs_core_app_msgstruct.h CFS_CORE_APP_ConfigCmdTlm_t와도 동일 — 여러 앱이 같은
+ * MID를 구독하고 Payload 내부 scope로 자기 것만 골라 처리). */
+#define LORA_TDM_APP_CONFIG_MAX_PAYLOAD 196
+typedef struct
+{
+    CFE_MSG_TelemetryHeader_t TelemetryHeader;
+    uint32                    Seq;
+    uint32                    TimestampMs;
+    uint16                    SourceSequence;
+    uint8                     PayloadLength;
+    uint8                     Reserved;
+    uint8                     Payload[LORA_TDM_APP_CONFIG_MAX_PAYLOAD];
+} LORA_TDM_APP_ConfigCmdTlm_t;
+
+/* config payload 내부 헤더 (openMCT fc_serial_ws_server.py _build_config_payload와 동일 레이아웃) */
+typedef struct
+{
+    uint8  ConfigScope;
+    uint8  ConfigVersion;
+    uint16 ParameterId;
+    uint8  ValueType;
+    uint8  ValueLength;
+    uint16 Checksum; /* additive sum: scope+version+param_id(2B)+value_type+value_length+value_bytes */
+} LORA_TDM_APP_ConfigPayloadHdr_t;
+
 #endif

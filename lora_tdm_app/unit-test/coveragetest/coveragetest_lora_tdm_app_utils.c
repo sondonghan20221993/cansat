@@ -670,6 +670,101 @@ void Test_ParseUp2Frame_PayloadLenExceedsBuf(void)
     UtAssert_INT32_EQ(LORA_TDM_APP_ParseUp2Frame(Buf, sizeof(Buf), &Out), LORA_TDM_ACK_INVALID);
 }
 
+/* ---- ProcessConfigCommand — openMCT fc_serial_ws_server.py _build_config_payload와 동일 레이아웃 ---- */
+
+static uint16 CalcConfigChecksumTest(uint8 scope, uint8 version, uint16 param_id,
+                                      uint8 value_type, uint8 value_len, const uint8 *value_bytes)
+{
+    uint16 sum = 0;
+    uint8  i;
+    sum += scope;
+    sum += version;
+    sum += (uint16)(param_id & 0xFFU);
+    sum += (uint16)((param_id >> 8U) & 0xFFU);
+    sum += value_type;
+    sum += value_len;
+    for (i = 0; i < value_len; i++) { sum += value_bytes[i]; }
+    return sum;
+}
+
+static void BuildConfigMsgTest(LORA_TDM_APP_ConfigCmdTlm_t *Msg, uint8 scope, uint8 version,
+                                uint16 param_id, uint32 value)
+{
+    LORA_TDM_APP_ConfigPayloadHdr_t *Hdr;
+    uint8                            vbytes[4];
+
+    memset(Msg, 0, sizeof(*Msg));
+    Hdr = (LORA_TDM_APP_ConfigPayloadHdr_t *)Msg->Payload;
+    Hdr->ConfigScope   = scope;
+    Hdr->ConfigVersion = version;
+    Hdr->ParameterId   = param_id;
+    Hdr->ValueType     = 0;
+    Hdr->ValueLength   = (uint8)sizeof(uint32);
+    memcpy(Msg->Payload + sizeof(*Hdr), &value, sizeof(value));
+    memcpy(vbytes, &value, sizeof(value));
+    Hdr->Checksum = CalcConfigChecksumTest(scope, version, param_id, 0, (uint8)sizeof(uint32), vbytes);
+    Msg->PayloadLength = (uint8)(sizeof(*Hdr) + sizeof(uint32));
+}
+
+void Test_ProcessConfigCommand_SetV2(void)
+{
+    LORA_TDM_APP_ConfigCmdTlm_t Msg;
+
+    LORA_TDM_APP_Data.UseV2Downlink = 0;
+    LORA_TDM_APP_Data.CmdCounter    = 0;
+    BuildConfigMsgTest(&Msg, LORA_TDM_APP_CONFIG_SCOPE, LORA_TDM_APP_CONFIG_VERSION,
+                       LORA_TDM_APP_PARAM_DOWNLINK_PROTOCOL, 1U);
+
+    LORA_TDM_APP_ProcessConfigCommand(&Msg);
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.UseV2Downlink, 1);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.CmdCounter, 1);
+}
+
+void Test_ProcessConfigCommand_WrongScopeIgnoredSilently(void)
+{
+    LORA_TDM_APP_ConfigCmdTlm_t Msg;
+
+    LORA_TDM_APP_Data.UseV2Downlink = 0;
+    LORA_TDM_APP_Data.ErrCounter    = 0;
+    /* scope=1(cfs_core_app 대상) — lora_tdm_app은 조용히 무시해야 함(에러 아님) */
+    BuildConfigMsgTest(&Msg, 1U, LORA_TDM_APP_CONFIG_VERSION,
+                       LORA_TDM_APP_PARAM_DOWNLINK_PROTOCOL, 1U);
+
+    LORA_TDM_APP_ProcessConfigCommand(&Msg);
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.UseV2Downlink, 0);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.ErrCounter, 0);
+}
+
+void Test_ProcessConfigCommand_BadChecksumRejected(void)
+{
+    LORA_TDM_APP_ConfigCmdTlm_t Msg;
+
+    LORA_TDM_APP_Data.UseV2Downlink = 0;
+    LORA_TDM_APP_Data.ErrCounter    = 0;
+    BuildConfigMsgTest(&Msg, LORA_TDM_APP_CONFIG_SCOPE, LORA_TDM_APP_CONFIG_VERSION,
+                       LORA_TDM_APP_PARAM_DOWNLINK_PROTOCOL, 1U);
+    ((LORA_TDM_APP_ConfigPayloadHdr_t *)Msg.Payload)->Checksum ^= 0xFFFFU; /* 손상 */
+
+    LORA_TDM_APP_ProcessConfigCommand(&Msg);
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.UseV2Downlink, 0);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.ErrCounter, 1);
+}
+
+void Test_ProcessConfigCommand_UnknownParamRejected(void)
+{
+    LORA_TDM_APP_ConfigCmdTlm_t Msg;
+
+    LORA_TDM_APP_Data.ErrCounter = 0;
+    BuildConfigMsgTest(&Msg, LORA_TDM_APP_CONFIG_SCOPE, LORA_TDM_APP_CONFIG_VERSION, 99U, 1U);
+
+    LORA_TDM_APP_ProcessConfigCommand(&Msg);
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.ErrCounter, 1);
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(Crc16_KnownVector);
@@ -685,6 +780,10 @@ void UtTest_Setup(void)
     ADD_TEST(ParseUp2Frame_CrcFail);
     ADD_TEST(ParseUp2Frame_TooShort);
     ADD_TEST(ParseUp2Frame_PayloadLenExceedsBuf);
+    ADD_TEST(ProcessConfigCommand_SetV2);
+    ADD_TEST(ProcessConfigCommand_WrongScopeIgnoredSilently);
+    ADD_TEST(ProcessConfigCommand_BadChecksumRejected);
+    ADD_TEST(ProcessConfigCommand_UnknownParamRejected);
     ADD_TEST(ParseAckFrame_Valid);
     ADD_TEST(ParseAckFrame_ZeroSeq);
     ADD_TEST(ParseAckFrame_WrongPrefix);
