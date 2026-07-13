@@ -151,6 +151,37 @@ def build_ack2(seq_echo: int) -> bytes:
     return head + struct.pack("<H", crc16_ccitt(head))
 
 
+def build_up2(version: int, command_class: int, seq: int, payload: bytes = b"", flags: int = 0) -> bytes:
+    """UP2(v2 바이너리 업링크 명령) 인코드 — spec §5. 지상(bridge) -> 기체.
+
+    기체측 대응 디코더: lora_tdm_app_utils.c LORA_TDM_APP_ParseUp2Frame().
+    """
+    plen = len(payload)
+    if plen > 255 - 9:  # magic+plen+ver+class+seq(2)+flags+crc(2)=9, 나머지가 payload 한도
+        raise ValueError("UP2 payload too large: %d" % plen)
+    head = struct.pack("<BBBBHB", UP2_MAGIC, plen, version, command_class, seq & 0xFFFF, flags)
+    body = head + payload
+    return body + struct.pack("<H", crc16_ccitt(body))
+
+
+@dataclass
+class Up2Frame:
+    version: int
+    command_class: int
+    seq: int
+    flags: int
+    payload: bytes
+
+
+def decode_up2(frame: bytes) -> Up2Frame:
+    """완전한 UP2 프레임 1개를 디코드. CRC는 호출 전 검증 완료 가정 (테스트/왕복검증용 —
+    실제 수신측은 기체 C ParseUp2Frame이며 지상은 이 프레임을 보내기만 한다)."""
+    plen = frame[1]
+    (version, command_class, seq, flags) = struct.unpack_from("<BBHB", frame, 2)
+    payload = bytes(frame[7:7 + plen])
+    return Up2Frame(version=version, command_class=command_class, seq=seq, flags=flags, payload=payload)
+
+
 class DownlinkStream:
     """v1(ASCII 줄) / v2(DL2) 혼합 바이트 스트림 파서 (spec §8).
 

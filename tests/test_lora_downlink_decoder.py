@@ -14,12 +14,16 @@ import unittest
 from bridge.lora_downlink_decoder import (
     ACK2_MAGIC,
     DL2_FLAG_POS_SATURATED,
+    UP2_MAGIC,
     DecodeError,
     Dl2Frame,
     DownlinkStream,
+    Up2Frame,
     V1Line,
     build_ack2,
+    build_up2,
     crc16_ccitt,
+    decode_up2,
     encode_dl2,
     frame_to_csv_row,
 )
@@ -153,6 +157,54 @@ class Ack2Test(unittest.TestCase):
         ack = build_ack2(0x1_0005)  # u16 초과 → wrap
         _, seq = struct.unpack_from("<BH", ack, 0)
         self.assertEqual(seq, 0x0005)
+
+
+class Up2Test(unittest.TestCase):
+    """UP2 인코더(지상 송신) — spec §5. 기체측 디코더는
+    lora_tdm_app/unit-test/coveragetest/coveragetest_lora_tdm_app_utils.c
+    Test_ParseUp2Frame_*와 대응."""
+
+    def test_roundtrip_with_payload(self):
+        raw = build_up2(version=2, command_class=1, seq=99, payload=b"\xAA\xBB\xCC")
+        decoded = decode_up2(raw)
+        self.assertEqual(decoded, Up2Frame(version=2, command_class=1, seq=99, flags=0,
+                                            payload=b"\xAA\xBB\xCC"))
+
+    def test_roundtrip_zero_payload(self):
+        raw = build_up2(version=2, command_class=4, seq=7)
+        decoded = decode_up2(raw)
+        self.assertEqual(decoded.payload, b"")
+        self.assertEqual(len(raw), 9)  # magic+plen+ver+class+seq2+flags+crc2, payload 없음
+
+    def test_crc_present_and_valid(self):
+        raw = build_up2(version=2, command_class=1, seq=99, payload=b"\xAA\xBB\xCC")
+        body = raw[:-2]
+        (crc,) = struct.unpack_from("<H", raw, len(body))
+        self.assertEqual(crc, crc16_ccitt(body))
+
+    def test_magic_byte(self):
+        raw = build_up2(version=2, command_class=1, seq=1)
+        self.assertEqual(raw[0], UP2_MAGIC)
+
+    def test_seq_wrap(self):
+        raw = build_up2(version=2, command_class=1, seq=0x1_0005)
+        (seq,) = struct.unpack_from("<H", raw, 4)
+        self.assertEqual(seq, 0x0005)
+
+    def test_cross_language_vector_matches_c_ut(self):
+        """C측 Test_ParseUp2Frame_ValidWithPayload(coveragetest_lora_tdm_app_utils.c)와
+        완전히 동일한 입력(version=2, class=1, seq=99, payload=AA BB CC)으로 만든
+        프레임이 바이트 단위로 같은지 확인 — 두 언어 구현이 실제로 맞물리는지 증명."""
+        raw = build_up2(version=2, command_class=1, seq=99, payload=b"\xAA\xBB\xCC")
+        expected = bytes([
+            UP2_MAGIC, 3,        # magic, plen
+            2, 1,                 # version, command_class
+            99, 0,                 # seq (LE u16)
+            0,                     # flags
+            0xAA, 0xBB, 0xCC,      # payload
+        ])
+        expected += struct.pack("<H", crc16_ccitt(expected))
+        self.assertEqual(raw, expected)
 
 
 class CsvRowTest(unittest.TestCase):
