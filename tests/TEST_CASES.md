@@ -878,7 +878,7 @@ Pi 실환경 동작은 불변** — env var는 테스트 전용이다.
 | **PyUnit (A)** | 없음 (헬스 로직은 상태 머신 — Python 동등 구현 불필요) | — | — | N/A |
 | **E2E (B)** | health state 전이 (FC timeout 시뮬레이션) | `test_cfs_core_health_e2e.py` (미작성) | HEALTH-E2E-001~005 | ❌ 미작성 |
 | **Runtime** | FC 분리 → health 1→2 전이, 재연결 시 복구 | Pi + FC 수동 테스트 | RT-HEALTH-001~002 | ✓ 확인됨 |
-| | uplink_app/lora_tdm_app HK timeout → 자동 재시작 (bridge와 동일 패턴 확장, 2026-07-13) | `tools/runtime_app_restart_test.sh <uplink_app\|lora_tdm_app>` — `CFE_ES_STOP_APP_CC`로 실제 정지시켜 HK 끊김 재현, journalctl에서 재시작 EID(15/16) + 재기동 확인 | RT-CORE-UPLINK-RESTART-001, RT-CORE-LORA-RESTART-001 | ⬜ 미실행 (실물 build/ 재빌드 + `sudo systemctl restart cfs.service`로 신규 로직 반영 후 실행 필요 — sudo 필요라 이 세션에서 미수행) |
+| | uplink_app/lora_tdm_app HK timeout → 자동 재시작 (bridge와 동일 패턴 확장, 2026-07-13) | `tools/runtime_app_restart_test.sh <uplink_app\|lora_tdm_app>` — `CFE_ES_STOP_APP_CC`로 실제 정지시켜 HK 끊김 재현, journalctl에서 재시작 EID(15/16) + 재기동 확인 | RT-CORE-003, RT-CORE-004 (§"추가 런타임 시험 후보 — FC 장애/깨진 값" ③ 참조) | ⬜ 절차만 기록, 미실행 — 다른 런타임 시험들과 함께 일괄 실행 예정 |
 
 ---
 
@@ -941,6 +941,8 @@ mavlink_bridge_app의 FC 장애 처리와 cfs_core_app 보고 경로 검증.
 |---|---|---|---|---|
 | RT-CORE-001 | FC 타임스탬프 이상 (미래값) | core_app 거부 | `future timestamp rejected` EVS | 🔵 E2E(B) (미래 ts 주입 필요) |
 | RT-CORE-002 | 메시지 유실 (seq 건너뜀) | 갭 감지 카운트 | HK `SeqGapCount` 증가. `SEQ_GAP_EID`는 **DEBUG 타입**이라 EVS DEBUG enable 선행 필요 | 🔵 E2E(B) (seq 조작 + DEBUG enable) |
+| RT-CORE-003 | uplink_app HK timeout → 자동 재시작 (2026-07-13 도출) | `CFE_ES_STOP_APP_CC`로 uplink_app 강제 정지 → HK 5s 끊김 → cfs_core_app이 `CFE_ES_RestartApp` 호출 | `tools/runtime_app_restart_test.sh uplink_app` 실행 → journalctl에서 `CFS_CORE_APP_UPLINK_RESTART_EID(15)` "uplink restart attempt=1" + cFE `CFE_ES_RESTART_APP_INF_EID(10)` + uplink_app STARTUP 재등장 확인 | 🔧 CI_LAB (STOP_APP 명령 주입, FC 불필요). 절차만 기록, **미실행** — build/ 재빌드 + `sudo systemctl restart cfs.service` 선행 필요(사용자 직접) |
+| RT-CORE-004 | lora_tdm_app HK timeout → 자동 재시작 (2026-07-13 도출) | `CFE_ES_STOP_APP_CC`로 lora_tdm_app 강제 정지 → HK 5s 끊김 → cfs_core_app이 `CFE_ES_RestartApp` 호출 | `tools/runtime_app_restart_test.sh lora_tdm_app` 실행 → journalctl에서 `CFS_CORE_APP_LORA_RESTART_EID(16)` "lora restart attempt=1" + cFE `CFE_ES_RESTART_APP_INF_EID(10)` + lora_tdm_app STARTUP 재등장 확인 | 🔧 CI_LAB (STOP_APP 명령 주입, FC 불필요). 절차만 기록, **미실행** — RT-CORE-003과 동시에 실행(같은 재빌드/재기동 1회로 둘 다 검증 가능) |
 
 > **주:** RT-FC-007/008(깨진 바이트 주입)은 실물 재현이 어려워 **E2E(B) PTY 테스트가 더 적합**
 > (PTY로 원하는 깨진 바이트를 정확히 주입 가능). 런타임에서는 ①③이 실물 검증 가치가 높다.
