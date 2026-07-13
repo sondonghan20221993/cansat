@@ -30,6 +30,7 @@ typedef struct
     uint32                    BytesReceived;
     uint32                    ReconnectAttemptCount;
     uint32                    ParseErrorCount;
+    uint32                    NonFiniteValueCount;
     uint32                    LastRxTimestampMs;
     uint32                    MissionUploadSuccessCount;
     uint32                    MissionUploadFailCount;

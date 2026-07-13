@@ -277,6 +277,23 @@ static void MAVLINK_BRIDGE_APP_RecordLengthError(uint32 MsgId, uint8 ActualLengt
                       (unsigned int)ExpectedLength);
 }
 
+/* FC 값 finite 검증 (설계안 A — 입구 차단): CRC는 전송 오류만 잡고 값 자체의
+ * NaN/Inf(EKF 발산, 센서 고장 등)는 통과시키므로, 파싱 직후 여기서 걸러
+ * SB 게시 자체를 막는다. [[fc_value_validation_gap]] */
+static bool MAVLINK_BRIDGE_APP_ValuesFinite6(float V0, float V1, float V2, float V3, float V4, float V5)
+{
+    return isfinite(V0) && isfinite(V1) && isfinite(V2) && isfinite(V3) && isfinite(V4) && isfinite(V5);
+}
+
+static void MAVLINK_BRIDGE_APP_RecordNonFiniteError(uint32 MsgId)
+{
+    MAVLINK_BRIDGE_APP_Data.LastErrorCode = MAVLINK_BRIDGE_ERROR_INVALID_VALUE;
+    MAVLINK_BRIDGE_APP_Data.NonFiniteValueCount++;
+    CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_NONFINITE_VALUE_ERR_EID, CFE_EVS_EventType_ERROR,
+                      "MAVLINK_BRIDGE_APP: non-finite value rejected msgid=%lu",
+                      (unsigned long)MsgId);
+}
+
 static CFE_Status_t MAVLINK_BRIDGE_APP_SendMavlinkV2(uint32 MsgId, const uint8 *Payload, uint8 PayloadLen, uint8 CrcExtra)
 {
     uint8  Frame[MAVLINK_MAX_FRAME_LEN];
@@ -933,12 +950,31 @@ static CFE_Status_t MAVLINK_BRIDGE_APP_OpenSerial(void)
 static void MAVLINK_BRIDGE_APP_PublishAttitude(uint32 BridgeTimestampMs)
 {
     MAVLINK_BRIDGE_APP_AttitudeTlm_t *Tlm;
+    float                             RollRad;
+    float                             PitchRad;
+    float                             YawRad;
+    float                             RollspeedRps;
+    float                             PitchspeedRps;
+    float                             YawspeedRps;
 
     if (MAVLINK_BRIDGE_APP_Parser.PayloadLen != MAVLINK_ATTITUDE_PAYLOAD_LEN)
     {
         MAVLINK_BRIDGE_APP_RecordLengthError(MAVLINK_MSG_ID_ATTITUDE,
                                              MAVLINK_BRIDGE_APP_Parser.PayloadLen,
                                              MAVLINK_ATTITUDE_PAYLOAD_LEN);
+        return;
+    }
+
+    RollRad       = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[4]);
+    PitchRad      = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[8]);
+    YawRad        = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[12]);
+    RollspeedRps  = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[16]);
+    PitchspeedRps = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[20]);
+    YawspeedRps   = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[24]);
+
+    if (!MAVLINK_BRIDGE_APP_ValuesFinite6(RollRad, PitchRad, YawRad, RollspeedRps, PitchspeedRps, YawspeedRps))
+    {
+        MAVLINK_BRIDGE_APP_RecordNonFiniteError(MAVLINK_MSG_ID_ATTITUDE);
         return;
     }
 
@@ -950,12 +986,12 @@ static void MAVLINK_BRIDGE_APP_PublishAttitude(uint32 BridgeTimestampMs)
     Tlm->Stale         = 0;
     Tlm->ErrorCode     = MAVLINK_BRIDGE_ERROR_NONE;
     Tlm->Reserved      = 0;
-    Tlm->RollRad       = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[4]);
-    Tlm->PitchRad      = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[8]);
-    Tlm->YawRad        = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[12]);
-    Tlm->RollspeedRps  = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[16]);
-    Tlm->PitchspeedRps = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[20]);
-    Tlm->YawspeedRps   = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[24]);
+    Tlm->RollRad       = RollRad;
+    Tlm->PitchRad      = PitchRad;
+    Tlm->YawRad        = YawRad;
+    Tlm->RollspeedRps  = RollspeedRps;
+    Tlm->PitchspeedRps = PitchspeedRps;
+    Tlm->YawspeedRps   = YawspeedRps;
     MAVLINK_BRIDGE_APP_Data.LastAttitudeRxMs = BridgeTimestampMs;
 
     CFE_SB_TimeStampMsg(CFE_MSG_PTR(Tlm->TelemetryHeader));
@@ -974,12 +1010,31 @@ static void MAVLINK_BRIDGE_APP_PublishAttitude(uint32 BridgeTimestampMs)
 static void MAVLINK_BRIDGE_APP_PublishEkfLocal(uint32 BridgeTimestampMs)
 {
     MAVLINK_BRIDGE_APP_EkfLocalTlm_t *Tlm;
+    float                             X_m;
+    float                             Y_m;
+    float                             Z_m;
+    float                             Vx_mps;
+    float                             Vy_mps;
+    float                             Vz_mps;
 
     if (MAVLINK_BRIDGE_APP_Parser.PayloadLen != MAVLINK_LOCAL_POSITION_NED_PAYLOAD_LEN)
     {
         MAVLINK_BRIDGE_APP_RecordLengthError(MAVLINK_MSG_ID_LOCAL_POSITION_NED,
                                              MAVLINK_BRIDGE_APP_Parser.PayloadLen,
                                              MAVLINK_LOCAL_POSITION_NED_PAYLOAD_LEN);
+        return;
+    }
+
+    X_m    = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[4]);
+    Y_m    = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[8]);
+    Z_m    = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[12]);
+    Vx_mps = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[16]);
+    Vy_mps = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[20]);
+    Vz_mps = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[24]);
+
+    if (!MAVLINK_BRIDGE_APP_ValuesFinite6(X_m, Y_m, Z_m, Vx_mps, Vy_mps, Vz_mps))
+    {
+        MAVLINK_BRIDGE_APP_RecordNonFiniteError(MAVLINK_MSG_ID_LOCAL_POSITION_NED);
         return;
     }
 
@@ -991,12 +1046,12 @@ static void MAVLINK_BRIDGE_APP_PublishEkfLocal(uint32 BridgeTimestampMs)
     Tlm->Stale       = 0;
     Tlm->ErrorCode   = MAVLINK_BRIDGE_ERROR_NONE;
     Tlm->Reserved    = 0;
-    Tlm->X_m         = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[4]);
-    Tlm->Y_m         = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[8]);
-    Tlm->Z_m         = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[12]);
-    Tlm->Vx_mps      = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[16]);
-    Tlm->Vy_mps      = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[20]);
-    Tlm->Vz_mps      = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[24]);
+    Tlm->X_m         = X_m;
+    Tlm->Y_m         = Y_m;
+    Tlm->Z_m         = Z_m;
+    Tlm->Vx_mps      = Vx_mps;
+    Tlm->Vy_mps      = Vy_mps;
+    Tlm->Vz_mps      = Vz_mps;
     MAVLINK_BRIDGE_APP_Data.LastEkfLocalRxMs = BridgeTimestampMs;
 
     CFE_SB_TimeStampMsg(CFE_MSG_PTR(Tlm->TelemetryHeader));
@@ -1873,6 +1928,7 @@ void MAVLINK_BRIDGE_APP_ReportHousekeeping(void)
     MAVLINK_BRIDGE_APP_Data.HkTlm.BytesReceived              = MAVLINK_BRIDGE_APP_Data.BytesReceived;
     MAVLINK_BRIDGE_APP_Data.HkTlm.ReconnectAttemptCount      = MAVLINK_BRIDGE_APP_Data.ReconnectAttemptCount;
     MAVLINK_BRIDGE_APP_Data.HkTlm.ParseErrorCount            = MAVLINK_BRIDGE_APP_Data.ParseErrorCount;
+    MAVLINK_BRIDGE_APP_Data.HkTlm.NonFiniteValueCount        = MAVLINK_BRIDGE_APP_Data.NonFiniteValueCount;
     MAVLINK_BRIDGE_APP_Data.HkTlm.LastRxTimestampMs          = MAVLINK_BRIDGE_APP_Data.LastRxTimestampMs;
     MAVLINK_BRIDGE_APP_Data.HkTlm.MissionUploadSuccessCount  = MAVLINK_BRIDGE_APP_Data.MissionUploadSuccessCount;
     MAVLINK_BRIDGE_APP_Data.HkTlm.MissionUploadFailCount     = MAVLINK_BRIDGE_APP_Data.MissionUploadFailCount;

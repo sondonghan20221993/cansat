@@ -18,13 +18,23 @@ MAVLink CRC를 통과한 attitude/position 값은 내용 검증 없이 그대로
     지상국 파서까지 도달
 - NaN 특성상 비교 연산이 전부 false → 범위 검사 없는 상태 머신은 조용히 오동작 가능
 
-## 검토할 설계 선택지 (미결정)
+## 결정 및 구현 (2026-07-13)
 
-| 안 | 내용 | 장단점 |
-|---|---|---|
-| A. mavlink_bridge에서 게시 전 검증 | 파싱 직후 `isfinite()` 실패 시 해당 TLM 미게시 + `ParseErrorCount` 또는 별도 카운터 증가 | 입구 차단(하류 전부 보호) / FC 상태 파악 정보 손실 |
-| B. 게시하되 `Valid=0` 마킹 | TLM의 기존 `Valid`/`ErrorCode` 필드 활용 | 정보 보존, 구독자가 판단 / 모든 구독자가 Valid 확인해야 함 |
-| C. cfs_core_app에서만 검증 | 헬스 판단 입력에서 거부 (미래 타임스탬프 거부와 같은 위치) | 변경 최소 / lora_tdm 다운링크는 여전히 오염 |
+**A안(입구 차단) 채택.** `mavlink_bridge_app_utils.c`의 `PublishAttitude`/`PublishEkfLocal`에서
+파싱 직후 `MAVLINK_BRIDGE_APP_ValuesFinite6()`로 6개 float 필드 전부 검증 —
+하나라도 NaN/Inf면 `MAVLINK_BRIDGE_APP_RecordNonFiniteError()` 호출 후 즉시 return
+(SB 게시 자체를 안 함, 기존 TLM 캐시도 그대로 보존).
+
+- 새 카운터: `MAVLINK_BRIDGE_APP_Data.NonFiniteValueCount` (Data struct + HK TLM에 추가)
+- 새 EID: `MAVLINK_BRIDGE_APP_NONFINITE_VALUE_ERR_EID` (13)
+- `PublishGlobalPositionAsLocal`/`PublishGpsRaw`/`PublishEkfStatus`는 검증 대상에서 제외 —
+  이 함수들의 float 필드는 int32/int16 raw 값을 상수로 나눈 결과라 구조적으로
+  NaN/Inf가 나올 수 없음 (오버플로 없는 단순 나눗셈)
+
+원래 검토했던 B/C안은 기각:
+- B(Valid=0 마킹): 모든 구독자가 Valid를 확인해야 하는 부담이 있고, `lora_tdm_app`의
+  다운링크 오염(§왜 문제인가 참조)은 여전히 발생 — 채택 안 함
+- C(cfs_core_app에서만 검증): `lora_tdm_app` 다운링크 오염을 못 막음 — 채택 안 함
 
 ## 관련 항목
 
@@ -35,6 +45,10 @@ MAVLink CRC를 통과한 attitude/position 값은 내용 검증 없이 그대로
 
 ## 상태
 
-- [ ] 설계 방향 결정 (A/B/C)
-- [ ] 결정 후 구현 + coveragetest 추가 (NaN/Inf 주입 케이스)
-- [ ] E2E(B)에 PTY로 NaN attitude 주입 테스트 추가
+- [x] 설계 방향 결정 (A) — 2026-07-13
+- [x] 구현 + coveragetest 추가 (2026-07-13) — `Test_PublishAttitude_NaNRejected`(roll=NaN),
+      `Test_PublishEkfLocal_InfRejected`(vz=+Inf), `Test_PublishAttitude_FiniteValuesAccepted`
+      (정상값 통과 회귀 확인) 3건. mavlink_bridge_app UT 전체 회귀 없음
+      (utils 136, main 14, cmds 4, dispatch 26 PASS).
+- [ ] E2E(B)에 PTY로 NaN attitude 주입 테스트 추가 (선택사항 — Unit으로 이미 핵심 로직 커버,
+      우선순위 낮음)

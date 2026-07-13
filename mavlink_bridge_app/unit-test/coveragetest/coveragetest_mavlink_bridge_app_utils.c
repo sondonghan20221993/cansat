@@ -1025,6 +1025,92 @@ void Test_SendMissionItemInt_GlobalRelativeAltFrame(void)
     UtAssert_INT32_EQ((int32)ActCmd, 16); /* MAV_CMD_NAV_WAYPOINT */
 }
 
+/* -----------------------------------------------------------------------
+ * FC 값 finite 검증 (설계안 A — 입구 차단, 2026-07-13) [[fc_value_validation_gap]]
+ *
+ * CRC는 전송 오류만 잡고 EKF 발산/센서 고장으로 인한 NaN/Inf는 통과시키므로,
+ * PublishAttitude/PublishEkfLocal 파싱 직후 isfinite()로 걸러 SB 게시 자체를
+ * 막는지 확인한다.
+ * ----------------------------------------------------------------------- */
+
+#define UT_ATTITUDE_MSGID              30U
+#define UT_ATTITUDE_CRC_EXTRA           39U
+#define UT_LOCAL_POSITION_NED_MSGID     32U
+#define UT_LOCAL_POSITION_NED_CRC_EXTRA 185U
+
+/* roll에 NaN 주입 → ATTITUDE 미게시, NonFiniteValueCount 증가, 기존 캐시 불변 */
+void Test_PublishAttitude_NaNRejected(void)
+{
+    uint8  Payload[28];
+    uint8  Frame[64];
+    size_t Len;
+    float  NaNValue = NAN;
+
+    memset(Payload, 0, sizeof(Payload));
+    UT_WriteU32LE(&Payload[0], 12345U); /* time_boot_ms */
+    memcpy(&Payload[4], &NaNValue, sizeof(float)); /* roll = NaN */
+
+    MAVLINK_BRIDGE_APP_Data.AttitudeTlm.Valid       = 0;
+    MAVLINK_BRIDGE_APP_Data.AttitudeTlm.TimestampMs = 999U; /* 이전 값 — 거부 시 불변 확인용 */
+    MAVLINK_BRIDGE_APP_Data.NonFiniteValueCount     = 0;
+
+    Len = UT_BuildMavFrameGeneric(Frame, (uint8)UT_ATTITUDE_MSGID, (uint8)UT_ATTITUDE_CRC_EXTRA,
+                                  Payload, sizeof(Payload));
+    UT_FeedSerial(Frame, Len);
+
+    UtAssert_INT32_EQ((int32)MAVLINK_BRIDGE_APP_Data.AttitudeTlm.Valid, 0);
+    UtAssert_INT32_EQ((int32)MAVLINK_BRIDGE_APP_Data.AttitudeTlm.TimestampMs, 999);
+    UtAssert_INT32_EQ((int32)MAVLINK_BRIDGE_APP_Data.NonFiniteValueCount, 1);
+}
+
+/* vz에 +Inf 주입 → LOCAL_POSITION_NED 미게시, NonFiniteValueCount 증가 */
+void Test_PublishEkfLocal_InfRejected(void)
+{
+    uint8  Payload[28];
+    uint8  Frame[64];
+    size_t Len;
+    float  InfValue = INFINITY;
+
+    memset(Payload, 0, sizeof(Payload));
+    UT_WriteU32LE(&Payload[0], 12345U);
+    memcpy(&Payload[24], &InfValue, sizeof(float)); /* vz = +Inf */
+
+    MAVLINK_BRIDGE_APP_Data.EkfLocalTlm.Valid       = 0;
+    MAVLINK_BRIDGE_APP_Data.EkfLocalTlm.TimestampMs = 888U;
+    MAVLINK_BRIDGE_APP_Data.NonFiniteValueCount     = 0;
+
+    Len = UT_BuildMavFrameGeneric(Frame, (uint8)UT_LOCAL_POSITION_NED_MSGID,
+                                  (uint8)UT_LOCAL_POSITION_NED_CRC_EXTRA, Payload, sizeof(Payload));
+    UT_FeedSerial(Frame, Len);
+
+    UtAssert_INT32_EQ((int32)MAVLINK_BRIDGE_APP_Data.EkfLocalTlm.Valid, 0);
+    UtAssert_INT32_EQ((int32)MAVLINK_BRIDGE_APP_Data.EkfLocalTlm.TimestampMs, 888);
+    UtAssert_INT32_EQ((int32)MAVLINK_BRIDGE_APP_Data.NonFiniteValueCount, 1);
+}
+
+/* 정상 값이면 그대로 통과 (finite 검증이 정상 케이스를 막지 않는지 회귀 확인) */
+void Test_PublishAttitude_FiniteValuesAccepted(void)
+{
+    uint8  Payload[28];
+    uint8  Frame[64];
+    size_t Len;
+    float  Roll = 0.1f;
+
+    memset(Payload, 0, sizeof(Payload));
+    UT_WriteU32LE(&Payload[0], 5000U);
+    memcpy(&Payload[4], &Roll, sizeof(float));
+
+    MAVLINK_BRIDGE_APP_Data.NonFiniteValueCount = 0;
+
+    Len = UT_BuildMavFrameGeneric(Frame, (uint8)UT_ATTITUDE_MSGID, (uint8)UT_ATTITUDE_CRC_EXTRA,
+                                  Payload, sizeof(Payload));
+    UT_FeedSerial(Frame, Len);
+
+    UtAssert_INT32_EQ((int32)MAVLINK_BRIDGE_APP_Data.AttitudeTlm.Valid, 1);
+    UtAssert_True(MAVLINK_BRIDGE_APP_Data.AttitudeTlm.RollRad == Roll, "RollRad passed through");
+    UtAssert_INT32_EQ((int32)MAVLINK_BRIDGE_APP_Data.NonFiniteValueCount, 0);
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(UpdateFromHeartbeat_Armed);
@@ -1062,4 +1148,7 @@ void UtTest_Setup(void)
     ADD_TEST(SysTime_ZeroClockIgnored);
     ADD_TEST(SysTime_CrcFail);
     ADD_TEST(SendMissionItemInt_GlobalRelativeAltFrame);
+    ADD_TEST(PublishAttitude_NaNRejected);
+    ADD_TEST(PublishEkfLocal_InfRejected);
+    ADD_TEST(PublishAttitude_FiniteValuesAccepted);
 }

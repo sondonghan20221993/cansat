@@ -41,6 +41,7 @@ uplink_app           ←  UPLINK_APP_CMD_MID (lora_tdm_app SB) / UDP (테스트�
 | 기능 | 상태 |
 | --- | --- |
 | FC MAVLink 수신 (ATTITUDE, LOCAL_POSITION_NED, GPS_RAW_INT, EKF_STATUS_REPORT) | 구현됨 |
+| FC 수신 값 finite(NaN/Inf) 검증 — ATTITUDE/LOCAL_POSITION_NED 파싱 직후 거부 | 구현됨 (2026-07-13) |
 | FC UART 재연결 + stale timeout | 구현됨 |
 | LoRa 텔레메트리 downlink (serial ASCII) | 구현됨 |
 | uplink 패킷 검증 (CRC, 길이, sequence, route geometry) | 구현됨 |
