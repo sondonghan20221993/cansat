@@ -34,6 +34,7 @@ typedef struct
     uint64    LastSysTimeUnixUsec;
     uint32    ReconnectAttemptCount;
     uint32    ParseErrorCount;
+    uint32    NonFiniteValueCount;
     uint32    BytesReceived;
     int32     SerialFd;
     uint8     TargetSystemId;
