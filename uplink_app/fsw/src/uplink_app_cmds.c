@@ -14,17 +14,21 @@ static bool UPLINK_APP_IsSequenceAccepted(uint16 Sequence)
 
 static uint8 UPLINK_APP_GetClassRequiredLevel(uint8 CommandClass)
 {
-    /* Return authorization level required for each command class (§18.11.1) */
+    /* Return authorization level required for each command class (§18.11.1).
+     * §18.10.4: case labels previously used raw numbers that didn't match
+     * UPLINK_APP_CLASS_* (MODE=5/DIAGNOSTIC=6 were swapped), which made
+     * DIAGNOSTIC permanently unauthorizable (level 3 with no request_token
+     * parse path) even though §18.10.1 requires it to remain the always-
+     * available intervention class in RECOVERY/FAILED. Keyed by name now. */
     switch (CommandClass)
     {
-        case 0: return 1; /* NOOP */
-        case 1: return 2; /* runtime configuration */
-        case 2: return 2; /* route update */
-        case 3: return 2; /* viewpoint update */
-        case 4: return 3; /* recovery command */
-        case 5: return 1; /* diagnostic command */
-        case 6: return 3; /* counter management */
-        case 7: return 3; /* mode command */
+        case UPLINK_APP_CLASS_NONE:         return 1; /* NOOP */
+        case UPLINK_APP_CLASS_CONFIG:       return 2; /* runtime configuration */
+        case UPLINK_APP_CLASS_ROUTE_UPDATE: return 2; /* route update */
+        case UPLINK_APP_CLASS_VIEWPOINT:    return 2; /* viewpoint update */
+        case UPLINK_APP_CLASS_RECOVERY:     return 3; /* recovery command */
+        case UPLINK_APP_CLASS_MODE:         return 3; /* mode command */
+        case UPLINK_APP_CLASS_DIAGNOSTIC:   return 1; /* diagnostic command */
         default: return 0xFF; /* unknown */
     }
 }

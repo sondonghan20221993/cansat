@@ -4,6 +4,9 @@
 
 #include "uplink_app_coveragetest_common.h"
 
+/* §18.11.1 권한 레벨을 Flags bit[7:6]에 인코딩 (GetClassRequiredLevel과 동일 값) */
+#define TEST_AUTH_LEVEL(level) ((uint8)(((level) & 0x3) << 6))
+
 void Test_UPLINK_APP_Noop(void)
 {
     UPLINK_APP_NoopCmd_t TestMsg;
@@ -42,8 +45,11 @@ void Test_UPLINK_APP_ProcessUplink_Accept(void)
     memset(&TestMsg, 0, sizeof(TestMsg));
     TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
     TestMsg.CommandClass = UPLINK_APP_CLASS_CONFIG;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(2);
     TestMsg.PayloadLength = 0;
     TestMsg.Sequence      = 10;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U; /* fail-safe boot 게이트 통과 (§18.10.4) */
 
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
@@ -122,8 +128,11 @@ void Test_UPLINK_APP_ProcessUplink_RouteUpdate(void)
     memset(&TestMsg, 0, sizeof(TestMsg));
     TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
     TestMsg.CommandClass  = UPLINK_APP_CLASS_ROUTE_UPDATE;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(2);
     TestMsg.PayloadLength = 8;
     TestMsg.Sequence      = 11;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U; /* fail-safe boot 게이트 통과 (§18.10.4) */
 
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
@@ -143,8 +152,11 @@ void Test_UPLINK_APP_ProcessUplink_RouteReject(void)
     memset(&TestMsg, 0, sizeof(TestMsg));
     TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
     TestMsg.CommandClass  = UPLINK_APP_CLASS_ROUTE_UPDATE;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(2);
     TestMsg.PayloadLength = 8;
     TestMsg.Sequence      = 14;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U; /* fail-safe boot 게이트 통과 (§18.10.4) */
 
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
@@ -164,8 +176,11 @@ void Test_UPLINK_APP_ProcessUplink_RoutePublishFail(void)
     memset(&TestMsg, 0, sizeof(TestMsg));
     TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
     TestMsg.CommandClass  = UPLINK_APP_CLASS_ROUTE_UPDATE;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(2);
     TestMsg.PayloadLength = 8;
     TestMsg.Sequence      = 15;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U; /* fail-safe boot 게이트 통과 (§18.10.4) */
 
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
@@ -185,9 +200,14 @@ void Test_UPLINK_APP_ProcessUplink_RecoveryAccept(void)
     UPLINK_APP_ProcessUplinkCmd_t TestMsg;
 
     memset(&TestMsg, 0, sizeof(TestMsg));
-    TestMsg.Version      = UPLINK_APP_PROTOCOL_VERSION;
-    TestMsg.CommandClass = UPLINK_APP_CLASS_RECOVERY;
-    TestMsg.Sequence     = 20;
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_RECOVERY;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(3);
+    TestMsg.PayloadLength = 8;
+    TestMsg.Payload[4]    = 1; /* non-zero request_token (offset 4..7, RECOVERY) */
+    TestMsg.Sequence      = 20;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U; /* fail-safe boot 게이트 통과 (§18.10.4) */
 
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
@@ -205,9 +225,14 @@ void Test_UPLINK_APP_ProcessUplink_RecoveryForwardFail(void)
     UPLINK_APP_ProcessUplinkCmd_t TestMsg;
 
     memset(&TestMsg, 0, sizeof(TestMsg));
-    TestMsg.Version      = UPLINK_APP_PROTOCOL_VERSION;
-    TestMsg.CommandClass = UPLINK_APP_CLASS_RECOVERY;
-    TestMsg.Sequence     = 21;
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_RECOVERY;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(3);
+    TestMsg.PayloadLength = 8;
+    TestMsg.Payload[4]    = 1; /* non-zero request_token (offset 4..7, RECOVERY) */
+    TestMsg.Sequence      = 21;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U; /* fail-safe boot 게이트 통과 (§18.10.4) */
 
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
@@ -227,8 +252,11 @@ void Test_UPLINK_APP_ProcessUplink_ViewpointAccept(void)
     memset(&TestMsg, 0, sizeof(TestMsg));
     TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
     TestMsg.CommandClass  = UPLINK_APP_CLASS_VIEWPOINT;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(2);
     TestMsg.PayloadLength = 4;
     TestMsg.Sequence      = 30;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U; /* fail-safe boot 게이트 통과 (§18.10.4) */
 
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
@@ -248,8 +276,11 @@ void Test_UPLINK_APP_ProcessUplink_ViewpointForwardFail(void)
     memset(&TestMsg, 0, sizeof(TestMsg));
     TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
     TestMsg.CommandClass  = UPLINK_APP_CLASS_VIEWPOINT;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(2);
     TestMsg.PayloadLength = 4;
     TestMsg.Sequence      = 31;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U; /* fail-safe boot 게이트 통과 (§18.10.4) */
 
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
@@ -270,8 +301,11 @@ void Test_UPLINK_APP_ProcessUplink_ViewpointParseReject(void)
     memset(&TestMsg, 0, sizeof(TestMsg));
     TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
     TestMsg.CommandClass  = UPLINK_APP_CLASS_VIEWPOINT;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(2);
     TestMsg.PayloadLength = 4;
     TestMsg.Sequence      = 32;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U; /* fail-safe boot 게이트 통과 (§18.10.4) */
 
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
@@ -291,8 +325,11 @@ void Test_UPLINK_APP_ProcessUplink_ConfigAccept(void)
     memset(&TestMsg, 0, sizeof(TestMsg));
     TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
     TestMsg.CommandClass  = UPLINK_APP_CLASS_CONFIG;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(2);
     TestMsg.PayloadLength = 4;
     TestMsg.Sequence      = 40;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U; /* fail-safe boot 게이트 통과 (§18.10.4) */
 
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
@@ -312,8 +349,11 @@ void Test_UPLINK_APP_ProcessUplink_ConfigForwardFail(void)
     memset(&TestMsg, 0, sizeof(TestMsg));
     TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
     TestMsg.CommandClass  = UPLINK_APP_CLASS_CONFIG;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(2);
     TestMsg.PayloadLength = 4;
     TestMsg.Sequence      = 41;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U; /* fail-safe boot 게이트 통과 (§18.10.4) */
 
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
@@ -333,8 +373,12 @@ void Test_UPLINK_APP_ProcessUplink_ModeAccept(void)
     memset(&TestMsg, 0, sizeof(TestMsg));
     TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
     TestMsg.CommandClass  = UPLINK_APP_CLASS_MODE;
-    TestMsg.PayloadLength = 3;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(3);
+    TestMsg.PayloadLength = 6;
+    TestMsg.Payload[2]    = 1; /* non-zero request_token (offset 2..5, MODE) */
     TestMsg.Sequence      = 50;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U; /* fail-safe boot 게이트 통과 (§18.10.4) */
 
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
@@ -354,8 +398,12 @@ void Test_UPLINK_APP_ProcessUplink_ModeForwardFail(void)
     memset(&TestMsg, 0, sizeof(TestMsg));
     TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
     TestMsg.CommandClass  = UPLINK_APP_CLASS_MODE;
-    TestMsg.PayloadLength = 3;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(3);
+    TestMsg.PayloadLength = 6;
+    TestMsg.Payload[2]    = 1; /* non-zero request_token (offset 2..5, MODE) */
     TestMsg.Sequence      = 51;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U; /* fail-safe boot 게이트 통과 (§18.10.4) */
 
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
@@ -375,8 +423,11 @@ void Test_UPLINK_APP_ProcessUplink_DiagnosticAccept(void)
     memset(&TestMsg, 0, sizeof(TestMsg));
     TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
     TestMsg.CommandClass  = UPLINK_APP_CLASS_DIAGNOSTIC;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(1);
     TestMsg.PayloadLength = 3;
     TestMsg.Sequence      = 60;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U; /* fail-safe boot 게이트 통과 (§18.10.4) */
 
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_DOWNLINK);
@@ -396,8 +447,11 @@ void Test_UPLINK_APP_ProcessUplink_DiagnosticForwardFail(void)
     memset(&TestMsg, 0, sizeof(TestMsg));
     TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
     TestMsg.CommandClass  = UPLINK_APP_CLASS_DIAGNOSTIC;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(1);
     TestMsg.PayloadLength = 3;
     TestMsg.Sequence      = 61;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U; /* fail-safe boot 게이트 통과 (§18.10.4) */
 
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
     UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_DOWNLINK);
@@ -466,6 +520,7 @@ void Test_UPLINK_APP_ProcessUplink_AllowedDegradedRouteUpdate(void)
     memset(&TestMsg, 0, sizeof(TestMsg));
     TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
     TestMsg.CommandClass  = UPLINK_APP_CLASS_ROUTE_UPDATE;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(2);
     TestMsg.PayloadLength = 8;
     TestMsg.Sequence      = 75;
 
@@ -513,6 +568,7 @@ void Test_UPLINK_APP_ProcessUplink_AllowedRecoveryDiagnostic(void)
     memset(&TestMsg, 0, sizeof(TestMsg));
     TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
     TestMsg.CommandClass  = UPLINK_APP_CLASS_DIAGNOSTIC;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(1);
     TestMsg.PayloadLength = 3;
     TestMsg.Sequence      = 72;
 
@@ -529,13 +585,16 @@ void Test_UPLINK_APP_ProcessUplink_AllowedRecoveryDiagnostic(void)
     UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_ROUTED);
 }
 
+/* §18.10.4: 원래 CommandClass=DIAGNOSTIC로 작성돼 있었으나, DIAGNOSTIC은 FAILED에서도
+ * 허용되는 클래스라 이 테스트의 의도("차단됨" 검증)와 반대다 — BlockedRecovery와
+ * 동일하게 CONFIG로 교체 (실제로 FAILED에서 차단되는 클래스). */
 void Test_UPLINK_APP_ProcessUplink_BlockedFailed(void)
 {
     UPLINK_APP_ProcessUplinkCmd_t TestMsg;
 
     memset(&TestMsg, 0, sizeof(TestMsg));
     TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
-    TestMsg.CommandClass  = UPLINK_APP_CLASS_DIAGNOSTIC;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_CONFIG;
     TestMsg.PayloadLength = 3;
     TestMsg.Sequence      = 73;
 
@@ -559,7 +618,9 @@ void Test_UPLINK_APP_ProcessUplink_AllowedRecoveryClassInRecovery(void)
     memset(&TestMsg, 0, sizeof(TestMsg));
     TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
     TestMsg.CommandClass  = UPLINK_APP_CLASS_RECOVERY;
-    TestMsg.PayloadLength = 4;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(3);
+    TestMsg.PayloadLength = 8;
+    TestMsg.Payload[4]    = 1; /* non-zero request_token */
     TestMsg.Sequence      = 74;
 
     UPLINK_APP_Data.CfsHealthReceived = 1U;
@@ -582,7 +643,9 @@ void Test_UPLINK_APP_ProcessUplink_AllowedRecoveryClassInFailed(void)
     memset(&TestMsg, 0, sizeof(TestMsg));
     TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
     TestMsg.CommandClass  = UPLINK_APP_CLASS_RECOVERY;
-    TestMsg.PayloadLength = 4;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(3);
+    TestMsg.PayloadLength = 8;
+    TestMsg.Payload[4]    = 1; /* non-zero request_token */
     TestMsg.Sequence      = 75;
 
     UPLINK_APP_Data.CfsHealthReceived = 1U;
@@ -598,13 +661,19 @@ void Test_UPLINK_APP_ProcessUplink_AllowedRecoveryClassInFailed(void)
     UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_ROUTED);
 }
 
-void Test_UPLINK_APP_ProcessUplink_FailOpenBeforeHealth(void)
+/* §18.10.4: 테스트명/기대값이 "fail-open"(health 수신 전엔 통과)이던 시절 그대로였으나,
+ * 커밋 1112351에서 정책이 의도적으로 "fail-closed"(health 수신 전엔 항상 차단, fail-safe
+ * boot)로 뒤집혔다(uplink_app_cmds.c의 `if (!CfsHealthReceived)` 및 그 주석 참조).
+ * 이 UT 스위트가 그 이후 한 번도 실행되지 않아 반영되지 않고 있었다 — 프로덕션 동작은
+ * 의도된 대로이므로, 테스트 기대값만 현재 정책(차단)에 맞게 정정한다. */
+void Test_UPLINK_APP_ProcessUplink_BlockedBeforeHealth(void)
 {
     UPLINK_APP_ProcessUplinkCmd_t TestMsg;
 
     memset(&TestMsg, 0, sizeof(TestMsg));
     TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
     TestMsg.CommandClass  = UPLINK_APP_CLASS_CONFIG;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(2);
     TestMsg.PayloadLength = 4;
     TestMsg.Sequence      = 80;
 
@@ -616,18 +685,63 @@ void Test_UPLINK_APP_ProcessUplink_FailOpenBeforeHealth(void)
 
     UPLINK_APP_ProcessUplink(&TestMsg);
 
+    UtAssert_INT32_EQ(UPLINK_APP_Data.ErrCounter, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.RejectedCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_REJECT_STATE);
+}
+
+/* §18.10.4: 이 스위트 전체를 막고 있던 두 결함(CfsHealthReceived fail-closed 미반영,
+ * §18.11.1 인증레벨 Flags 미설정)을 수정해 하네스가 정상화됐으므로, 원래 제외했던
+ * "성공(ROUTED)" 기대 테스트 2종을 다시 추가한다. */
+void Test_UPLINK_APP_ProcessUplink_ForceFlagBypassesDegradedBlock(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_CONFIG;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(2) | UPLINK_APP_FORCE_FLAG;
+    TestMsg.PayloadLength = 4;
+    TestMsg.Sequence      = 90;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U;
+    UPLINK_APP_Data.CfsHealthState    = 1U; /* DEGRADED */
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ForwardConfigCommand), true);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
     UtAssert_INT32_EQ(UPLINK_APP_Data.AcceptedCount, 1);
     UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_ROUTED);
 }
 
-/* NOTE: "성공(ROUTED)" 기대 테스트 2종(ForceFlagBypassesDegradedBlock,
- * ForceFlagNoOpWhenNotBlocked)은 작성했으나 제외했다 — 이 스위트의 기존(무관) 결함으로
- * "성공을 기대하는" 모든 테스트가 REJECT_STATE를 반환한다(FORCE_FLAG와 무관한
- * DEGRADED+ROUTE_UPDATE 케이스도 동일하게 실패 — mission_app_runtime_spec.md §18.10.2
- * 커밋 메시지 참조). 하네스 결함이 먼저 해결돼야 추가 가능. 실제 동작(플래그 있을 때
- * 통과)은 실기체 배포 후 검증한다.
- *
- * FORCE_FLAG 없이 차단 유지되는지(음성 대조)만 하네스로 검증 가능: */
+void Test_UPLINK_APP_ProcessUplink_ForceFlagNoOpWhenNotBlocked(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_CONFIG;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(2) | UPLINK_APP_FORCE_FLAG;
+    TestMsg.PayloadLength = 4;
+    TestMsg.Sequence      = 92;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U;
+    UPLINK_APP_Data.CfsHealthState    = 0U; /* NOMINAL — 애초에 안 막힘 */
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ForwardConfigCommand), true);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.AcceptedCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_ROUTED);
+}
+
+/* FORCE_FLAG 없이 차단 유지되는지(음성 대조): */
 void Test_UPLINK_APP_ProcessUplink_NoForceFlagStillBlockedInDegraded(void)
 {
     UPLINK_APP_ProcessUplinkCmd_t TestMsg;
@@ -681,6 +795,8 @@ void UtTest_Setup(void)
     ADD_TEST(UPLINK_APP_ProcessUplink_BlockedFailed);
     ADD_TEST(UPLINK_APP_ProcessUplink_AllowedRecoveryClassInRecovery);
     ADD_TEST(UPLINK_APP_ProcessUplink_AllowedRecoveryClassInFailed);
-    ADD_TEST(UPLINK_APP_ProcessUplink_FailOpenBeforeHealth);
+    ADD_TEST(UPLINK_APP_ProcessUplink_BlockedBeforeHealth);
+    ADD_TEST(UPLINK_APP_ProcessUplink_ForceFlagBypassesDegradedBlock);
+    ADD_TEST(UPLINK_APP_ProcessUplink_ForceFlagNoOpWhenNotBlocked);
     ADD_TEST(UPLINK_APP_ProcessUplink_NoForceFlagStillBlockedInDegraded);
 }

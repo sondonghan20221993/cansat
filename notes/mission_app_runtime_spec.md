@@ -1744,7 +1744,74 @@ FAILED/RECOVERY 상태 차단은 실비행 안전상 존재 이유가 있음 —
 존재하지 않음) — CONFIG(1)/ROUTE_UPDATE(2)/RECOVERY(4)는 일치해서 위 표엔 영향 없지만,
 VIEWPOINT/MODE/DIAGNOSTIC 권한 레벨은 별도로 재확인 필요(범위 밖, 이슈로만 기록).
 
-### 18.11 `uplink_app`에 대한 미해결 항목
+#### 18.10.4 UT 실측으로 확인된 DIAGNOSTIC 인증 영구 실패 — §18.10.3 미해결 항목의 실제 파급 (2026-07-14)
+
+**계기**: `uplink_app_cmds` 단위테스트(spec에 "미실행"으로 기록돼 있던 것)를 처음
+로컬에서 돌려본 결과 86개 중 44개 FAIL. 원인은 두 가지로 분리됨.
+
+**요인 A — 테스트 픽스처의 `Flags` 미설정 (테스트만의 문제, 프로덕션 무관)**
+
+거의 모든 "성공(ROUTED) 기대" 테스트가 `TestMsg.Flags`를 세팅하지 않아
+`memset`으로 0인 채 실행됨 → `auth_level=0` → §18.11.1 권한검증에서 요구레벨(2 또는 3)에
+항상 미달 → `REJECT_STATE`로 귀결. 42개 실패가 여기 해당. 코드는 정상 동작 중이며,
+테스트가 각 명령 클래스에 맞는 권한 레벨을 `Flags` bit[7:6]에 실어 보내도록 갱신하면
+해결된다(§18.10.3에서 이미 설계한 "요구 레벨을 그대로 채워 보낸다" 원칙과 동일 — 코드
+변경 없음).
+
+**요인 B — DIAGNOSTIC 클래스가 구조적으로 영구 인증 불가 (실제 코드 버그, §18.10.3의
+"미해결" 항목이 단순 라벨 오기가 아니라 기능적으로 심각하다는 뜻으로 재확인됨)**
+
+- `GetClassRequiredLevel(DIAGNOSTIC=6)`은 case 6("counter management" 주석, 실제로는
+  DIAGNOSTIC이 여기 걸림)에서 `3`을 반환.
+- 레벨 3 명령은 `IsAuthorized()`에서 0이 아닌 `request_token`을 요구.
+- `request_token`을 payload에서 파싱하는 분기는 `CommandClass == RECOVERY` 또는
+  `== MODE`일 때만 존재 — **DIAGNOSTIC에 대한 파싱 분기가 아예 없다.**
+- 결과: DIAGNOSTIC 명령은 `Flags` bit[7:6]을 무엇으로 채워도(심지어 3으로 채워도)
+  `request_token`이 항상 0이라 `IsAuthorized()`가 항상 `false` → **DIAGNOSTIC 클래스는
+  현재 코드에서 구조적으로 영구 차단 상태**.
+- 스펙(§18.10.1)상 DIAGNOSTIC은 `RECOVERY`/`FAILED` 상태에서 `RECOVERY` 클래스와 함께
+  유일하게 허용되는 "항상 통하는 개입 경로"로 의도됨 — 그런데 실제로는 그 경로 자체가
+  auth 게이트에서 막혀 있어 **의도한 fail-safe 개입 수단이 작동하지 않는 상태**.
+- **부작용**: 기존 테스트 `Test_UPLINK_APP_ProcessUplink_BlockedFailed`(FAILED 상태에서
+  DIAGNOSTIC 전송, REJECT_STATE 기대)는 "스펙상 허용돼야 하는데 auth 버그로 막혀서
+  우연히 기대값과 일치"하여 PASS로 위장돼 있었음 — 즉 이 테스트는 원래 의도(허용 확인)와
+  반대로, 버그가 있어야 통과하는 상태였다.
+
+**처리 방침**: 요인 A는 테스트 파일만 수정(진행). 요인 B(`GetClassRequiredLevel`
+production 로직 수정)는 인증 게이트를 건드리는 변경이므로 사용자 승인 하에 별도 진행.
+
+**완료 (2026-07-14)**: 사용자 승인 하에 요인 B 수정 진행. 추가로 조사 중 **세 번째 원인**을
+발견 — `uplink_app_cmds.c`의 `CfsHealthReceived` 게이트가 커밋 `1112351`에서
+`if (CfsHealthReceived) {...}`(미수신 시 통과, fail-open)에서 `if (!CfsHealthReceived)
+{ REJECT_STATE }`(미수신 시 항상 차단, fail-safe boot)로 **의도적으로 극성이
+뒤집혔으나, 그 이후 이 UT 스위트가 한 번도 실행되지 않아** 대부분의 "성공(ROUTED)
+기대" 테스트가 사실 이 게이트에서부터 막히고 있었음(§18.11.1 auth 문제는 그다음
+단계라 도달하지도 못했던 경우가 대부분). 즉 44개 실패의 실제 구성은:
+1. (다수) `CfsHealthReceived=1U` 미설정 — 테스트가 오래된 fail-open 정책 가정 채로 방치
+2. (다수, 1과 중첩) §18.11.1 auth 레벨 `Flags` 미설정
+3. (2개, `DiagnosticAccept`/`ForwardFail`) 요인 B의 DIAGNOSTIC 영구 차단
+4. `AllowedDegradedRouteUpdate` — 편집 누락으로 Flags만 빠짐(단순 실수)
+
+수정 내역:
+- 모든 "성공 기대" 테스트에 `CfsHealthReceived=1U` 및 클래스별 `Flags` 인증레벨 추가
+- RECOVERY/MODE(레벨3) 테스트에 request_token 페이로드 바이트 추가
+- `GetClassRequiredLevel`을 `UPLINK_APP_CLASS_*` named enum으로 재작성, DIAGNOSTIC↔MODE
+  요구레벨 스왑(DIAGNOSTIC: 3→1, MODE: 1→3) — DIAGNOSTIC이 다시 인증 가능해짐
+- `Test_UPLINK_APP_ProcessUplink_BlockedFailed`: 원래 DIAGNOSTIC class로 작성돼
+  있었으나 FAILED에서 DIAGNOSTIC은 허용돼야 하므로 테스트 의도와 반대 — `BlockedRecovery`와
+  동일하게 CONFIG class로 교체
+- `Test_UPLINK_APP_ProcessUplink_FailOpenBeforeHealth` → `BlockedBeforeHealth`로 개명,
+  기대값을 현재(의도된) fail-closed 정책에 맞게 REJECT_STATE로 정정
+- 하네스 정상화로 그동안 제외했던 `ForceFlagBypassesDegradedBlock`/
+  `ForceFlagNoOpWhenNotBlocked` 양성 테스트 추가 및 통과 확인
+
+**결과**: `uplink_app_cmds` UT 91/91 통과(로컬 verify-build, native). `uplink_app`(8/8),
+`uplink_app_dispatch`(13/13) 회귀 없음. `uplink_app_utils`에서 무관한 사전 결함 4건
+발견(`ParseLoRaFrame` 관련, `Test_ParseLoRaFrame_...` — 오늘 변경 범위 밖, 별도 이슈로만
+기록).
+
+**미반영**: 이 수정은 로컬 UT 검증까지만 완료했고, `uplink_app_cmds.c`(프로덕션 코드)의
+git 커밋/Pi 배포는 아직 하지 않았다 — 별도 승인 필요.
 
 현재 baseline 구현에서 추가로 세분화가 필요한 항목은 다음과 같다.
 
