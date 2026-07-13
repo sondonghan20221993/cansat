@@ -844,6 +844,7 @@ Pi 실환경 동작은 불변** — env var는 테스트 전용이다.
 | | MAVLink 메시지 파싱 (ATTITUDE 등) | `coveragetest_mavlink_bridge_app_utils.c` | MAV-PARSE-001~010 | ✓ 있음 |
 | | 캐시 업데이트, 스트림 요청 | `coveragetest_mavlink_bridge_app_cmds.c` | MAV-CACHE-001~005 | ✓ 있음 |
 | | heartbeat timeout, link state | `coveragetest_mavlink_bridge_app_dispatch.c` | — | ✓ 있음 |
+| | `SendMissionItemInt` GLOBAL_RELATIVE_ALT frame/lat-lon degE7 인코딩 (2026-07-13, [[mission_item_int_frame_gap]]) | `coveragetest_mavlink_bridge_app_utils.c` | — | ✓ 있음 (GLOBAL_POSITION_INT 주입 + socketpair로 실제 write 캡처, legacy 공식과 비교) |
 | **PyUnit (A)** | MAVLink UART 메시지 디스크립션 | `test_mavlink_uart_bridge.py` | MAV-DESC-001~005 | ✓ 구현 |
 | | parse_args 기본값/커스텀 | `test_mavlink_uart_bridge.py` | MAV-ARGS-001~005 | ✓ 구현 |
 | **E2E (B)** | PTY mock FC serial → ATTITUDE/LOCAL 수신 | `test_mavlink_bridge_e2e.py` (미작성) | MAV-E2E-001~003 (serial open, msg rx, heartbeat timeout) | ❌ 미작성 |
