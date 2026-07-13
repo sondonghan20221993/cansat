@@ -292,6 +292,10 @@ void CFS_CORE_APP_UpdateHealth(uint32 NowMs, bool ForcePublish)
             }
         }
 
+        CFS_CORE_APP_Data.UplinkRestartCount   = 0;
+        CFS_CORE_APP_Data.NextUplinkRestartMs  = 0;
+        CFS_CORE_APP_Data.LoraRestartCount     = 0;
+        CFS_CORE_APP_Data.NextLoraRestartMs    = 0;
         CFS_CORE_APP_Data.NominalEligibleSince = 0;
         Tlm->FaultCode         = CFS_CORE_APP_FAULT_BRIDGE_TIMEOUT;
         Tlm->RecoveryRequested = 1;
@@ -309,6 +313,10 @@ void CFS_CORE_APP_UpdateHealth(uint32 NowMs, bool ForcePublish)
         CFS_CORE_APP_Data.RecoveryStartMs      = 0;
         CFS_CORE_APP_Data.BridgeRestartCount   = 0;
         CFS_CORE_APP_Data.NextBridgeRestartMs  = 0;
+        CFS_CORE_APP_Data.UplinkRestartCount   = 0;
+        CFS_CORE_APP_Data.NextUplinkRestartMs  = 0;
+        CFS_CORE_APP_Data.LoraRestartCount     = 0;
+        CFS_CORE_APP_Data.NextLoraRestartMs    = 0;
         CFS_CORE_APP_Data.NominalEligibleSince = 0;
         Tlm->HealthState       = CFS_CORE_APP_HEALTH_DEGRADED;
         Tlm->FaultCode         = CFS_CORE_APP_FAULT_EKF_INVALID;
@@ -319,6 +327,10 @@ void CFS_CORE_APP_UpdateHealth(uint32 NowMs, bool ForcePublish)
         CFS_CORE_APP_Data.RecoveryStartMs      = 0;
         CFS_CORE_APP_Data.BridgeRestartCount   = 0;
         CFS_CORE_APP_Data.NextBridgeRestartMs  = 0;
+        CFS_CORE_APP_Data.UplinkRestartCount   = 0;
+        CFS_CORE_APP_Data.NextUplinkRestartMs  = 0;
+        CFS_CORE_APP_Data.LoraRestartCount     = 0;
+        CFS_CORE_APP_Data.NextLoraRestartMs    = 0;
         CFS_CORE_APP_Data.NominalEligibleSince = 0;
         Tlm->HealthState       = CFS_CORE_APP_HEALTH_DEGRADED;
         Tlm->FaultCode         = CFS_CORE_APP_FAULT_LOCAL_TIMEOUT;
@@ -329,6 +341,10 @@ void CFS_CORE_APP_UpdateHealth(uint32 NowMs, bool ForcePublish)
         CFS_CORE_APP_Data.RecoveryStartMs      = 0;
         CFS_CORE_APP_Data.BridgeRestartCount   = 0;
         CFS_CORE_APP_Data.NextBridgeRestartMs  = 0;
+        CFS_CORE_APP_Data.UplinkRestartCount   = 0;
+        CFS_CORE_APP_Data.NextUplinkRestartMs  = 0;
+        CFS_CORE_APP_Data.LoraRestartCount     = 0;
+        CFS_CORE_APP_Data.NextLoraRestartMs    = 0;
         CFS_CORE_APP_Data.NominalEligibleSince = 0;
         Tlm->HealthState       = CFS_CORE_APP_HEALTH_DEGRADED;
         Tlm->FaultCode         = CFS_CORE_APP_FAULT_ATTITUDE_TIMEOUT;
@@ -336,9 +352,31 @@ void CFS_CORE_APP_UpdateHealth(uint32 NowMs, bool ForcePublish)
     }
     else if (UplinkTimedOut)
     {
+        /* 재시작 인터벌 경과 + 최대 재시도 미초과 시 uplink_app 재시작 시도 (bridge와 동일 패턴) */
+        if (CFS_CORE_APP_Data.NextUplinkRestartMs == 0)
+        {
+            CFS_CORE_APP_Data.NextUplinkRestartMs = NowMs + CFS_CORE_APP_UPLINK_RESTART_INTERVAL_MS;
+        }
+        if (NowMs >= CFS_CORE_APP_Data.NextUplinkRestartMs &&
+            CFS_CORE_APP_Data.UplinkRestartCount < CFS_CORE_APP_UPLINK_MAX_RESTARTS)
+        {
+            CFE_ES_AppId_t AppId;
+            if (CFE_ES_GetAppIDByName(&AppId, CFS_CORE_APP_UPLINK_APP_NAME) == CFE_SUCCESS)
+            {
+                CFE_ES_RestartApp(AppId);
+                CFS_CORE_APP_Data.UplinkRestartCount++;
+                CFS_CORE_APP_Data.NextUplinkRestartMs = NowMs + CFS_CORE_APP_UPLINK_RESTART_INTERVAL_MS;
+                CFE_EVS_SendEvent(CFS_CORE_APP_UPLINK_RESTART_EID, CFE_EVS_EventType_INFORMATION,
+                                  "CFS_CORE_APP: uplink restart attempt=%u",
+                                  (unsigned int)CFS_CORE_APP_Data.UplinkRestartCount);
+            }
+        }
+
         CFS_CORE_APP_Data.RecoveryStartMs      = 0;
         CFS_CORE_APP_Data.BridgeRestartCount   = 0;
         CFS_CORE_APP_Data.NextBridgeRestartMs  = 0;
+        CFS_CORE_APP_Data.LoraRestartCount     = 0;
+        CFS_CORE_APP_Data.NextLoraRestartMs    = 0;
         CFS_CORE_APP_Data.NominalEligibleSince = 0;
         Tlm->HealthState       = CFS_CORE_APP_HEALTH_DEGRADED;
         Tlm->FaultCode         = CFS_CORE_APP_FAULT_UPLINK_TIMEOUT;
@@ -346,9 +384,31 @@ void CFS_CORE_APP_UpdateHealth(uint32 NowMs, bool ForcePublish)
     }
     else if (LoraTimedOut)
     {
+        /* 재시작 인터벌 경과 + 최대 재시도 미초과 시 lora_tdm_app 재시작 시도 (bridge와 동일 패턴) */
+        if (CFS_CORE_APP_Data.NextLoraRestartMs == 0)
+        {
+            CFS_CORE_APP_Data.NextLoraRestartMs = NowMs + CFS_CORE_APP_LORA_RESTART_INTERVAL_MS;
+        }
+        if (NowMs >= CFS_CORE_APP_Data.NextLoraRestartMs &&
+            CFS_CORE_APP_Data.LoraRestartCount < CFS_CORE_APP_LORA_MAX_RESTARTS)
+        {
+            CFE_ES_AppId_t AppId;
+            if (CFE_ES_GetAppIDByName(&AppId, CFS_CORE_APP_LORA_APP_NAME) == CFE_SUCCESS)
+            {
+                CFE_ES_RestartApp(AppId);
+                CFS_CORE_APP_Data.LoraRestartCount++;
+                CFS_CORE_APP_Data.NextLoraRestartMs = NowMs + CFS_CORE_APP_LORA_RESTART_INTERVAL_MS;
+                CFE_EVS_SendEvent(CFS_CORE_APP_LORA_RESTART_EID, CFE_EVS_EventType_INFORMATION,
+                                  "CFS_CORE_APP: lora restart attempt=%u",
+                                  (unsigned int)CFS_CORE_APP_Data.LoraRestartCount);
+            }
+        }
+
         CFS_CORE_APP_Data.RecoveryStartMs      = 0;
         CFS_CORE_APP_Data.BridgeRestartCount   = 0;
         CFS_CORE_APP_Data.NextBridgeRestartMs  = 0;
+        CFS_CORE_APP_Data.UplinkRestartCount   = 0;
+        CFS_CORE_APP_Data.NextUplinkRestartMs  = 0;
         CFS_CORE_APP_Data.NominalEligibleSince = 0;
         Tlm->HealthState       = CFS_CORE_APP_HEALTH_DEGRADED;
         Tlm->FaultCode         = CFS_CORE_APP_FAULT_LORA_TIMEOUT;
@@ -362,6 +422,10 @@ void CFS_CORE_APP_UpdateHealth(uint32 NowMs, bool ForcePublish)
         CFS_CORE_APP_Data.RecoveryStartMs      = 0;
         CFS_CORE_APP_Data.BridgeRestartCount   = 0;
         CFS_CORE_APP_Data.NextBridgeRestartMs  = 0;
+        CFS_CORE_APP_Data.UplinkRestartCount   = 0;
+        CFS_CORE_APP_Data.NextUplinkRestartMs  = 0;
+        CFS_CORE_APP_Data.LoraRestartCount     = 0;
+        CFS_CORE_APP_Data.NextLoraRestartMs    = 0;
         CFS_CORE_APP_Data.NominalEligibleSince = 0;
         Tlm->HealthState       = CFS_CORE_APP_HEALTH_NOMINAL;
         Tlm->FaultCode         = CFS_CORE_APP_FAULT_NONE;
@@ -373,6 +437,10 @@ void CFS_CORE_APP_UpdateHealth(uint32 NowMs, bool ForcePublish)
         CFS_CORE_APP_Data.RecoveryStartMs     = 0;
         CFS_CORE_APP_Data.BridgeRestartCount  = 0;
         CFS_CORE_APP_Data.NextBridgeRestartMs = 0;
+        CFS_CORE_APP_Data.UplinkRestartCount  = 0;
+        CFS_CORE_APP_Data.NextUplinkRestartMs = 0;
+        CFS_CORE_APP_Data.LoraRestartCount    = 0;
+        CFS_CORE_APP_Data.NextLoraRestartMs   = 0;
         if (CFS_CORE_APP_Data.NominalEligibleSince == 0)
         {
             CFS_CORE_APP_Data.NominalEligibleSince = NowMs;

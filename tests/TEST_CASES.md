@@ -822,6 +822,7 @@ Pi 실환경 동작은 불변** — env var는 테스트 전용이다.
 | 테스트 레벨 | 검증 항목 | 파일 | TC 범위 | 상태 |
 |---|---|---|---|---|
 | **Unit** | `OpenSerial()` 재시도 로직 | `coveragetest_lora_tdm_app.c` | — | ✓ 있음 |
+| | `CloseSerial()` 유발 경로 (`RunTx`/`RunRxWindow` write/read 실패 → `fd=-1`) | `coveragetest_lora_tdm_app.c` | — | ✓ 있음 (2026-07-13, [[lora_tdm_serial_reopen_gap]] P3) |
 | | `ProcessRxLine()` HB/UP 파싱 | `coveragetest_lora_tdm_app_utils.c` | TDM-RX-001~008 | ✓ 있음 |
 | | `BuildFcDownlinkLine()` FC 패킷 포맷 | `coveragetest_lora_tdm_app_utils.c` | TDM-DOWN-001~006 | ✓ 있음 |
 | | `UpdateLinkState()` 링크 상태 전이 | `coveragetest_lora_tdm_app_utils.c` | TDM-LINK-001~005 | ✓ 있음 |
@@ -877,6 +878,7 @@ Pi 실환경 동작은 불변** — env var는 테스트 전용이다.
 | **PyUnit (A)** | 없음 (헬스 로직은 상태 머신 — Python 동등 구현 불필요) | — | — | N/A |
 | **E2E (B)** | health state 전이 (FC timeout 시뮬레이션) | `test_cfs_core_health_e2e.py` (미작성) | HEALTH-E2E-001~005 | ❌ 미작성 |
 | **Runtime** | FC 분리 → health 1→2 전이, 재연결 시 복구 | Pi + FC 수동 테스트 | RT-HEALTH-001~002 | ✓ 확인됨 |
+| | uplink_app/lora_tdm_app HK timeout → 자동 재시작 (bridge와 동일 패턴 확장, 2026-07-13) | `tools/runtime_app_restart_test.sh <uplink_app\|lora_tdm_app>` — `CFE_ES_STOP_APP_CC`로 실제 정지시켜 HK 끊김 재현, journalctl에서 재시작 EID(15/16) + 재기동 확인 | RT-CORE-UPLINK-RESTART-001, RT-CORE-LORA-RESTART-001 | ⬜ 미실행 (실물 build/ 재빌드 + `sudo systemctl restart cfs.service`로 신규 로직 반영 후 실행 필요 — sudo 필요라 이 세션에서 미수행) |
 
 ---
 
@@ -954,7 +956,7 @@ lora_tdm_app 장애 처리와 uplink_app 명령 검증/차단 경로.
 
 | ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) | 검증 상태 |
 |---|---|---|---|---|
-| RT-LORA-001 | LoRa USB 모듈 런타임 분리 (동작 중 뽑기) | write/read 오류 감지 + 재오픈 시도 | `SERIAL_WRITE_ERR_EID(8)`/`SERIAL_READ_ERR_EID(9)` → `CloseSerial()`로 `fd=-1` → 다음 RunCycle 재오픈 → TxCount 재개. (구현 완료 2026-07-10, `lora_tdm_app.c` `RunTx`/`RunRxWindow`; [[lora_tdm_serial_reopen_gap]]) | ✅ 빌드·기동 검증 완료 (Pi UT 78 PASS, 런타임 재기동 회귀 무). 물리 USB 분리 실측만 잔여 |
+| RT-LORA-001 | LoRa USB 모듈 런타임 분리 (동작 중 뽑기) | write/read 오류 감지 + 재오픈 시도 | `SERIAL_WRITE_ERR_EID(8)`/`SERIAL_READ_ERR_EID(9)` → `CloseSerial()`로 `fd=-1` → 다음 RunCycle 재오픈 → TxCount 재개. (구현 완료 2026-07-10, `lora_tdm_app.c` `RunTx`/`RunRxWindow`; [[lora_tdm_serial_reopen_gap]]) | Unit(실제 POSIX fd 조작, mock 아님): ✓ 있음 (2026-07-13, `coveragetest_lora_tdm_app.c` `Test_RunCycle_TxWriteFailClosesFd`/`Test_RunCycle_RxReadFailClosesFd` — closed-fd write→EBADF, write-only-fd read→EBADF 각각 `LoRaFd==-1` 확인, lora_tdm_app UT 9 PASS 회귀 없음). Runtime(물리 USB 분리): 미실측 |
 | RT-LORA-002 | 깨진 ACK 수신 (형식 불일치) | ACK 파싱 실패 처리 | `ACK_PARSE_ERR_EID(10)` + HK `RxErrorCount` 증가, `RxAckCount` 불변 | 🔵 E2E(B) (깨진 ACK 바이트 주입) |
 | RT-LORA-003 | UP 프레임 seq 재사용/역행 (재전송 공격 모사) | 시퀀스 검증 거부 | uplink `COMMAND_ERR_EID(2)` replay 거부 + 다음 다운링크 `UFB=SEQ_FAIL`(`LastCommandResult==REJECT_SEQUENCE`, §18.11.1). lora_tdm은 UP 프레임 자체 seq 검증을 하지 않고 uplink_app 판정 결과만 피드백 전달(`lora_tdm_app_dispatch.c:91-96`) — **`SEQ_FAIL_EID(12)`와는 무관**: EID 12는 ACK 응답의 `SeqEcho` 불일치 검출용으로 별도 미구현 갭 (`SeqEcho` 파싱 후 `(void)` 무시, `lora_tdm_app_utils.c:295`) | 🔵 E2E(B) (UP 프레임 seq 조작) |
 | RT-LORA-004 | 링크 상태 전이 EVS 관측 (GS 정지→재개) | DEGRADED→DISCONNECTED→CONNECTED 전이 이벤트 | `LINK_DEGRADED_EID(14)` → `LINK_LOST_EID(13)` → `LINK_RESTORED_EID(15)`, HK `LinkState`/`NoAckCount` 일치 | ✅ 실물 (GS 정지/재개) |

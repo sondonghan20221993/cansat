@@ -34,8 +34,18 @@ LORA_TDM_APP_Data.LoRaFd = -1;   /* 다음 RunCycle에서 OpenSerial() 자동 �
       `RunTx` write 실패 및 `RunRxWindow` read 실제오류(EINTR/EAGAIN 제외) 경로에서 호출.
       read `Rc<=0` 분기를 `Rc==0`(정상 무데이터) / `Rc<0`(errno 판별) 로 분리.
       SERIAL_READ_ERR_EID(9)도 실오류 시 송출하도록 추가.
-- [ ] coveragetest 추가 — `RunTx`/`RunRxWindow`는 static이라 직접 커버 불가.
-      write/read stub 반환값 주입으로 CloseSerial 경로 유도하려면 함수 노출 리팩터 선행 필요.
+- [x] coveragetest 추가 (2026-07-13) — `RunTx`/`RunRxWindow`가 static이라 리팩터를 고려했으나,
+      대신 실제 POSIX fd를 조작해 공개 진입점 `LORA_TDM_APP_RunCycle()`을 통해 간접 검증:
+      `Test_RunCycle_TxWriteFailClosesFd`(닫힌 fd → write EBADF), `Test_RunCycle_RxReadFailClosesFd`
+      (write-only fd → read EBADF, `/dev/null` 대상이라 write는 성공해 TX가 먼저 안 닫음).
+      두 경로 모두 `LoRaFd==-1` 확인, PASS.
+      단위 테스트 중 두 가지 숨은 전제 발견/처리:
+      (1) 이 unit(`lora_tdm_app.c`)만 단독 빌드 시 `BuildFcDownlinkLine`/`BuildShDownlinkLine`
+          (다른 파일 소속)은 stub 처리되어 기본 반환값 0 → `UT_SetDefaultReturnValue`로 양수
+          길이 명시 필요.
+      (2) `CFE_TIME_GetTime` 기본 stub은 호출마다 +1000ms 자동 증가 → RX_WINDOW_MS(<1000ms)
+          데드라인이 read() 호출 전에 항상 지나버림 → `UT_SetDataBuffer`로 고정 시각 주입 필요.
+      lora_tdm_app UT 전체 회귀 없음 (main 9, utils 49, cmds 8, dispatch 20 — 전부 PASS).
 - [x] 빌드 검증 (2026-07-10, Pi `~/cFS_clean`, GCC 14.2.0 native) — UT 빌드 에러·경고 0,
       coverage 전체 78 PASS/0 FAIL (`lora_tdm_app` 3, `_utils` 47, `_cmds` 8, `_dispatch` 20).
       런타임 `build/` 재빌드·재시작(systemd `cfs.service`) 후 기동 회귀 없음 — lora_tdm 시리얼 오류 무.

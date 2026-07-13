@@ -1150,6 +1150,170 @@ void Test_CFS_CORE_APP_BridgeRestart_ResetOnRecovery(void)
 }
 
 /* -----------------------------------------------------------------------
+ * Uplink/Lora 능동적 재시작 테스트 (Bridge와 동일 패턴, 2026-07-13 추가)
+ * ----------------------------------------------------------------------- */
+
+/* Bridge/Ekf/Local/Attitude를 NowMs 기준 "정상"으로 맞춰, 우선순위 높은 다른
+ * TimedOut 분기가 먼저 걸리지 않게 한다 (전역 CFS_CORE_APP_Data가 테스트 간
+ * 공유되므로 이전 테스트의 leftover 값이 언더플로/오탐을 유발할 수 있음). */
+static void SetHealthyExceptUplinkLora(uint32 NowMs)
+{
+    CFS_CORE_APP_Data.BridgeState.Received          = true;
+    CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = NowMs;
+    CFS_CORE_APP_Data.EkfState.Received             = true;
+    CFS_CORE_APP_Data.EkfState.TimestampMs          = NowMs;
+    CFS_CORE_APP_Data.EkfState.Valid                = 1;
+    CFS_CORE_APP_Data.LocalState.Received           = true;
+    CFS_CORE_APP_Data.LocalState.TimestampMs        = NowMs;
+    CFS_CORE_APP_Data.LocalState.Valid              = 1;
+    CFS_CORE_APP_Data.AttitudeState.Received        = true;
+    CFS_CORE_APP_Data.AttitudeState.TimestampMs     = NowMs;
+    CFS_CORE_APP_Data.AttitudeState.Valid           = 1;
+}
+
+/* uplink timeout 후 인터벌 경과 시 RestartApp 호출 */
+void Test_CFS_CORE_APP_UplinkRestart_FirstAttempt(void)
+{
+    UT_CheckEvent_t Evt;
+    uint32          NowMs = 10000;
+
+    SetHealthyExceptUplinkLora(NowMs);
+    CFS_CORE_APP_Data.UplinkAppState.Received  = true;
+    CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs = 1000; /* uplink timed out */
+    CFS_CORE_APP_Data.LoraAppState.Received     = true;
+    CFS_CORE_APP_Data.LoraAppState.LastHkRxMs   = NowMs;
+    CFS_CORE_APP_Data.UplinkRestartCount        = 0;
+    CFS_CORE_APP_Data.NextUplinkRestartMs       = 0;
+
+    UT_SetDefaultReturnValue(UT_KEY(CFE_ES_GetAppIDByName), CFE_SUCCESS);
+
+    UT_CHECKEVENT_SETUP(&Evt, CFS_CORE_APP_UPLINK_RESTART_EID, NULL);
+
+    /* 첫 번째 호출: NextUplinkRestartMs = NowMs+5000 설정, 아직 재시작 안 함 */
+    CFS_CORE_APP_UpdateHealth(NowMs, true);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.UplinkRestartCount, 0);
+    UtAssert_INT32_EQ(Evt.MatchCount, 0);
+
+    /* 5초 후 → 재시작 실행 (Bridge/Ekf/Local/Attitude도 새 시각 기준으로 갱신) */
+    SetHealthyExceptUplinkLora(NowMs + CFS_CORE_APP_UPLINK_RESTART_INTERVAL_MS);
+    CFS_CORE_APP_Data.LoraAppState.LastHkRxMs = NowMs + CFS_CORE_APP_UPLINK_RESTART_INTERVAL_MS;
+    UT_CHECKEVENT_SETUP(&Evt, CFS_CORE_APP_UPLINK_RESTART_EID, NULL);
+    CFS_CORE_APP_UpdateHealth(NowMs + CFS_CORE_APP_UPLINK_RESTART_INTERVAL_MS, true);
+
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.UplinkRestartCount, 1);
+    UtAssert_INT32_EQ(Evt.MatchCount, 1);
+    UtAssert_STUB_COUNT(CFE_ES_RestartApp, 1);
+}
+
+/* 최대 재시도 초과 시 uplink_app 더 이상 재시작 안 함 */
+void Test_CFS_CORE_APP_UplinkRestart_MaxReached(void)
+{
+    uint32 NowMs = 10000;
+
+    SetHealthyExceptUplinkLora(NowMs);
+    CFS_CORE_APP_Data.UplinkAppState.Received   = true;
+    CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs = 1000;
+    CFS_CORE_APP_Data.LoraAppState.Received     = true;
+    CFS_CORE_APP_Data.LoraAppState.LastHkRxMs   = NowMs;
+    CFS_CORE_APP_Data.UplinkRestartCount        = CFS_CORE_APP_UPLINK_MAX_RESTARTS;
+    CFS_CORE_APP_Data.NextUplinkRestartMs       = NowMs - 1U;
+
+    UT_SetDefaultReturnValue(UT_KEY(CFE_ES_GetAppIDByName), CFE_SUCCESS);
+
+    CFS_CORE_APP_UpdateHealth(NowMs, true);
+
+    UtAssert_STUB_COUNT(CFE_ES_RestartApp, 0);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.UplinkRestartCount, (int32)CFS_CORE_APP_UPLINK_MAX_RESTARTS);
+}
+
+/* uplink 복구 시 재시작 카운터 리셋 */
+void Test_CFS_CORE_APP_UplinkRestart_ResetOnRecovery(void)
+{
+    uint32 NowMs = 20000;
+
+    CFS_CORE_APP_Data.BridgeState.Received          = true;
+    CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = NowMs - 100;
+    CFS_CORE_APP_Data.AttitudeState.Received        = true;
+    CFS_CORE_APP_Data.AttitudeState.TimestampMs     = NowMs - 100;
+    CFS_CORE_APP_Data.AttitudeState.Valid           = 1;
+    CFS_CORE_APP_Data.LocalState.Received           = true;
+    CFS_CORE_APP_Data.LocalState.TimestampMs        = NowMs - 100;
+    CFS_CORE_APP_Data.LocalState.Valid              = 1;
+    CFS_CORE_APP_Data.GpsState.Received             = true;
+    CFS_CORE_APP_Data.GpsState.TimestampMs          = NowMs - 100;
+    CFS_CORE_APP_Data.GpsState.Valid                = 1;
+    CFS_CORE_APP_Data.EkfState.Received             = true;
+    CFS_CORE_APP_Data.EkfState.TimestampMs          = NowMs - 100;
+    CFS_CORE_APP_Data.EkfState.Valid                = 1;
+    CFS_CORE_APP_Data.UplinkAppState.Received       = true;
+    CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs     = NowMs - 100;
+    CFS_CORE_APP_Data.LoraAppState.Received         = true;
+    CFS_CORE_APP_Data.LoraAppState.LastHkRxMs       = NowMs - 100;
+    CFS_CORE_APP_Data.LastHealthState               = CFS_CORE_APP_HEALTH_NOMINAL;
+
+    CFS_CORE_APP_Data.UplinkRestartCount  = 2;
+    CFS_CORE_APP_Data.NextUplinkRestartMs = NowMs + 1000;
+
+    CFS_CORE_APP_UpdateHealth(NowMs, true);
+
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.UplinkRestartCount,  0);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.NextUplinkRestartMs, 0);
+}
+
+/* lora timeout 후 인터벌 경과 시 RestartApp 호출 */
+void Test_CFS_CORE_APP_LoraRestart_FirstAttempt(void)
+{
+    UT_CheckEvent_t Evt;
+    uint32          NowMs = 10000;
+
+    SetHealthyExceptUplinkLora(NowMs);
+    CFS_CORE_APP_Data.UplinkAppState.Received = true;
+    CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs = NowMs;
+    CFS_CORE_APP_Data.LoraAppState.Received   = true;
+    CFS_CORE_APP_Data.LoraAppState.LastHkRxMs = 1000; /* lora timed out */
+    CFS_CORE_APP_Data.LoraRestartCount        = 0;
+    CFS_CORE_APP_Data.NextLoraRestartMs       = 0;
+
+    UT_SetDefaultReturnValue(UT_KEY(CFE_ES_GetAppIDByName), CFE_SUCCESS);
+
+    UT_CHECKEVENT_SETUP(&Evt, CFS_CORE_APP_LORA_RESTART_EID, NULL);
+
+    CFS_CORE_APP_UpdateHealth(NowMs, true);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.LoraRestartCount, 0);
+    UtAssert_INT32_EQ(Evt.MatchCount, 0);
+
+    SetHealthyExceptUplinkLora(NowMs + CFS_CORE_APP_LORA_RESTART_INTERVAL_MS);
+    CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs = NowMs + CFS_CORE_APP_LORA_RESTART_INTERVAL_MS;
+    UT_CHECKEVENT_SETUP(&Evt, CFS_CORE_APP_LORA_RESTART_EID, NULL);
+    CFS_CORE_APP_UpdateHealth(NowMs + CFS_CORE_APP_LORA_RESTART_INTERVAL_MS, true);
+
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.LoraRestartCount, 1);
+    UtAssert_INT32_EQ(Evt.MatchCount, 1);
+    UtAssert_STUB_COUNT(CFE_ES_RestartApp, 1);
+}
+
+/* 최대 재시도 초과 시 lora_tdm_app 더 이상 재시작 안 함 */
+void Test_CFS_CORE_APP_LoraRestart_MaxReached(void)
+{
+    uint32 NowMs = 10000;
+
+    SetHealthyExceptUplinkLora(NowMs);
+    CFS_CORE_APP_Data.UplinkAppState.Received = true;
+    CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs = NowMs;
+    CFS_CORE_APP_Data.LoraAppState.Received   = true;
+    CFS_CORE_APP_Data.LoraAppState.LastHkRxMs = 1000;
+    CFS_CORE_APP_Data.LoraRestartCount        = CFS_CORE_APP_LORA_MAX_RESTARTS;
+    CFS_CORE_APP_Data.NextLoraRestartMs       = NowMs - 1U;
+
+    UT_SetDefaultReturnValue(UT_KEY(CFE_ES_GetAppIDByName), CFE_SUCCESS);
+
+    CFS_CORE_APP_UpdateHealth(NowMs, true);
+
+    UtAssert_STUB_COUNT(CFE_ES_RestartApp, 0);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.LoraRestartCount, (int32)CFS_CORE_APP_LORA_MAX_RESTARTS);
+}
+
+/* -----------------------------------------------------------------------
  * Spec §19.2 CORE-RUN-004: GPS 타임아웃 (stale 플래그 아닌 timestamp 만료)
  * ----------------------------------------------------------------------- */
 void Test_CFS_CORE_APP_UpdateHealth_GPS_Timeout(void)
@@ -1879,6 +2043,11 @@ void UtTest_Setup(void)
     ADD_TEST(CFS_CORE_APP_BridgeRestart_GetAppIdFail);
     ADD_TEST(CFS_CORE_APP_BridgeRestart_MaxReached);
     ADD_TEST(CFS_CORE_APP_BridgeRestart_ResetOnRecovery);
+    ADD_TEST(CFS_CORE_APP_UplinkRestart_FirstAttempt);
+    ADD_TEST(CFS_CORE_APP_UplinkRestart_MaxReached);
+    ADD_TEST(CFS_CORE_APP_UplinkRestart_ResetOnRecovery);
+    ADD_TEST(CFS_CORE_APP_LoraRestart_FirstAttempt);
+    ADD_TEST(CFS_CORE_APP_LoraRestart_MaxReached);
     ADD_TEST(CFS_CORE_APP_UpdateHealth_GPS_Timeout);
     ADD_TEST(CFS_CORE_APP_UpdateHealth_RecoveryToNominal);
     ADD_TEST(CFS_CORE_APP_TimestampCheck_GPS_Rejected);
