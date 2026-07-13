@@ -60,6 +60,11 @@ typedef struct
     /* Serial fd */
     int    LoRaFd;
 
+    /* 다운링크 송신 프로토콜 선택 — 0=v1(ASCII, 기본값), 1=v2(DL2 바이너리).
+     * §8 단계적 전환: 기본 v1 유지, CONFIG 명령으로 전환(TODO — 아직 커맨드 미배선,
+     * 지금은 memset(0)으로 항상 v1). */
+    uint8  UseV2Downlink;
+
     /* RX line buffer — RX창(RunRxWindow) 호출 경계를 넘어 유지된다.
      * [[lora_tdm_serial_reopen_gap]] 관련 §11.1: 이전엔 RunRxWindow() 지역 변수라
      * 완성 안 된 줄(개행 미도달)이 창 경계에서 유실됐음 — 여기로 옮겨서 다음 창까지 보존. */

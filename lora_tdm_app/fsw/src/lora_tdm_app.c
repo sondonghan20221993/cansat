@@ -245,6 +245,32 @@ static void RunTx(void)
         return;
     }
 
+    /* v2(DL2)는 FC+SH를 한 프레임에 합쳐 보내므로(§4), v1의 짝/홀 교대 스케줄링이
+     * 필요 없다 — 매 사이클 DL2 하나만 전송. */
+    if (LORA_TDM_APP_Data.UseV2Downlink)
+    {
+        uint8 Dl2Buf[LORA_TDM_APP_DL2_FRAME_LEN];
+        int   Dl2Len;
+
+        Dl2Len = LORA_TDM_APP_BuildDl2Frame(Dl2Buf, sizeof(Dl2Buf), &LORA_TDM_APP_Data);
+        if (Dl2Len > 0)
+        {
+            if (write(LORA_TDM_APP_Data.LoRaFd, Dl2Buf, (size_t)Dl2Len) == Dl2Len)
+            {
+                LORA_TDM_APP_Data.TxCount++;
+                LORA_TDM_APP_Data.DownlinkSeq++;
+                LORA_TDM_APP_Data.PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_OK;
+            }
+            else
+            {
+                CFE_EVS_SendEvent(LORA_TDM_APP_SERIAL_WRITE_ERR_EID, CFE_EVS_EventType_ERROR,
+                                  "LORA_TDM_APP: serial write failed errno=%d, closing for reopen", errno);
+                CloseSerial();
+            }
+        }
+        return;
+    }
+
     /* Alternate FC and SH packets deterministically based on sequence number.
      * This avoids dependence on EKF_STATUS/SYSTEM_HEALTH message arrival order
      * when the SB pipe saturates under high ATTITUDE publish rates. */

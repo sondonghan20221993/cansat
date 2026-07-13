@@ -37,6 +37,16 @@ void LORA_TDM_APP_ProcessRxLine(const char *Line, LORA_TDM_APP_Data_t *AppData)
     UT_GenStub_Execute(LORA_TDM_APP_ProcessRxLine, Basic, NULL);
 }
 
+int LORA_TDM_APP_BuildDl2Frame(uint8 *Buf, size_t BufLen, const LORA_TDM_APP_Data_t *AppData)
+{
+    UT_GenStub_AddParam(LORA_TDM_APP_BuildDl2Frame, uint8 *, Buf);
+    UT_GenStub_AddParam(LORA_TDM_APP_BuildDl2Frame, size_t, BufLen);
+    UT_GenStub_AddParam(LORA_TDM_APP_BuildDl2Frame, const LORA_TDM_APP_Data_t *, AppData);
+    UT_GenStub_SetupReturnBuffer(LORA_TDM_APP_BuildDl2Frame, int);
+    UT_GenStub_Execute(LORA_TDM_APP_BuildDl2Frame, Basic, NULL);
+    return UT_GenStub_GetReturnValue(LORA_TDM_APP_BuildDl2Frame, int);
+}
+
 void LORA_TDM_APP_ProcessRxBinaryFrame(const uint8 *Buf, size_t Len, LORA_TDM_APP_Data_t *AppData)
 {
     UT_GenStub_AddParam(LORA_TDM_APP_ProcessRxBinaryFrame, const uint8 *, Buf);

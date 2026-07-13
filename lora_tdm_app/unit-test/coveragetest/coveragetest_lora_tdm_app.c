@@ -42,6 +42,34 @@ void Test_RunCycle_TxWriteFailClosesFd(void)
     UtAssert_INT32_EQ(LORA_TDM_APP_Data.LoRaFd, -1);
 }
 
+/* UseV2Downlink=1이면 RunTx가 v1(FC/SH 텍스트) 대신 DL2 하나만 보내야 한다 — §4/§8. */
+void Test_RunCycle_UseV2Downlink_SendsDl2Only(void)
+{
+    int Fd;
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Init(), CFE_SUCCESS);
+
+    LORA_TDM_APP_Data.UseV2Downlink = 1;
+    UT_SetDefaultReturnValue(UT_KEY(LORA_TDM_APP_BuildDl2Frame), (int)LORA_TDM_APP_DL2_FRAME_LEN);
+
+    Fd = open("/dev/null", O_WRONLY);
+    UtAssert_True(Fd >= 0, "open /dev/null for write");
+    LORA_TDM_APP_Data.LoRaFd = Fd;
+
+    UT_SetDeferredRetcode(UT_KEY(CFE_SB_ReceiveBuffer), 1, CFE_SB_NO_MESSAGE);
+    LORA_TDM_APP_RunCycle();
+
+    UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.TxCount, 1);
+    UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.DownlinkSeq, 1);
+    UtAssert_True(UT_GetStubCount(UT_KEY(LORA_TDM_APP_BuildFcDownlinkLine)) == 0,
+                  "v2 모드에서 v1 FC 빌더 미호출");
+    UtAssert_True(UT_GetStubCount(UT_KEY(LORA_TDM_APP_BuildShDownlinkLine)) == 0,
+                  "v2 모드에서 v1 SH 빌더 미호출");
+
+    close(Fd);
+    LORA_TDM_APP_Data.LoRaFd = -1;
+}
+
 /* RunRxWindow() read 실패 (write-only fd -> EBADF) -> CloseSerial() -> LoRaFd == -1
  * write는 /dev/null 대상이라 성공하므로 RunTx가 먼저 fd를 닫지 않음 -> RX 실패
  * 분기를 TX와 분리해서 검증. CFE_TIME_GetTime 기본 stub은 호출마다 값이 자동
@@ -203,6 +231,7 @@ void UtTest_Setup(void)
     ADD_TEST(Init);
     ADD_TEST(Init_SubscribeError);
     ADD_TEST(RunCycle_TxWriteFailClosesFd);
+    ADD_TEST(RunCycle_UseV2Downlink_SendsDl2Only);
     ADD_TEST(RunCycle_RxReadFailClosesFd);
     ADD_TEST(RunRxWindow_LineSpansAcrossWindows);
     ADD_TEST(RunRxWindow_Ack2MagicDispatchesToBinaryHandler);
