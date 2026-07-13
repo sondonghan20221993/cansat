@@ -768,6 +768,263 @@ void Test_SysTime_CrcFail(void)
     UtAssert_True(MAVLINK_BRIDGE_APP_Data.ParseErrorCount >= 1, "parse error recorded");
 }
 
+/* -----------------------------------------------------------------------
+ * SendMissionItemInt — GLOBAL_RELATIVE_ALT frame 변환 검증 (2026-07-13)
+ * [[mission_item_int_frame_gap]]
+ *
+ * RefLatE7/RefLonE7는 static이라 직접 접근 불가 — GLOBAL_POSITION_INT를
+ * 먼저 주입해 실제 파서 경로로 설정한다. SendMissionItemInt의 출력(write)은
+ * 같은 SerialFd로 나가므로, 단방향 pipe(UT_FeedSerial)가 아니라 socketpair로
+ * 주입 fd와 캡처 fd를 겸용한다. ServiceSerial()이 매 호출 처음에 무조건
+ * companion heartbeat도 함께 쓰므로, 캡처된 바이트에서 msgid로 원하는 프레임만
+ * 스캔해서 찾는다.
+ * ----------------------------------------------------------------------- */
+
+#include <math.h>
+#include <sys/socket.h>
+
+/* Read/WriteXxxLE는 production 쪽도 static이라 여기서 로컬 재구현한다. */
+static uint32 UT_ReadU32LE(const uint8 *Data)
+{
+    return ((uint32)Data[0]) | ((uint32)Data[1] << 8) | ((uint32)Data[2] << 16) | ((uint32)Data[3] << 24);
+}
+
+static uint16 UT_ReadU16LE(const uint8 *Data)
+{
+    return (uint16)(((uint16)Data[0]) | ((uint16)Data[1] << 8));
+}
+
+static float UT_ReadFloatLE(const uint8 *Data)
+{
+    uint32 RawValue = UT_ReadU32LE(Data);
+    float  Value;
+
+    memcpy(&Value, &RawValue, sizeof(Value));
+    return Value;
+}
+
+static void UT_WriteU16LE(uint8 *Data, uint16 Value)
+{
+    Data[0] = (uint8)(Value & 0xFFU);
+    Data[1] = (uint8)((Value >> 8) & 0xFFU);
+}
+
+static void UT_WriteU32LE(uint8 *Data, uint32 Value)
+{
+    Data[0] = (uint8)(Value & 0xFFU);
+    Data[1] = (uint8)((Value >> 8) & 0xFFU);
+    Data[2] = (uint8)((Value >> 16) & 0xFFU);
+    Data[3] = (uint8)((Value >> 24) & 0xFFU);
+}
+
+#define UT_GLOBAL_POSITION_INT_MSGID     33U
+#define UT_GLOBAL_POSITION_INT_CRC_EXTRA 104U
+#define UT_GLOBAL_POSITION_INT_PAYLOAD_LEN 28U
+#define UT_MISSION_REQUEST_INT_MSGID     51U
+#define UT_MISSION_REQUEST_INT_CRC_EXTRA 196U
+#define UT_MISSION_ITEM_INT_MSGID        73U
+
+#define UT_EARTH_RADIUS_M 6371000.0f
+#define UT_DEG_TO_RAD      0.01745329251994f
+#define UT_RAD_TO_DEG      57.29577951308f
+
+/* 임의 msgid/crc_extra/payload로 MAVLink v2 프레임을 만든다 (msgid는 1바이트 범위만 지원 — 이 테스트에서 쓰는 메시지는 모두 255 이하). */
+static size_t UT_BuildMavFrameGeneric(uint8 *Frame, uint8 MsgId, uint8 CrcExtra, const uint8 *Payload, uint8 PayloadLen)
+{
+    uint16 Crc;
+    uint8  Seq;
+    uint8  i;
+
+    for (Seq = 0;; Seq++)
+    {
+        Crc = 0xFFFFU;
+        UT_MavCrcAccumulate(PayloadLen, &Crc);
+        UT_MavCrcAccumulate(0, &Crc);
+        UT_MavCrcAccumulate(0, &Crc);
+        UT_MavCrcAccumulate(Seq, &Crc);
+        UT_MavCrcAccumulate(1, &Crc);
+        UT_MavCrcAccumulate(1, &Crc);
+        UT_MavCrcAccumulate(MsgId, &Crc);
+        UT_MavCrcAccumulate(0, &Crc);
+        UT_MavCrcAccumulate(0, &Crc);
+        for (i = 0; i < PayloadLen; i++)
+        {
+            UT_MavCrcAccumulate(Payload[i], &Crc);
+        }
+        UT_MavCrcAccumulate(CrcExtra, &Crc);
+
+        if ((Crc & 0xFFU) != 0xFDU && (Crc & 0xFFU) != 0xFEU &&
+            (Crc >> 8)    != 0xFDU && (Crc >> 8)    != 0xFEU)
+        {
+            break;
+        }
+    }
+
+    Frame[0] = 0xFD;
+    Frame[1] = PayloadLen;
+    Frame[2] = 0;
+    Frame[3] = 0;
+    Frame[4] = Seq;
+    Frame[5] = 1;
+    Frame[6] = 1;
+    Frame[7] = MsgId;
+    Frame[8] = 0;
+    Frame[9] = 0;
+    memcpy(&Frame[10], Payload, PayloadLen);
+    Frame[10 + PayloadLen]     = (uint8)(Crc & 0xFFU);
+    Frame[10 + PayloadLen + 1] = (uint8)(Crc >> 8);
+
+    return (size_t)(10 + PayloadLen + 2);
+}
+
+/* 캡처된 바이트열에서 msgid가 일치하는 첫 프레임의 payload 시작 포인터를 찾는다. */
+static const uint8 *UT_FindMavFrame(const uint8 *Buf, size_t Len, uint8 MsgId, uint8 *OutPayloadLen)
+{
+    size_t i = 0;
+
+    while (i + 10 <= Len)
+    {
+        if (Buf[i] == 0xFD)
+        {
+            uint8  PayloadLen = Buf[i + 1];
+            uint8  Mid        = Buf[i + 7];
+            size_t FrameLen   = 10U + (size_t)PayloadLen + 2U;
+
+            if (i + FrameLen <= Len)
+            {
+                if (Mid == MsgId)
+                {
+                    *OutPayloadLen = PayloadLen;
+                    return &Buf[i + 10];
+                }
+                i += FrameLen;
+                continue;
+            }
+        }
+        i++;
+    }
+    return NULL;
+}
+
+/* 주입 프레임(InBytes)을 소켓에 미리 써 두고 ServiceSerial()을 호출한 뒤,
+ * 그 결과로 SendMavlinkV2가 같은 fd에 되돌려 쓴 바이트를 OutBuf로 캡처한다. */
+static size_t UT_FeedSerialCaptureTx(const uint8 *InBytes, size_t InLen, uint8 *OutBuf, size_t OutBufLen)
+{
+    int     Sv[2];
+    ssize_t Rc;
+
+    UtAssert_INT32_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, Sv), 0);
+    UtAssert_INT32_EQ(fcntl(Sv[0], F_SETFL, O_NONBLOCK), 0);
+    if (InLen > 0)
+    {
+        UtAssert_True(write(Sv[1], InBytes, InLen) == (ssize_t)InLen, "socketpair inject write");
+    }
+
+    MAVLINK_BRIDGE_APP_Data.SerialFd             = Sv[0];
+    MAVLINK_BRIDGE_APP_Data.TargetSystemId       = 0;
+    MAVLINK_BRIDGE_APP_Data.StreamRequestPending = 0;
+
+    MAVLINK_BRIDGE_APP_ServiceSerial();
+
+    Rc = read(Sv[1], OutBuf, OutBufLen);
+
+    close(Sv[0]);
+    close(Sv[1]);
+    MAVLINK_BRIDGE_APP_Data.SerialFd = -1;
+
+    return (Rc > 0) ? (size_t)Rc : 0;
+}
+
+/* GLOBAL_POSITION_INT를 주입해 RefLatE7/RefLonE7을 설정한다 (static이라 직접 접근 불가). */
+static void UT_SetGpsReference(int32 LatE7, int32 LonE7)
+{
+    uint8  Payload[UT_GLOBAL_POSITION_INT_PAYLOAD_LEN];
+    uint8  Frame[64];
+    uint8  OutBuf[256];
+    size_t Len;
+
+    memset(Payload, 0, sizeof(Payload));
+    UT_WriteU32LE(&Payload[4], (uint32)LatE7);
+    UT_WriteU32LE(&Payload[8], (uint32)LonE7);
+
+    Len = UT_BuildMavFrameGeneric(Frame, (uint8)UT_GLOBAL_POSITION_INT_MSGID,
+                                  (uint8)UT_GLOBAL_POSITION_INT_CRC_EXTRA, Payload, sizeof(Payload));
+    (void)UT_FeedSerialCaptureTx(Frame, Len, OutBuf, sizeof(OutBuf));
+}
+
+/* SendMissionItemInt가 GLOBAL_RELATIVE_ALT + lat/lon degE7로 인코딩하는지 확인.
+ * §13.1 실측(ArduPilot이 LOCAL_NED 미션 아이템을 거부)에 따른 수정 검증 —
+ * legacy MISSION_ITEM과 동일한 변환 공식을 그대로 재현해 기대값과 비교한다. */
+void Test_SendMissionItemInt_GlobalRelativeAltFrame(void)
+{
+    uint8        ReqPayload[2];
+    uint8        ReqFrame[16];
+    uint8        OutBuf[256];
+    size_t       ReqLen;
+    size_t       CapLen;
+    const uint8 *ItemPayload;
+    uint8        ItemPayloadLen;
+    int32        RefLatE7 = 100000000; /* 10.0 deg */
+    int32        RefLonE7 = 1000000000; /* 100.0 deg */
+    float        WpX = 10.0f; /* local north, m */
+    float        WpY = 20.0f; /* local east, m */
+    float        WpZ = 5.0f;  /* relative altitude, m */
+    float        RefLatDeg, RefLonDeg, RefLatRad, DeltaLatDeg, DeltaLonDeg, ExpLat, ExpLon;
+    int32        ExpLatE7, ExpLonE7;
+    int32        ActLatE7, ActLonE7;
+    float        ActAlt;
+    uint16       ActSeq, ActCmd;
+    uint8        ActFrameByte;
+
+    UT_SetGpsReference(RefLatE7, RefLonE7);
+
+    MAVLINK_BRIDGE_APP_Data.MissionUploadState    = (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_ACTIVE;
+    MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount  = 1;
+    MAVLINK_BRIDGE_APP_Data.MissionPendingX[0]    = WpX;
+    MAVLINK_BRIDGE_APP_Data.MissionPendingY[0]    = WpY;
+    MAVLINK_BRIDGE_APP_Data.MissionPendingZ[0]    = WpZ;
+
+    UT_WriteU16LE(&ReqPayload[0], 0U); /* seq=0 */
+    ReqLen = UT_BuildMavFrameGeneric(ReqFrame, (uint8)UT_MISSION_REQUEST_INT_MSGID,
+                                     (uint8)UT_MISSION_REQUEST_INT_CRC_EXTRA, ReqPayload, sizeof(ReqPayload));
+
+    CapLen = UT_FeedSerialCaptureTx(ReqFrame, ReqLen, OutBuf, sizeof(OutBuf));
+
+    ItemPayload = UT_FindMavFrame(OutBuf, CapLen, (uint8)UT_MISSION_ITEM_INT_MSGID, &ItemPayloadLen);
+    UtAssert_True(ItemPayload != NULL, "MISSION_ITEM_INT frame captured");
+    if (ItemPayload == NULL)
+    {
+        return;
+    }
+
+    /* legacy MISSION_ITEM과 동일한 변환 공식을 재현해 기대값 산출 (하드코딩 상수 대신
+     * 같은 수식으로 계산 — float 반올림 경로 일치, tolerance만 소폭 허용) */
+    RefLatDeg   = (float)RefLatE7 / 1e7f;
+    RefLonDeg   = (float)RefLonE7 / 1e7f;
+    RefLatRad   = RefLatDeg * UT_DEG_TO_RAD;
+    DeltaLatDeg = WpX / UT_EARTH_RADIUS_M * UT_RAD_TO_DEG;
+    DeltaLonDeg = WpY / (UT_EARTH_RADIUS_M * cosf(RefLatRad)) * UT_RAD_TO_DEG;
+    ExpLat      = RefLatDeg + DeltaLatDeg;
+    ExpLon      = RefLonDeg + DeltaLonDeg;
+    ExpLatE7    = (int32)(ExpLat * 1e7f);
+    ExpLonE7    = (int32)(ExpLon * 1e7f);
+
+    ActLatE7     = (int32)UT_ReadU32LE(&ItemPayload[16]);
+    ActLonE7     = (int32)UT_ReadU32LE(&ItemPayload[20]);
+    ActAlt       = UT_ReadFloatLE(&ItemPayload[24]);
+    ActSeq       = UT_ReadU16LE(&ItemPayload[28]);
+    ActCmd       = UT_ReadU16LE(&ItemPayload[30]);
+    ActFrameByte = ItemPayload[34];
+
+    /* 핵심 회귀 방지: LOCAL_NED(1)가 아니라 GLOBAL_RELATIVE_ALT(3)여야 함 */
+    UtAssert_INT32_EQ((int32)ActFrameByte, 3);
+    UtAssert_True(abs((int)(ActLatE7 - ExpLatE7)) <= 2, "lat degE7 matches formula (tol=2)");
+    UtAssert_True(abs((int)(ActLonE7 - ExpLonE7)) <= 2, "lon degE7 matches formula (tol=2)");
+    UtAssert_True(ActAlt == WpZ, "alt no sign flip (GLOBAL_RELATIVE_ALT is already altitude-positive)");
+    UtAssert_INT32_EQ((int32)ActSeq, 0);
+    UtAssert_INT32_EQ((int32)ActCmd, 16); /* MAV_CMD_NAV_WAYPOINT */
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(UpdateFromHeartbeat_Armed);
@@ -804,4 +1061,5 @@ void UtTest_Setup(void)
     ADD_TEST(SysTime_TrimmedPayload);
     ADD_TEST(SysTime_ZeroClockIgnored);
     ADD_TEST(SysTime_CrcFail);
+    ADD_TEST(SendMissionItemInt_GlobalRelativeAltFrame);
 }
