@@ -59,7 +59,7 @@ uplink_app           ←  UPLINK_APP_CMD_MID (lora_tdm_app SB) / UDP (테스트�
 | DEGRADED 상태 CONFIG/VIEWPOINT 차단, ROUTE_UPDATE 허용 (§18.10.1) | 구현됨 |
 | 시퀀스 갭 감지 (cfs_core_app SeqGapCount, SEQ_GAP_EID) | 구현됨 |
 | landing route FC 업로드 (mavlink_bridge_app) | 범위 제외 (2026-06-08) |
-| MISSION_ITEM_INT 경로 MAV_FRAME_GLOBAL_RELATIVE_ALT 변환 | 범위 제외 (2026-06-08) |
+| MISSION_ITEM_INT 경로 MAV_FRAME_GLOBAL_RELATIVE_ALT 변환 | 구현됨 (2026-07-13), 실물 FC 검증 잔여 |
 | 미션 업로드 후 자동 시작 (MAV_CMD_DO_SET_MISSION_CURRENT) | 범위 제외 (2026-06-08) |
 | viewpoint 수신 후 FC MAVLink 명령 실행 | 범위 제외 (2026-06-07) |
 

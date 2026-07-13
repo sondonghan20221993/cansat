@@ -152,22 +152,30 @@ FC → mavlink_bridge_app : MISSION_ACK      (result=MAV_MISSION_ACCEPTED)
 
 ## 7. MISSION_ITEM_INT 필드 매핑
 
+> **2026-07-13 수정**: §13.1 실측(legacy MISSION_ITEM 경로에서 ArduPilot이
+> `MAV_FRAME_LOCAL_NED`를 거부함이 확인됨)에 근거해, INT 경로도 legacy와 동일하게
+> `MAV_FRAME_GLOBAL_RELATIVE_ALT` + lat/lon 변환으로 전환했다(`mission_item_int_frame_gap`
+> 갭 해소). 아래 표는 이 수정을 반영한 현재 구현 기준이다 — 단 INT 경로 자체의
+> 실물 FC 검증(FC가 실제로 INT를 요청하는지, `MISSION_ACK` accepted 여부)은 아직
+> 안 됨(FC 점유 중).
+
 | MAVLink 필드 | 값 |
 | --- | --- |
 | `target_system` | FC system ID (런타임에 Heartbeat에서 획득) |
 | `target_component` | FC autopilot component ID |
 | `seq` | 웨이포인트 인덱스 (0-based) |
-| `frame` | `MAV_FRAME_LOCAL_NED` (= 1) |
+| `frame` | `MAV_FRAME_GLOBAL_RELATIVE_ALT` (= 3) |
 | `command` | `MAV_CMD_NAV_WAYPOINT` (= 16) |
 | `current` | 0 (첫 번째 항목도 0, SET_CURRENT_ITEM으로 별도 지정) |
 | `autocontinue` | 1 |
 | `param1..4` | 0.0 (hold time, acceptance radius 등 미사용) |
-| `x` | `(int32)(Waypoints[i].X * 10000)` — float meters → int32 (0.1mm 단위) |
-| `y` | `(int32)(Waypoints[i].Y * 10000)` — 동일 |
-| `z` | `-Waypoints[i].Z` (float meters). Route payload는 altitude-positive convention을 사용하며, LOCAL_NED z는 down-positive이므로 부호를 반전한다. |
+| `x` (lat) | `(int32)(WpLat * 1e7)` — degE7. `WpLat = RefLat + local X(m) 기반 delta` (§13.1 공식과 동일, legacy `MISSION_ITEM`과 동일 계산식) |
+| `y` (lon) | `(int32)(WpLon * 1e7)` — degE7. 동일 방식 |
+| `z` | `Waypoints[i].Z` (float meters, relative altitude, 부호 반전 없음 — GLOBAL_RELATIVE_ALT는 이미 altitude-positive) |
 | `mission_type` | `MAV_MISSION_TYPE_MISSION` (= 0) |
 
-x/y는 `int32` (× 10000, 0.1mm 단위)이고, z는 `float` meters (부호 반전)임에 유의한다.
+x/y는 `int32` (degE7, MISSION_ITEM_INT 표준 인코딩), z는 `float` meters(relative altitude)임에 유의한다.
+`MISSION_ITEM`(legacy, float degree)과 인코딩 폭만 다를 뿐 좌표 변환 공식 자체는 동일하다.
 
 ## 8. 타이밍 및 재시도
 
@@ -364,16 +372,19 @@ wp_alt = Z_m                             [m, positive-up]
 
 #### 적용 범위
 
-`MISSION_ITEM (msg 39)` 경로에만 적용. `MISSION_ITEM_INT (msg 73)` 경로는 FC가 `MISSION_REQUEST_INT (51)`를 사용할 경우 별도 처리 필요 (현재 미구현).
+`MISSION_ITEM (msg 39)` 경로. `MISSION_ITEM_INT (msg 73)` 경로도 2026-07-13 동일하게
+GLOBAL_RELATIVE_ALT로 전환됨 — 아래 13.1.1 참조.
 
-### 13.1.1 경로별 frame 및 좌표 인코딩 현황
+### 13.1.1 경로별 frame 및 좌표 인코딩 현황 (2026-07-13 갱신)
 
 | 경로 | MAVLink 메시지 | frame | x/y 인코딩 | z 인코딩 |
 | --- | --- | --- | --- | --- |
-| **INT 경로** | MISSION_ITEM_INT (73) | `MAV_FRAME_LOCAL_NED` (1) | float meters → int32 (× 10000, 0.1mm) | float meters, 부호 반전 (down-positive) |
+| **INT 경로** | MISSION_ITEM_INT (73) | `MAV_FRAME_GLOBAL_RELATIVE_ALT` (3) | lat/lon → int32 degE7 (§12.1 공식과 동일 변환, 인코딩 폭만 다름) | float meters, altitude-positive |
 | **Legacy 경로** | MISSION_ITEM (39) | `MAV_FRAME_GLOBAL_RELATIVE_ALT` (3) | GPS 기준점 기반 lat/lon 변환 (§12.1 공식) | float meters, altitude-positive |
 
-INT 경로에서 FC가 `MISSION_ACK result = MAV_MISSION_UNSUPPORTED_FRAME`을 반환하면 INT 경로에도 global frame 변환 적용이 필요하다 (현재 미구현).
+두 경로 모두 GLOBAL_RELATIVE_ALT로 통일됨 (`mission_item_int_frame_gap` 해소).
+INT 경로 자체의 실물 FC 검증(FC의 `MISSION_ACK result` 확인)은 아직 잔여 —
+FC가 다른 작업에 점유돼 있어 코드 수정만 선반영하고 실측은 보류.
 
 ## 14. 진단 로그
 

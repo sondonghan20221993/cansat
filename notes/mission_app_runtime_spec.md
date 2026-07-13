@@ -1280,9 +1280,10 @@ LAP2_ACTIVE → DONE`. 총 랩 수는 2로 고정하며 추가 반복은 없다.
   통틀어 16 waypoint가 절대 상한이다. 원형 촬영 밀도 요구량이 이보다 많은 지점을
   필요로 하는지, 필요하다면 메시지 구조체(3개 앱 공통) 재설계가 선행돼야 하는지는
   별도 검토가 필요하다.
-- `MISSION_ITEM_INT`(INT 업로드 경로) 가 ArduPilot에서 거부될 수 있는 frame 호환성
-  문제가 별도로 발견됨 — 이 보정 기능의 업로드 자체가 영향받을 수 있으므로 §13.1
-  frame 변환 수정과 함께 확인 필요.
+- `MISSION_ITEM_INT`(INT 업로드 경로)의 frame 호환성 코드 수정은 완료(2026-07-13,
+  legacy와 동일하게 GLOBAL_RELATIVE_ALT 전환). 다만 INT 경로 자체의 실물 FC
+  검증(`MISSION_ACK` accepted 확인)은 FC 점유로 아직 미실행 — 이 보정 기능의
+  업로드도 그 검증 완료 전까지는 완전히 신뢰할 수 없음.
 
 ##### 18.4.6.3 viewpoint update
 
