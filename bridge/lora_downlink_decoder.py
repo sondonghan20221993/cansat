@@ -27,7 +27,7 @@ DL2_MAGIC = 0xD2
 UP2_MAGIC = 0xB2
 ACK2_MAGIC = 0xA2
 
-DL2_BASE_LEN = 44          # magic..linkstate (CRC 제외, SysTime 블록 제외)
+DL2_BASE_LEN = 45          # magic..linkstate (CRC 제외, SysTime 블록 제외) — sats 포함(2026-07-13)
 DL2_SYSTIME_BLOCK_LEN = 8
 DL2_FLAG_SYSTIME = 0x01
 DL2_FLAG_POS_SATURATED = 0x02
@@ -67,6 +67,7 @@ class Dl2Frame:
     lon_e7: int
     alt_mm: int
     fix: int
+    sats: int
     health: int
     fault: int
     linkstate: int
@@ -97,7 +98,7 @@ def decode_dl2(frame: bytes) -> Dl2Frame:
     pos = struct.unpack_from("<hhh", frame, 16)
     vel = struct.unpack_from("<hhh", frame, 22)
     (lat_e7, lon_e7, alt_mm) = struct.unpack_from("<iii", frame, 28)
-    (fix, health, fault, linkstate) = struct.unpack_from("<BBBB", frame, 40)
+    (fix, sats, health, fault, linkstate) = struct.unpack_from("<BBBBB", frame, 40)
 
     sys_time = None
     if flags & DL2_FLAG_SYSTIME:
@@ -111,7 +112,7 @@ def decode_dl2(frame: bytes) -> Dl2Frame:
         x_m=pos[0] / CM, y_m=pos[1] / CM, z_m=pos[2] / CM,
         vx_mps=vel[0] / CM, vy_mps=vel[1] / CM, vz_mps=vel[2] / CM,
         lat_e7=lat_e7, lon_e7=lon_e7, alt_mm=alt_mm,
-        fix=fix, health=health, fault=fault, linkstate=linkstate,
+        fix=fix, sats=sats, health=health, fault=fault, linkstate=linkstate,
         sys_time_unix_usec=sys_time,
     )
 
@@ -138,7 +139,7 @@ def encode_dl2(frame: Dl2Frame) -> bytes:
                        int(round(frame.vy_mps * CM)),
                        int(round(frame.vz_mps * CM)))
     buf += struct.pack("<iii", frame.lat_e7, frame.lon_e7, frame.alt_mm)
-    buf += struct.pack("<BBBB", frame.fix, frame.health, frame.fault, frame.linkstate)
+    buf += struct.pack("<BBBBB", frame.fix, frame.sats, frame.health, frame.fault, frame.linkstate)
     if frame.sys_time_unix_usec is not None:
         buf += struct.pack("<Q", frame.sys_time_unix_usec)
     buf += struct.pack("<H", crc16_ccitt(bytes(buf)))
@@ -226,7 +227,7 @@ CSV_FIELDS = [
     "host_time_iso", "host_time_unix", "seq", "ufb", "ts_ms",
     "roll_rad", "pitch_rad", "yaw_rad", "x_m", "y_m", "z_m",
     "vx_mps", "vy_mps", "vz_mps", "lat_e7", "lon_e7", "alt_mm",
-    "fix", "health", "fault", "linkstate", "pos_saturated", "sys_time_unix_usec",
+    "fix", "sats", "health", "fault", "linkstate", "pos_saturated", "sys_time_unix_usec",
 ]
 
 
@@ -242,7 +243,7 @@ def frame_to_csv_row(frame: Dl2Frame, host_time: float) -> dict:
         "x_m": "%.2f" % frame.x_m, "y_m": "%.2f" % frame.y_m, "z_m": "%.2f" % frame.z_m,
         "vx_mps": "%.2f" % frame.vx_mps, "vy_mps": "%.2f" % frame.vy_mps, "vz_mps": "%.2f" % frame.vz_mps,
         "lat_e7": frame.lat_e7, "lon_e7": frame.lon_e7, "alt_mm": frame.alt_mm,
-        "fix": frame.fix, "health": frame.health, "fault": frame.fault,
+        "fix": frame.fix, "sats": frame.sats, "health": frame.health, "fault": frame.fault,
         "linkstate": frame.linkstate,
         "pos_saturated": int(frame.pos_saturated),
         "sys_time_unix_usec": frame.sys_time_unix_usec if frame.sys_time_unix_usec is not None else "",

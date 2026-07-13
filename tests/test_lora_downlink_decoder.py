@@ -32,7 +32,7 @@ def make_frame(**overrides) -> Dl2Frame:
         x_m=12.34, y_m=-56.78, z_m=-3.21,
         vx_mps=1.23, vy_mps=-0.45, vz_mps=0.06,
         lat_e7=374530000, lon_e7=1269850000, alt_mm=52000,
-        fix=3, health=1, fault=0, linkstate=1,
+        fix=3, sats=11, health=1, fault=0, linkstate=1,
     )
     base.update(overrides)
     return Dl2Frame(**base)
@@ -63,18 +63,18 @@ class RoundtripTest(unittest.TestCase):
         self.assertEqual(out.lat_e7, 374530000)
         self.assertEqual(out.lon_e7, 1269850000)
         self.assertEqual(out.alt_mm, 52000)
-        self.assertEqual((out.fix, out.health, out.fault, out.linkstate), (3, 1, 0, 1))
+        self.assertEqual((out.fix, out.sats, out.health, out.fault, out.linkstate), (3, 11, 1, 0, 1))
         self.assertIsNone(out.sys_time_unix_usec)
 
     def test_systime_block(self):
         utc_us = 1_784_950_123_456_789  # 2026-07 UNIX epoch µs
         out = self._roundtrip(make_frame(sys_time_unix_usec=utc_us))
         self.assertEqual(out.sys_time_unix_usec, utc_us)
-        # 확장 블록 프레임 길이 = 46 + 8
-        self.assertEqual(len(encode_dl2(make_frame(sys_time_unix_usec=utc_us))), 54)
+        # 확장 블록 프레임 길이 = 47(sats 포함 기본) + 8
+        self.assertEqual(len(encode_dl2(make_frame(sys_time_unix_usec=utc_us))), 55)
 
-    def test_base_frame_is_46_bytes(self):
-        self.assertEqual(len(encode_dl2(make_frame())), 46)  # spec §4
+    def test_base_frame_is_47_bytes(self):
+        self.assertEqual(len(encode_dl2(make_frame())), 47)  # spec §4 (sats 포함, 2026-07-13)
 
     def test_saturation_flag(self):
         out = self._roundtrip(make_frame(flags=DL2_FLAG_POS_SATURATED, x_m=327.67))
