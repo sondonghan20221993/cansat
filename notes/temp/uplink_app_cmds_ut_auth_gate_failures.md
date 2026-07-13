@@ -63,5 +63,16 @@
       §18.11.1 인증레벨 bit[7:6]을 채우는 코드는 작성됐으나 커밋 보류 중
       (auto-mode 보안 차단으로 사용자와 명시적으로 미루기로 합의) — 이게 반영돼야
       실기체 CONFIG(v1→v2 다운링크 전환) 명령이 최종적으로 통과함
-- [ ] `uplink_app_utils` UT에서 발견된 무관한 사전 결함 4건(`ParseLoRaFrame` 관련) —
-      이번 조사 범위 밖, 별도 이슈로만 기록
+- [x] `uplink_app_utils` UT의 무관한 사전 결함 4건(`ParseLoRaFrame`) — 별도 조사
+      (2026-07-14) 및 수정 완료. 원인: `sscanf("%[^,]", ...)`는 0글자 매칭을
+      허용하지 않아, payload가 없는(길이 0) **모든 정상 v1 ASCII uplink 명령이
+      실제 운영 경로(`uplink_app_dispatch.c:43`)에서 항상 파싱 실패**하고 있었음
+      (조용히 `ErrCounter`만 증가, `ProcessUplink` 자체가 호출 안 됨). 흥미롭게도
+      동일 로직이 중복 구현된 `lora_tdm_app_utils.c::ProcessUpFrame`에는 이미
+      과거에 동일 버그가 발견되어 retry-fallback으로 수정돼 있었으나
+      (`uplink_app_utils.c::ParseLoRaFrame`으로는 전파 안 됨) — 두 함수가 같은
+      파싱 로직을 독립적으로 중복 구현하고 있다는 것 자체도 향후 통합 검토 대상.
+      수정은 sscanf 기반 파싱을 수동 콤마-분리 방식으로 교체(모든 필드의 0글자
+      케이스를 일반적으로 처리). `uplink_app_utils` UT 102/102 PASS(`ParseLoRaFrame`
+      14/14 포함), `uplink_app`(8/8)·`uplink_app_cmds`(91/91)·`uplink_app_dispatch`
+      (13/13) 회귀 없음. 아직 커밋/Pi 배포 전.

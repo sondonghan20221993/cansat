@@ -626,16 +626,52 @@ bool UPLINK_APP_ParseLoRaFrame(const char *Line, UPLINK_APP_ProcessUplinkCmd_t *
     uint16 PayloadLen;
     uint16 HexLen;
     uint16 i;
+    const char *FieldStart[6];
+    size_t      FieldLen[6];
+    char       *FieldBuf[6];
+    size_t      FieldBufSize[6];
+    const char *Cursor;
+    int         f;
 
     if (Line[0] != 'U' || Line[1] != 'P' || Line[2] != ',')
     {
         return false;
     }
 
-    if (sscanf(Line + 3, "%7[^,],%7[^,],%7[^,],%7[^,],%[^,],%7s",
-               VersionStr, ClassStr, SeqStr, FlagsStr, PayloadHex, CrcStr) != 6)
+    /* Manual comma-split instead of sscanf("%[^,]", ...): the %[...] scanf
+     * conversion cannot match a zero-length field, so any valid frame with
+     * an empty payload-hex field (PayloadLength == 0) was silently rejected
+     * here on every real uplink command that carried no payload. */
+    Cursor = Line + 3;
+    for (f = 0; f < 5; f++)
     {
-        return false;
+        const char *Comma = strchr(Cursor, ',');
+        if (Comma == NULL)
+        {
+            return false;
+        }
+        FieldStart[f] = Cursor;
+        FieldLen[f]   = (size_t)(Comma - Cursor);
+        Cursor        = Comma + 1;
+    }
+    FieldStart[5] = Cursor;
+    FieldLen[5]   = strlen(Cursor);
+
+    FieldBuf[0] = VersionStr; FieldBufSize[0] = sizeof(VersionStr);
+    FieldBuf[1] = ClassStr;   FieldBufSize[1] = sizeof(ClassStr);
+    FieldBuf[2] = SeqStr;     FieldBufSize[2] = sizeof(SeqStr);
+    FieldBuf[3] = FlagsStr;   FieldBufSize[3] = sizeof(FlagsStr);
+    FieldBuf[4] = PayloadHex; FieldBufSize[4] = sizeof(PayloadHex);
+    FieldBuf[5] = CrcStr;     FieldBufSize[5] = sizeof(CrcStr);
+
+    for (f = 0; f < 6; f++)
+    {
+        if (FieldLen[f] >= FieldBufSize[f])
+        {
+            return false;
+        }
+        memcpy(FieldBuf[f], FieldStart[f], FieldLen[f]);
+        FieldBuf[f][FieldLen[f]] = '\0';
     }
 
     Version      = (uint8)strtoul(VersionStr, NULL, 0);
