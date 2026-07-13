@@ -20,7 +20,12 @@ ssh sdh2983@192.168.50.65 'cd cFS_clean && <빌드 명령>'
 - [ ] `SysTime_*` 단위테스트 4종 PASS
 - [ ] 기존 회귀 없음 (전체 coveragetest 스위트)
 
-## Stage 1 — ACK keepalive 정상화 (v1 그대로, 설정 변경 없음)
+## Stage 1 — ACK keepalive 정상화 (v1 그대로, 설정 변경 없음) — ✅ 완료 (2026-07-13)
+
+**실측 결과** (2026-07-13 21:00~21:05, 1000ms 주기): 손실률 0.0%(352/352),
+`link_state` 175/176(99.4%) CONNECTED, ACK 송신 지연 mean 0.3~0.7ms/p95 0ms.
+성공 기준 3개 전부 충족. (`link_state=2` 1건 관측 — 전이 상태로 추정, 별도 확인 필요)
+
 
 **변경 범위**: openMCT `fc_serial_ws_server.py`만 (커밋 대기 중 — 코드는 완료).
 기체측 코드 변경 없음.
@@ -82,9 +87,18 @@ python3 tools/analyze_downlink_csv.py "<telemetry_logs 경로>/telemetry_YYYYMMD
 
 | 시도 | 관측 레이트(Hz) | 손실률(%) | RX p95(ms) | LinkState | 판정 |
 | --- | --- | --- | --- | --- | --- |
-| 2a | | | | | |
-| 2b | | | | | |
-| 2c | | | | | |
+| 2a | 1.0 (Stage 1 데이터 재사용, 1000ms) | 0.0 | 984~1032 (창 300ms 대비 초과, ⚠아래 참고) | 100%(99.4%) CONNECTED | ✅ PASS |
+| 2b | 2.0 (500ms) | 0.0 | 469~563 (창 150ms 대비 초과, 2a와 동일 비율) | 100% CONNECTED | ✅ PASS |
+| 2c | 2.5 (400ms) | 0.0 | 375~469 (창 100ms 대비 초과, 동일 비율 반복) | 99.7% CONNECTED | ✅ PASS |
+
+**Stage 2 전체 통과 — Stage 3(v2, 200ms/5Hz) 착수 조건 충족.**
+
+⚠ **RX p95가 RX_WINDOW_MS를 항상 3~4.7배 초과하는 패턴 반복** — 2a/2b/2c 전부 유사 비율로
+초과함. "RX창 내 처리시간 초과"가 아니라 `_rx_total_ms` 지표 자체가 다른 걸 재는(예: 동일
+source 간 간격) 것으로 추정 — 손실률엔 영향 없었으나 Stage 3 전 지표 정의 재확인 필요.
+
+⚠ **`link_state=2` 값이 2a/2c에서 각 1건씩 관측** — 전이 상태로 추정되나 의미 미확인,
+`lora_tdm_app`의 LinkState enum 정의 확인 필요 (Stage 3 착수 전 참고 사항, 게이트 아님).
 
 ## Stage 3 — v2 바이너리 전환 (Stage 2 성공 시에만 착수)
 
@@ -103,4 +117,7 @@ python3 tools/analyze_downlink_csv.py "<telemetry_logs 경로>/telemetry_YYYYMMD
 
 | 날짜 | 단계 | 결과 | 비고 |
 | --- | --- | --- | --- |
-| | | | |
+| 2026-07-13 21:00 | Stage 1 | ✅ PASS | 손실률 0%, LinkState 99.4% CONNECTED |
+| 2026-07-13 21:00~21:05 | Stage 2a (기준선, 1000ms) | ✅ PASS | Stage 1 데이터 재사용 |
+| 2026-07-13 21:20 | Stage 2b (500ms/150ms/6) | ✅ PASS | 손실률 0%, RX p95 초과는 2a와 동일 비율(지표 정의 이슈로 추정) |
+| 2026-07-13 21:29~21:34 | Stage 2c (400ms/100ms/8) | ✅ PASS | 손실률 0%, LinkState 99.7% CONNECTED — Stage 2 전체 통과, Stage 3 착수 조건 충족 |
