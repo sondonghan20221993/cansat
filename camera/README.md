@@ -119,11 +119,20 @@ ssh root@192.168.1.10 "cli -s .encoder.codec h264"
 ### 결과
 - ✅ **P0 영상 링크**: WFB-ng 채널 161(5.8GHz)에서 fpv4win 수신
 - ✅ **P1 대역분리**: 채널 161로 LoRa(2.4GHz)와 비중첩 확인
-- ✅ **P3 설정 적용**: 
-  - OSD 활성화 (msposd + majestic 외부 OSD)
-  - 녹화 활성화
-  - RTSP 활성화
-- ✅ **OSD 타임스탐프**: fpv4win에서 화면 좌상단(16,16)에 번인 표시됨
+- ✅ **P3 설정 적용**: OSD 활성화(라이브 화면), 녹화 활성화, RTSP 활성화
+- ⚠️ **fpv4win 녹화(mp4) 자체 지원 확인**: GitHub 공식 문서엔 "Todo"로 나오지만 실제
+  0.0.5-beta 바이너리에는 `startRecord`/`stopRecord` 구현돼 있음 (우측하단 버튼).
+  저장 경로: `fpv4win.exe`와 같은 폴더 `mp4/<epoch_ms>.mp4`
+- ❌ **OSD가 녹화 파일엔 안 찍힘**: 라이브 화면엔 타임스탬프 보이는데 저장된 mp4엔 없음.
+  프레임 추출(ffprobe+ffmpeg)로 확인 — majestic의 `.osd.external` burn-in이 fpv4win이
+  받는 WFB-ng RTP 스트림엔 반영 안 되고, 라이브 화면의 타임스탬프는 fpv4win 자체 UI
+  오버레이로 추정. **채택한 대안(§아래 "시각 매칭" 참조)**: OSD 번인 포기, 착륙 후
+  영상 파일명(PC epoch ms)과 텔레메트리 로그(openMCT CSV, `datetime.now().isoformat()`
+  절대시각 이미 기록됨)를 매칭하는 사후 처리로 대체.
+- ⚠️ **1080p 해상도 화질 저하**: `cli -s .video0.size 1920x1080` 적용해도 실제 출력은
+  1472x816로 클램프되고 디코딩 손상(색 번짐) 발생. IMX415 센서 네이티브가 3040x2040라
+  1080p 설정 시 크롭/스케일링 문제가 있는 [OpenIPC 공식 이슈](https://github.com/OpenIPC/firmware/issues/1179)와
+  일치 — crop 파라미터까지 맞춰야 하는데 미해결 상태. **720p(`1280x720`)로 유지 권장**.
 
 ### 트러블슈팅
 
@@ -131,15 +140,21 @@ ssh root@192.168.1.10 "cli -s .encoder.codec h264"
 | --- | --- | --- |
 | HEVC(H265) 디코딩 에러 | fpv4win FFmpeg 미지원 | 코덱을 H264로 변경 |
 | H264 data partitioning 에러 | 카메라의 비표준 H264 변형 | (허용하고 진행, 영상 정상) |
-| OSD 미표시 | `.osd.external` 비활성화 | `cli -s .osd.external true` 및 externalAddress 설정 |
+| OSD 미표시(라이브) | `.osd.external` 비활성화 | `cli -s .osd.external true` 및 externalAddress 설정 |
 | msposd 미실행 | `/usr/bin/msposd_air.sh` 배포 실패 | SCP 대신 SSH stdin 파이프 사용 |
+| 재부팅 후 OSD/msposd 재설정 필요 | `cli -s`가 즉시 적용되나 재부팅 시 msposd 자동시작 훅 없음(TODO) | 재부팅마다 §4 재실행 필요, 부팅 스크립트 등록은 미해결 |
+| 녹화 파일에 OSD 안 찍힘 | fpv4win 녹화가 burn-in 이전 스트림을 저장하는 것으로 추정 | OSD 번인 포기, 로그 매칭 방식 채택 |
+| 1080p 화질 저하/손상 | IMX415 센서 크롭 미스매치 (OpenIPC 공식 이슈 #1179) | 720p 유지 |
 
 ### 주요 발견
 
 - **SCP 미지원**: OpenIPC sftp-server 없음 → SSH stdin 파이프로 파일 전달 필수
-- **코덱 호환성**: H265는 fpv4win FFmpeg에서 호환성 문제, H264 권장
-- **외부 OSD 필수**: msposd 배포만으로는 OSD 미표시, `.osd.external true` 필수
-- **카메라 재부팅**: 설정 적용 후 전원 껐다 켜야 안정화됨
+- **코덱 호환성**: H265는 fpv4win FFmpeg에서 호환성 문제, H264 권장 (단, H264도 완전하진 않음 — data partitioning 경고 존재)
+- **외부 OSD는 라이브 화면 전용**: 녹화 파일엔 반영 안 됨 — 녹화용 타임스탬프가 필요하면 카메라 SD카드 자체 녹화(진짜 burn-in 경로) 사용해야 함
+- **카메라 재부팅**: 설정 적용 후 전원 껐다 켜야 안정화되지만, msposd/OSD 설정은 재부팅마다 유실됨 (영구 적용 미해결)
+- **시각 매칭 방식 채택**: fpv4win 녹화 파일명(`<epoch_ms>.mp4`)과 openMCT 텔레메트리 CSV의
+  `timestamp`(ISO, PC 수신시각)가 둘 다 지상 PC의 절대시각 기준이라 별도 동기화 없이
+  사후 매칭 가능 — 매칭 스크립트는 아직 미작성(TODO)
 
 ## 주의
 
