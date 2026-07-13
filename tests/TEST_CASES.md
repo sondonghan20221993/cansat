@@ -878,6 +878,7 @@ Pi 실환경 동작은 불변** — env var는 테스트 전용이다.
 | **PyUnit (A)** | 없음 (헬스 로직은 상태 머신 — Python 동등 구현 불필요) | — | — | N/A |
 | **E2E (B)** | health state 전이 (FC timeout 시뮬레이션) | `test_cfs_core_health_e2e.py` (미작성) | HEALTH-E2E-001~005 | ❌ 미작성 |
 | **Runtime** | FC 분리 → health 1→2 전이, 재연결 시 복구 | Pi + FC 수동 테스트 | RT-HEALTH-001~002 | ✓ 확인됨 |
+| | uplink_app/lora_tdm_app HK timeout → 자동 재시작 (bridge와 동일 패턴 확장, 2026-07-13) | `tools/runtime_app_restart_test.sh <uplink_app\|lora_tdm_app>` — `CFE_ES_STOP_APP_CC`로 실제 정지시켜 HK 끊김 재현, journalctl에서 재시작 EID(15/16) + 재기동 확인 | RT-CORE-UPLINK-RESTART-001, RT-CORE-LORA-RESTART-001 | ⬜ 미실행 (실물 build/ 재빌드 + `sudo systemctl restart cfs.service`로 신규 로직 반영 후 실행 필요 — sudo 필요라 이 세션에서 미수행) |
 
 ---
 
