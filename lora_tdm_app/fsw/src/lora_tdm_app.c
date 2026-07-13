@@ -105,8 +105,6 @@ static uint32 GetTimeMs(void)
 
 static void RunRxWindow(void)
 {
-    char    Buf[LORA_TDM_APP_LINE_BUF_LEN];
-    uint16  BufLen = 0;
     ssize_t Rc;
     char    C;
     uint32  DeadlineMs;
@@ -149,16 +147,24 @@ static void RunRxWindow(void)
             break;
         }
 
-        if (BufLen < sizeof(Buf) - 1)
+        /* [[lora_tdm_serial_reopen_gap]] §11.1: 버퍼가 앱 데이터(RunRxWindow 호출 경계를
+         * 넘어 유지)라, 이번 창에서 개행이 안 와도 다음 창에서 이어받는다. */
+        if (LORA_TDM_APP_Data.RxLineBufLen < sizeof(LORA_TDM_APP_Data.RxLineBuf) - 1)
         {
-            Buf[BufLen++] = C;
+            LORA_TDM_APP_Data.RxLineBuf[LORA_TDM_APP_Data.RxLineBufLen++] = C;
+        }
+        else
+        {
+            /* 오버플로: 다음 개행까지 버리고 재동기화 (그렇지 않으면 잘못 이어붙은
+             * 줄이 영구적으로 계속 폐기됨). */
+            LORA_TDM_APP_Data.RxLineBufLen = 0;
         }
 
         if (C == '\n')
         {
-            Buf[BufLen] = '\0';
-            LORA_TDM_APP_ProcessRxLine(Buf, &LORA_TDM_APP_Data);
-            BufLen = 0;
+            LORA_TDM_APP_Data.RxLineBuf[LORA_TDM_APP_Data.RxLineBufLen] = '\0';
+            LORA_TDM_APP_ProcessRxLine(LORA_TDM_APP_Data.RxLineBuf, &LORA_TDM_APP_Data);
+            LORA_TDM_APP_Data.RxLineBufLen = 0;
         }
     }
 

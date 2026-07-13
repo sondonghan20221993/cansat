@@ -60,6 +60,12 @@ typedef struct
     /* Serial fd */
     int    LoRaFd;
 
+    /* RX line buffer — RX창(RunRxWindow) 호출 경계를 넘어 유지된다.
+     * [[lora_tdm_serial_reopen_gap]] 관련 §11.1: 이전엔 RunRxWindow() 지역 변수라
+     * 완성 안 된 줄(개행 미도달)이 창 경계에서 유실됐음 — 여기로 옮겨서 다음 창까지 보존. */
+    char   RxLineBuf[LORA_TDM_APP_LINE_BUF_LEN];
+    uint16 RxLineBufLen;
+
     /* SB */
     uint32           RunStatus;
     CFE_SB_PipeId_t  CommandPipe;
