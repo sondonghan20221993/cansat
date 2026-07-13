@@ -1,6 +1,26 @@
 # camera/ — RunCam WiFiLink V2 (OpenIPC) 연동 프로토타입
 
-상태: **프로토타입** (2026-07-13). 벤치에서 실기기 확인하며 `TODO(bench)` 항목을 채운다.
+상태: **프로토타입, 최소 동작 확인 완료** (2026-07-13). 기체 장착 상태에서 PC 이더넷 직결로
+설정 적용 및 영상/OSD 확인 완료. 벤치 미확인 항목은 `TODO(bench)`로 표시.
+
+## 최종 확정 설정값 (2026-07-13, 카메라 IP 192.168.1.10)
+
+| 항목 | 값 |
+| --- | --- |
+| `.video0.size` | `1920x1080` |
+| `.video0.fps` | `90` |
+| `.video0.bitrate` | `8192` |
+| `.video0.codec` | `h265` |
+| `.isp.antiFlickerFreq` | `60` |
+| `.osd.enabled` | `true` |
+| `.osd.external` | `true` |
+| `.osd.externalAddress` | `127.0.0.1:14551` |
+| `.records.enabled` | `true` |
+| `.rtsp.enabled` | `true` |
+| WFB-ng 채널 | `161` (5.8GHz) |
+
+⚠️ **재부팅 시 유실됨**: `cli -s`로 적용한 값 중 일부(특히 msposd 프로세스 자동시작)는
+재부팅하면 초기화됨 — 매 세션마다 §적용 순서 재실행 필요 (부팅 영구화는 미해결, 아래 주의 참조).
 
 ## 대상 하드웨어
 
@@ -129,10 +149,12 @@ ssh root@192.168.1.10 "cli -s .encoder.codec h264"
   오버레이로 추정. **채택한 대안(§아래 "시각 매칭" 참조)**: OSD 번인 포기, 착륙 후
   영상 파일명(PC epoch ms)과 텔레메트리 로그(openMCT CSV, `datetime.now().isoformat()`
   절대시각 이미 기록됨)를 매칭하는 사후 처리로 대체.
-- ⚠️ **1080p 해상도 화질 저하**: `cli -s .video0.size 1920x1080` 적용해도 실제 출력은
-  1472x816로 클램프되고 디코딩 손상(색 번짐) 발생. IMX415 센서 네이티브가 3040x2040라
-  1080p 설정 시 크롭/스케일링 문제가 있는 [OpenIPC 공식 이슈](https://github.com/OpenIPC/firmware/issues/1179)와
-  일치 — crop 파라미터까지 맞춰야 하는데 미해결 상태. **720p(`1280x720`)로 유지 권장**.
+- ✅ **1080p 화질 저하 원인 확인 및 해결**: 최초엔 `.video0.size`만 바꾸고 `.video0.fps`가
+  120에 고정된 채라 발생한 문제였음 — IMX415는 **1080p@90fps 또는 720p@120fps**만 지원
+  ([OpenIPC/firmware#1179](https://github.com/OpenIPC/firmware/issues/1179)와 동일 증상).
+  `fps 90` 먼저 맞추고 `size 1920x1080` 적용하니 해상도 정상화. 이후 나타난 깜빡임은
+  실내 형광등(60Hz)과 센서 안티플리커 주파수 불일치였고 `.isp.antiFlickerFreq 60` 설정으로 해소.
+  화면 가장자리가 휘어 보이는 것은 렌즈 FOV 160°(광각) 특성상 정상(왜곡 아님).
 
 ### 트러블슈팅
 
@@ -144,7 +166,9 @@ ssh root@192.168.1.10 "cli -s .encoder.codec h264"
 | msposd 미실행 | `/usr/bin/msposd_air.sh` 배포 실패 | SCP 대신 SSH stdin 파이프 사용 |
 | 재부팅 후 OSD/msposd 재설정 필요 | `cli -s`가 즉시 적용되나 재부팅 시 msposd 자동시작 훅 없음(TODO) | 재부팅마다 §4 재실행 필요, 부팅 스크립트 등록은 미해결 |
 | 녹화 파일에 OSD 안 찍힘 | fpv4win 녹화가 burn-in 이전 스트림을 저장하는 것으로 추정 | OSD 번인 포기, 로그 매칭 방식 채택 |
-| 1080p 화질 저하/손상 | IMX415 센서 크롭 미스매치 (OpenIPC 공식 이슈 #1179) | 720p 유지 |
+| 1080p 화질 저하/손상 | fps(120)와 해상도(1080p) 조합 불가 (IMX415는 1080p@90fps/720p@120fps만 지원) | fps부터 90으로 낮춘 후 size 1920x1080 적용 |
+| 1080p90 화면 깜빡임 | 실내 형광등(60Hz)과 안티플리커 주파수 불일치 | `cli -s .isp.antiFlickerFreq 60` |
+| 화면 가장자리 휘어 보임 | 렌즈 FOV 160° 광각 특성 (정상) | 조치 불필요 |
 
 ### 주요 발견
 
