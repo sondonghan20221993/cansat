@@ -362,24 +362,47 @@ static void MAVLINK_BRIDGE_APP_SendMissionCount(uint8 WpCount)
 
 static void MAVLINK_BRIDGE_APP_SendMissionItemInt(uint8 Seq)
 {
+    /* §13.1 실측 확인: ArduPilot은 MAV_FRAME_LOCAL_NED 미션 아이템을 거부한다
+     * (MISSION_ACK result=2 UNSUPPORTED_FRAME). MAVLINK_BRIDGE_APP_SendMissionItem
+     * (legacy 경로)과 동일하게 GLOBAL_RELATIVE_ALT + lat/lon 변환을 적용한다.
+     * MISSION_ITEM_INT는 lat/lon을 degE7 int32로 인코딩한다 (MISSION_ITEM의
+     * float degree와 다름) — mission_item_int_frame_gap 참조. */
     uint8 Payload[38];
-    int32 XE4;
-    int32 YE4;
+    float RefLatDeg;
+    float RefLonDeg;
+    float RefLatRad;
+    float DeltaLatDeg;
+    float DeltaLonDeg;
+    float WpLat;
+    float WpLon;
+    float WpAlt;
+    int32 LatE7;
+    int32 LonE7;
 
     memset(Payload, 0, sizeof(Payload));
 
-    XE4 = (int32)(MAVLINK_BRIDGE_APP_Data.MissionPendingX[Seq] * 10000.0f);
-    YE4 = (int32)(MAVLINK_BRIDGE_APP_Data.MissionPendingY[Seq] * 10000.0f);
+    RefLatDeg = (float)MAVLINK_BRIDGE_APP_RefLatE7 / 1e7f;
+    RefLonDeg = (float)MAVLINK_BRIDGE_APP_RefLonE7 / 1e7f;
+    RefLatRad = RefLatDeg * MAVLINK_DEG_TO_RAD;
 
-    MAVLINK_BRIDGE_APP_WriteU32LE(&Payload[16], (uint32)XE4);
-    MAVLINK_BRIDGE_APP_WriteU32LE(&Payload[20], (uint32)YE4);
-    /* Route payload uses altitude-positive convention; LOCAL_NED z is down, so negate */
-    MAVLINK_BRIDGE_APP_WriteFloatLE(&Payload[24], -MAVLINK_BRIDGE_APP_Data.MissionPendingZ[Seq]);
+    DeltaLatDeg = MAVLINK_BRIDGE_APP_Data.MissionPendingX[Seq] / MAVLINK_EARTH_RADIUS_M * MAVLINK_RAD_TO_DEG;
+    DeltaLonDeg = MAVLINK_BRIDGE_APP_Data.MissionPendingY[Seq] / (MAVLINK_EARTH_RADIUS_M * cosf(RefLatRad)) * MAVLINK_RAD_TO_DEG;
+
+    WpLat = RefLatDeg + DeltaLatDeg;
+    WpLon = RefLonDeg + DeltaLonDeg;
+    WpAlt = MAVLINK_BRIDGE_APP_Data.MissionPendingZ[Seq];
+
+    LatE7 = (int32)(WpLat * 1e7f);
+    LonE7 = (int32)(WpLon * 1e7f);
+
+    MAVLINK_BRIDGE_APP_WriteU32LE(&Payload[16], (uint32)LatE7);
+    MAVLINK_BRIDGE_APP_WriteU32LE(&Payload[20], (uint32)LonE7);
+    MAVLINK_BRIDGE_APP_WriteFloatLE(&Payload[24], WpAlt);
     MAVLINK_BRIDGE_APP_WriteU16LE(&Payload[28], (uint16)Seq);
     MAVLINK_BRIDGE_APP_WriteU16LE(&Payload[30], (uint16)MAVLINK_MAV_CMD_NAV_WAYPOINT);
     Payload[32] = MAVLINK_BRIDGE_APP_Data.TargetSystemId;
     Payload[33] = MAVLINK_BRIDGE_APP_Data.TargetComponentId;
-    Payload[34] = (uint8)MAVLINK_MAV_FRAME_LOCAL_NED;
+    Payload[34] = (uint8)MAVLINK_MAV_FRAME_GLOBAL_RELATIVE_ALT;
     Payload[36] = 1U; /* autocontinue */
     Payload[37] = (uint8)MAVLINK_MISSION_TYPE_MISSION;
 
@@ -1503,18 +1526,22 @@ static void MAVLINK_BRIDGE_APP_HandleFrameComplete(uint32 RxTimestampMs, uint8 C
             MAVLINK_BRIDGE_APP_ComputeFrameCrc(&MAVLINK_BRIDGE_APP_Parser, MAVLINK_MISSION_ITEM_INT_CRC_EXTRA);
         if (ComputedCrc == ReceivedCrc && MAVLINK_BRIDGE_APP_Parser.PayloadLen >= 32U)
         {
-            int32  X_E4 = MAVLINK_BRIDGE_APP_ReadI32LE(&MAVLINK_BRIDGE_APP_Parser.Payload[16]);
-            int32  Y_E4 = MAVLINK_BRIDGE_APP_ReadI32LE(&MAVLINK_BRIDGE_APP_Parser.Payload[20]);
-            float  Z_m  = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[24]);
-            uint16 Seq  = MAVLINK_BRIDGE_APP_ReadU16LE(&MAVLINK_BRIDGE_APP_Parser.Payload[28]);
-            uint16 Cmd  = MAVLINK_BRIDGE_APP_ReadU16LE(&MAVLINK_BRIDGE_APP_Parser.Payload[30]);
+            /* 업로드가 GLOBAL_RELATIVE_ALT + lat/lon degE7로 전환됨에 따라, FC가 그대로
+             * 되돌려주는 재조회 응답도 lat/lon degE7이다 (기존 local-meter*E4 가정은
+             * mission_item_int_frame_gap 수정 전 인코딩 기준이었음 — 진단 로그 표기만
+             * 정정, 이 응답값은 캐시 상태에 반영되지 않음). */
+            int32  LatE7 = MAVLINK_BRIDGE_APP_ReadI32LE(&MAVLINK_BRIDGE_APP_Parser.Payload[16]);
+            int32  LonE7 = MAVLINK_BRIDGE_APP_ReadI32LE(&MAVLINK_BRIDGE_APP_Parser.Payload[20]);
+            float  Alt_m = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[24]);
+            uint16 Seq   = MAVLINK_BRIDGE_APP_ReadU16LE(&MAVLINK_BRIDGE_APP_Parser.Payload[28]);
+            uint16 Cmd   = MAVLINK_BRIDGE_APP_ReadU16LE(&MAVLINK_BRIDGE_APP_Parser.Payload[30]);
 
             CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_MISSION_DOWNLOAD_INF_EID, CFE_EVS_EventType_INFORMATION,
-                              "MAVLINK_BRIDGE_APP: [wp %u] x=%.2f y=%.2f z=%.2f cmd=%u",
+                              "MAVLINK_BRIDGE_APP: [wp %u] lat=%.7f lon=%.7f alt=%.2f cmd=%u",
                               (unsigned int)Seq,
-                              (double)(X_E4 / 10000.0f),
-                              (double)(Y_E4 / 10000.0f),
-                              (double)Z_m,
+                              (double)(LatE7 / 1e7f),
+                              (double)(LonE7 / 1e7f),
+                              (double)Alt_m,
                               (unsigned int)Cmd);
 
             MAVLINK_BRIDGE_APP_Data.MissionDownloadSeq++;
