@@ -19,8 +19,14 @@
 | `.rtsp.enabled` | `true` |
 | WFB-ng 채널 | `161` (5.8GHz) |
 
-⚠️ **재부팅 시 유실됨**: `cli -s`로 적용한 값 중 일부(특히 msposd 프로세스 자동시작)는
-재부팅하면 초기화됨 — 매 세션마다 §적용 순서 재실행 필요 (부팅 영구화는 미해결, 아래 주의 참조).
+**재부팅 후 영구성**:
+- ✅ majestic 설정(위 표 전체)은 `/etc/majestic.yaml`에 저장되어 재부팅해도 유지됨
+- ❌ **msposd 프로세스는 유지 안 됨** — 부팅 자동시작 훅 미등록(TODO), 재부팅마다 아래 재실행 필요:
+  ```powershell
+  Get-Content \\wsl$\Ubuntu\home\sdh2983\cfs-telemetry-app\camera\msposd_air.sh | ssh root@192.168.1.10 "cat > /usr/bin/msposd_air.sh"
+  ssh root@192.168.1.10 "chmod +x /usr/bin/msposd_air.sh; /usr/bin/msposd_air.sh &"
+  ```
+  (majestic의 `.osd.external: true`는 남아있어도 msposd가 안 돌면 OSD 데이터 소스가 없어 라이브 화면에 타임스탬프 안 뜸)
 
 ## 대상 하드웨어
 
@@ -47,6 +53,7 @@ Pi ──이더넷──▶ WiFiLink (chrony NTP: Pi 시각 → 카메라 시계
 | `apply_camera_config.sh` | 위 설정을 ssh/scp로 카메라에 적용 | 벤치 PC/Pi에서 실행 |
 | `verify_camera.sh` | 적용 후 검증 (ping, 스냅샷, RTSP, msposd 프로세스) | 벤치 PC/Pi에서 실행 |
 | `pi_chrony_camera.conf` | Pi를 카메라의 NTP 서버로 (§시각 동기) | Pi `/etc/chrony/conf.d/` |
+| `correlate_video_telemetry.py` | fpv4win 녹화(mp4)와 openMCT 텔레메트리 CSV를 절대시각으로 매칭 | 지상 PC, 착륙 후 실행 |
 
 ## 페이즈별 목표 및 확인 코드
 
@@ -178,7 +185,12 @@ ssh root@192.168.1.10 "cli -s .encoder.codec h264"
 - **카메라 재부팅**: 설정 적용 후 전원 껐다 켜야 안정화되지만, msposd/OSD 설정은 재부팅마다 유실됨 (영구 적용 미해결)
 - **시각 매칭 방식 채택**: fpv4win 녹화 파일명(`<epoch_ms>.mp4`)과 openMCT 텔레메트리 CSV의
   `timestamp`(ISO, PC 수신시각)가 둘 다 지상 PC의 절대시각 기준이라 별도 동기화 없이
-  사후 매칭 가능 — 매칭 스크립트는 아직 미작성(TODO)
+  사후 매칭 가능. 전제: fpv4win과 `fc_serial_ws_server.py`가 같은 PC(같은 시계)에서 실행됨
+  (다른 PC면 두 PC 간 NTP 동기화 필요, TODO(bench) 확인).
+  ```bash
+  python3 camera/correlate_video_telemetry.py <video.mp4> <telemetry.csv> [--out matched.csv]
+  ```
+  영상 구간에 속하는 텔레메트리 행만 추출, 각 행에 `video_offset_sec`(영상 재생 시점) 추가.
 
 ## 주의
 
