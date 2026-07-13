@@ -63,6 +63,84 @@ Pi ──이더넷──▶ WiFiLink (chrony NTP: Pi 시각 → 카메라 시계
 - WiFiLink 설정 위키: https://github.com/OpenIPC/wiki/blob/master/en/fpv-runcam-wifilink-openipc.md
 - 하드웨어 문서: https://docs.openipc.org/hardware/runcam/vtx/runcam-wifilink-v2/
 
+## 실제 적용 결과 (2026-07-13)
+
+### 환경
+- 카메라: 기체 장착 상태, FC↔카메라 UART 배선 완료
+- 지상국: Windows PC + fpv4win (채널 161, H264)
+- 네트워크: PC 이더넷 직결 (192.168.1.x 고정 IP)
+
+### 적용 단계 및 명령어
+
+**1. PC 네트워크 설정**
+```powershell
+# Windows PowerShell (관리자)
+New-NetIPAddress -InterfaceAlias "이더넷" -IPAddress 192.168.1.50 -PrefixLength 24
+ping 192.168.1.10  # 카메라 핑 응답 확인
+```
+
+**2. 카메라 SSH 접속 및 설정**
+```powershell
+ssh root@192.168.1.10  # 비밀번호: 12345
+
+# CLI로 설정 적용 (카메라 쉘에서)
+cli -s .osd.enabled true
+cli -s .osd.template "%d.%m.%Y %H:%M:%S"
+cli -s .osd.posX 16
+cli -s .osd.posY 16
+cli -s .records.enabled true
+cli -s .records.split 60
+cli -s .records.maxUsage 90
+cli -s .rtsp.enabled true
+```
+
+**3. msposd 배포 (SSH 파이프)**
+```powershell
+# PowerShell에서
+Get-Content \\wsl$\Ubuntu\home\sdh2983\cfs-telemetry-app\camera\msposd_air.sh | ssh root@192.168.1.10 "cat > /usr/bin/msposd_air.sh"
+ssh root@192.168.1.10 "chmod +x /usr/bin/msposd_air.sh && killall -1 majestic"
+```
+
+**4. 외부 OSD 활성화 (msposd↔majestic 연동)**
+```powershell
+ssh root@192.168.1.10 "cli -s .osd.external true"
+ssh root@192.168.1.10 "cli -s .osd.externalAddress 127.0.0.1:14551"
+ssh root@192.168.1.10 "killall -1 majestic"
+```
+
+**5. 코덱 설정 (H264 사용, HEVC 호환성 문제 회피)**
+```powershell
+ssh root@192.168.1.10 "cli -s .encoder.codec h264"
+# fpv4win에서도 Codec → H264로 변경
+```
+
+**6. 카메라 재부팅 후 fpv4win 재연결**
+
+### 결과
+- ✅ **P0 영상 링크**: WFB-ng 채널 161(5.8GHz)에서 fpv4win 수신
+- ✅ **P1 대역분리**: 채널 161로 LoRa(2.4GHz)와 비중첩 확인
+- ✅ **P3 설정 적용**: 
+  - OSD 활성화 (msposd + majestic 외부 OSD)
+  - 녹화 활성화
+  - RTSP 활성화
+- ✅ **OSD 타임스탐프**: fpv4win에서 화면 좌상단(16,16)에 번인 표시됨
+
+### 트러블슈팅
+
+| 증상 | 원인 | 해결 |
+| --- | --- | --- |
+| HEVC(H265) 디코딩 에러 | fpv4win FFmpeg 미지원 | 코덱을 H264로 변경 |
+| H264 data partitioning 에러 | 카메라의 비표준 H264 변형 | (허용하고 진행, 영상 정상) |
+| OSD 미표시 | `.osd.external` 비활성화 | `cli -s .osd.external true` 및 externalAddress 설정 |
+| msposd 미실행 | `/usr/bin/msposd_air.sh` 배포 실패 | SCP 대신 SSH stdin 파이프 사용 |
+
+### 주요 발견
+
+- **SCP 미지원**: OpenIPC sftp-server 없음 → SSH stdin 파이프로 파일 전달 필수
+- **코덱 호환성**: H265는 fpv4win FFmpeg에서 호환성 문제, H264 권장
+- **외부 OSD 필수**: msposd 배포만으로는 OSD 미표시, `.osd.external true` 필수
+- **카메라 재부팅**: 설정 적용 후 전원 껐다 켜야 안정화됨
+
 ## 주의
 
 - RunCam 공장 이미지에는 자체 `user.ini`(부팅 시 설정 덮어쓰기)가 있음 — majestic.yaml 직접
