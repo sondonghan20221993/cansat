@@ -446,9 +446,110 @@ void Test_UpdateCacheFromMsg_EkfStatus(void)
     UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.PacketType, LORA_TDM_APP_FC_STATE_PACKET_TYPE);
 }
 
+/* ---- BuildDl2Frame — lora_protocol_v2_spec.md §4 ---- */
+
+static uint16 GetU16LE(const uint8 *P)
+{
+    return (uint16)(P[0] | ((uint16)P[1] << 8));
+}
+
+static int16 GetI16LE(const uint8 *P)
+{
+    return (int16)GetU16LE(P);
+}
+
+static int32 GetI32LE(const uint8 *P)
+{
+    uint32 V = (uint32)P[0] | ((uint32)P[1] << 8) | ((uint32)P[2] << 16) | ((uint32)P[3] << 24);
+    return (int32)V;
+}
+
+void Test_BuildDl2Frame_Basic(void)
+{
+    uint8  Buf[LORA_TDM_APP_DL2_FRAME_LEN];
+    int    Len;
+    uint16 ExpectedCrc;
+
+    memset(&LORA_TDM_APP_Data, 0, sizeof(LORA_TDM_APP_Data));
+    LORA_TDM_APP_Data.DownlinkSeq              = 7;
+    LORA_TDM_APP_Data.PendingUplinkFeedback    = LORA_TDM_APP_UPLINK_FB_OK;
+    LORA_TDM_APP_Data.FcState.TimestampMs      = 123456;
+    LORA_TDM_APP_Data.FcState.RollRad          = 0.1f;
+    LORA_TDM_APP_Data.FcState.PitchRad         = -0.2f;
+    LORA_TDM_APP_Data.FcState.YawRad           = 3.0f;
+    LORA_TDM_APP_Data.FcState.PosX             = 1.5f;
+    LORA_TDM_APP_Data.FcState.PosY             = -2.5f;
+    LORA_TDM_APP_Data.FcState.PosZ             = 0.25f;
+    LORA_TDM_APP_Data.FcState.VelX             = 0.5f;
+    LORA_TDM_APP_Data.FcState.VelY             = -0.6f;
+    LORA_TDM_APP_Data.FcState.VelZ             = 0.0f;
+    LORA_TDM_APP_Data.FcState.LatE7            = 374530000;
+    LORA_TDM_APP_Data.FcState.LonE7            = -1269850000;
+    LORA_TDM_APP_Data.FcState.AltMm            = 50000;
+    LORA_TDM_APP_Data.FcState.GpsFix           = 3;
+    LORA_TDM_APP_Data.FcState.SatellitesVisible = 11;
+    LORA_TDM_APP_Data.SystemHealth.SystemHealthState = 1;
+    LORA_TDM_APP_Data.SystemHealth.FaultCode         = 0;
+    LORA_TDM_APP_Data.LinkState                      = 1;
+
+    Len = LORA_TDM_APP_BuildDl2Frame(Buf, sizeof(Buf), &LORA_TDM_APP_Data);
+
+    UtAssert_INT32_EQ(Len, (int)LORA_TDM_APP_DL2_FRAME_LEN);
+    UtAssert_INT32_EQ(Buf[0], LORA_TDM_APP_DL2_MAGIC);
+    UtAssert_INT32_EQ(Buf[1], LORA_TDM_APP_DL2_LEN_FIELD);
+    UtAssert_INT32_EQ(GetU16LE(&Buf[2]), 7);
+    UtAssert_INT32_EQ(Buf[4], 0); /* flags: saturation 없음 */
+    UtAssert_INT32_EQ(Buf[5], LORA_TDM_APP_UPLINK_FB_OK);
+    UtAssert_INT32_EQ(GetI32LE(&Buf[6]), 123456); /* ts (FcState.TimestampMs) */
+    UtAssert_INT32_EQ(GetI16LE(&Buf[10]), 1000);   /* roll 0.1rad*1e4 */
+    UtAssert_INT32_EQ(GetI16LE(&Buf[12]), -2000);  /* pitch -0.2rad*1e4 */
+    UtAssert_INT32_EQ(GetI16LE(&Buf[16]), 150);    /* x 1.5m -> 150cm */
+    UtAssert_INT32_EQ(GetI16LE(&Buf[18]), -250);   /* y -2.5m -> -250cm */
+    UtAssert_INT32_EQ(GetI32LE(&Buf[28]), 374530000);
+    UtAssert_INT32_EQ(GetI32LE(&Buf[32]), -1269850000);
+    UtAssert_INT32_EQ(GetI32LE(&Buf[36]), 50000);
+    UtAssert_INT32_EQ(Buf[40], 3);  /* fix */
+    UtAssert_INT32_EQ(Buf[41], 11); /* sats */
+    UtAssert_INT32_EQ(Buf[42], 1);  /* health */
+    UtAssert_INT32_EQ(Buf[44], 1);  /* linkstate */
+
+    ExpectedCrc = LORA_TDM_APP_Crc16(Buf, LORA_TDM_APP_DL2_LEN_FIELD);
+    UtAssert_INT32_EQ(GetU16LE(&Buf[LORA_TDM_APP_DL2_LEN_FIELD]), ExpectedCrc);
+}
+
+/* 위치가 ±327.67m를 초과하면 clamp + flags bit1(0x02) 세팅 — §4.1 */
+void Test_BuildDl2Frame_PositionSaturation(void)
+{
+    uint8 Buf[LORA_TDM_APP_DL2_FRAME_LEN];
+    int   Len;
+
+    memset(&LORA_TDM_APP_Data, 0, sizeof(LORA_TDM_APP_Data));
+    LORA_TDM_APP_Data.FcState.PosX = 5000.0f; /* 초과 */
+
+    Len = LORA_TDM_APP_BuildDl2Frame(Buf, sizeof(Buf), &LORA_TDM_APP_Data);
+
+    UtAssert_INT32_EQ(Len, (int)LORA_TDM_APP_DL2_FRAME_LEN);
+    UtAssert_INT32_EQ(Buf[4], 0x02); /* flags bit1 */
+    UtAssert_INT32_EQ(GetI16LE(&Buf[16]), 32767); /* clamp */
+}
+
+void Test_BuildDl2Frame_BufferTooSmall(void)
+{
+    uint8 Buf[LORA_TDM_APP_DL2_FRAME_LEN - 1];
+    int   Len;
+
+    memset(&LORA_TDM_APP_Data, 0, sizeof(LORA_TDM_APP_Data));
+    Len = LORA_TDM_APP_BuildDl2Frame(Buf, sizeof(Buf), &LORA_TDM_APP_Data);
+
+    UtAssert_True(Len < 0, "BufLen 부족 시 음수 반환");
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(Crc16_KnownVector);
+    ADD_TEST(BuildDl2Frame_Basic);
+    ADD_TEST(BuildDl2Frame_PositionSaturation);
+    ADD_TEST(BuildDl2Frame_BufferTooSmall);
     ADD_TEST(ParseAckFrame_Valid);
     ADD_TEST(ParseAckFrame_ZeroSeq);
     ADD_TEST(ParseAckFrame_WrongPrefix);

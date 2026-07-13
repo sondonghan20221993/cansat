@@ -103,6 +103,116 @@ int LORA_TDM_APP_BuildFcDownlinkLine(char *Buf, size_t BufLen, const LORA_TDM_AP
     return Len;
 }
 
+/* ---- DL2 binary frame helpers (little-endian packing, portable) ---- */
+
+static void PutU16LE(uint8 *P, uint16 V)
+{
+    P[0] = (uint8)(V & 0xFFu);
+    P[1] = (uint8)((V >> 8) & 0xFFu);
+}
+
+static void PutI16LE(uint8 *P, int16 V)
+{
+    PutU16LE(P, (uint16)V);
+}
+
+static void PutU32LE(uint8 *P, uint32 V)
+{
+    P[0] = (uint8)(V & 0xFFu);
+    P[1] = (uint8)((V >> 8) & 0xFFu);
+    P[2] = (uint8)((V >> 16) & 0xFFu);
+    P[3] = (uint8)((V >> 24) & 0xFFu);
+}
+
+static void PutI32LE(uint8 *P, int32 V)
+{
+    PutU32LE(P, (uint32)V);
+}
+
+/* rad -> i16(rad*1e4), 범위 방어적 clamp (스펙상 각도 saturation 플래그는 정의 안 함) */
+static int16 ScaleRadToI16(float Rad)
+{
+    double V = (double)Rad * 10000.0;
+    if (V > 32767.0)
+    {
+        V = 32767.0;
+    }
+    else if (V < -32768.0)
+    {
+        V = -32768.0;
+    }
+    return (int16)V;
+}
+
+/* m 또는 m/s -> i16(값*100 = cm 또는 cm/s), §4.1 saturation: 초과 시 clamp+플래그 요청 */
+static int16 ScaleMeterToI16Cm(float MetersVal, bool *Saturated)
+{
+    double Cm = (double)MetersVal * 100.0;
+
+    if (Cm > 32767.0)
+    {
+        Cm = 32767.0;
+        *Saturated = true;
+    }
+    else if (Cm < -32768.0)
+    {
+        Cm = -32768.0;
+        *Saturated = true;
+    }
+    return (int16)Cm;
+}
+
+/* ---- Build DL2 frame (v2 바이너리 다운링크) — lora_protocol_v2_spec.md §4 ----
+ * SysTime 확장 블록(§4.2) 미포함 — flags bit0 항상 0, 기본 47B 고정 길이. */
+int LORA_TDM_APP_BuildDl2Frame(uint8 *Buf, size_t BufLen, const LORA_TDM_APP_Data_t *AppData)
+{
+    uint8  Flags = 0;
+    bool   Saturated = false;
+    uint16 Crc;
+
+    if (Buf == NULL || AppData == NULL || BufLen < LORA_TDM_APP_DL2_FRAME_LEN)
+    {
+        return -1;
+    }
+
+    Buf[0] = (uint8)LORA_TDM_APP_DL2_MAGIC;
+    Buf[1] = (uint8)LORA_TDM_APP_DL2_LEN_FIELD;
+    PutU16LE(&Buf[2], (uint16)AppData->DownlinkSeq);
+    /* Buf[4] flags — 아래서 saturation 확인 후 채움 */
+    Buf[5] = (uint8)AppData->PendingUplinkFeedback;
+    PutU32LE(&Buf[6], AppData->FcState.TimestampMs);
+
+    PutI16LE(&Buf[10], ScaleRadToI16(AppData->FcState.RollRad));
+    PutI16LE(&Buf[12], ScaleRadToI16(AppData->FcState.PitchRad));
+    PutI16LE(&Buf[14], ScaleRadToI16(AppData->FcState.YawRad));
+
+    PutI16LE(&Buf[16], ScaleMeterToI16Cm(AppData->FcState.PosX, &Saturated));
+    PutI16LE(&Buf[18], ScaleMeterToI16Cm(AppData->FcState.PosY, &Saturated));
+    PutI16LE(&Buf[20], ScaleMeterToI16Cm(AppData->FcState.PosZ, &Saturated));
+
+    PutI16LE(&Buf[22], ScaleMeterToI16Cm(AppData->FcState.VelX, &Saturated));
+    PutI16LE(&Buf[24], ScaleMeterToI16Cm(AppData->FcState.VelY, &Saturated));
+    PutI16LE(&Buf[26], ScaleMeterToI16Cm(AppData->FcState.VelZ, &Saturated));
+
+    PutI32LE(&Buf[28], AppData->FcState.LatE7);
+    PutI32LE(&Buf[32], AppData->FcState.LonE7);
+    PutI32LE(&Buf[36], AppData->FcState.AltMm);
+
+    Buf[40] = AppData->FcState.GpsFix;
+    Buf[41] = AppData->FcState.SatellitesVisible;
+    Buf[42] = AppData->SystemHealth.SystemHealthState;
+    Buf[43] = AppData->SystemHealth.FaultCode;
+    Buf[44] = AppData->LinkState;
+
+    Flags |= Saturated ? 0x02u : 0x00u;
+    Buf[4] = Flags;
+
+    Crc = LORA_TDM_APP_Crc16(Buf, LORA_TDM_APP_DL2_LEN_FIELD);
+    PutU16LE(&Buf[LORA_TDM_APP_DL2_LEN_FIELD], Crc);
+
+    return (int)LORA_TDM_APP_DL2_FRAME_LEN;
+}
+
 /* ---- Build SH downlink line ---- */
 /*
  * Format: SH,<seq>,<ts>,<state>,<fault>,<linkstate>,<ufb>\n
