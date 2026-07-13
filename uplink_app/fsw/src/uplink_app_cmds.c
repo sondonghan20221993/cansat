@@ -162,6 +162,17 @@ void UPLINK_APP_ProcessUplink(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
                        Cmd->CommandClass == UPLINK_APP_CLASS_CONFIG);
         }
 
+        /* 명령 자체에 실린 강제 플래그(무선으로 실제 온 값, 컴파일타임 기본값 아님) —
+         * 지상에서 매번 명시적으로 세워야 하고 통과될 때마다 이벤트가 남는다. */
+        if (Blocked && (Cmd->Flags & UPLINK_APP_FORCE_FLAG) != 0U)
+        {
+            CFE_EVS_SendEvent(UPLINK_APP_STATE_BLOCK_EID, CFE_EVS_EventType_INFORMATION,
+                              "UPLINK_APP: FORCED THROUGH health gate (state=%u class=%u seq=%u)",
+                              (unsigned int)State, (unsigned int)Cmd->CommandClass,
+                              (unsigned int)Cmd->Sequence);
+            Blocked = false;
+        }
+
         if (Blocked)
         {
             UPLINK_APP_Data.ErrCounter++;

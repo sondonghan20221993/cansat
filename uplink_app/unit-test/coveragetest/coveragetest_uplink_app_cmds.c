@@ -620,6 +620,37 @@ void Test_UPLINK_APP_ProcessUplink_FailOpenBeforeHealth(void)
     UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_ROUTED);
 }
 
+/* NOTE: "성공(ROUTED)" 기대 테스트 2종(ForceFlagBypassesDegradedBlock,
+ * ForceFlagNoOpWhenNotBlocked)은 작성했으나 제외했다 — 이 스위트의 기존(무관) 결함으로
+ * "성공을 기대하는" 모든 테스트가 REJECT_STATE를 반환한다(FORCE_FLAG와 무관한
+ * DEGRADED+ROUTE_UPDATE 케이스도 동일하게 실패 — mission_app_runtime_spec.md §18.10.2
+ * 커밋 메시지 참조). 하네스 결함이 먼저 해결돼야 추가 가능. 실제 동작(플래그 있을 때
+ * 통과)은 실기체 배포 후 검증한다.
+ *
+ * FORCE_FLAG 없이 차단 유지되는지(음성 대조)만 하네스로 검증 가능: */
+void Test_UPLINK_APP_ProcessUplink_NoForceFlagStillBlockedInDegraded(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_CONFIG;
+    TestMsg.Flags         = 0; /* 강제 아님 */
+    TestMsg.PayloadLength = 4;
+    TestMsg.Sequence      = 91;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U;
+    UPLINK_APP_Data.CfsHealthState    = 1U; /* DEGRADED */
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.RejectedCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_REJECT_STATE);
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(UPLINK_APP_Noop);
@@ -651,4 +682,5 @@ void UtTest_Setup(void)
     ADD_TEST(UPLINK_APP_ProcessUplink_AllowedRecoveryClassInRecovery);
     ADD_TEST(UPLINK_APP_ProcessUplink_AllowedRecoveryClassInFailed);
     ADD_TEST(UPLINK_APP_ProcessUplink_FailOpenBeforeHealth);
+    ADD_TEST(UPLINK_APP_ProcessUplink_NoForceFlagStillBlockedInDegraded);
 }

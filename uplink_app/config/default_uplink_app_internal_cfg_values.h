@@ -22,5 +22,10 @@
 #define UPLINK_APP_VIEWPOINT_MAX_PITCH  1.57079632f
 #define UPLINK_APP_VIEWPOINT_MAX_HOLD_MS 30000U
 
+/* UP 프레임 flags 필드(현재 예약, 항상 0으로 옴) 비트0 — §18.10.1 health state
+ * 게이팅을 명령 단위로 강제 통과. 매 명령마다 지상에서 명시적으로 세워야 하고,
+ * 컴파일타임 기본값이 아니라 무선으로 실제 오는 값이라 흔적(로그)이 항상 남는다. */
+#define UPLINK_APP_FORCE_FLAG  0x01U
+
 #endif
 
