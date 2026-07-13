@@ -51,6 +51,14 @@ void LORA_TDM_APP_ProcessGroundCommand(CFE_SB_Buffer_t *SBBufPtr)
             }
             break;
 
+        case LORA_TDM_APP_SET_DOWNLINK_PROTO_CC:
+            if (LORA_TDM_APP_VerifyCmdLength(&SBBufPtr->Msg,
+                                              sizeof(LORA_TDM_APP_SetDownlinkProtocolCmd_t)))
+            {
+                LORA_TDM_APP_SetDownlinkProtocol((const LORA_TDM_APP_SetDownlinkProtocolCmd_t *)SBBufPtr);
+            }
+            break;
+
         default:
             LORA_TDM_APP_Data.ErrCounter++;
             CFE_EVS_SendEvent(LORA_TDM_APP_CC_ERR_EID, CFE_EVS_EventType_ERROR,

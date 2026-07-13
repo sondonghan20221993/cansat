@@ -36,8 +36,51 @@ void Test_ResetCounters(void)
     UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.NoAckCount, 0);
 }
 
+void Test_SetDownlinkProtocol_ToV2(void)
+{
+    LORA_TDM_APP_SetDownlinkProtocolCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.UseV2 = 1;
+    LORA_TDM_APP_Data.UseV2Downlink = 0;
+    LORA_TDM_APP_Data.CmdCounter    = 0;
+
+    LORA_TDM_APP_SetDownlinkProtocol(&TestMsg);
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.UseV2Downlink, 1);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.CmdCounter, 1);
+}
+
+void Test_SetDownlinkProtocol_BackToV1(void)
+{
+    LORA_TDM_APP_SetDownlinkProtocolCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.UseV2 = 0;
+    LORA_TDM_APP_Data.UseV2Downlink = 1;
+
+    LORA_TDM_APP_SetDownlinkProtocol(&TestMsg);
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.UseV2Downlink, 0);
+}
+
+void Test_SetDownlinkProtocol_NonZeroTreatedAsOne(void)
+{
+    LORA_TDM_APP_SetDownlinkProtocolCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.UseV2 = 0xFF; /* 0/1 외 값도 "0이 아니면 v2"로 정규화 */
+
+    LORA_TDM_APP_SetDownlinkProtocol(&TestMsg);
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.UseV2Downlink, 1);
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(Noop);
     ADD_TEST(ResetCounters);
+    ADD_TEST(SetDownlinkProtocol_ToV2);
+    ADD_TEST(SetDownlinkProtocol_BackToV1);
+    ADD_TEST(SetDownlinkProtocol_NonZeroTreatedAsOne);
 }

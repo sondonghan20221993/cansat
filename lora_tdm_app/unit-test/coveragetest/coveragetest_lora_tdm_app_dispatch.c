@@ -82,6 +82,29 @@ void Test_ProcessCommandPacket_CmdReset(void)
     UtAssert_STUB_COUNT(LORA_TDM_APP_ResetCounters, 1);
 }
 
+void Test_ProcessCommandPacket_CmdSetDownlinkProtocol(void)
+{
+    LORA_TDM_APP_SetDownlinkProtocolCmd_t Msg;
+    CFE_SB_MsgId_t                        MsgId;
+    CFE_MSG_Size_t                        MsgSize;
+    CFE_MSG_FcnCode_t                     FcnCode;
+
+    memset(&Msg, 0, sizeof(Msg));
+    CFE_MSG_Init(CFE_MSG_PTR(Msg.CommandHeader),
+                 CFE_SB_ValueToMsgId(LORA_TDM_APP_CMD_MID_VALUE), sizeof(Msg));
+    MsgId   = CFE_SB_ValueToMsgId(LORA_TDM_APP_CMD_MID_VALUE);
+    MsgSize = sizeof(Msg);
+    FcnCode = LORA_TDM_APP_SET_DOWNLINK_PROTO_CC;
+
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId),   &MsgId,   sizeof(MsgId),   false);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetFcnCode), &FcnCode, sizeof(FcnCode), false);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetSize),    &MsgSize, sizeof(MsgSize), false);
+
+    LORA_TDM_APP_ProcessCommandPacket((CFE_SB_Buffer_t *)&Msg);
+
+    UtAssert_STUB_COUNT(LORA_TDM_APP_SetDownlinkProtocol, 1);
+}
+
 void Test_ProcessCommandPacket_UnknownMid(void)
 {
     LORA_TDM_APP_NoopCmd_t Msg;
@@ -135,6 +158,7 @@ void UtTest_Setup(void)
     ADD_TEST(ProcessCommandPacket_SendHk);
     ADD_TEST(ProcessCommandPacket_CmdNoop);
     ADD_TEST(ProcessCommandPacket_CmdReset);
+    ADD_TEST(ProcessCommandPacket_CmdSetDownlinkProtocol);
     ADD_TEST(ProcessCommandPacket_UnknownMid);
     ADD_TEST(ProcessCommandPacket_InvalidCC);
     ADD_TEST(ProcessCommandPacket_DiagnosticCmd);

@@ -20,5 +20,6 @@
 #define LORA_TDM_APP_SUB_ERR_EID            17
 #define LORA_TDM_APP_SB_SEND_ERR_EID        18
 #define LORA_TDM_APP_DIAGNOSTIC_CMD_EID     19
+#define LORA_TDM_APP_SET_DL_PROTO_INF_EID   20
 
 #endif

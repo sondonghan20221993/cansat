@@ -6,5 +6,6 @@
 
 CFE_Status_t LORA_TDM_APP_Noop(const LORA_TDM_APP_NoopCmd_t *Msg);
 CFE_Status_t LORA_TDM_APP_ResetCounters(const LORA_TDM_APP_ResetCountersCmd_t *Msg);
+CFE_Status_t LORA_TDM_APP_SetDownlinkProtocol(const LORA_TDM_APP_SetDownlinkProtocolCmd_t *Msg);
 
 #endif

@@ -20,6 +20,14 @@ typedef struct
     CFE_MSG_CommandHeader_t CommandHeader;
 } LORA_TDM_APP_SendHkCmd_t;
 
+/* §8 v1/v2 다운링크 프로토콜 런타임 전환 — UseV2=0(v1)/1(v2) */
+typedef struct
+{
+    CFE_MSG_CommandHeader_t CommandHeader;
+    uint8                   UseV2;
+    uint8                   Reserved[3];
+} LORA_TDM_APP_SetDownlinkProtocolCmd_t;
+
 typedef struct
 {
     uint8  CommandCounter;
