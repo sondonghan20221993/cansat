@@ -129,6 +129,14 @@ source 간 간격) 것으로 추정 — 손실률엔 영향 없었으나 Stage 3
 - [ ] `CYCLE_PERIOD_MS` 200ms로 변경 + 실기체 5Hz soak — **유일하게 남은 항목**
       (Pi+LoRa 실물 필요)
 
+**Stage 3 실측 시도 (2026-07-14 착수)**: spec §7 확정값 적용 —
+`CYCLE_PERIOD_MS` 400→**200**, `RX_WINDOW_MS` 100→**100**(불변),
+`LINK_LOSS_THRESHOLD` 8→**15**(5000ms/200ms 대비 ≈3s에서 DEGRADED, §7 표 근거).
+절차: 헤더 수정 → Pi 빌드/배포 → cFS 기동(v1으로 부팅, `UseV2Downlink` 기본 0)
+→ 지상 CONFIG 명령 `lora_tdm.downlink_protocol=1`로 v2 런타임 전환 → 5분 soak
+→ `tools/analyze_downlink_csv.py <csv> --cycle-ms 200` 판정. 성공 기준은 Stage 2와
+동일(관측 레이트 ≥ 4.5Hz, 손실률 <5%, LinkState CONNECTED 유지).
+
 이 게이트 통과 후 `lora_protocol_v2_spec.md` §9 검증 요구사항대로 진행.
 
 ## 진행 로그

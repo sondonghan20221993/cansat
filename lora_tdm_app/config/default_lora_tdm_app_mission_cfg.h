@@ -4,9 +4,9 @@
 #include "lora_tdm_app_interface_cfg.h"
 
 /* TDM timing */
-#define LORA_TDM_APP_CYCLE_PERIOD_MS          400
+#define LORA_TDM_APP_CYCLE_PERIOD_MS          200
 #define LORA_TDM_APP_RX_WINDOW_MS             100
-#define LORA_TDM_APP_LINK_LOSS_THRESHOLD      8
+#define LORA_TDM_APP_LINK_LOSS_THRESHOLD      15
 #define LORA_TDM_APP_LINK_TIMEOUT_MS          5000
 #define LORA_TDM_APP_SERIAL_REOPEN_DELAY_MS   1000
 
