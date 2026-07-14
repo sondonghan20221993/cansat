@@ -94,14 +94,60 @@ CM4/보드 영구 손상 가능" — 이는 **USB-C 외에 별도 5V 전원 헤�
 
 ## 실측 확인 (2026-07-14, Pi 재부팅 없이 SSH로 확인 — 아직 변경 없음)
 
-- **`config.txt`에 `dtoverlay=dwc2,dr_mode=host`가 이미 존재함** (line 49, `[cm4]`
-  섹션). 그런데 `otg_mode=1`도 같이 남아있어(line 46) 두 설정이 충돌 —
-  `otg_mode=1`이 우선 적용되어 실제로는 아직 device/OTG 모드로 동작 중
-  (`lsusb`에 root hub 외 아무것도 안 잡힘, 확인됨). **즉 남은 작업은
-  `otg_mode=1` 한 줄을 지우는 것뿐** — `dtoverlay` 줄은 이미 있어 추가 불필요.
 - `pinout` 실측: `Pi CM4 rev 1.1`, J8 40핀 헤더 — **pin 2/4 = 5V, pin 6 = GND,
   pin 8 = GPIO14, pin 10 = GPIO15** (계획에서 가정한 위치와 일치, 확인 완료).
 - `core-cpu1`은 이전 세션에서 기동해둔 프로세스가 계속 실행 중(20:04부터).
+
+### 정정 (2026-07-14) — config.txt 섹션 구조 오판 바로잡음
+
+앞서 "`dtoverlay=dwc2,dr_mode=host`가 이미 있어 `otg_mode=1`만 지우면 된다"고
+기록했으나 **틀렸음**. `/boot/firmware/config.txt` 전체 구조를 다시 보니:
+
+```
+[cm4]
+# Enable host mode on the 2711 built-in XHCI USB controller.
+# This line should be removed if the legacy DWC2 controller is required
+# (e.g. for USB device mode) or if USB support is not required.
+otg_mode=1
+
+[cm5]
+dtoverlay=dwc2,dr_mode=host
+
+[all]
+enable_uart=1
+dtoverlay=disable-bt
+```
+
+`dtoverlay=dwc2,dr_mode=host`는 **`[cm5]` 섹션**에 있다. 이 Pi는 CM4이므로
+`[cm5]` 블록은 **부팅 시 적용되지 않는다** — 죽은 설정이었음. `[cm4]`에는
+`otg_mode=1`만 있는데, 주석을 보면 이건 **2711 내장 XHCI 컨트롤러(USB-A용
+host 모드)를 켜는 것** — 이는 Raspberry Pi OS 기본 템플릿 문구이지 Waveshare가
+넣은 게 아니며, CM4-NANO-B의 USB-C(legacy DWC2 경로로 추정)와는 별개일 가능성이
+높다.
+
+**정정된 조치**: `[cm4]` 섹션에서 `otg_mode=1`을 지우고, `dtoverlay=dwc2,dr_mode=host`를
+`[cm5]`가 아니라 **`[cm4]`(또는 `[all]`)로 옮겨** 실제로 이 하드웨어에 적용되게
+한다. (Waveshare wiki 원문 지침 — "otg_mode=1 제거 + dtoverlay=dwc2,dr_mode=host
+추가" — 을 정확히 CM4 섹션에 적용하는 것으로 재해석)
+
+## 실측 완료 — GPIO 5V 전환 + otg_mode 변경 + FC 인식 (2026-07-14)
+
+- GPIO 5V(핀2/4)+GND 외부전원 배선 → USB-C 전원 분리 → 정상 부팅 확인
+  (`throttled=0x0`, 온도/전압 정상).
+- `config.txt` `[cm4]`: `otg_mode=1` → `dtoverlay=dwc2,dr_mode=host`로 교체
+  (백업: `config.txt.bak-20260714`) 후 재부팅 → `dwc2 fe980000.usb: DWC OTG
+  Controller` 로그로 host 모드 활성 확인.
+- FC를 USB-C(C-to-C 케이블)로 연결 — **1차 시도 무반응**(`lsusb`/`dmesg`에
+  이벤트 없음, 수 분간). 원인 조사 중 Type-C CC 핀 역할협상(D2D 케이블 시
+  양쪽 다 device로 고정돼 협상 불가 가능성) 가설 세웠으나, **케이블을 다른
+  C-to-C로 교체하자 즉시 인식** — 첫 케이블이 데이터선 불량(충전전용)이었던
+  것으로 결론. CC 협상 가설은 검증 불필요해짐(실제 원인 아니었음).
+- **FC 인식 성공**: `usb 1-1: Product: MicoAir743v2, Manufacturer: MicoAir`
+  (idVendor=1b8c, idProduct=0036) → `cdc_acm 1-1:1.0: ttyACM0` →
+  **`/dev/ttyACM0`**로 확정.
+- FC 펌웨어 재확인: 사용자 확인 결과 **PX4**(레포 기존 문서의 ArduPilot 실측
+  기록과 불일치 — `mavlink_bridge_app_behavior_spec.md`에 별도 기록,
+  커밋 `9ef3777`).
 
 ## 다음 부팅 시 확인/적용 절차 (초안)
 
@@ -137,13 +183,12 @@ MAVLINK_BRIDGE_SERIAL_PATH=/dev/ttyACM0 sudo -E ./core-cpu1
 - [x] **(선행 필수)** 대체 전원 경로 결정 — GPIO 40핀 헤더 5V(핀 2/4)+GND 채택
 - [x] `config.txt`/pinout 실측 확인 — `dtoverlay=dwc2,dr_mode=host`는 이미 존재,
       `otg_mode=1`만 삭제하면 됨. J8 핀 2/4=5V, 6=GND 위치 확인 완료
-- [ ] GPIO 5V 외부 전원(5V 2A 이상) 배선 준비 (**물리 작업, 원격 불가**)
-- [ ] GPIO 5V로 전원 전환, USB-C 전원 결선 완전 분리 확인, 정상 부팅 검증
-      (이 단계에서는 아직 `otg_mode` 변경 안 함 — 전원 전환만 먼저 단독 검증)
-- [ ] `config.txt`에서 `otg_mode=1` 삭제 (전원 전환 검증 후에만 — `dtoverlay`는
-      이미 있으므로 이 한 줄만 지우면 됨)
-- [ ] FC를 USB-C로 연결 후 인식 확인 (`lsusb`, `/dev/ttyACM*` 실제 장치명 확정)
-- [ ] `MAVLINK_BRIDGE_SERIAL_PATH=<실제장치명>` env var로 `mavlink_bridge_app` 연결 검증
+- [x] GPIO 5V 외부 전원(5V 2A 이상) 배선 완료, USB-C 전원 분리, 정상 부팅 확인
+- [x] `config.txt`에서 `otg_mode=1` → `dtoverlay=dwc2,dr_mode=host` 교체 적용,
+      재부팅 후 dwc2 host 모드 활성 확인
+- [x] FC를 USB-C로 연결 후 인식 확인 — `/dev/ttyACM0` (MicoAir743v2) 확정.
+      1차 케이블 무반응 → 케이블 불량으로 판명, 교체 후 즉시 인식
+- [ ] `MAVLINK_BRIDGE_SERIAL_PATH=/dev/ttyACM0` env var로 `mavlink_bridge_app` 연결 검증
 - [ ] 안정 확인되면 `default_mavlink_bridge_app_platform_cfg.h`의
       `MAVLINK_BRIDGE_APP_SERIAL_PATH` 기본값을 실제 장치명으로 변경(커밋)
 - [ ] 기존 GPIO UART 대비 CRC/노이즈 개선 여부 비교 — `integration_steps.md`
