@@ -92,6 +92,17 @@ CM4/보드 영구 손상 가능" — 이는 **USB-C 외에 별도 5V 전원 헤�
   ③ GPIO 5V로 부팅 확인 → ④ 그 다음에 `otg_mode` 변경 + FC USB-C 데이터 연결.**
   전원 전환과 OTG 모드 전환을 동시에 하지 않는다(문제 발생 시 원인 분리 어려워짐).
 
+## 실측 확인 (2026-07-14, Pi 재부팅 없이 SSH로 확인 — 아직 변경 없음)
+
+- **`config.txt`에 `dtoverlay=dwc2,dr_mode=host`가 이미 존재함** (line 49, `[cm4]`
+  섹션). 그런데 `otg_mode=1`도 같이 남아있어(line 46) 두 설정이 충돌 —
+  `otg_mode=1`이 우선 적용되어 실제로는 아직 device/OTG 모드로 동작 중
+  (`lsusb`에 root hub 외 아무것도 안 잡힘, 확인됨). **즉 남은 작업은
+  `otg_mode=1` 한 줄을 지우는 것뿐** — `dtoverlay` 줄은 이미 있어 추가 불필요.
+- `pinout` 실측: `Pi CM4 rev 1.1`, J8 40핀 헤더 — **pin 2/4 = 5V, pin 6 = GND,
+  pin 8 = GPIO14, pin 10 = GPIO15** (계획에서 가정한 위치와 일치, 확인 완료).
+- `core-cpu1`은 이전 세션에서 기동해둔 프로세스가 계속 실행 중(20:04부터).
+
 ## 다음 부팅 시 확인/적용 절차 (초안)
 
 ```bash
@@ -124,11 +135,13 @@ MAVLINK_BRIDGE_SERIAL_PATH=/dev/ttyACM0 sudo -E ./core-cpu1
 - [x] 대체(1번) vs 병행(2번) 최종 확인 — **완전 대체로 결정**
 - [x] 기본값(compile-time) 변경 시점 결정 — **지금 아님, env var 실측 검증 후**
 - [x] **(선행 필수)** 대체 전원 경로 결정 — GPIO 40핀 헤더 5V(핀 2/4)+GND 채택
-- [ ] GPIO 5V 외부 전원(5V 2A 이상) 배선 준비
+- [x] `config.txt`/pinout 실측 확인 — `dtoverlay=dwc2,dr_mode=host`는 이미 존재,
+      `otg_mode=1`만 삭제하면 됨. J8 핀 2/4=5V, 6=GND 위치 확인 완료
+- [ ] GPIO 5V 외부 전원(5V 2A 이상) 배선 준비 (**물리 작업, 원격 불가**)
 - [ ] GPIO 5V로 전원 전환, USB-C 전원 결선 완전 분리 확인, 정상 부팅 검증
       (이 단계에서는 아직 `otg_mode` 변경 안 함 — 전원 전환만 먼저 단독 검증)
-- [ ] `config.txt` 변경 적용 (전원 전환 검증 후: `otg_mode=1` 제거 +
-      `dtoverlay=dwc2,dr_mode=host`)
+- [ ] `config.txt`에서 `otg_mode=1` 삭제 (전원 전환 검증 후에만 — `dtoverlay`는
+      이미 있으므로 이 한 줄만 지우면 됨)
 - [ ] FC를 USB-C로 연결 후 인식 확인 (`lsusb`, `/dev/ttyACM*` 실제 장치명 확정)
 - [ ] `MAVLINK_BRIDGE_SERIAL_PATH=<실제장치명>` env var로 `mavlink_bridge_app` 연결 검증
 - [ ] 안정 확인되면 `default_mavlink_bridge_app_platform_cfg.h`의
