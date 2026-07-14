@@ -87,12 +87,12 @@
 **배포 baseline (`mission_defs/cpu1_cfe_es_startup.scr`, 2026-06-16 갱신)**: `mav_bridge_app`(prio50), `cfs_core_app`(55), `uplink_app`(57), **`lora_tdm_app`(58, `lora_fc_dl_app` 대체)** + lab apps(ci/to/sch).
 → **`telemetry_app`·`img_app`은 startup 미등록(미배포·코드 보존)**. `lora_fc_downlink_app`은 저장소에서 삭제됨(commit `7c080f1`, 2026-06-30). (`lora_tdm_app`은 2026-06-16부터 startup 등록·배포됨 — 구 문장의 `lora_tdm_app` 표기는 오기, 2026-07-05 정정)
 
-**uplink_app 명령 라우팅 MID (uplink_app/config)**: `UPLINK_STATUS 0x190A`, `ROUTE_UPDATE 0x190B`, `RECOVERY_CMD 0x190C`, `VIEWPOINT_CMD 0x190D`, `CONFIG_CMD 0x190E`, `MODE_CMD 0x190F`, `DIAGNOSTIC_CMD 0x1910`, `UPLINK_APP_LORA_RAW 0x1909`, HK `0x08D0`.
+**uplink_app 명령 라우팅 MID (uplink_app/config)**: `UPLINK_STATUS 0x190A`, `ROUTE_UPDATE 0x190B`, `RECOVERY_CMD 0x190C`, `VIEWPOINT_CMD 0x190D`, `CONFIG_CMD 0x190E`, `MODE_CMD 0x190F`, `DIAGNOSTIC_CMD 0x1910`, HK `0x08D0`. (`UPLINK_APP_LORA_RAW 0x1909`는 2026-07-14 코드에서 제거됨 — 아래 4-8 참조)
 
 | # | 카테고리 | spec 위치 | 코드 위치 | spec | 코드 | 판정 | 권고 |
 |---|---|---|---|---|---|---|---|
 | 4-1 | **MID 충돌** | — | uplink_app:12 ↔ lora_tdm topicid:21 | — | `MODE_CMD_MID 0x190F`(uplink) = `LORA_TDM_APP_LINK_STATUS_MID 0x190F`(tdm) | ✅ **해결** | lora_tdm `LINK_STATUS_MID_VALUE` `0x190F`→**`0x1911`** 재할당(미배포 측 이동). uplink `MODE_CMD 0x190F` 유지. 문서(behavior spec/README) 동기화 완료 |
-| 4-2 | MID 인벤토리 | §5.1.1,§17.1 | uplink_app msgid | (누락) | `RECOVERY_CMD 0x190C`, `VIEWPOINT_CMD 0x190D`, `CONFIG_CMD 0x190E`, `MODE_CMD 0x190F`, `DIAGNOSTIC_CMD 0x1910`, `UPLINK_APP_LORA_RAW 0x1909` | ✅ **해결** | §17.1에 FC 상태 MID·라우팅 명령 MID(0x190C~0x1910)·0x1909·0x1911 추가 (2026-06-16) |
+| 4-2 | MID 인벤토리 | §5.1.1,§17.1 | uplink_app msgid | (누락) | `RECOVERY_CMD 0x190C`, `VIEWPOINT_CMD 0x190D`, `CONFIG_CMD 0x190E`, `MODE_CMD 0x190F`, `DIAGNOSTIC_CMD 0x1910`, `UPLINK_APP_LORA_RAW 0x1909`(2026-07-14 제거, 4-8 참조) | ✅ **해결** | §17.1에 FC 상태 MID·라우팅 명령 MID(0x190C~0x1910)·0x190F·0x1911 추가 (2026-06-16) |
 | 4-3 (=1-6) | 게시율 | §5.1.1 | mavlink internal_cfg | ATTITUDE `~20Hz`, EKF `~10Hz`, GPS `~5Hz` | stream req ATTITUDE 5Hz(200ms), EKF 2Hz(500ms), GPS 2Hz(500ms) | ✅ **해결** | §5.1.1 게시율을 코드 stream 요청 간격으로 정정 + "FC 송신율 의존" 명시 (2026-06-16) |
 | 4-4 | 앱 집합 | §4 | startup.scr | downlink 역할 = `lora_fc_downlink_app` | **변경**: startup.scr에서 `lora_fc_dl_app` 제거, `lora_tdm_app` 등록(prio 58) (2026-06-16) | ✅ **해결** | `mission_app_runtime_spec.md` §2/§4/§5/§11/§13/§16/§17/§18 전반에서 `lora_fc_downlink_app` → `lora_tdm_app` 갱신, 잔존 언급은 전부 "삭제됨/역사 참고용"으로 명시 (commit `faf30ef`, 2026-07-14 확인) |
 | 4-5 | 배포 상태 | §2(현황) | startup.scr | — | `lora_tdm_app` baseline 등록됨(2026-06-16), `lora_fc_downlink_app`은 저장소에서 삭제됨(commit `7c080f1`, 2026-06-30). `telemetry_app`/`img_app` 미배포·코드 보존 유지 | ✅ **해결** | §2 현황을 위 내용으로 갱신 (commit `faf30ef`) |
@@ -103,8 +103,9 @@
 > - `mission_app_runtime_spec.md`는 `lora_fc_downlink_app`을 downlink 역할 구현체로 광범위하게 서술 중(§4,§6,§11,§17~18 등) — 전면 갱신은 별도 작업으로 분리.
 | 4-6 | uplink 라우팅 | §18.4.x | dispatch 체인 | 명령 클래스 문서화됨 | `uplink_app`→(0x190C~0x1910)→`cfs_core_app`(viewpoint/config 구독) 실재 | ✅ | 클래스→MID 값 매핑만 보강(§4-2와 연계) |
 | 4-7 | **dead-end 라우팅** | §18.4.x (명령 클래스 분류) | `uplink_app_utils.c` `ForwardRecoveryCommand`/`ForwardModeCommand`/`ForwardDiagnosticCommand` | spec: RECOVERY/MODE/DIAGNOSTIC 명령 클래스가 대상 앱으로 라우팅됨을 전제 | `RECOVERY_CMD_MID`(0x190C)/`MODE_CMD_MID`(0x190F)/`DIAGNOSTIC_CMD_MID`(0x1910) — `grep -rl` 결과 코드베이스 전체에서 **publish하는 uplink_app 자신 외 구독자가 0개**. `cfs_core_app`/`mavlink_bridge_app`/`lora_fc_downlink_app` 어디도 구독 안 함 | ✅ **해결** | `cfs_core_app`에 RECOVERY(0x190C)/MODE(0x190F) 구독·핸들러 추가, `lora_tdm_app`에 DIAGNOSTIC(0x1910) 구독·핸들러 추가 (commit `e9957e9`). `cfs_core_app_dispatch.c:53,59`, `lora_tdm_app.c:463`/`lora_tdm_app_dispatch.c:93`에서 구독 확인 (2026-07-14) |
+| 4-8 | **MID 충돌(신규)** | — | uplink_app msgid_values:18 ↔ mavlink_bridge_app interface_cfg_values:11 | — | `UPLINK_APP_LORA_RAW_MID_VALUE 0x1909`(uplink_app 구독, 발행자 없음) = `FC_SYS_TIME_MID_VALUE 0x1909`(mavlink_bridge_app, commit `38c2f22` 2026-07-13 신규 발행 시작) — 4-1과 같은 급의 MID 충돌 | ✅ **해결** | git log 확인 결과 `UPLINK_APP_LORA_RAW_MID`/`ParseLoRaFrame`은 2026-06-11 `lora_tdm_app` 도입(TDM 슬롯 타이밍상 CRC 검증을 동기화해야 해서 raw-forward 대신 자체 파싱+직접 SB 전달로 재설계, `ProcessUpFrame`→`0x18D0`) 이후 발행자 없는 죽은 코드였음. 구독·dispatch 분기·`ParseLoRaFrame()`·관련 config/coveragetest 전체 삭제로 충돌 원천 해소 (2026-07-14). UT 회귀 없음(`uplink_app` 9/9, `_cmds` 91/91, `_dispatch` 29/29, `_utils` 88/88) |
 
-> 종합(2026-07-14 갱신): 4-1(0x190F MID 충돌)·4-2(라우팅 MID 인벤토리)·4-3(게시율)·4-4/4-5(앱 집합/배포 현황)·4-7(RECOVERY/MODE/DIAGNOSTIC dead-end) **전부 해결**. §4 앱 집합·라우팅 체인 전 클래스(CONFIG/VIEWPOINT/ROUTE_UPDATE/RECOVERY/MODE/DIAGNOSTIC)가 코드와 정합.
+> 종합(2026-07-14 갱신): 4-1(0x190F MID 충돌)·4-2(라우팅 MID 인벤토리)·4-3(게시율)·4-4/4-5(앱 집합/배포 현황)·4-7(RECOVERY/MODE/DIAGNOSTIC dead-end)·4-8(0x1909 MID 충돌, 신규 발견·해결) **전부 해결**. §4 앱 집합·라우팅 체인 전 클래스(CONFIG/VIEWPOINT/ROUTE_UPDATE/RECOVERY/MODE/DIAGNOSTIC)가 코드와 정합.
 
 ---
 
@@ -126,7 +127,7 @@
 | `0x1906` | `FC_ATTITUDE_STATE_MID` | mavlink_bridge_app | ✅ |
 | `0x1907` | `FC_GPS_RAW_STATE_MID` | mavlink_bridge_app | ✅ |
 | `0x1908` | `FC_EKF_STATUS_MID` | mavlink_bridge_app | ✅ |
-| `0x1909` | `UPLINK_APP_LORA_RAW_MID` (= `LORA_FC_DOWNLINK..._UPLINK_RAW`) | lora_fc_downlink_app→uplink_app | 레거시 (uplink 구독만 잔존, publisher 없음 — lora_tdm은 0x18D0 직접 전달) |
+| `0x1909` | `FC_SYS_TIME_MID` | mavlink_bridge_app | ✅ (2026-07-13 발행 시작. 구 `UPLINK_APP_LORA_RAW_MID`가 동일 번호로 죽은 채 구독 중이던 것과 충돌 — 2026-07-14 죽은 구독 삭제로 해소, §4-8) |
 | `0x190A` | `UPLINK_STATUS_MID` | uplink_app | ✅ |
 | `0x190B` | `ROUTE_UPDATE_MID` | uplink_app→cfs_core/mavlink_bridge | ✅ |
 | `0x190C` | `RECOVERY_CMD_MID` | uplink_app → **cfs_core_app** (2026-06-17 구독 추가, §4-7 해소) | ✅ |

@@ -859,7 +859,7 @@ FC, 모터 또는 액추에이터 명령 및 비행 제어 매개변수
 | `FC_ATTITUDE_STATE_MID` | `0x1906` |
 | `FC_GPS_RAW_STATE_MID` | `0x1907` |
 | `FC_EKF_STATUS_MID` | `0x1908` |
-| `UPLINK_APP_LORA_RAW_MID` | `0x1909` (`lora_tdm_app` → `uplink_app` 원문 전달; 구 `lora_fc_downlink_app`에서 역할 이관) |
+| ~~`UPLINK_APP_LORA_RAW_MID`~~ | `0x1909` — **삭제됨(2026-07-14)**. 구 `lora_fc_downlink_app` raw-forward 경로 잔재로 발행자 없이 구독만 남아있었고, `mavlink_bridge_app`의 `FC_SYS_TIME_MID`(동일 `0x1909`, commit `38c2f22`)와 충돌해 코드에서 제거(`ParseLoRaFrame` 포함) |
 | `UPLINK_STATUS_MID` | `0x190A` |
 | `ROUTE_UPDATE_MID` | `0x190B` |
 | `RECOVERY_CMD_MID` | `0x190C` (uplink_app 라우팅) |
@@ -1611,7 +1611,7 @@ cFS 상태 및 운영자 인증 수준은 전환을 허용합니다. `uplink_app
 > - **활성 경로**: `지상국 LoRa → RF → Pi LoRa serial → lora_tdm_app (TDM RX 300ms 창) → UPLINK_APP_CMD_MID(0x18D0, PROCESS_UPLINK_CC=2) SB 전달 → uplink_app`
 > - `lora_tdm_app`이 transport 계층 역할(serial 독점 소유, framing/CRC16 검증)을 담당 (2026-06-16 배포 전환, `lora_uplink_bridge.py` 대체).
 > - 테스트용 UDP 경로(`UDP:1234 → CI_LAB → uplink_app`)는 병행 유지.
-> - `uplink_app`의 `ServiceLoRa()` 직접 serial 경로는 **코드에서 제거됨**. 레거시 `UPLINK_APP_LORA_RAW_MID(0x1909)` 구독은 코드에 남아 있으나 현행 배포에서 이 MID를 publish하는 앱은 없다.
+> - `uplink_app`의 `ServiceLoRa()` 직접 serial 경로는 **코드에서 제거됨**. 레거시 `UPLINK_APP_LORA_RAW_MID(0x1909)` 구독·`ParseLoRaFrame()`도 **2026-07-14 코드에서 제거됨** (발행자 없는 죽은 경로였고, `mavlink_bridge_app`의 `FC_SYS_TIME_MID`와 MID 번호가 충돌하고 있었음).
 
 `uplink_app` 운송 책임:
 

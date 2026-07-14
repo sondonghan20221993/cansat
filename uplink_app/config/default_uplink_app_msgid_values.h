@@ -13,9 +13,5 @@
 #define DIAGNOSTIC_CMD_MID    0x1910
 #define SYSTEM_HEALTH_MID_VALUE 0x1904
 
-/* Raw ground uplink frame from lora_tdm_app (sole CP2102 owner).
- * 값은 lora_tdm_app의 LORA_TDM_APP_UPLINK_RAW_MID_VALUE와 동일. */
-#define UPLINK_APP_LORA_RAW_MID_VALUE 0x1909
-
 #endif
 

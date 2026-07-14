@@ -57,8 +57,6 @@ uplink_app은 serial을 직접 열지 않는다(포트 충돌 제거).
 
 frame CRC/framing은 lora_tdm_app(transport), 버전/클래스/시퀀스/payload semantic 검증은 uplink_app 소유(spec §18.4.4).
 
-> **레거시**: 구 `lora_fc_downlink_app` 경로용 `UPLINK_APP_LORA_RAW_MID`(0x1909) 구독과 `ParseLoRaFrame()` 처리 코드는 남아 있으나, 현행 배포에서 0x1909를 publish하는 앱은 없다.
-
 > **TDM 제약(반이중)**: lora RX 윈도우는 downlink TX 후 300ms만 열린다.
 > 지상국은 downlink 수신 직후 그 슬롯 안에 UP 프레임을 송신해야 수신된다.
 

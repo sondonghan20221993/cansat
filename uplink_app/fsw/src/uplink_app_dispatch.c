@@ -33,26 +33,6 @@ void UPLINK_APP_TaskPipe(CFE_SB_Buffer_t *SBBufPtr)
         return;
     }
 
-    /* raw ground uplink frame forwarded by lora_tdm_app (CP2102 owner):
-     * parse the "UP,..." text here (app owns uplink semantics), then process. */
-    if (CFE_SB_MsgIdToValue(MsgId) == UPLINK_APP_LORA_RAW_MID_VALUE)
-    {
-        const UPLINK_APP_LoRaRawMsg_t *Raw = (const UPLINK_APP_LoRaRawMsg_t *)MsgPtr;
-        UPLINK_APP_ProcessUplinkCmd_t  Cmd;
-
-        if (UPLINK_APP_ParseLoRaFrame(Raw->Frame, &Cmd))
-        {
-            UPLINK_APP_ProcessUplink(&Cmd);
-        }
-        else
-        {
-            UPLINK_APP_Data.ErrCounter++;
-            CFE_EVS_SendEvent(UPLINK_APP_COMMAND_ERR_EID, CFE_EVS_EventType_ERROR,
-                              "UPLINK_APP: LoRa frame parse failed: %.40s", Raw->Frame);
-        }
-        return;
-    }
-
     if (CFE_SB_MsgIdToValue(MsgId) != UPLINK_APP_CMD_MID_VALUE)
     {
         UPLINK_APP_Data.ErrCounter++;

@@ -51,7 +51,6 @@ void         UPLINK_APP_ReportHousekeeping(void);
 bool         UPLINK_APP_VerifyCmdLength(const CFE_MSG_Message_t *MsgPtr, size_t ExpectedLength);
 void         UPLINK_APP_ServicePrototype(void);
 void         UPLINK_APP_ProcessUplink(const UPLINK_APP_ProcessUplinkCmd_t *Cmd);
-bool         UPLINK_APP_ParseLoRaFrame(const char *Line, UPLINK_APP_ProcessUplinkCmd_t *Out);
 bool         UPLINK_APP_ValidateProxyCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd, UPLINK_APP_Result_t *Result);
 UPLINK_APP_RouteTarget_t UPLINK_APP_ResolveRouteTarget(uint8 CommandClass);
 bool         UPLINK_APP_ParseRouteUpdatePayload(const UPLINK_APP_ProcessUplinkCmd_t *Cmd,

@@ -188,44 +188,6 @@ void Test_UPLINK_APP_TaskPipe_UnknownCC(void)
     UtAssert_INT32_EQ(UPLINK_APP_Data.ErrCounter, 1);
 }
 
-/* LoRa raw frame (UPLINK_RAW_MID) + parse 성공 → ProcessUplink 호출 (Task B) */
-void Test_UPLINK_APP_TaskPipe_LoRaRaw(void)
-{
-    UPLINK_APP_LoRaRawMsg_t Raw;
-    CFE_SB_MsgId_t          MsgId;
-
-    memset(&Raw, 0, sizeof(Raw));
-    strncpy(Raw.Frame, "UP,1,2,3,0,,ABCD", sizeof(Raw.Frame) - 1);
-    Raw.Length = (uint16)strlen(Raw.Frame);
-
-    MsgId = CFE_SB_ValueToMsgId(UPLINK_APP_LORA_RAW_MID_VALUE);
-    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
-    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ParseLoRaFrame), true);
-
-    UPLINK_APP_TaskPipe((CFE_SB_Buffer_t *)&Raw);
-    UtAssert_STUB_COUNT(UPLINK_APP_ProcessUplink, 1);
-}
-
-/* LoRa raw frame + parse 실패 → ErrCounter 증가, ProcessUplink 미호출 (Task B) */
-void Test_UPLINK_APP_TaskPipe_LoRaRaw_BadFrame(void)
-{
-    UPLINK_APP_LoRaRawMsg_t Raw;
-    CFE_SB_MsgId_t          MsgId;
-
-    memset(&Raw, 0, sizeof(Raw));
-    strncpy(Raw.Frame, "GARBAGE", sizeof(Raw.Frame) - 1);
-    Raw.Length = (uint16)strlen(Raw.Frame);
-
-    MsgId = CFE_SB_ValueToMsgId(UPLINK_APP_LORA_RAW_MID_VALUE);
-    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
-    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ParseLoRaFrame), false);
-
-    UPLINK_APP_Data.ErrCounter = 0;
-    UPLINK_APP_TaskPipe((CFE_SB_Buffer_t *)&Raw);
-    UtAssert_INT32_EQ(UPLINK_APP_Data.ErrCounter, 1);
-    UtAssert_STUB_COUNT(UPLINK_APP_ProcessUplink, 0);
-}
-
 void UtTest_Setup(void)
 {
     ADD_TEST(UPLINK_APP_VerifyCmdLength);
@@ -239,6 +201,4 @@ void UtTest_Setup(void)
     ADD_TEST(UPLINK_APP_TaskPipe_ProcessUplink);
     ADD_TEST(UPLINK_APP_TaskPipe_ProcessUplink_LengthFail);
     ADD_TEST(UPLINK_APP_TaskPipe_UnknownCC);
-    ADD_TEST(UPLINK_APP_TaskPipe_LoRaRaw);
-    ADD_TEST(UPLINK_APP_TaskPipe_LoRaRaw_BadFrame);
 }

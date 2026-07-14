@@ -195,8 +195,6 @@ Init/dispatch 추가:
 | `UPLINK_APP_TaskPipe_SendHk` | `SEND_HK` MID → HK 보고 경로 진입 |
 | `UPLINK_APP_TaskPipe_SystemHealth` | `SYSTEM_HEALTH_MID` 수신 → `CfsHealthReceived`, `CfsHealthState` 갱신 |
 | `UPLINK_APP_TaskPipe_UnknownMid` | 알 수 없는 MID → error counter 증가 |
-| `UPLINK_APP_TaskPipe_LoRaRaw` | `UPLINK_RAW_MID`(0x1909) + parse 성공 → `ProcessUplink` 호출 (Task B) |
-| `UPLINK_APP_TaskPipe_LoRaRaw_BadFrame` | parse 실패 → ErrCounter 증가, `ProcessUplink` 미호출 |
 
 #### `coveragetest_uplink_app_utils.c`
 
@@ -212,7 +210,6 @@ Init/dispatch 추가:
 | `UPLINK_APP_ForwardModeCommand` | mode 명령 SB publish 성공/실패 경로 |
 | `UPLINK_APP_ForwardDiagnosticCommand` | diagnostic 명령 SB publish 성공/실패 경로 |
 | `UPLINK_APP_ForwardViewpointCommand` | viewpoint 명령 SB publish 성공/실패/zero-payload 경로 |
-| `UPLINK_APP_ParseLoRaFrame` | "UP,..." 유효 파싱(empty/2바이트 payload), 비-UP/필드부족/CRC불일치/홀수hex 거부 (Task B) |
 
 ---
 
