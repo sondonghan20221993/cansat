@@ -24,6 +24,7 @@ typedef struct
     uint32                    BytesReceived;
     uint32                    ReconnectAttemptCount;
     uint32                    ParseErrorCount;
+    uint32                    NonFiniteValueCount; /* 발행측 HkTlm_t와 레이아웃 정합 필수 (947b3cf에서 추가됨) */
     uint32                    LastRxTimestampMs;
 } CFS_CORE_APP_BridgeHkMirror_t;
 

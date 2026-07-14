@@ -254,6 +254,7 @@ void Test_CFS_CORE_APP_ProcessStateMessage_BridgeHk(void)
         uint32                    BytesReceived;
         uint32                    ReconnectAttemptCount;
         uint32                    ParseErrorCount;
+        uint32                    NonFiniteValueCount; /* 발행측 HkTlm_t 실제 레이아웃 반영 */
         uint32                    LastRxTimestampMs;
     } TEST_CFS_CORE_APP_BridgeHk_t;
 
@@ -277,6 +278,7 @@ void Test_CFS_CORE_APP_ProcessStateMessage_BridgeHk(void)
     BridgeMsg->BytesReceived     = 100;
     BridgeMsg->ReconnectAttemptCount = 1;
     BridgeMsg->ParseErrorCount   = 0;
+    BridgeMsg->NonFiniteValueCount = 0;
 
     CFS_CORE_APP_ProcessStateMessage(Buffer);
 

@@ -29,30 +29,48 @@ Pi 재빌드/재기동(오늘 lora_tdm 200ms 변경 적용 세션) 후:
   이번엔 force로 우회해서 `lora_tdm.downlink_protocol=1` 전환에 성공했으나,
   근본 원인 미해결 상태로 넘어감.
 
+## 근본 원인 확정 (2026-07-14) — SCH_LAB 아님, HK mirror 구조체 레이아웃 불일치 회귀
+
+**후보 A/B/C(SCH_LAB 미동작) 전부 오진.** 실측으로 SCH_LAB은 정상 동작 확인:
+- `CFS_CORE_APP HK: mission_wp=...` 로그가 매 초 출력됨 — 이건
+  `CFS_CORE_APP_ReportHousekeeping()`가 SEND_HK(`0x18C1`)로 트리거된 것.
+  즉 SCH_LAB이 스케줄 테이블(4개 엔트리 전부 포함)을 로드·실행 중이라는
+  직접 증거. `sch_lab_table.tbl`도 정상(2552B, 당일 재생성), 시스로그 에러 0건.
+
+**진짜 원인 — 구조체 레이아웃 불일치:**
+- 발행측 `MAVLINK_BRIDGE_APP_HkTlm_t`(msgstruct.h): `...ParseErrorCount(u32),
+  NonFiniteValueCount(u32), LastRxTimestampMs(u32)...`
+- 수신측 `CFS_CORE_APP_BridgeHkMirror_t`(cfs_core_app_utils.h): `...ParseErrorCount(u32),
+  LastRxTimestampMs(u32)` — **`NonFiniteValueCount`가 빠져 있음.**
+- 결과: mirror가 `LastRxTimestampMs`를 4바이트 앞에서 읽어 발행측의
+  `NonFiniteValueCount`(정상 운용 시 0) 값을 타임스탬프로 오독.
+  `LinkState`/`LastErrorCode`는 오프셋이 같아 정상.
+- `cfs_core_app_utils.c:245`:
+  `BridgeTimedOut = !Received || (NowMs - LastRxTimestampMs) > BridgeTimeoutMs`.
+  `LastRxTimestampMs`가 0으로 읽히니 `NowMs - 0 = NowMs`(부팅 후 경과 ms)가
+  항상 `BridgeTimeoutMs` 초과 → **BRIDGE_TIMEOUT 영구 참 → health FAILED 고착.**
+
+**회귀 출처**: 커밋 `947b3cf`(2026-07-13, `fc_value_validation_gap` NaN/Inf 검증
+수정)가 발행측 `HkTlm_t`에 `NonFiniteValueCount`를 삽입했으나, cfs_core의 mirror
+구조체를 동기화하지 않음(`git log -S NonFiniteValueCount -- cfs_core_app_utils.h`
+결과 없음 = mirror엔 한 번도 존재한 적 없음). 6월 17일 SCH_LAB 이슈와는 무관한
+별개의 신규 버그였고, "재발"로 오인한 것.
+
 ## 결정
 
-미정 — 오늘 세션 목표(Stage 3 5Hz soak)가 급해 `FORCE_FLAG`로 즉시 우회하고
-진행. 근본 원인(SCH_LAB이 왜 6월 17일 수정 이후에도 스케줄을 못 돌리는지)은
-후속 조사 필요.
-
-**후보 원인**:
-- A: `sch_lab_table.tbl` 바이너리가 `make install`에서 최신 소스로 재생성 안 됨
-  (오늘 `lora_tdm_app`만 부분 재빌드(`make lora_tdm_app`)했는데, 테이블 재생성은
-  전체 `make`/`make install` 경로에 걸려있어 놓쳤을 가능성 — 오늘 세션에서
-  `make lora_tdm_app -j4` 후 `make install`은 돌렸으나 테이블 리빌드 트리거
-  여부 미확인)
-- B: `SCH_LAB` 앱 자체가 다른 이유로 초기화 실패(테이블 등록 실패 등) —
-  EVS 필터링으로 로그만 안 보일 수도 있음, `SCH_LAB` HK/카운터 직접 확인 필요
-- C: 오늘 재빌드 과정에서 `sch_lab.so`가 기본(빈) 버전으로 되돌아갔을 가능성 —
-  타임스탬프 확인 필요
+mirror 구조체(`CFS_CORE_APP_BridgeHkMirror_t`)에 `NonFiniteValueCount(u32)`를
+발행측과 동일하게 `ParseErrorCount`와 `LastRxTimestampMs` 사이에 삽입해 레이아웃
+정합. (더 근본적으로는 mirror-복사 패턴 자체가 이런 드리프트에 취약 — 공용 헤더
+공유가 이상적이나 이번은 최소 수정으로 필드 추가만.)
 
 ## 상태
 
 - [x] 재발 확인 (2026-07-14) — health FAILED 고착, CONFIG 차단
-- [x] `FORCE_FLAG`로 즉시 우회, `lora_tdm.downlink_protocol=1` 전환 성공
-      (`LORA_TDM_APP: downlink protocol set to v2(DL2)` 확인, 21:50:23)
-- [ ] 근본 원인 확정 (A/B/C 중 어느 것인지)
-- [ ] `sch_lab_table.tbl` 재생성 여부/타임스탬프 확인
-- [ ] `SCH_LAB` 앱 초기화 상태 직접 확인 (HK, 카운터 등)
-- [ ] 재발 방지 조치 — 매 빌드마다 테이블 재생성이 누락되지 않도록 빌드 절차에
-      명시(또는 `notes/build_environment.md`/`integration_steps.md`에 체크리스트 추가)
+- [x] `FORCE_FLAG`로 즉시 우회, `lora_tdm.downlink_protocol` v2 전환 성공
+- [x] 근본 원인 확정 — SCH_LAB 정상, mirror 구조체 `NonFiniteValueCount` 누락
+      (커밋 `947b3cf` 회귀). A/B/C 후보 전부 기각.
+- [x] SCH_LAB 정상 동작 실측 확인 (cfs_core HK 매 초 = SEND_HK 수신 증거)
+- [ ] mirror 구조체에 `NonFiniteValueCount` 추가 (레이아웃 정합)
+- [ ] Pi 재빌드/재기동 후 health가 NOMINAL/DEGRADED로 정상 판정되는지 확인
+      (bridge 살아있으면 최소 BRIDGE_TIMEOUT은 해소돼야 함)
+- [ ] 단위테스트 회귀 확인
