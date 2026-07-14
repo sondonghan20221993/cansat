@@ -50,5 +50,14 @@ MAVLink CRC를 통과한 attitude/position 값은 내용 검증 없이 그대로
       `Test_PublishEkfLocal_InfRejected`(vz=+Inf), `Test_PublishAttitude_FiniteValuesAccepted`
       (정상값 통과 회귀 확인) 3건. mavlink_bridge_app UT 전체 회귀 없음
       (utils 136, main 14, cmds 4, dispatch 26 PASS).
-- [ ] E2E(B)에 PTY로 NaN attitude 주입 테스트 추가 (선택사항 — Unit으로 이미 핵심 로직 커버,
-      우선순위 낮음)
+- [x] E2E(B) PTY 삽입 테스트 — **불필요로 판명, 종결 (2026-07-14)**. 기존
+      coveragetest의 `UT_FeedSerial()`(`coveragetest_mavlink_bridge_app_utils.c:687`)이
+      이미 실제 OS `pipe()`에 실제 MAVLink 바이트를 write하고
+      `MAVLINK_BRIDGE_APP_ServiceSerial()`을 직접 호출 — 이 함수 내부의 진짜
+      `read(SerialFd, ...)` 시스템콜(`mavlink_bridge_app_utils.c:2021`)과
+      `HandleReceivedBytes`→파싱→`PublishAttitude`/`PublishEkfLocal` 전 경로를
+      실제로 통과한다. PTY와 pipe의 차이는 termios/tty 시맨틱스뿐이며, NaN/Inf
+      검증은 순수 바이트스트림 파싱 로직이라 그 차이와 무관 — PTY로 바꿔도
+      추가로 커버되는 코드 경로가 없음. `Test_PublishAttitude_NaNRejected`/
+      `Test_PublishEkfLocal_InfRejected`가 이미 이 갭을 실질적으로 E2E 수준까지
+      닫고 있음이 확인됨.
