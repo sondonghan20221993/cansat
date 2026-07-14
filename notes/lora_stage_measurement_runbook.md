@@ -126,8 +126,7 @@ source 간 간격) 것으로 추정 — 손실률엔 영향 없었으나 Stage 3
       `bridge/lora_downlink_decoder.py::build_up2()` + C UT 교차검증.
       (원문의 "ACK2 파서"는 방향 착오 — ACK2는 지상→기체 송신이므로 지상엔
       파서 불필요, 송신은 기존 구현 있음)
-- [ ] `CYCLE_PERIOD_MS` 200ms로 변경 + 실기체 5Hz soak — **유일하게 남은 항목**
-      (Pi+LoRa 실물 필요)
+- [x] `CYCLE_PERIOD_MS` 200ms로 변경 + 실기체 5Hz soak — **완료, PASS (2026-07-14)**
 
 **Stage 3 실측 시도 (2026-07-14 착수)**: spec §7 확정값 적용 —
 `CYCLE_PERIOD_MS` 400→**200**, `RX_WINDOW_MS` 100→**100**(불변),
@@ -137,7 +136,20 @@ source 간 간격) 것으로 추정 — 손실률엔 영향 없었으나 Stage 3
 → `tools/analyze_downlink_csv.py <csv> --cycle-ms 200` 판정. 성공 기준은 Stage 2와
 동일(관측 레이트 ≥ 4.5Hz, 손실률 <5%, LinkState CONNECTED 유지).
 
-이 게이트 통과 후 `lora_protocol_v2_spec.md` §9 검증 요구사항대로 진행.
+**결과 — ✅ PASS (2026-07-14)**: 도중 지상국(`fc_serial_ws_server.py`)에 DL2
+파서가 아예 없던 걸 발견해 먼저 통합(openMCT repo, `notes/temp/
+dl2_downlink_integration.md`). 통합 후 재시도:
+- 관측 레이트: **5.0Hz** (DL2 2816건 / 562.9s)
+- seq gap 손실률: **0.0%** (expected=3137, received=3137, 통합 seq 기준)
+- LinkState: 100% CONNECTED(`1`)
+- 참고(비차단): FC `boot_ms` 최대 7회 연속 정체(캐시 재전송 의심, 별도 이슈),
+  RX p95가 참고 RX창 초과하는 패턴은 Stage 2와 동일 재현(지표 정의 이슈로 추정)
+- 부수 발견: `cfs_core_app` health FAILED(BRIDGE_TIMEOUT) 고착 재발 —
+  `FORCE_FLAG`로 우회해 진행, 근본 원인은 `notes/temp/
+  sch_lab_bridge_timeout_recurrence.md`에 별도 기록(미해결)
+
+**Stage 3 게이트 전체 통과.** 이 게이트 통과 후 `lora_protocol_v2_spec.md` §9
+검증 요구사항대로 진행.
 
 ## 진행 로그
 
@@ -147,3 +159,4 @@ source 간 간격) 것으로 추정 — 손실률엔 영향 없었으나 Stage 3
 | 2026-07-13 21:00~21:05 | Stage 2a (기준선, 1000ms) | ✅ PASS | Stage 1 데이터 재사용 |
 | 2026-07-13 21:20 | Stage 2b (500ms/150ms/6) | ✅ PASS | 손실률 0%, RX p95 초과는 2a와 동일 비율(지표 정의 이슈로 추정) |
 | 2026-07-13 21:29~21:34 | Stage 2c (400ms/100ms/8) | ✅ PASS | 손실률 0%, LinkState 99.7% CONNECTED — Stage 2 전체 통과, Stage 3 착수 조건 충족 |
+| 2026-07-14 22:05~22:14 | Stage 3 (200ms/100ms/15, v2 DL2) | ✅ PASS | 관측 5.0Hz, 손실률 0%, LinkState 100% CONNECTED — Stage 3 게이트 전체 통과 |
