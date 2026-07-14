@@ -13,7 +13,10 @@ import unittest
 
 from bridge.lora_downlink_decoder import (
     ACK2_MAGIC,
+    DL2_BASE_LEN,
     DL2_FLAG_POS_SATURATED,
+    DL2_FLAG_SYSTIME,
+    DL2_MAGIC,
     UP2_MAGIC,
     DecodeError,
     Dl2Frame,
@@ -141,6 +144,23 @@ class StreamingTest(unittest.TestCase):
         events = DownlinkStream().feed(data)
         frames = [e for e in events if isinstance(e, Dl2Frame)]
         self.assertEqual([f.seq for f in frames], [3])
+
+    def test_systime_flag_set_but_block_missing_returns_none_not_crash(self):
+        """flags SYSTIME 비트는 켜져 있지만 body_len은 SysTime 블록 미포함 —
+        CRC는 통과하지만 flags/body_len 불일치. decode_dl2()가 struct.error로
+        크래시하지 않고 sys_time_unix_usec=None으로 안전 처리해야 함
+        (2026-07-14 수정한 크래시 버그의 회귀 방지)."""
+        body = bytearray(DL2_BASE_LEN)
+        body[0] = DL2_MAGIC
+        body[1] = DL2_BASE_LEN  # SysTime 블록 없는 길이
+        body[4] = DL2_FLAG_SYSTIME  # 그런데 flags는 SysTime 있다고 주장
+        frame = bytes(body) + struct.pack("<H", crc16_ccitt(bytes(body)))
+
+        events = DownlinkStream().feed(frame)
+
+        frames = [e for e in events if isinstance(e, Dl2Frame)]
+        self.assertEqual(len(frames), 1)
+        self.assertIsNone(frames[0].sys_time_unix_usec)
 
 
 class Ack2Test(unittest.TestCase):

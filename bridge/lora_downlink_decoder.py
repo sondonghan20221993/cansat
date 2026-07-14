@@ -101,7 +101,7 @@ def decode_dl2(frame: bytes) -> Dl2Frame:
     (fix, sats, health, fault, linkstate) = struct.unpack_from("<BBBBB", frame, 40)
 
     sys_time = None
-    if flags & DL2_FLAG_SYSTIME:
+    if flags & DL2_FLAG_SYSTIME and len(frame) >= DL2_BASE_LEN + DL2_SYSTIME_BLOCK_LEN + 2:
         (sys_time,) = struct.unpack_from("<Q", frame, DL2_BASE_LEN)
 
     return Dl2Frame(

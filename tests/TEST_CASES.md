@@ -422,6 +422,12 @@ Init/dispatch 추가:
 | `BuildLoraFrameTest.test_crc_is_valid` | 프레임 CRC 유효성 확인 |
 | `BuildLoraFrameTest.test_payload_hex_matches` | hex payload가 원본 bytes와 일치 |
 
+### `test_lora_downlink_decoder.py` (추가분, 2026-07-14)
+
+| 테스트 이름 | 검증 내용 |
+|---|---|
+| `test_systime_flag_set_but_block_missing_returns_none_not_crash` | DL2 프레임의 `flags` SYSTIME 비트는 켜져 있는데 `body_len`이 SysTime 블록을 포함하지 않는 (짧은) 길이인 손상/불일치 프레임 — `decode_dl2()`가 `struct.error`로 크래시하지 않고 `sys_time_unix_usec=None`으로 안전 처리하며 나머지 필드(자세/위치 등)는 정상 디코드됨을 확인 (2026-07-14 수정한 크래시 버그의 회귀 방지) |
+
 ### `test_uplink_route_update_sender.py`
 
 | 테스트 이름 | 검증 내용 |
