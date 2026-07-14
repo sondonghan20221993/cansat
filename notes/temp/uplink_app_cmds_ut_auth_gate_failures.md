@@ -59,10 +59,14 @@
 - [ ] Pi 실기체 배포 — `GetClassRequiredLevel` 변경(DIAGNOSTIC/MODE 요구레벨 스왑)이
       아직 실기체에 반영 안 됨. 배포 전까지는 실기체 DIAGNOSTIC 명령이 여전히
       영구 차단 상태.
-- [ ] §18.10.3에서 이미 식별된 별도 항목 — 지상(`fc_serial_ws_server.py`)이
-      §18.11.1 인증레벨 bit[7:6]을 채우는 코드는 작성됐으나 커밋 보류 중
-      (auto-mode 보안 차단으로 사용자와 명시적으로 미루기로 합의) — 이게 반영돼야
-      실기체 CONFIG(v1→v2 다운링크 전환) 명령이 최종적으로 통과함
+- [x] §18.10.3에서 이미 식별된 별도 항목 — 지상(`fc_serial_ws_server.py`)의
+      §18.11.1 인증레벨 bit[7:6] 반영, 2026-07-14 완결·커밋·push
+      (`openMCT` repo commit `f65b295`). 최초 diff는 CONFIG 핸들러에만
+      적용돼 있었고 ROUTE_UPDATE/RECOVERY는 누락된 미완결 상태였음 —
+      두 핸들러에도 동일 적용해 완결. 상세는 그 repo의
+      `openmct_bridge_notes.md` §18.11.1 절 참조.
+      **단, Pi 배포는 아직** — `GetClassRequiredLevel` 스왑(위 항목)과
+      마찬가지로 실기체 반영 전까지는 실효 없음.
 - [x] `uplink_app_utils` UT의 무관한 사전 결함 4건(`ParseLoRaFrame`) — 별도 조사
       (2026-07-14) 및 수정 완료. 원인: `sscanf("%[^,]", ...)`는 0글자 매칭을
       허용하지 않아, payload가 없는(길이 0) **모든 정상 v1 ASCII uplink 명령이
