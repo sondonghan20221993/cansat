@@ -672,6 +672,20 @@ Init/dispatch 추가:
 | TDM-CACHE-003 | GPS MID → lat/lon/alt/fix 캐시 | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ |
 | TDM-CACHE-004 | SYSTEM_HEALTH MID → HealthState/FaultCode 캐시 | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ |
 | TDM-CACHE-005 | EKF_STATUS MID → EkfValid=1, PacketType=FC_STATE | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ |
+| TDM-CACHE-006 | FC_SYS_TIME MID → TimeUnixUsec/TimeValid 캐시 (2026-07-14, §16.4) | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ (`UpdateCacheFromMsg_SysTime`) |
+
+---
+
+### TDM-DL2-* (v2 바이너리 다운링크 인코딩, `LORA_TDM_APP_BuildDl2Frame`)
+
+| TC ID | 항목 | 분류 | 파일 |
+|---|---|---|---|
+| TDM-DL2-001 | 기본 47B 인코딩 — 필드/CRC 정합 | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ (`BuildDl2Frame_Basic`) |
+| TDM-DL2-002 | 위치 saturation(±327.67m 초과) → clamp + flags bit1 | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ (`BuildDl2Frame_PositionSaturation`) |
+| TDM-DL2-003 | 버퍼 부족(47B 미만) → 음수 반환 | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ (`BuildDl2Frame_BufferTooSmall`) |
+| TDM-DL2-004 | SysTime 유효 → flags bit0 + 55B, TimeUnixUsec u64 LE round-trip (2026-07-14) | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ (`BuildDl2Frame_SysTimeIncluded`) |
+| TDM-DL2-005 | SysTime 무효(TimeValid=0) → 기존과 동일 47B, flags bit0 미설정 (2026-07-14) | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ (`BuildDl2Frame_SysTimeNotValid_Excluded`) |
+| TDM-DL2-006 | SysTime 유효하나 버퍼가 47B뿐 → SysTime 생략 폴백(크래시 대신) (2026-07-14) | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ (`BuildDl2Frame_SysTimeValid_BufferOnlyBaseSize_Fallback`) |
 
 ---
 
@@ -1032,3 +1046,4 @@ lora_tdm_app 장애 처리와 uplink_app 명령 검증/차단 경로.
 | RT-TDM-001~009 | lora_tdm_app TDM 사이클, ACK, 링크 상태 전이 | 위 TDM-RT-001~009 |
 | RT-DL-001 | FC → LoRa → GS PC 전 구간 텔레메트리 수신 | PC 수신 텔레메트리 시험 |
 | RT-UL-001 | GS → LoRa → uplink_app → cFS SB 경로 | LoRa uplink 직접 수신 시험 |
+| RT-DL2-SYSTIME-001 | v2(DL2) 다운링크에서 SysTime 블록 실제 도착 확인 — FC GPS 락 후 DL2 프레임 `flags bit0` 세팅 + 지상 CSV `sys_time_unix_usec` 컬럼에 값 채워짐 (2026-07-14, §16.4) | `notes/temp/gps_time_sync_164_implementation.md` — 단위테스트(TDM-CACHE-006, TDM-DL2-004~006)는 완료, 실기체 도착 확인만 남음 |

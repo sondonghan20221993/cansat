@@ -72,4 +72,6 @@ cFE 코어 시각 규율은 전면 보류. 대신 **이미 받고 있는 GPS 시
 - [x] 지상측(openMCT) `_csv_fields`에 `sys_time_unix_usec` 추가,
       `dl2_frame_to_data()`가 있을 때만 채우도록 반영
 - [x] 지상측 테스트 2건 추가(포함/미포함) — 전체 52/52 PASS, 회귀 없음
-- [ ] (선택, 실기체 필요) Pi 배포 후 실측 — SysTime 블록 도착 확인
+- [x] `tests/TEST_CASES.md` 카탈로그 반영 — TDM-CACHE-006, TDM-DL2-001~006(신규
+      섹션, 기존 3건도 소급 카탈로그화), 런타임 후보 RT-DL2-SYSTIME-001
+- [ ] (선택, 실기체 필요) Pi 배포 후 실측 — SysTime 블록 도착 확인 (RT-DL2-SYSTIME-001)
