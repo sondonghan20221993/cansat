@@ -149,7 +149,7 @@ class _Parser:
         self.crc_low = 0
 
     def feed(self, byte):
-        if byte in (STX_V1, STX_V2):
+        if byte in (STX_V1, STX_V2) and self.state == 'STX':
             self._reset()
             self.is_v2 = (byte == STX_V2)
             self.state = 'LEN'

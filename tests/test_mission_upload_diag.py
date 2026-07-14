@@ -12,6 +12,7 @@ import struct
 import unittest
 
 from tools.mission_upload_diag import (
+    STX_V1,
     STX_V2,
     MSG_MISSION_CLEAR_ALL,
     MSG_MISSION_COUNT,
@@ -35,8 +36,10 @@ from tools.mission_upload_diag import (
 
 class CrcTest(unittest.TestCase):
     def test_crc_acc_known_value(self):
-        # 0xFF ^ 0x00 → X.25 step: tmp = 0xFF ^ 0xFF = 0, result = 0 >> 8 = 0
-        self.assertEqual(_crc_acc(0x00, 0xFFFF), 0)
+        # MAVLink 표준 crc_accumulate(data=0, crcAccum=0xFFFF) 레퍼런스 트레이스:
+        # tmp = 0 ^ 0xFF = 0xFF; tmp ^= (tmp<<4)&0xFF → 0x0F
+        # crc = (0xFFFF>>8) ^ (0x0F<<8) ^ (0x0F<<3) ^ (0x0F>>4) = 0xFF^0x0F00^0x78 = 0x0F87
+        self.assertEqual(_crc_acc(0x00, 0xFFFF), 0x0F87)
 
     def test_crc_acc_returns_16bit(self):
         for byte in range(256):
@@ -230,15 +233,45 @@ class ParserRoundTripTest(unittest.TestCase):
         seq = struct.unpack_from('<H', msg['payload'], 28)[0]
         self.assertEqual(seq, 1)
 
-    def test_v1_stx_resets_parser(self):
-        # V1 STX(0xFE) 도중 수신 → 상태 리셋
+    def test_v1_stx_resets_parser_when_idle(self):
+        # 유휴 상태(직전 프레임 미시작)에서 V1 STX(0xFE) 수신 → 새 프레임 시작
         p = _Parser()
         p.feed(STX_V2)
         p.feed(0x03)  # LEN=3
-        # 중간에 V1 STX 삽입 → reset
-        p.feed(0xFE)
+        p.feed(0x00)  # INCOMPAT
+        p.feed(0x00)  # COMPAT
+        p.feed(0x00)  # SEQ
+        p.feed(0x00)  # SYSID
+        p.feed(0x00)  # COMPID
+        p.feed(0x00)  # MSGID1
+        p.feed(0x00)  # MSGID2
+        p.feed(0x00)  # MSGID3
+        p.feed(0x01)  # PAYLOAD[0]
+        p.feed(0x02)  # PAYLOAD[1]
+        p.feed(0x03)  # PAYLOAD[2] → payload 완료, state=CRC1
+        p.feed(0x00)  # CRC1
+        p.feed(0x00)  # CRC2 → 프레임 완결, state는 다시 'STX'로 리셋됨
+        p.feed(STX_V1)
         self.assertEqual(p.state, 'LEN')
         self.assertFalse(p.is_v2)
+
+    def test_stx_byte_mid_frame_is_consumed_as_data(self):
+        # 프레임 파싱 도중(state != 'STX')에는 0xFD/0xFE 값도 정상 데이터로 소비되어야 함 —
+        # 페이로드에 우연히 이 값이 섞여도 프레임을 잃지 않는다 (2026-07-14 계약 변경)
+        p = _Parser()
+        p.feed(STX_V2)
+        p.feed(0x01)  # LEN=1
+        p.feed(0x00)  # INCOMPAT
+        p.feed(0x00)  # COMPAT
+        p.feed(0x00)  # SEQ
+        p.feed(0x00)  # SYSID
+        p.feed(0x00)  # COMPID
+        p.feed(0x00)  # MSGID1
+        p.feed(0x00)  # MSGID2
+        p.feed(0x00)  # MSGID3
+        p.feed(0xFE)  # PAYLOAD[0] == STX_V1 값이지만 데이터로 소비되어야 함
+        self.assertEqual(p.state, 'CRC1')
+        self.assertEqual(bytes(p.payload), bytes([0xFE]))
 
     def test_partial_frame_returns_none(self):
         frame = build_mission_clear_all(1, 1)
