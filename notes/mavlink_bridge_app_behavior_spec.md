@@ -101,6 +101,16 @@ Active cache(`ActiveWaypointX/Y/Z`, `ActiveWaypointCount`)는 `MISSION_ACK ACCEP
 
 MAVLink standard MISSION upload handshake를 따른다. FC 펌웨어/설정에 따라 두 가지 경로를 모두 지원한다.
 
+> **FC 펌웨어 불일치 발견 (2026-07-14)**: 본 섹션의 `MISSION_CLEAR_ALL` 필수화(§6.0),
+> `sysid=255` 요구(§13, `SYSID_MYGCS`), `MAV_FRAME_LOCAL_NED` 거부(§13) 등은 모두
+> **ArduPilot 실측(2026-05-28 등)** 기반으로 기록된 내용이다. 그러나 현재 실제 연결된
+> FC는 **PX4**로 확인됨(2026-07-14) — 위 ArduPilot 특정 동작들이 PX4에서도 동일하게
+> 적용되는지 **미검증**. `mavlink_bridge_app_utils.c`의 FC 식별 로직 자체는 이미
+> `autopilot` 필드로 ArduPilot(3)/PX4(12) 둘 다 인식하도록 설계돼 있음
+> (`spec_code_audit.md` 부록 참조) — 즉 코드가 PX4를 지원하지 않는 게 아니라, 이
+> 문서의 mission-upload 세부 거동 기록이 ArduPilot 전용 실측이라는 뜻. PX4 연결 시
+> 재검증 필요(특히 §6.0 MISSION_CLEAR_ALL 필요 여부, §13 sysid/frame 요구사항).
+
 ### 6.0 공통 선행 단계: MISSION_CLEAR_ALL
 
 모든 업로드 경로에서 `MISSION_COUNT` 전송 전에 반드시 `MISSION_CLEAR_ALL(45)`을 먼저 전송한다.
