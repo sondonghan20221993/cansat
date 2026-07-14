@@ -544,6 +544,103 @@ void Test_BuildDl2Frame_BufferTooSmall(void)
     UtAssert_True(Len < 0, "BufLen 부족 시 음수 반환");
 }
 
+/* FcState.TimeValid면 flags bit0(DL2_FLAG_SYSTIME) 세우고 55B로 확장,
+ * TimeUnixUsec을 base 뒤(offset 45)에 u64 LE로 덧붙임 */
+void Test_BuildDl2Frame_SysTimeIncluded(void)
+{
+    uint8  Buf[LORA_TDM_APP_DL2_MAX_FRAME_LEN];
+    int    Len;
+    uint16 ExpectedCrc;
+    uint64 Got;
+    int    i;
+
+    memset(&LORA_TDM_APP_Data, 0, sizeof(LORA_TDM_APP_Data));
+    LORA_TDM_APP_Data.FcState.TimeValid    = 1;
+    LORA_TDM_APP_Data.FcState.TimeUnixUsec = 1752480000123456ULL;
+
+    Len = LORA_TDM_APP_BuildDl2Frame(Buf, sizeof(Buf), &LORA_TDM_APP_Data);
+
+    UtAssert_INT32_EQ(Len, (int)LORA_TDM_APP_DL2_MAX_FRAME_LEN);
+    UtAssert_INT32_EQ(Buf[1], (int)(LORA_TDM_APP_DL2_LEN_FIELD + LORA_TDM_APP_DL2_SYSTIME_BLOCK_LEN));
+    UtAssert_True((Buf[4] & LORA_TDM_APP_DL2_FLAG_SYSTIME) != 0, "flags bit0 set");
+
+    Got = 0;
+    for (i = 7; i >= 0; i--)
+    {
+        Got = (Got << 8) | Buf[LORA_TDM_APP_DL2_LEN_FIELD + (uint8)i];
+    }
+    UtAssert_True(Got == 1752480000123456ULL, "TimeUnixUsec round-trip");
+
+    ExpectedCrc = LORA_TDM_APP_Crc16(Buf, LORA_TDM_APP_DL2_LEN_FIELD + LORA_TDM_APP_DL2_SYSTIME_BLOCK_LEN);
+    UtAssert_INT32_EQ(GetU16LE(&Buf[LORA_TDM_APP_DL2_LEN_FIELD + LORA_TDM_APP_DL2_SYSTIME_BLOCK_LEN]), ExpectedCrc);
+}
+
+/* TimeValid=0(기본)이면 기존과 동일하게 47B, flags bit0 미설정 — 회귀 확인 */
+void Test_BuildDl2Frame_SysTimeNotValid_Excluded(void)
+{
+    uint8 Buf[LORA_TDM_APP_DL2_MAX_FRAME_LEN];
+    int   Len;
+
+    memset(&LORA_TDM_APP_Data, 0, sizeof(LORA_TDM_APP_Data));
+    LORA_TDM_APP_Data.FcState.TimeValid    = 0;
+    LORA_TDM_APP_Data.FcState.TimeUnixUsec = 999999ULL; /* stale/이전 값 남아있어도 무시돼야 함 */
+
+    Len = LORA_TDM_APP_BuildDl2Frame(Buf, sizeof(Buf), &LORA_TDM_APP_Data);
+
+    UtAssert_INT32_EQ(Len, (int)LORA_TDM_APP_DL2_FRAME_LEN);
+    UtAssert_INT32_EQ(Buf[1], (int)LORA_TDM_APP_DL2_LEN_FIELD);
+    UtAssert_True((Buf[4] & LORA_TDM_APP_DL2_FLAG_SYSTIME) == 0, "flags bit0 not set");
+}
+
+/* SysTime 필요하지만 버퍼가 base(47B)만큼만 있으면 SysTime 없이 폴백(크래시 대신) */
+void Test_BuildDl2Frame_SysTimeValid_BufferOnlyBaseSize_Fallback(void)
+{
+    uint8 Buf[LORA_TDM_APP_DL2_FRAME_LEN];
+    int   Len;
+
+    memset(&LORA_TDM_APP_Data, 0, sizeof(LORA_TDM_APP_Data));
+    LORA_TDM_APP_Data.FcState.TimeValid    = 1;
+    LORA_TDM_APP_Data.FcState.TimeUnixUsec = 123ULL;
+
+    Len = LORA_TDM_APP_BuildDl2Frame(Buf, sizeof(Buf), &LORA_TDM_APP_Data);
+
+    UtAssert_INT32_EQ(Len, (int)LORA_TDM_APP_DL2_FRAME_LEN);
+    UtAssert_INT32_EQ(Buf[1], (int)LORA_TDM_APP_DL2_LEN_FIELD);
+    UtAssert_True((Buf[4] & LORA_TDM_APP_DL2_FLAG_SYSTIME) == 0, "buffer 부족 시 SysTime 생략");
+}
+
+/* ---- UpdateCacheFromMsg: FC_SYS_TIME_MID ---- */
+
+void Test_UpdateCacheFromMsg_SysTime(void)
+{
+    typedef struct {
+        CFE_MSG_TelemetryHeader_t TelemetryHeader;
+        uint32 TimestampMs; uint32 Seq;
+        uint8 Valid; uint8 Stale; uint8 ErrorCode; uint8 Reserved;
+        uint64 TimeUnixUsec;
+    } TEST_SysTimeTlm_t;
+
+    uint8               Storage[sizeof(TEST_SysTimeTlm_t)];
+    CFE_SB_Buffer_t     *Buffer;
+    TEST_SysTimeTlm_t   *Msg;
+    CFE_SB_MsgId_t       MsgId;
+
+    memset(Storage, 0, sizeof(Storage));
+    Buffer = (CFE_SB_Buffer_t *)Storage;
+    Msg    = (TEST_SysTimeTlm_t *)Storage;
+    CFE_MSG_Init(CFE_MSG_PTR(Msg->TelemetryHeader),
+                 CFE_SB_ValueToMsgId(LORA_TDM_APP_FC_SYS_TIME_MID_VALUE), sizeof(*Msg));
+    Msg->Valid        = 1;
+    Msg->TimeUnixUsec = 1752480000123456ULL;
+
+    MsgId = CFE_SB_ValueToMsgId(LORA_TDM_APP_FC_SYS_TIME_MID_VALUE);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+    LORA_TDM_APP_UpdateCacheFromMsg(Buffer, &LORA_TDM_APP_Data);
+
+    UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.FcState.TimeValid, 1);
+    UtAssert_True(LORA_TDM_APP_Data.FcState.TimeUnixUsec == 1752480000123456ULL, "TimeUnixUsec cached");
+}
+
 /* ---- ParseAck2Frame — lora_protocol_v2_spec.md §6 ---- */
 
 static void PutU16LE_Test(uint8 *P, uint16 V)
@@ -832,6 +929,10 @@ void UtTest_Setup(void)
     ADD_TEST(BuildDl2Frame_Basic);
     ADD_TEST(BuildDl2Frame_PositionSaturation);
     ADD_TEST(BuildDl2Frame_BufferTooSmall);
+    ADD_TEST(BuildDl2Frame_SysTimeIncluded);
+    ADD_TEST(BuildDl2Frame_SysTimeNotValid_Excluded);
+    ADD_TEST(BuildDl2Frame_SysTimeValid_BufferOnlyBaseSize_Fallback);
+    ADD_TEST(UpdateCacheFromMsg_SysTime);
     ADD_TEST(ParseAck2Frame_Valid);
     ADD_TEST(ParseAck2Frame_WrongMagic);
     ADD_TEST(ParseAck2Frame_CrcFail);

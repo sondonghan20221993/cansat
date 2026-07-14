@@ -249,7 +249,7 @@ static void RunTx(void)
      * 필요 없다 — 매 사이클 DL2 하나만 전송. */
     if (LORA_TDM_APP_Data.UseV2Downlink)
     {
-        uint8 Dl2Buf[LORA_TDM_APP_DL2_FRAME_LEN];
+        uint8 Dl2Buf[LORA_TDM_APP_DL2_MAX_FRAME_LEN];
         int   Dl2Len;
 
         Dl2Len = LORA_TDM_APP_BuildDl2Frame(Dl2Buf, sizeof(Dl2Buf), &LORA_TDM_APP_Data);
@@ -454,6 +454,13 @@ CFE_Status_t LORA_TDM_APP_Init(void)
     }
 
     Status = CFE_SB_SubscribeEx(CFE_SB_ValueToMsgId(LORA_TDM_APP_FC_EKF_STATUS_MID_VALUE),
+                                 LORA_TDM_APP_Data.CommandPipe, CFE_SB_DEFAULT_QOS, 10);
+    if (Status != CFE_SUCCESS)
+    {
+        return Status;
+    }
+
+    Status = CFE_SB_SubscribeEx(CFE_SB_ValueToMsgId(LORA_TDM_APP_FC_SYS_TIME_MID_VALUE),
                                  LORA_TDM_APP_Data.CommandPipe, CFE_SB_DEFAULT_QOS, 10);
     if (Status != CFE_SUCCESS)
     {

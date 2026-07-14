@@ -24,5 +24,10 @@
 #define LORA_TDM_APP_DL2_LEN_FIELD      45u
 /* DL2 기본 프레임 총 길이(CRC 포함) */
 #define LORA_TDM_APP_DL2_FRAME_LEN      47u
+/* SysTime 확장 블록 길이(uint64 TimeUnixUsec) — spec §4.2, DL2_FLAG_SYSTIME(bit0) */
+#define LORA_TDM_APP_DL2_SYSTIME_BLOCK_LEN  8u
+#define LORA_TDM_APP_DL2_FLAG_SYSTIME       0x01u
+/* SysTime 확장 포함 시 최대 프레임 총 길이(CRC 포함) */
+#define LORA_TDM_APP_DL2_MAX_FRAME_LEN  (LORA_TDM_APP_DL2_FRAME_LEN + LORA_TDM_APP_DL2_SYSTIME_BLOCK_LEN)
 
 #endif

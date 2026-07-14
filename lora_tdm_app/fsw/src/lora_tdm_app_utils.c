@@ -134,6 +134,12 @@ static void PutI32LE(uint8 *P, int32 V)
     PutU32LE(P, (uint32)V);
 }
 
+static void PutU64LE(uint8 *P, uint64 V)
+{
+    PutU32LE(&P[0], (uint32)(V & 0xFFFFFFFFu));
+    PutU32LE(&P[4], (uint32)((V >> 32) & 0xFFFFFFFFu));
+}
+
 /* rad -> i16(rad*1e4), 범위 방어적 clamp (스펙상 각도 saturation 플래그는 정의 안 함) */
 static int16 ScaleRadToI16(float Rad)
 {
@@ -168,11 +174,14 @@ static int16 ScaleMeterToI16Cm(float MetersVal, bool *Saturated)
 }
 
 /* ---- Build DL2 frame (v2 바이너리 다운링크) — lora_protocol_v2_spec.md §4 ----
- * SysTime 확장 블록(§4.2) 미포함 — flags bit0 항상 0, 기본 47B 고정 길이. */
+ * SysTime 확장 블록(§4.2): FcState.TimeValid면 flags bit0 세우고 TimeUnixUsec
+ * 8바이트를 뒤에 덧붙여 총 55B(기본 47B 대신), 아니면 기존과 동일 47B. */
 int LORA_TDM_APP_BuildDl2Frame(uint8 *Buf, size_t BufLen, const LORA_TDM_APP_Data_t *AppData)
 {
     uint8  Flags = 0;
     bool   Saturated = false;
+    bool   IncludeSysTime;
+    uint8  BodyLen;
     uint16 Crc;
 
     if (Buf == NULL || AppData == NULL || BufLen < LORA_TDM_APP_DL2_FRAME_LEN)
@@ -180,10 +189,17 @@ int LORA_TDM_APP_BuildDl2Frame(uint8 *Buf, size_t BufLen, const LORA_TDM_APP_Dat
         return -1;
     }
 
+    IncludeSysTime = (AppData->FcState.TimeValid != 0U);
+    if (IncludeSysTime && BufLen < LORA_TDM_APP_DL2_MAX_FRAME_LEN)
+    {
+        IncludeSysTime = false; /* 버퍼 부족 시 SysTime 없이 기본 프레임으로 폴백 */
+    }
+    BodyLen = (uint8)(LORA_TDM_APP_DL2_LEN_FIELD + (IncludeSysTime ? LORA_TDM_APP_DL2_SYSTIME_BLOCK_LEN : 0U));
+
     Buf[0] = (uint8)LORA_TDM_APP_DL2_MAGIC;
-    Buf[1] = (uint8)LORA_TDM_APP_DL2_LEN_FIELD;
+    Buf[1] = BodyLen;
     PutU16LE(&Buf[2], (uint16)AppData->DownlinkSeq);
-    /* Buf[4] flags — 아래서 saturation 확인 후 채움 */
+    /* Buf[4] flags — 아래서 saturation/systime 확인 후 채움 */
     Buf[5] = (uint8)AppData->PendingUplinkFeedback;
     PutU32LE(&Buf[6], AppData->FcState.TimestampMs);
 
@@ -209,13 +225,19 @@ int LORA_TDM_APP_BuildDl2Frame(uint8 *Buf, size_t BufLen, const LORA_TDM_APP_Dat
     Buf[43] = AppData->SystemHealth.FaultCode;
     Buf[44] = AppData->LinkState;
 
+    if (IncludeSysTime)
+    {
+        PutU64LE(&Buf[LORA_TDM_APP_DL2_LEN_FIELD], AppData->FcState.TimeUnixUsec);
+    }
+
     Flags |= Saturated ? 0x02u : 0x00u;
+    Flags |= IncludeSysTime ? (uint8)LORA_TDM_APP_DL2_FLAG_SYSTIME : 0x00u;
     Buf[4] = Flags;
 
-    Crc = LORA_TDM_APP_Crc16(Buf, LORA_TDM_APP_DL2_LEN_FIELD);
-    PutU16LE(&Buf[LORA_TDM_APP_DL2_LEN_FIELD], Crc);
+    Crc = LORA_TDM_APP_Crc16(Buf, BodyLen);
+    PutU16LE(&Buf[BodyLen], Crc);
 
-    return (int)LORA_TDM_APP_DL2_FRAME_LEN;
+    return (int)BodyLen + 2;
 }
 
 /* ---- Parse ACK2 frame (v2 바이너리, 5B) — lora_protocol_v2_spec.md §6 ---- */
@@ -755,6 +777,19 @@ void LORA_TDM_APP_UpdateCacheFromMsg(CFE_SB_Buffer_t *SBBufPtr, LORA_TDM_APP_Dat
         AppData->FcState.AltMm       = M->AltMm;
         AppData->FcState.GpsFix      = M->FixType;
         AppData->FcState.SatellitesVisible = M->SatellitesVisible;
+    }
+    else if (CFE_SB_MsgId_Equal(MsgId, CFE_SB_ValueToMsgId(LORA_TDM_APP_FC_SYS_TIME_MID_VALUE)))
+    {
+        /* Layout must match mavlink_bridge_app MAVLINK_BRIDGE_APP_SysTimeTlm_t */
+        typedef struct {
+            CFE_MSG_TelemetryHeader_t Hdr;
+            uint32 TimestampMs; uint32 Seq;
+            uint8 Valid; uint8 Stale; uint8 ErrorCode; uint8 Reserved;
+            uint64 TimeUnixUsec;
+        } SysTimeMsg_t;
+        const SysTimeMsg_t *M = (const SysTimeMsg_t *)SBBufPtr;
+        AppData->FcState.TimeUnixUsec = M->TimeUnixUsec;
+        AppData->FcState.TimeValid    = M->Valid;
     }
     else if (CFE_SB_MsgId_Equal(MsgId, CFE_SB_ValueToMsgId(LORA_TDM_APP_SYSTEM_HEALTH_MID_VALUE)))
     {

@@ -29,6 +29,8 @@ typedef struct
     uint8    GpsValid;
     uint8    EkfValid;
     uint32   TimestampMs;
+    uint64   TimeUnixUsec; /* GPS 기반 UNIX epoch (us), FC_SYS_TIME_MID 경유 */
+    uint8    TimeValid;
 } LORA_TDM_APP_FcStateCache_t;
 
 typedef struct
