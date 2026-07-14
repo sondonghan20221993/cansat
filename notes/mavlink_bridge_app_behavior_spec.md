@@ -425,6 +425,18 @@ python3 tools/mission_upload_diag.py --port /dev/serial0 --baud 57600
 
 **sysid/compid**: `255/190` (브리지와 동일)
 
+**`_Parser` STX 리싱크 설계 결정 (2026-07-14)**: `_Parser.feed()`는 프레임
+파싱 도중(LEN~CRC2)이라도 바이트 값이 `0xFD`/`0xFE`(STX_V1/V2)와 우연히 같으면
+리싱크했었다 — MAVLink는 페이로드를 이스케이프하지 않으므로, 부동소수점 좌표
+인코딩 시 우연히 이 값이 섞이면(예: `z=-3.0`) 정상 프레임을 파싱 도중 놓쳐
+"FC 무응답"으로 오진단하는 실제 버그로 이어졌다(`test_roundtrip_mission_item_int`로
+실증). 상태 가드를 추가해 **`self.state == 'STX'`(유휴 상태)일 때만 리싱크**하도록
+변경 — 실 MAVLink 파서(pymavlink 등) 계약과 일치하며, 파싱 도중 우연한 STX 값은
+정상 LEN/SEQ/PAYLOAD/CRC 데이터로 소비한다. 동기화가 실제로 깨져도 CRC 불일치로
+걸러지고 다음 유휴 상태에서 재동기화되므로 "빠른 복구" 이점 상실은 이 CLI 디버그
+툴 맥락에서 무시 가능(최대 지연 ~44ms, 5초 타임아웃 단위 동작).
+(근거: `notes/temp/mission_upload_diag_test_findings.md`, 커밋 `8677489`)
+
 ---
 
 ## 15. 미구현 사항

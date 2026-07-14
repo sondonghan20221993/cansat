@@ -159,6 +159,15 @@ RX창 100ms에 들어가는 UP2 최대 크기는 ~240B(에어타임 100ms). payl
   기체측 C `LORA_TDM_APP_BuildDl2Frame()`(`lora_tdm_app_utils.c`, §4 §11.1/§11.2 게이트와
   함께 구현)과 오프셋 동일 확인. 남은 것: UP2 인코더/ACK2 파서는 아직 지상 Python에 없음
   (지상은 UP2 송신/ACK2 수신 쪽), CONFIG로 v1/v2 런타임 전환, 실기체 5Hz 검증.
+- ~~`decode_dl2()` SYSTIME 플래그·길이 불일치 크래시~~ — **해소 (2026-07-14)**:
+  `flags & DL2_FLAG_SYSTIME`은 켜져 있는데 `body_len`이 SysTime 블록 없는 길이인
+  프레임(CRC는 통과)이 들어오면 `struct.unpack_from`이 `struct.error`를 던져 지상
+  다운링크 디코더 프로세스 자체가 죽던 버그. 길이 재검증(`len(frame) >=
+  DL2_BASE_LEN + DL2_SYSTIME_BLOCK_LEN + 2`) 후에만 SysTime 필드를 읽도록 수정 —
+  조건 불충족 시 크래시 대신 `sys_time_unix_usec=None`으로 안전 처리. 회귀테스트:
+  `test_lora_downlink_decoder.py::StreamingTest::
+  test_systime_flag_set_but_block_missing_returns_none_not_crash`.
+  (근거: `notes/temp/dl2_systime_flag_length_crash.md`, 커밋 `c1ec450`)
 
 ## 11. 기체 C 수신 구현 세부 (Stage 3 착수 게이트)
 

@@ -63,4 +63,7 @@ A.1~A.4(IsAuthorized 매트릭스), B.1/B.2(fail-safe boot)는
       `cfs_core_app_dispatch`(35/35)·`lora_tdm_app`(40/40)·
       `lora_tdm_app_cmds`(12/12) 전부 PASS, 실패 없음
 - [x] `tests/A3_unittest_cases.md` 상태표 갱신
-- [ ] 커밋 + push
+- [x] 커밋 + push (`9302295`)
+- [x] `mission_app_runtime_spec.md` §18.4.6.4~.6 스테일 "구현 상태(2026-07-05)"
+      주석 정정 — 실제로는 A-3 구현·단위테스트 완료 상태였는데 예전 스텁 수준
+      설명이 그대로 남아있었음 (2026-07-14)

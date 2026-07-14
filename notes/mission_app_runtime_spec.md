@@ -1334,9 +1334,15 @@ recovery payload는 최소한 다음 필드를 포함해야 한다.
 - 현재 상태에서 금지된 recovery action
 - 권한 부족
 
-> **구현 상태 (2026-07-05)**: 본 계약은 목표 사양이며 현재 구현은 스텁 수준이다.
-> `uplink_app`의 `ForwardRecoveryCommand`는 payload를 **버리고** 헤더(Seq/TimestampMs/SourceSequence)만 `RECOVERY_CMD_MID(0x190C)`로 publish한다 — `recovery_action`/`target_component`/`reason_code`/`request_token`이 소비자에게 전달되지 않는다.
-> `cfs_core_app`의 `ProcessRecoveryCommand`는 action 구분 없이 무조건 bridge 재시작 카운터 리셋만 수행한다.
+> **구현 상태 (2026-07-14 갱신, 최초 A-3 구현 2026-07-05)**: ~~스텁 수준~~ 완료.
+> `uplink_app`의 `ForwardRecoveryCommand`는 `Payload[0:8]`을
+> `RecoveryAction`/`TargetComponent`/`ReasonCode`(u16 LE)/`RequestToken`(u32 LE)으로
+> 파싱해 `RECOVERY_CMD_MID(0x190C)`로 전달한다. `cfs_core_app`의
+> `ProcessRecoveryCommand`는 `RecoveryAction`별로 분기(RESET_COUNTER/
+> RESTART_BRIDGE/PARSER_RESET/SERIAL_RECONNECT, 미정의 action은 EVS 오류만
+> 발생) — action 구분 없이 카운터만 리셋하던 예전 동작은 아님. 단위테스트:
+> `A3_unittest_cases.md` A-3.1(5건), `notes/temp/a3_unittest_gap_implementation.md`
+> 참조.
 
 ##### 18.4.6.5 mode command
 
@@ -1359,7 +1365,13 @@ mode payload는 최소한 다음 필드를 포함해야 한다.
 - 권한 부족
 - 승인되지 않은 목표 상태
 
-> **구현 상태 (2026-07-05)**: 본 계약은 목표 사양이다. 현재 `cfs_core_app`의 `ProcessModeCommand`는 `Payload[0]`을 `LastModeValue`로 캐시하고 EVS만 발생 — `mode_action`/`requested_state`/`request_token` 검증, 허용 전이 판단, 실제 모드 전이는 모두 미구현.
+> **구현 상태 (2026-07-14 갱신, 최초 A-3 구현 2026-07-05)**: ~~`Payload[0]` 캐시만~~ 완료.
+> `cfs_core_app`의 `ProcessModeCommand`는 `ModeAction`(ENTER/EXIT)×`RequestedState`
+> (NORMAL/RECOVERY) 조합을 검증해 허용된 전이(NORMAL→RECOVERY, RECOVERY→NORMAL)만
+> `CurrentModeState`를 변경하고, 그 외(동일 상태 재요청·미정의 상태값 등)는 상태
+> 불변 + EVS 오류만 발생시킨다. `RequestToken`은 `LastModeRequestToken`에 저장.
+> 단위테스트: `A3_unittest_cases.md` A-3.2(4건),
+> `notes/temp/a3_unittest_gap_implementation.md` 참조.
 
 ##### 18.4.6.6 diagnostic command
 
@@ -1382,7 +1394,12 @@ diagnostic payload는 최소한 다음 필드를 포함해야 한다.
 - payload 형식 불일치
 - 현재 상태에서 금지된 진단 동작
 
-> **구현 상태 (2026-07-05)**: 본 계약은 목표 사양이다. 현재 구독자 `lora_tdm_app`의 `ProcessDiagnosticCommand`는 payload를 해석하지 않고(`(void)SBBufPtr`) 링크 상태 요약 EVS(`DIAGNOSTIC_CMD_EID`)만 출력 — `diag_action`/`diag_target`/`diag_value` 처리 미구현.
+> **구현 상태 (2026-07-14 갱신, 최초 A-3 구현 2026-07-05)**: ~~payload 미해석~~ 완료.
+> 구독자 `lora_tdm_app`의 `ProcessDiagnosticCommand`는 `DiagAction`을
+> LINK_STATUS/RX_STATS/TX_STATS로 분기해 각각 다른 EVS 요약(링크 상태·RX
+> 카운터·TX 카운터)을 출력한다. `diag_target`/`diag_value` 세분화 처리는 아직
+> 없음(액션 단위 EVS 요약까지가 현재 범위). 단위테스트: `A3_unittest_cases.md`
+> A-3.3(4건), `notes/temp/a3_unittest_gap_implementation.md` 참조.
 
 ##### 18.4.6.7 counter management
 
