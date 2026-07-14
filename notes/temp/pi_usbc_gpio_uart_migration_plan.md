@@ -1,5 +1,15 @@
 # Pi USB-C 데이터모드 전환 + GPIO14/15 UART 해제 계획 (2026-07-14 도출, Pi 종료 상태에서 기록만)
 
+> **최종 결론 (2026-07-14, 종결)**: **USB 전환 계획 자체를 철회.** 보드(CM4-NANO-B)에
+> GPIO14/15(UART, `/dev/serial0`)로 배선된 **전용 커넥터가 있음을 발견**, FC를 그
+> 커넥터로 연결해 해결 — 기존 UART 경로(`MAVLINK_BRIDGE_APP_SERIAL_PATH=/dev/serial0`)
+> 그대로 사용하므로 코드/설정 변경 불필요. 아래 USB-C/USB-A 조사 내용은 향후 참고용
+> 기록으로 남긴다(핵심: 이 보드 USB-C는 CC 풀업 부재로 C-to-C host 불가, USB-A 포트
+> +A-to-C는 동작 확인됨 — USB 경로가 다시 필요해지면 USB-A 포트 사용).
+> 부수 성과로 남는 것: ① Pi 전원이 USB-C → GPIO 5V(핀2/4)로 이전됨(유지),
+> ② `config.txt`의 `otg_mode=1` → `dtoverlay=dwc2,dr_mode=host` 변경도 유지
+> (USB-A 포트 host 동작에 필요, 부작용 없음).
+
 ## 문제
 
 Pi(CM4)의 USB-C 포트를 데이터 입력(OTG)으로 전환하고, 기존에 UART(`/dev/serial0`)로
@@ -200,9 +210,10 @@ MAVLINK_BRIDGE_SERIAL_PATH=/dev/ttyACM0 sudo -E ./core-cpu1
 - [x] FC USB 인식 확인 — `/dev/ttyACM0` (MicoAir743v2) 확정. 단 **USB-C 포트가
       아니라 USB-A 포트**(A-to-C 케이블)로 연결됨 — USB-C C-to-C는 보드 설계
       제약(추정)으로 실패, 운영 기준은 USB-A 포트로 확정
-- [ ] `MAVLINK_BRIDGE_SERIAL_PATH=/dev/ttyACM0` env var로 `mavlink_bridge_app` 연결 검증
-- [ ] 안정 확인되면 `default_mavlink_bridge_app_platform_cfg.h`의
-      `MAVLINK_BRIDGE_APP_SERIAL_PATH` 기본값을 실제 장치명으로 변경(커밋)
-- [ ] 기존 GPIO UART 대비 CRC/노이즈 개선 여부 비교 — `integration_steps.md`
-      잔여 이슈("FC UART 링크 노이즈: crc fail msgid=24/30") 해소 여부 검증
-- [ ] 안정화 후 GPIO14/15 물리 배선 제거(선택, 소프트웨어적으로는 무관하므로 필수 아님)
+- [x] ~~`MAVLINK_BRIDGE_SERIAL_PATH=/dev/ttyACM0` env var 검증~~ — **불필요로 종결**:
+      보드의 GPIO14/15 UART 전용 커넥터 발견, FC를 그리로 연결해 기존
+      `/dev/serial0` 경로 그대로 사용 (USB 전환 철회)
+- [x] ~~compile-time 기본값 변경~~ — 불필요 (기본값이 이미 `/dev/serial0`)
+- [ ] `integration_steps.md` 잔여 이슈("FC UART 링크 노이즈: crc fail
+      msgid=24/30") — UART 경로 유지하므로 여전히 유효한 관찰 대상.
+      새 전용 커넥터 배선에서 재발하는지 실제 텔레메트리 수신으로 확인 필요
