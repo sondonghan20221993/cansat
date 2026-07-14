@@ -70,7 +70,13 @@ mirror 구조체(`CFS_CORE_APP_BridgeHkMirror_t`)에 `NonFiniteValueCount(u32)`�
 - [x] 근본 원인 확정 — SCH_LAB 정상, mirror 구조체 `NonFiniteValueCount` 누락
       (커밋 `947b3cf` 회귀). A/B/C 후보 전부 기각.
 - [x] SCH_LAB 정상 동작 실측 확인 (cfs_core HK 매 초 = SEND_HK 수신 증거)
-- [ ] mirror 구조체에 `NonFiniteValueCount` 추가 (레이아웃 정합)
-- [ ] Pi 재빌드/재기동 후 health가 NOMINAL/DEGRADED로 정상 판정되는지 확인
-      (bridge 살아있으면 최소 BRIDGE_TIMEOUT은 해소돼야 함)
-- [ ] 단위테스트 회귀 확인
+- [x] mirror 구조체에 `NonFiniteValueCount` 추가 (레이아웃 정합) — 커밋 `3164020`
+- [x] 단위테스트 회귀 확인 — cfs_core UT 245/245 PASS (coveragetest의 fake
+      구조체도 실제 발행측 레이아웃 반영하도록 함께 수정)
+- [x] Pi 재빌드/재기동 후 검증 (2026-07-14) — **BRIDGE_TIMEOUT(fault=1) 해소.**
+      부팅 첫 ~1초(첫 BRIDGE_HK 도착 전)만 fault=1, 이후 재발 0건. health가
+      `2->1 fault=3`(DEGRADED, EKF_INVALID)로 안정 — 벤치에서 GPS/EKF 미확보인
+      실제 FC 상태를 정확히 반영(더 이상 살아있는 bridge를 죽었다고 오판 안 함).
+      **부수 효과**: health가 이제 실제 FC 상태에 따라 움직이므로, FC가 NOMINAL이
+      되면 CONFIG 명령도 FORCE_FLAG 없이 통과할 수 있게 됨(기존엔 영구 FAILED라
+      CONFIG가 항상 차단됐음).
