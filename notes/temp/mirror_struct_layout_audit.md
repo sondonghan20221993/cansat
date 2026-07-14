@@ -59,9 +59,45 @@
 - 강한 방지: 수신측에 `_Static_assert(offsetof(...) == ...)` 컴파일타임 검증
   (단, 발행측 헤더 include 결합 발생 — 트레이드오프)
 
+## 근본 해결 계획 (3번 — 공용 헤더로 "두 벌 → 한 벌", 사용자 채택 방향)
+
+**목표**: 한 SB 메시지 = 구조체 한 벌(단일 진실). 발행측 구조체 하나를 공용
+헤더에 두고 수신측은 mirror를 지우고 그걸 include → 한쪽만 바꾸는 실수가
+컴파일 레벨에서 원천 불가.
+
+**합쳐야 할 "두 벌" 쌍 목록**:
+- [ ] BridgeHk: `MAVLINK_BRIDGE_APP_HkTlm_t` ↔ `CFS_CORE_APP_BridgeHkMirror_t`
+      (이번 버그 지점 — 우선순위 최상)
+- [ ] FC 상태 4종: `MAVLINK_BRIDGE_APP_{Attitude,EkfLocal,GpsRaw,EkfStatus}Tlm_t`
+      ↔ cfs_core `GenericStateTlm_t` + lora_tdm 인라인 로컬 struct 4종
+      (한 발행 구조체를 **두 수신측**(cfs_core, lora_tdm)이 각자 복제 중 — 삼중 진실)
+- [ ] SystemHealth: cfs_core `SystemHealthTlm_t`(발행) ↔ lora_tdm 인라인 `SHMsg_t`
+- [ ] Route: `UPLINK_APP_RouteUpdateTlm_t` ↔ `CFS_CORE_APP_RouteUpdateTlm_t`
+      ↔ `MAVLINK_BRIDGE_APP_RouteUpdateMirror_t` (삼중 진실)
+- [ ] Config: `UPLINK_APP_ConfigCmdTlm_t` ↔ `MAVLINK_BRIDGE_APP_ConfigCmdTlm_t`
+      ↔ `LORA_TDM_APP_ConfigCmdTlm_t` (삼중 진실)
+
+**접근 시 고려사항**:
+- cFS 앱은 관례상 각자 `config/*_msgstruct.h`로 자기 메시지 구조체를 소유 —
+  cross-app 공유 헤더를 어디에 둘지(예: `mission_defs/` 공용 include, 또는
+  발행 앱의 `fsw/inc`를 수신 앱이 include) 결정 필요. 앱 독립성 관례와 트레이드오프.
+- 이름이 앱 접두사 기반(`MAVLINK_BRIDGE_APP_*` 등)이라 공유 시 네이밍 정리 필요.
+- 각 병합마다 UT의 fake 구조체도 공유 정의로 교체 → 회귀 검증.
+- 규모 큼(삼중 진실 3건 포함). **단계적으로**: BridgeHk(2벌) → SystemHealth(2벌)
+  → Config/Route/FC상태(3벌) 순으로, 쉬운 2벌부터.
+
+**대안(더 가벼움, 병행 가능)**: 병합 전까지 각 수신측에
+`_Static_assert(sizeof/offsetof 일치)` 가드만 먼저 박아 재발을 즉시 차단.
+
 ## 상태
 
 - [x] 대상 식별 + 계획
 - [x] #1~#6 전수 대조 완료 — #1 외 버그 없음
 - [x] 결과 문서화 (본 표)
-- [ ] (선택) 재발방지 컨벤션을 spec/CLAUDE.md에 명문화할지 결정 — 미정
+- [x] 근본 해결(3번) 방향 채택 + 병합 대상 목록화 (본 절)
+- [ ] 공유 헤더 배치 위치 결정 (mission_defs 공용 vs 발행앱 inc)
+- [ ] BridgeHk 병합 (2벌, 최우선)
+- [ ] SystemHealth 병합 (2벌)
+- [ ] FC 상태 4종 / Route / Config 병합 (3벌)
+- [ ] 각 병합마다 UT 회귀 확인
+- [ ] (선택/병행) `_Static_assert` 가드 선제 삽입
