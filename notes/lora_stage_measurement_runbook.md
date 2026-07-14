@@ -142,7 +142,11 @@ dl2_downlink_integration.md`). 통합 후 재시도:
 - 관측 레이트: **5.0Hz** (DL2 2816건 / 562.9s)
 - seq gap 손실률: **0.0%** (expected=3137, received=3137, 통합 seq 기준)
 - LinkState: 100% CONNECTED(`1`)
-- 참고(비차단): FC `boot_ms` 최대 7회 연속 정체(캐시 재전송 의심, 별도 이슈),
+- 참고(비차단): FC `boot_ms` 최대 7회 연속 정체 — **조사 완료(2026-07-14)**:
+  캐시 재전송 자체는 설계상 정상이고 근본 원인은 FC(PX4)가 ATTITUDE를
+  ~1.2Hz로만 내보내는 것(SET_MESSAGE_INTERVAL 미ack/미반영). DL2 5Hz가 이
+  느린 소스를 반복 송신해 발생. cFS 코드 결함 아님, FC측 사안 —
+  `notes/temp/fc_attitude_rate_below_requested.md` 참조.
   RX p95가 참고 RX창 초과하는 패턴은 Stage 2와 동일 재현(지표 정의 이슈로 추정)
 - 부수 발견: `cfs_core_app` health FAILED(BRIDGE_TIMEOUT) 고착 재발 —
   `FORCE_FLAG`로 우회해 진행, 근본 원인은 `notes/temp/
