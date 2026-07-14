@@ -541,7 +541,31 @@ typedef struct
 
 **남은 유의사항**: §16.2에서 서술한 mavlink_bridge STX 이스케이프 결함(P1, 04-repository-map.md §5)이 아직 해결되지 않은 상태 — SysTimeTlm 발행은 살아있지만 페이로드 내 `0xFD`/`0xFE` 우연 출현 시 SYSTEM_TIME 프레임 자체가 유실될 수 있다. 또한 Pi 실기 연결 검증(실제 FC로부터 SYSTEM_TIME 수신 → SB 발행 확인)은 아직 미완 — 지금까지는 로컬 UT 검증만 완료된 상태.
 
-### 16.4 시각 반영 — 두 시계 도메인 (설계 정정 2026-07-13)
+### 16.4 시각 반영 — 두 시계 도메인 (설계 정정 2026-07-13, 방향 재정정 2026-07-14)
+
+> **채택된 실제 경로 (2026-07-14)**: 아래 §16.4.1(`CFE_TIME_ExternalGPS`)은
+> **보류**로 결론. 대신 GPS 시각을 **DL2 다운링크 프레임에 실어 지상으로
+> 전달**하는 방식을 채택·구현 완료 — `lora_tdm_app`이 `FC_SYS_TIME_MID`를
+> 구독해 DL2에 SysTime 확장 블록(§4.2, `lora_protocol_v2_spec.md`)으로
+> 포함, 지상(openMCT)이 WS/CSV로 노출. cFE 코어 미변경, 4개 앱 전부에 영향
+> 없음. 상세: `notes/temp/gps_time_sync_164_implementation.md`.
+>
+> **§16.4.1 보류 사유**: 조사 중 `CFE_TIME_ExternalGPS` 호출 시 STCF가
+> 갱신되는 순간 `CFE_TIME_GetTime()`이 점프하는데, 4개 앱의 `GetTimeMs()`가
+> **전부** 이 함수를 그대로 쓰고 있음이 드러남(당초 이 문서가 "PSP는
+> MONOTONIC이라 안전"이라 가정했던 것과 다름 — 그건 PSP 틱 소스 얘기고,
+> 앱이 실제로 읽는 `CFE_TIME_GetTime()`엔 STCF가 얹힘). GPS 락 잡히는
+> 순간 모든 앱의 health/timeout 비교식이 오작동해 `cfs_core_app`이
+> 앱을 오탐 재시작시킬 위험이 있어 보류. 재시도하려면 4개 앱
+> `GetTimeMs()`를 먼저 진짜 monotonic 소스로 분리해야 함(후속 과제,
+> 미착수).
+>
+> **§16.4.2(chrony) 방향은 일부 확정**: Pi에 별도 GPS 리시버는 불필요 —
+> FC GPS(SysTimeTlm)로 이미 충분. 필요하면 SysTime을 chrony SOCK
+> refclock으로 주입하는 작은 브릿지 유틸리티(옵션 b)로 진행. 단, DL2
+> 다운링크 경로로 이미 지상에서 GPS UTC를 얻으므로(§4.2), 카메라 OSD
+> 동기 목적이라면 chrony 없이 **지상 PC에서 DL2의 sys_time_unix_usec을
+> 직접 활용**하는 방법도 가능 — 아직 미결정, 카메라 작업 착수 시 결정.
 
 **핵심**: 이 시스템에는 GPS UTC로 규율해야 할 시계가 **두 개**이고, 서로 다른 밑바탕 소스를 쓴다. 이전 판(호스트 파이썬 데몬으로 OS 시계만 맞춤)은 cFS 로그용 시계와 카메라용 시계를 혼동한 오류였다.
 

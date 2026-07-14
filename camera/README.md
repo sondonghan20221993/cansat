@@ -66,7 +66,7 @@ Pi ──이더넷──▶ WiFiLink (chrony NTP: Pi 시각 → 카메라 시계
 | P2 이더넷 접근 | 기체 장착 상태로 Pi 경유 SSH 접속 가능 | `./check_ethernet_access.sh [Pi호스트] [카메라IP]` | ⬜ 미확인 (Pi 오프라인 확인됨) |
 | P3 설정 적용 | majestic OSD/녹화 설정 + msposd 배포 | `./apply_camera_config.sh <카메라IP> [Pi경유]` → `./verify_camera.sh <카메라IP> [Pi경유]` | ⬜ P2 선행 필요 |
 | P4 SD 녹화 실물 확인 | 설정 적용 후 실제 녹화 파일 생성 | `./check_sd_recording.sh <카메라IP> [Pi경유] [분]` | ⬜ P3 선행 필요 |
-| P5 시각동기 | 카메라 OSD 타임스탬프를 절대시각으로 | (보류 — Pi GPS 동기 `mavlink_bridge_app_behavior_spec.md` §16.4 선행 필요) | ⬜ 차단 |
+| P5 시각동기 | 카메라 OSD 타임스탬프를 절대시각으로 | (보류 — Pi GPS 동기 `mavlink_bridge_app_behavior_spec.md` §16.4 선행 필요) | ⬜ 차단 (2026-07-14: GPS 시각 자체는 이제 DL2 다운링크로 지상까지 도달함 — `sys_time_unix_usec`, §16.4/§4.2. 다만 이걸 카메라 OSD/OS 시계에 실제로 반영하는 배관은 아직 미착수) |
 
 각 스크립트는 `<Pi경유>` 인자를 생략하면 PC 직결을 시도한다 (예: `sdh2983@192.168.50.65` 형식으로 지정 시 `ssh -J`로 Pi를 경유).
 
@@ -80,7 +80,8 @@ Pi ──이더넷──▶ WiFiLink (chrony NTP: Pi 시각 → 카메라 시계
 4. `./verify_camera.sh 192.168.1.10` — 스냅샷/RTSP/OSD 확인
 5. SD카드 삽입 → 재부팅 → `/mnt/mmcblk0p1`(TODO(bench): 실제 마운트 경로)에 녹화 파일 생성 확인
 6. (시각 동기, 선택) Pi에 `pi_chrony_camera.conf` 적용 — 전제: Pi 시계의 GPS 동기 체인
-   (`notes/mavlink_bridge_app_behavior_spec.md` §16.4, 미구현) 완료 후 의미 있음
+   (`notes/mavlink_bridge_app_behavior_spec.md` §16.4 — GPS 시각의 DL2 다운링크
+   전달까지는 완료(2026-07-14), Pi OS 시계 반영(chrony)은 아직 미착수) 완료 후 의미 있음
 
 ## 참조 (기반 오픈소스)
 

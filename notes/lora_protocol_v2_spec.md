@@ -73,8 +73,15 @@ FC 상태 + 시스템 헬스를 **하나의 프레임**으로 매 TDM 주기 전
 | --- | --- | --- |
 | sys_time_unix_usec | u64 | FC SYSTEM_TIME 기반 GPS UNIX epoch (µs). `mavlink_bridge` §16.2의 `LastSysTimeUnixUsec` |
 
-첨부 주기: 1Hz (5주기마다 1회). 유효 시각 미확보(`LastSysTimeUnixUsec == 0`) 시 첨부하지 않는다.
-전제: `FC_SYS_TIME_MID(0x1909)` SB 발행 구현 (§16.3, 미구현) 후 lora_tdm이 구독.
+**구현 완료 (2026-07-14)** — `notes/temp/gps_time_sync_164_implementation.md`.
+당초 "1Hz(5주기마다 1회) 첨부"로 설계했으나, 실제로는 **캐시에 유효값이 있으면
+매 다운링크 사이클(5Hz)마다 첨부**하도록 단순화 — 8바이트 추가 에어타임이
+100ms RX창 대비 무시 가능한 수준(~1.4ms @57600baud)이라 주기 제한의 실익이
+없고, 매 사이클 최신 캐시값을 실어 보내는 게 구현이 더 단순하고 지연도 낮음.
+유효 시각 미확보(`TimeValid == 0`, mavlink_bridge의 `LastSysTimeUnixUsec == 0`과
+동일 조건) 시 미첨부(47B), 버퍼 부족 시에도 미첨부 폴백.
+전제였던 `FC_SYS_TIME_MID(0x1909)` SB 발행(§16.3)은 이미 구현 완료 상태였고,
+lora_tdm이 구독하는 부분만 남아있었음 — 이번에 구독 추가로 완결.
 
 ## 5. UP2 — 업링크 명령 프레임 (지상 → 기체)
 

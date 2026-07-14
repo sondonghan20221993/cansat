@@ -11,14 +11,15 @@ mavlink_bridge_app   →  FC_ATTITUDE_STATE_MID  (0x1906)
                      →  FC_EKF_LOCAL_STATE_MID (0x1905)
                      →  FC_GPS_RAW_STATE_MID   (0x1907)
                      →  FC_EKF_STATUS_MID      (0x1908)
+                     →  FC_SYS_TIME_MID        (0x1909) — GPS UNIX epoch(§16)
                      →  MAVLINK_BRIDGE_APP_HK  (0x08A0)
                      ←  ROUTE_UPDATE_MID       (0x190B) → FC MAVLink MISSION upload
 
 cfs_core_app         →  SYSTEM_HEALTH_MID      (0x1904)
                      ←  (위 FC 상태 MID 전부 구독)
 
-lora_tdm_app         ←  FC 상태 MID + SYSTEM_HEALTH_MID
-                     →  LoRa serial TX (downlink, TDM)
+lora_tdm_app         ←  FC 상태 MID + SYSTEM_HEALTH_MID + FC_SYS_TIME_MID
+                     →  LoRa serial TX (downlink, TDM — v2/DL2는 GPS 시각도 실어보냄)
                      ←  LoRa serial RX (UP frame, TDM 300ms 창)
                      →  UPLINK_APP_CMD_MID     (0x18D0) → uplink_app (UP frame SB 전달)
                      →  LORA_TDM_APP_LINK_STATUS_MID (0x1911)
@@ -51,6 +52,7 @@ uplink_app           ←  UPLINK_APP_CMD_MID (lora_tdm_app SB) / UDP (테스트�
 | uplink_app 지속 상태 (SaveState/LoadState, atomic write) | 구현됨 |
 | lora_tdm_app LoRa TDM (TX downlink + RX UP frame → uplink_app SB 전달, bridge 프로세스 불필요) | 구현됨 |
 | LoRa downlink v2(DL2 바이너리 통합 프레임, 200ms/5Hz) — CONFIG로 v1/v2 런타임 전환 | 구현됨, 실기체 5Hz soak PASS (2026-07-14, `notes/lora_stage_measurement_runbook.md` Stage 3) |
+| GPS 시각(SysTime) DL2 다운링크 전달 — FC→mavlink_bridge→lora_tdm→지상 WS/CSV | 구현됨 (2026-07-14, cFE 코어 시각 규율은 STCF 점프 위험으로 보류, `notes/temp/gps_time_sync_164_implementation.md`) |
 | RECOVERY/MODE/DIAGNOSTIC 명령 실제 처리 (action별 분기, 상태 전이 검증) | 구현됨 (2026-07-05, A-3) |
 | lora_tdm_app UP 프레임 SB 전달 시 CFE_MSG_SetFcnCode 누락 버그 수정 (FcnCode=0→2) | 수정됨 (2026-06-22) |
 | cfs_core_app CFS_FAILED 상태 + bridge 자동 재시작 (최대 3회) | 구현됨 |
