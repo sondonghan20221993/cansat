@@ -94,17 +94,17 @@
 | 4-1 | **MID 충돌** | — | uplink_app:12 ↔ lora_tdm topicid:21 | — | `MODE_CMD_MID 0x190F`(uplink) = `LORA_TDM_APP_LINK_STATUS_MID 0x190F`(tdm) | ✅ **해결** | lora_tdm `LINK_STATUS_MID_VALUE` `0x190F`→**`0x1911`** 재할당(미배포 측 이동). uplink `MODE_CMD 0x190F` 유지. 문서(behavior spec/README) 동기화 완료 |
 | 4-2 | MID 인벤토리 | §5.1.1,§17.1 | uplink_app msgid | (누락) | `RECOVERY_CMD 0x190C`, `VIEWPOINT_CMD 0x190D`, `CONFIG_CMD 0x190E`, `MODE_CMD 0x190F`, `DIAGNOSTIC_CMD 0x1910`, `UPLINK_APP_LORA_RAW 0x1909` | ✅ **해결** | §17.1에 FC 상태 MID·라우팅 명령 MID(0x190C~0x1910)·0x1909·0x1911 추가 (2026-06-16) |
 | 4-3 (=1-6) | 게시율 | §5.1.1 | mavlink internal_cfg | ATTITUDE `~20Hz`, EKF `~10Hz`, GPS `~5Hz` | stream req ATTITUDE 5Hz(200ms), EKF 2Hz(500ms), GPS 2Hz(500ms) | ✅ **해결** | §5.1.1 게시율을 코드 stream 요청 간격으로 정정 + "FC 송신율 의존" 명시 (2026-06-16) |
-| 4-4 | 앱 집합 | §4 | startup.scr | downlink 역할 = `lora_fc_downlink_app` | **변경**: startup.scr에서 `lora_fc_dl_app` 제거, `lora_tdm_app` 등록(prio 58) (2026-06-16) | ❌ | §4/§17 등 `lora_fc_downlink_app`을 downlink 역할 구현체로 서술하는 부분을 `lora_tdm_app`으로 갱신 필요 (대규모 — 별도 작업) |
-| 4-5 | 배포 상태 | §2(현황) | startup.scr | — | `lora_tdm_app` baseline 등록됨(2026-06-16), `lora_fc_downlink_app`은 저장소에서 삭제됨(commit `7c080f1`, 2026-06-30). `telemetry_app`/`img_app` 미배포·코드 보존 유지 | 📝 | §2 범위/현황 갱신 필요 |
+| 4-4 | 앱 집합 | §4 | startup.scr | downlink 역할 = `lora_fc_downlink_app` | **변경**: startup.scr에서 `lora_fc_dl_app` 제거, `lora_tdm_app` 등록(prio 58) (2026-06-16) | ✅ **해결** | `mission_app_runtime_spec.md` §2/§4/§5/§11/§13/§16/§17/§18 전반에서 `lora_fc_downlink_app` → `lora_tdm_app` 갱신, 잔존 언급은 전부 "삭제됨/역사 참고용"으로 명시 (commit `faf30ef`, 2026-07-14 확인) |
+| 4-5 | 배포 상태 | §2(현황) | startup.scr | — | `lora_tdm_app` baseline 등록됨(2026-06-16), `lora_fc_downlink_app`은 저장소에서 삭제됨(commit `7c080f1`, 2026-06-30). `telemetry_app`/`img_app` 미배포·코드 보존 유지 | ✅ **해결** | §2 현황을 위 내용으로 갱신 (commit `faf30ef`) |
 
 > **2026-06-16 배포 전환 후속 작업 (코드/문서 외부, 운영 단계):**
 > - Pi에서 `bridge/lora_uplink_bridge.py`, `bridge/lora_telemetry_bridge.py` 프로세스 종료 필요 (둘 다 `lora_tdm_app`과 같은 LoRa serial을 점유하면 충돌).
 > - Pi 크로스컴파일용 cFS 프레임워크의 앱 목록(`targets.cmake` 등, 이 저장소 밖)에 `lora_tdm_app` 추가 필요.
 > - `mission_app_runtime_spec.md`는 `lora_fc_downlink_app`을 downlink 역할 구현체로 광범위하게 서술 중(§4,§6,§11,§17~18 등) — 전면 갱신은 별도 작업으로 분리.
 | 4-6 | uplink 라우팅 | §18.4.x | dispatch 체인 | 명령 클래스 문서화됨 | `uplink_app`→(0x190C~0x1910)→`cfs_core_app`(viewpoint/config 구독) 실재 | ✅ | 클래스→MID 값 매핑만 보강(§4-2와 연계) |
-| 4-7 | **dead-end 라우팅** | §18.4.x (명령 클래스 분류) | `uplink_app_utils.c` `ForwardRecoveryCommand`/`ForwardModeCommand`/`ForwardDiagnosticCommand` | spec: RECOVERY/MODE/DIAGNOSTIC 명령 클래스가 대상 앱으로 라우팅됨을 전제 | `RECOVERY_CMD_MID`(0x190C)/`MODE_CMD_MID`(0x190F)/`DIAGNOSTIC_CMD_MID`(0x1910) — `grep -rl` 결과 코드베이스 전체에서 **publish하는 uplink_app 자신 외 구독자가 0개**. `cfs_core_app`/`mavlink_bridge_app`/`lora_fc_downlink_app` 어디도 구독 안 함 | ❌ | uplink_app은 이 3개 클래스를 검증 통과시키고 "라우팅 성공"으로 카운트하지만 실제 수신·처리하는 앱이 없음(허공에 publish). 대상 앱에 구독 추가 또는 spec에 "미구현 라우팅 대상"으로 명시 필요 (2026-06-16 발견) |
+| 4-7 | **dead-end 라우팅** | §18.4.x (명령 클래스 분류) | `uplink_app_utils.c` `ForwardRecoveryCommand`/`ForwardModeCommand`/`ForwardDiagnosticCommand` | spec: RECOVERY/MODE/DIAGNOSTIC 명령 클래스가 대상 앱으로 라우팅됨을 전제 | `RECOVERY_CMD_MID`(0x190C)/`MODE_CMD_MID`(0x190F)/`DIAGNOSTIC_CMD_MID`(0x1910) — `grep -rl` 결과 코드베이스 전체에서 **publish하는 uplink_app 자신 외 구독자가 0개**. `cfs_core_app`/`mavlink_bridge_app`/`lora_fc_downlink_app` 어디도 구독 안 함 | ✅ **해결** | `cfs_core_app`에 RECOVERY(0x190C)/MODE(0x190F) 구독·핸들러 추가, `lora_tdm_app`에 DIAGNOSTIC(0x1910) 구독·핸들러 추가 (commit `e9957e9`). `cfs_core_app_dispatch.c:53,59`, `lora_tdm_app.c:463`/`lora_tdm_app_dispatch.c:93`에서 구독 확인 (2026-07-14) |
 
-> 종합: 핵심은 ❌4-1(**0x190F MID 충돌** — 최우선), ❌4-2(라우팅 MID 인벤토리 누락), ❌4-3(게시율), ❌4-7(**RECOVERY/MODE/DIAGNOSTIC 명령 dead-end** — 신규). §4 앱 집합·라우팅 체인 중 CONFIG/VIEWPOINT/ROUTE_UPDATE는 코드와 정합하나 나머지 3개 클래스는 수신처 없음.
+> 종합(2026-07-14 갱신): 4-1(0x190F MID 충돌)·4-2(라우팅 MID 인벤토리)·4-3(게시율)·4-4/4-5(앱 집합/배포 현황)·4-7(RECOVERY/MODE/DIAGNOSTIC dead-end) **전부 해결**. §4 앱 집합·라우팅 체인 전 클래스(CONFIG/VIEWPOINT/ROUTE_UPDATE/RECOVERY/MODE/DIAGNOSTIC)가 코드와 정합.
 
 ---
 
@@ -180,11 +180,11 @@
 - ✅ **해결 — `cfs_core_app` health FAILED 고착 (실 Pi 런타임에서 발견, 배포 설정 누락)** — 부팅 30초 후 `health 2->3 fault=1`(BRIDGE_TIMEOUT)로 빠진 뒤 다시는 회복되지 않음을 매 테스트 실행마다 관찰. 코드 확인: `BridgeTimedOut = !BridgeState.Received || ...`(`cfs_core_app_utils.c:233`)이고 `BridgeState.Received`는 `mavlink_bridge_app`의 `BRIDGE_HK`(0x08A0)를 한 번이라도 받아야 `true`가 됨. HK는 `SEND_HK` 명령(보통 `SCH_LAB` 스케줄러가 트리거)이 있어야 발행되는데, 실제 빌드의 `~/cFS_clean/apps/sch_lab/fsw/tables/sch_lab_table.c`(NASA 표준 sch_lab 기본 테이블)를 확인한 결과 **빈 placeholder이고 cFE 코어 서비스 HK 예시조차 전부 주석 처리**되어 있었음. `mission_defs/`에 이 테이블의 override가 없어 우리 커스텀 앱 4개 전부 SEND_HK가 스케줄된 적이 없었음 — `mavlink_bridge_app`은 실제로 FC 텔레메트리를 정상 디코드 중이었으나(로그로 확인), `cfs_core_app`이 그걸 확인할 방법이 없어 영원히 타임아웃으로 오판한 것. 코드 버그 아니라 배포 설정 누락. **조치**: `mission_defs/tables/cpu1_sch_lab_table.c` 신규 추가 — `mavlink_bridge_app`/`cfs_core_app`/`uplink_app`/`lora_tdm_app` 4개 앱의 `SEND_HK` MID를 ~1Hz로 스케줄링(`cpu1_cfe_es_startup.scr`와 동일한 `cpu1_<filename>` override 명명 규칙 사용).
 
 **신규 발견 (2026-06-16):**
-- ❌ **4-7 RECOVERY/MODE/DIAGNOSTIC 명령 dead-end** — `uplink_app`이 검증·라우팅까지는 하지만, `RECOVERY_CMD_MID`/`MODE_CMD_MID`/`DIAGNOSTIC_CMD_MID`를 구독하는 앱이 코드베이스 전체에 없음. 지상국이 이 3개 클래스 명령을 보내도 실제로 처리되지 않음.
-- ❌ **`mission_app_runtime_spec.md` §11.1 vs 코드** — spec은 `cfs_core_app`을 "모든 앱의 복구 권한(recovery authority)"로 설계(반복 앱 오류 시 60초/앱당 3회로 재시작)했으나, 코드의 `CFE_ES_RestartApp` 호출은 전체에서 1곳뿐이고 대상이 `mavlink_bridge_app`으로 하드코딩됨(5초/3회). `uplink_app`/`lora_fc_downlink_app`에 대한 감시·재시작·에스컬레이션 수신 메커니즘 없음. §11.1 표를 코드 기준으로 정정 필요.
+- ✅ **해결(2026-06-17) — 4-7 RECOVERY/MODE/DIAGNOSTIC 명령 dead-end** — `uplink_app`이 검증·라우팅까지는 하지만, `RECOVERY_CMD_MID`/`MODE_CMD_MID`/`DIAGNOSTIC_CMD_MID`를 구독하는 앱이 코드베이스 전체에 없었음. `cfs_core_app`에 RECOVERY/MODE 구독·핸들러, `lora_tdm_app`에 DIAGNOSTIC 구독·핸들러 추가로 해소 (commit `e9957e9`, 상세는 위 "종합 요약" 참조).
+- ✅ **해결(2026-06-17) — `mission_app_runtime_spec.md` §11.1 vs 코드** — spec은 `cfs_core_app`을 "모든 앱의 복구 권한"으로 설계했으나 코드는 `mavlink_bridge_app`만 재시작(하드코딩). §11.1 표를 코드 기준(구현 상태 컬럼 포함)으로 재작성 (commit `faf30ef`).
 - ✅ **해결(3차 검증까지 완료) — `lora_tdm_app` SB Msg Limit Err (실 Pi 런타임에서 발견)** — `LORA_TDM_PIPE` 구독이 전부 `CFE_SB_Subscribe()`(기본 limit=4)라서, 1차로 FC_* 4개 MID(5Hz)에서 발생 확인 → `CFE_SB_SubscribeEx(MsgLim=10)`으로 수정 → 재검증 결과 그 4개는 해결됐으나 `SYSTEM_HEALTH_MID`에서 동일 에러 16회 추가 발견 → `SYSTEM_HEALTH_MID`도 `MsgLim=20`으로 수정(`cfs_core_app`이 1Hz가 아니라 FC 입력마다 강제 발행함을 코드로 확인, `cfs_core_app_utils.c:193`) → 3차 재검증 결과 에러가 줄었으나 부팅 시점에 `0x1905`/`0x1906`까지 재발. 전체 로그 분석 결과 **에러 16건 전부 부팅 후 130ms 안에만 발생, 이후 60초+ 0건** — 지속 문제 아니라 1회성 부팅 버스트로 확인. 근본 원인: `mavlink_bridge_app`이 `/dev/serial0`를 열 때 cFS가 꺼져있던 동안 FC가 보낸 누적 데이터를 한 번에 드레인(MsgLim을 올려도 다운타임이 길면 버스트가 커져 근본 해결 안 됨). **최종 조치**: `mavlink_bridge_app_utils.c`의 `OpenSerial()`에 `tcflush(Fd, TCIFLUSH)` 추가해 포트 open 시 묵은 입력 버퍼를 비움(버스트 자체를 제거). 상세는 `lora_tdm_app_behavior_spec.md` §5.1.
 
-위 2건(4-7, §11.1)은 spec 정정이 아니라 **실제 기능 격차**라 코드 작업(라우팅 대상 구현 또는 spec에 미구현 명시) 필요 — 사용자 확인 후 진행. Msg Limit Err 건은 코드 수정 완료(위 ✅).
+위 3건 전부 코드 수정 완료 (2026-07-14, 표·요약 정합 확인).
 
 ---
 
