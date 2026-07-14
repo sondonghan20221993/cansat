@@ -56,17 +56,20 @@
 - [x] 테스트 픽스처 수정 + `GetClassRequiredLevel` 프로덕션 코드 수정
 - [x] 로컬 UT 검증 — `uplink_app_cmds` 91/91 PASS, `uplink_app`(8/8)·`uplink_app_dispatch`(13/13) 회귀 없음
 - [x] 커밋 + push (`740521d`)
-- [ ] Pi 실기체 배포 — `GetClassRequiredLevel` 변경(DIAGNOSTIC/MODE 요구레벨 스왑)이
-      아직 실기체에 반영 안 됨. 배포 전까지는 실기체 DIAGNOSTIC 명령이 여전히
-      영구 차단 상태.
+- [x] Pi 실기체 배포 — **완료 (2026-07-14)**. Pi를 origin/main(`b8763b0` 이후)으로
+      재동기화 + 전체 재빌드(`cfs_core_app`/`uplink_app`/`mavlink_bridge_app`/
+      `lora_tdm_app`)·`cfs.service` 재시작으로 반영 확인
+      (`uplink_app_cmds.c`: `CLASS_DIAGNOSTIC→1`, `CLASS_MODE→3` 실측 확인).
 - [x] §18.10.3에서 이미 식별된 별도 항목 — 지상(`fc_serial_ws_server.py`)의
       §18.11.1 인증레벨 bit[7:6] 반영, 2026-07-14 완결·커밋·push
       (`openMCT` repo commit `f65b295`). 최초 diff는 CONFIG 핸들러에만
       적용돼 있었고 ROUTE_UPDATE/RECOVERY는 누락된 미완결 상태였음 —
       두 핸들러에도 동일 적용해 완결. 상세는 그 repo의
       `openmct_bridge_notes.md` §18.11.1 절 참조.
-      **단, Pi 배포는 아직** — `GetClassRequiredLevel` 스왑(위 항목)과
-      마찬가지로 실기체 반영 전까지는 실효 없음.
+      **Pi 배포도 완료** — `GetClassRequiredLevel` 스왑과 함께 2026-07-14
+      재동기화로 반영됨. (openMCT `fc_serial_ws_server.py`의 §18.11.1 플래그
+      반영은 지상 PC에서 최신 코드 실행 중인지 별도 확인 필요 — 이건 openMCT
+      레포 배포 확인 문제라 이 항목과는 무관)
 - [x] `uplink_app_utils` UT의 무관한 사전 결함 4건(`ParseLoRaFrame`) — 별도 조사
       (2026-07-14) 및 수정 완료. 원인: `sscanf("%[^,]", ...)`는 0글자 매칭을
       허용하지 않아, payload가 없는(길이 0) **모든 정상 v1 ASCII uplink 명령이
