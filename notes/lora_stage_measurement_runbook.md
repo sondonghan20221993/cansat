@@ -117,10 +117,17 @@ source 간 간격) 것으로 추정 — 손실률엔 영향 없었으나 Stage 3
 - [x] RunTx에 `UseV2Downlink` 플래그로 DL2 실송신 연결 (기본값 0=v1, 안전)
 - [x] `bridge/lora_downlink_decoder.py` sats 필드 미동기화 갭 해소 (spec §10에 있던 기존 이슈)
 
-**아직 남음** (5Hz 실측 전 필요):
-- [ ] CONFIG 명령으로 v1/v2 런타임 전환 (지금은 코드 값 직접 변경만 가능)
-- [ ] 지상 Python UP2 인코더 + ACK2 파서 (지금 `lora_downlink_decoder.py`는 수신+ACK2 송신만, UP2 송신 없음)
-- [ ] `CYCLE_PERIOD_MS` 200ms로 변경 + 실기체 5Hz soak
+**아직 남음** (5Hz 실측 전 필요) — 2026-07-14 스테일 정정: 아래 두 항목은 이
+목록 작성(236ec37) 직후 같은 날 이미 구현 완료됐는데 체크 갱신이 누락돼 있었음:
+- [x] CONFIG 명령으로 v1/v2 런타임 전환 — 커밋 `431f13d`(2026-07-13):
+      기체측 `ProcessConfigCommand`에 `PARAM_DOWNLINK_PROTOCOL` 분기, 지상측
+      `fc_serial_ws_server.py`에 `lora_tdm.downlink_protocol` 파라미터 노출 완료
+- [x] 지상 Python UP2 인코더 — 커밋 `1e80f77`(2026-07-13):
+      `bridge/lora_downlink_decoder.py::build_up2()` + C UT 교차검증.
+      (원문의 "ACK2 파서"는 방향 착오 — ACK2는 지상→기체 송신이므로 지상엔
+      파서 불필요, 송신은 기존 구현 있음)
+- [ ] `CYCLE_PERIOD_MS` 200ms로 변경 + 실기체 5Hz soak — **유일하게 남은 항목**
+      (Pi+LoRa 실물 필요)
 
 이 게이트 통과 후 `lora_protocol_v2_spec.md` §9 검증 요구사항대로 진행.
 
