@@ -75,3 +75,32 @@ cFE 코어 시각 규율은 전면 보류. 대신 **이미 받고 있는 GPS 시
 - [x] `tests/TEST_CASES.md` 카탈로그 반영 — TDM-CACHE-006, TDM-DL2-001~006(신규
       섹션, 기존 3건도 소급 카탈로그화), 런타임 후보 RT-DL2-SYSTIME-001
 - [ ] (선택, 실기체 필요) Pi 배포 후 실측 — SysTime 블록 도착 확인 (RT-DL2-SYSTIME-001)
+
+## §16.4.2 — 카메라 GPS 동기 (2026-07-14 결정, 착수 전)
+
+### 결정 — chrony 브릿지 + 검증 방법
+
+**구현**: `SysTime`(DL2로 지상까지 온 것과 별개로, Pi 로컬에서 cFS SB의
+`FC_SYS_TIME_MID`를 직접 구독)을 chrony SOCK refclock으로 주입하는 작은
+Pi 호스트 유틸리티. `pi_chrony_camera.conf`(카메라→Pi NTP)는 이미 있음 —
+Pi 자신의 시계가 GPS 규율된 뒤에야 그게 의미를 가짐.
+
+**검증 방법 — 녹화 영상 대조는 안 됨**: `camera/README.md`에 이미 기록된
+별개 버그("OSD가 녹화 파일엔 안 찍힘")때문에, 녹화 mp4로는 시계 동기
+여부를 확인할 수 없음. 대신:
+- **1차(정확)**: 카메라에 SSH로 `date`/`chronyc tracking` 직접 조회 →
+  같은 순간 다운링크 로그(`sys_time_unix_usec`)와 비교. §16.5 오차
+  예산(~수십 ms) 안에 드는지 확인.
+- **2차(보조, 오차 큼)**: 라이브 화면(영상 파일 아님)에 찍히는 OSD
+  타임스탬프를 육안으로 다운링크 로그와 대조. **사람이 화면을 보고
+  초 단위로 대조하는 방식이라 오차가 수백ms~초 단위로 클 수 있음** —
+  "대략 맞는지"만 확인하는 정성적 체크로 취급, 1차 방법의 대체가 아님.
+
+## 상태 (§16.4.2)
+
+- [x] 방식 결정 — chrony SOCK refclock 브릿지 + 2단계 검증(date/chronyc 1차,
+      육안 라이브화면 2차·오차 큼 명시)
+- [ ] Pi 호스트 브릿지 유틸리티 구현 (cFS SB 구독 → SOCK refclock 인코딩)
+- [ ] chrony 자체 설정(upstream `refclock SOCK`)에 추가 — `pi_chrony_camera.conf`와는
+      별개(그건 카메라→Pi 방향)
+- [ ] Pi+FC+카메라 실기체 검증 (date/chronyc 대조)
