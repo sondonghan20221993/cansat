@@ -5,7 +5,7 @@ Raspberry Pi에서 동작하는 cFS 기반 UAV 텔레메트리/명령 시스템�
 ## 아키텍처 개요
 
 ```
-FC (ArduPilot)
+FC (PX4, 예: MicoAir743v2 — 일부 미션 업로드 문서는 ArduPilot 실측 기준, PX4 재검증 필요)
     ↓ UART MAVLink
 mavlink_bridge_app   →  FC_ATTITUDE_STATE_MID  (0x1906)
                      →  FC_EKF_LOCAL_STATE_MID (0x1905)
@@ -50,6 +50,8 @@ uplink_app           ←  UPLINK_APP_CMD_MID (lora_tdm_app SB) / UDP (테스트�
 | FC MISSION 재조회 (MISSION_QUERY_CC) | 구현됨 |
 | uplink_app 지속 상태 (SaveState/LoadState, atomic write) | 구현됨 |
 | lora_tdm_app LoRa TDM (TX downlink + RX UP frame → uplink_app SB 전달, bridge 프로세스 불필요) | 구현됨 |
+| LoRa downlink v2(DL2 바이너리 통합 프레임, 200ms/5Hz) — CONFIG로 v1/v2 런타임 전환 | 구현됨, 실기체 5Hz soak PASS (2026-07-14, `notes/lora_stage_measurement_runbook.md` Stage 3) |
+| RECOVERY/MODE/DIAGNOSTIC 명령 실제 처리 (action별 분기, 상태 전이 검증) | 구현됨 (2026-07-05, A-3) |
 | lora_tdm_app UP 프레임 SB 전달 시 CFE_MSG_SetFcnCode 누락 버그 수정 (FcnCode=0→2) | 수정됨 (2026-06-22) |
 | cfs_core_app CFS_FAILED 상태 + bridge 자동 재시작 (최대 3회) | 구현됨 |
 | cfs_core_app uplink_app/lora_tdm_app HK timeout 시 자동 재시작 (각 최대 3회, bridge와 동일 패턴) | 구현됨 (2026-07-13) |

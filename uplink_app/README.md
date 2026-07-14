@@ -12,7 +12,10 @@
 | 게시 | `UPLINK_STATUS_MID` | `0x190A` | uplink 처리 상태 |
 | 게시 | `ROUTE_UPDATE_MID` | `0x190B` | 검증된 route update → cfs_core_app + mavlink_bridge_app |
 | 게시 | `VIEWPOINT_CMD_MID` | `0x190D` | viewpoint 명령 relay → cfs_core_app 캐시 |
-| 게시 | `CONFIG_CMD_MID` | `0x190E` | runtime configuration relay → cfs_core_app 검증·적용 |
+| 게시 | `CONFIG_CMD_MID` | `0x190E` | runtime configuration relay → cfs_core/mavlink_bridge/lora_tdm |
+| 게시 | `RECOVERY_CMD_MID` | `0x190C` | 복구 명령 relay → cfs_core_app (레벨3 인증 필요) |
+| 게시 | `MODE_CMD_MID` | `0x190F` | 모드 명령 relay → cfs_core_app (레벨3 인증 필요) |
+| 게시 | `DIAGNOSTIC_CMD_MID` | `0x1910` | 진단 명령 relay → lora_tdm_app (레벨1 인증) |
 
 ## 구현 기능
 
@@ -34,6 +37,14 @@
 
 ### runtime configuration 처리
 - raw payload를 `CONFIG_CMD_MID`로 relay → `cfs_core_app`이 scope/version/param ID/checksum 검증 후 `ActiveConfig` 적용
+
+### 권한 검증 (§18.11.1) + health gate
+- health 미수신(boot 직후) 시 모든 명령 차단(fail-safe), health 상태별로도 명령 클래스 차단
+  (DEGRADED/FAILED에서 CONFIG류 차단, RECOVERY/DIAGNOSTIC은 예외적으로 허용)
+- Flags 필드 비트[7:6]로 실린 요청 인증레벨을 명령 클래스별 요구레벨과 대조(`GetClassRequiredLevel`) —
+  CONFIG/ROUTE_UPDATE=레벨2, RECOVERY/MODE=레벨3(0이 아닌 request_token 추가 요구), DIAGNOSTIC=레벨1
+- `UPLINK_FORCE_FLAG`(bit0)로 health gate만 벤치 테스트 목적으로 우회 가능(권한 검증은 우회 안 됨)
+- 미달 시 `AUTHZ_BLOCK_EID` EVS 발생 + 거부
 
 ### 지속 상태 (SaveState/LoadState)
 - 마지막으로 수락된 uplink sequence 번호를 파일로 저장 (atomic tmp+rename)

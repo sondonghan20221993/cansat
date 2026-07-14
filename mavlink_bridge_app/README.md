@@ -1,6 +1,8 @@
 # mavlink_bridge_app
 
-ArduPilot 호환 비행제어기(FC)와의 MAVLink 통신을 담당하는 cFS 앱이다. FC에서 들어오는 MAVLink 메시지를 파싱해 cFS Software Bus에 게시하고, 지상국 route update를 FC로 MAVLink MISSION 프로토콜로 업로드한다.
+MAVLink 표준을 따르는 비행제어기(FC)와의 통신을 담당하는 cFS 앱이다. FC에서 들어오는 MAVLink 메시지를 파싱해 cFS Software Bus에 게시하고, 지상국 route update를 FC로 MAVLink MISSION 프로토콜로 업로드한다.
+
+> **FC 펌웨어 참고 (2026-07-14)**: 아래 미션 업로드 세부 규칙 일부(`MISSION_CLEAR_ALL` 필수화, `sysid=255` 요구 등)는 ArduPilot 실측 기반으로 작성됐으나, 현재 실제 연결된 FC는 **PX4**(MicoAir743v2)로 확인됨 — 재검증 필요. 상세: `notes/mavlink_bridge_app_behavior_spec.md` §6 상단 참고.
 
 ## MID 인터페이스
 
@@ -28,8 +30,9 @@ ArduPilot 호환 비행제어기(FC)와의 MAVLink 통신을 담당하는 cFS �
 ### FC MISSION 업로드 (§22, ROUTE_UPDATE_MID → FC)
 - `ROUTE_UPDATE_MID` 수신 시 MAVLink MISSION upload 프로토콜 시작
 - 프로토콜: `MISSION_COUNT` → FC의 `MISSION_REQUEST_INT` 대기 → `MISSION_ITEM_INT` 전송 × N → `MISSION_ACK` 수신
-- 좌표 인코딩 (INT 경로): x/y = `int32(meters × 10000)`, z = `float` meters (부호 반전), 프레임 `MAV_FRAME_LOCAL_NED`
-- 좌표 인코딩 (Legacy 경로): GPS 기준점 기반 lat/lon 변환, 프레임 `MAV_FRAME_GLOBAL_RELATIVE_ALT`
+- 좌표 인코딩 (INT/Legacy 경로 공통): GPS 기준점 기반 lat/lon 변환(degE7 int32), 프레임 `MAV_FRAME_GLOBAL_RELATIVE_ALT`
+  — ArduPilot이 `MAV_FRAME_LOCAL_NED` 미션 아이템을 거부해(§13.1 실측) INT 경로도 Legacy와
+  동일한 GLOBAL_RELATIVE_ALT 인코딩으로 통일됨(`mission_item_int_frame_gap` 수정)
 - 명령: `MAV_CMD_NAV_WAYPOINT`
 - timeout 2000ms, retry 최대 3회
 - `MISSION_ACK accepted` 수신 시 success 카운터 및 HK 반영

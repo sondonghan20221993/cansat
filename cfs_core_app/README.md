@@ -40,14 +40,19 @@ FC 상태 입력을 종합해 시스템 헬스를 판단하고 `SYSTEM_HEALTH_MI
 - `VIEWPOINT_CMD_MID` 수신 시 typed 필드를 `ViewpointCmd` 캐시에 저장 (`CFS_CORE_APP_VIEWPOINT_EID` 로깅)
 - uplink_app/lora_tdm_app HK 5초 타임아웃 감시 → `DEGRADED` (`FAULT_UPLINK_TIMEOUT(6)`/`FAULT_LORA_TIMEOUT(7)`, 자동 재시작 없음)
 - payload `Seq` 필드 기반 시퀀스 중복·역행 거부 및 갭 감지 (`SEQ_ERR_EID`/`SEQ_GAP_EID`)
-- `RECOVERY_CMD_MID` 수신 시 bridge 재시작 카운터 리셋, `MODE_CMD_MID` 수신 시 모드 값 캐시 (둘 다 payload 검증 없음 — behavior spec §17)
+- `RECOVERY_CMD_MID` 수신 시 `RecoveryAction`별 분기 처리
+  (RESET_COUNTER/RESTART_BRIDGE/PARSER_RESET/SERIAL_RECONNECT, 미정의 action은
+  EVS 오류만) — A-3 구현 완료 (2026-07-05), 단위테스트 5건
+  (`notes/temp/a3_unittest_gap_implementation.md`)
+- `MODE_CMD_MID` 수신 시 `ModeAction`(ENTER/EXIT) × `RequestedState`(NORMAL/RECOVERY)
+  조합을 검증해 허용된 전이만 `CurrentModeState`를 실제로 변경 — A-3 구현 완료
+  (2026-07-05), 단위테스트 4건
 
 ## 미구현
 
 - CCSDS 헤더 시퀀스 카운터 검사 (payload `Seq` 기반 검사는 구현됨 — behavior spec §7.1)
 - 시리얼 장치 직접 재열기 (serial 재연결은 `mavlink_bridge_app` 자체 처리)
 - 외부 컴포넌트 재설정
-- MODE 명령의 실제 상태 전이, RECOVERY 명령의 action별 구분 처리
 
 ## 동작 명세 참조
 
