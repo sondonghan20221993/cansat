@@ -1,8 +1,10 @@
 # A-3 단위테스트 케이스 (Phase 1)
 
 > 빌드 환경: cFS build-ut (CMake + CMOCKA)  
-> 상태: 설계 완료, 실행 미진행 (build-ut 환경 부재)  
-> 대체: 배포 후 통합테스트로 검증
+> 상태: **A-3.1~3.3 구현·실행 완료 (2026-07-14)** — `~/verify-build` 로컬
+> build-ut 환경으로 실행. 상세: `notes/temp/a3_unittest_gap_implementation.md`.
+> 권한검증(A.1~A.4)·fail-safe(B.1/B.2)는 `uplink_app_cmds_ut_auth_gate_failures.md`
+> (커밋 `740521d`)에서 이미 별도 구현·검증 완료.
 
 ---
 
@@ -341,11 +343,13 @@ mission_app-test
 
 ---
 
-## 현재 상태
+## 현재 상태 (2026-07-14 갱신)
 
 | 상태 | 항목 |
 |---|---|
 | ✅ 케이스 설계 | A-3.1~3.3, Phase 3.1~3.3 |
-| ⏳ 코드 작성 | build-ut 환경 필요 |
-| ⏳ 실행 | build-ut 환경 부재 |
-| ✅ 대체 | 배포 후 통합테스트로 검증 |
+| ✅ 코드 작성·실행 | A-3.1(RECOVERY 5개)/A-3.2(MODE 4개)/A-3.3(DIAGNOSTIC 4개) +
+| | SEQ_FAIL 피드백(C.1/C.2 2개) — `notes/temp/a3_unittest_gap_implementation.md` |
+| ✅ 권한검증/fail-safe | A.1~A.4, B.1/B.2 — `uplink_app_cmds_ut_auth_gate_failures.md`(커밋 `740521d`)에서 기 구현 |
+| ✅ 회귀 확인 | 관련 5개 스위트 전부 PASS, 실패 없음 (로컬 `~/verify-build`) |
+| ⏳ Pi 배포 | 코드 변경 없음(테스트만 추가) — 배포 항목 아님 |

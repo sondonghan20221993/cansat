@@ -765,6 +765,67 @@ void Test_ProcessConfigCommand_UnknownParamRejected(void)
     UtAssert_INT32_EQ(LORA_TDM_APP_Data.ErrCounter, 1);
 }
 
+/* ---- ProcessDiagnosticCommand (A-3.3, notes/temp/a3_unittest_gap_implementation.md) ---- */
+
+static void BuildDiagnosticMsg(LORA_TDM_APP_DiagnosticCmdTlm_t *Msg, uint8 DiagAction)
+{
+    memset(Msg, 0, sizeof(*Msg));
+    Msg->SourceSequence = 1;
+    Msg->DiagAction     = DiagAction;
+    Msg->DiagTarget     = 0;
+    Msg->RequestToken   = 0x5A5A5A5A;
+}
+
+void Test_ProcessDiagnosticCommand_LinkStatus(void)
+{
+    LORA_TDM_APP_DiagnosticCmdTlm_t Msg;
+
+    BuildDiagnosticMsg(&Msg, LORA_TDM_APP_DIAG_ACTION_LINK_STATUS);
+    LORA_TDM_APP_Data.CmdCounter = 0;
+    LORA_TDM_APP_Data.LinkState  = LORA_TDM_APP_LINK_CONNECTED;
+
+    LORA_TDM_APP_ProcessDiagnosticCommand((CFE_SB_Buffer_t *)&Msg);
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.CmdCounter, 1);
+}
+
+void Test_ProcessDiagnosticCommand_RxStats(void)
+{
+    LORA_TDM_APP_DiagnosticCmdTlm_t Msg;
+
+    BuildDiagnosticMsg(&Msg, LORA_TDM_APP_DIAG_ACTION_RX_STATS);
+    LORA_TDM_APP_Data.CmdCounter = 0;
+
+    LORA_TDM_APP_ProcessDiagnosticCommand((CFE_SB_Buffer_t *)&Msg);
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.CmdCounter, 1);
+}
+
+void Test_ProcessDiagnosticCommand_TxStats(void)
+{
+    LORA_TDM_APP_DiagnosticCmdTlm_t Msg;
+
+    BuildDiagnosticMsg(&Msg, LORA_TDM_APP_DIAG_ACTION_TX_STATS);
+    LORA_TDM_APP_Data.CmdCounter = 0;
+
+    LORA_TDM_APP_ProcessDiagnosticCommand((CFE_SB_Buffer_t *)&Msg);
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.CmdCounter, 1);
+}
+
+void Test_ProcessDiagnosticCommand_UnknownAction(void)
+{
+    LORA_TDM_APP_DiagnosticCmdTlm_t Msg;
+
+    BuildDiagnosticMsg(&Msg, 0xFF);
+    LORA_TDM_APP_Data.CmdCounter = 0;
+
+    /* 매칭 case 없어도 크래시 없이 default(ERROR 이벤트)로 빠져야 함 */
+    LORA_TDM_APP_ProcessDiagnosticCommand((CFE_SB_Buffer_t *)&Msg);
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.CmdCounter, 1);
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(Crc16_KnownVector);
@@ -804,4 +865,8 @@ void UtTest_Setup(void)
     ADD_TEST(UpdateCacheFromMsg_Gps);
     ADD_TEST(UpdateCacheFromMsg_SystemHealth);
     ADD_TEST(UpdateCacheFromMsg_EkfStatus);
+    ADD_TEST(ProcessDiagnosticCommand_LinkStatus);
+    ADD_TEST(ProcessDiagnosticCommand_RxStats);
+    ADD_TEST(ProcessDiagnosticCommand_TxStats);
+    ADD_TEST(ProcessDiagnosticCommand_UnknownAction);
 }

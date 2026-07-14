@@ -2010,6 +2010,173 @@ void Test_CFS_CORE_APP_UpdateHealth_Priority_UplinkOverLora(void)
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.FaultCode, CFS_CORE_APP_FAULT_UPLINK_TIMEOUT);
 }
 
+/* ---- ProcessRecoveryCommand (A-3.1, notes/temp/a3_unittest_gap_implementation.md) ---- */
+
+void Test_CFS_CORE_APP_ProcessRecoveryCommand_ResetCounter(void)
+{
+    CFS_CORE_APP_RecoveryCmdTlm_t Msg;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.SourceSequence  = 1;
+    Msg.RecoveryAction  = CFS_CORE_APP_RECOVERY_ACTION_RESET_COUNTER;
+    Msg.TargetComponent = 1;
+    Msg.RequestToken    = 0x12345678;
+
+    CFS_CORE_APP_Data.RecoveryRequestedCount        = 0;
+    CFS_CORE_APP_Data.CmdCounter                    = 0;
+    CFS_CORE_APP_Data.SystemHealthTlm.RecoveryRequested = 0;
+    CFS_CORE_APP_Data.BridgeRestartCount            = 5;
+
+    CFS_CORE_APP_ProcessRecoveryCommand(&Msg);
+
+    UtAssert_INT32_EQ((int)CFS_CORE_APP_Data.RecoveryRequestedCount, 1);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.CmdCounter, 1);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.RecoveryRequested, 1);
+    UtAssert_INT32_EQ((int)CFS_CORE_APP_Data.BridgeRestartCount, 0);
+}
+
+void Test_CFS_CORE_APP_ProcessRecoveryCommand_RestartBridge(void)
+{
+    CFS_CORE_APP_RecoveryCmdTlm_t Msg;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.RecoveryAction  = CFS_CORE_APP_RECOVERY_ACTION_RESTART_BRIDGE;
+    Msg.TargetComponent = 2;
+    Msg.RequestToken    = 0xAABBCCDD;
+
+    CFS_CORE_APP_Data.RecoveryRequestedCount = 0;
+    CFS_CORE_APP_Data.CmdCounter             = 0;
+
+    CFS_CORE_APP_ProcessRecoveryCommand(&Msg);
+
+    UtAssert_INT32_EQ((int)CFS_CORE_APP_Data.RecoveryRequestedCount, 1);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.CmdCounter, 1);
+}
+
+void Test_CFS_CORE_APP_ProcessRecoveryCommand_ParserReset(void)
+{
+    CFS_CORE_APP_RecoveryCmdTlm_t Msg;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.RecoveryAction = CFS_CORE_APP_RECOVERY_ACTION_PARSER_RESET;
+    Msg.RequestToken   = 0;
+
+    CFS_CORE_APP_Data.RecoveryRequestedCount = 0;
+    CFS_CORE_APP_Data.CmdCounter             = 0;
+
+    CFS_CORE_APP_ProcessRecoveryCommand(&Msg);
+
+    UtAssert_INT32_EQ((int)CFS_CORE_APP_Data.RecoveryRequestedCount, 1);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.CmdCounter, 1);
+}
+
+void Test_CFS_CORE_APP_ProcessRecoveryCommand_SerialReconnect(void)
+{
+    CFS_CORE_APP_RecoveryCmdTlm_t Msg;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.RecoveryAction = CFS_CORE_APP_RECOVERY_ACTION_SERIAL_RECONNECT;
+
+    CFS_CORE_APP_Data.RecoveryRequestedCount = 0;
+    CFS_CORE_APP_Data.CmdCounter             = 0;
+
+    CFS_CORE_APP_ProcessRecoveryCommand(&Msg);
+
+    UtAssert_INT32_EQ((int)CFS_CORE_APP_Data.RecoveryRequestedCount, 1);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.CmdCounter, 1);
+}
+
+void Test_CFS_CORE_APP_ProcessRecoveryCommand_UnknownAction(void)
+{
+    CFS_CORE_APP_RecoveryCmdTlm_t Msg;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.RecoveryAction = 0xFF;
+
+    CFS_CORE_APP_Data.RecoveryRequestedCount = 0;
+    CFS_CORE_APP_Data.CmdCounter             = 0;
+
+    /* switch에 매칭 case 없어도 크래시 없이 default(ERROR 이벤트)로 빠져야 함 */
+    CFS_CORE_APP_ProcessRecoveryCommand(&Msg);
+
+    UtAssert_INT32_EQ((int)CFS_CORE_APP_Data.RecoveryRequestedCount, 1);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.CmdCounter, 1);
+}
+
+/* ---- ProcessModeCommand (A-3.2, notes/temp/a3_unittest_gap_implementation.md) ---- */
+
+void Test_CFS_CORE_APP_ProcessModeCommand_EnterRecovery(void)
+{
+    CFS_CORE_APP_ModeCmdTlm_t Msg;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.ModeAction     = CFS_CORE_APP_MODE_ACTION_ENTER;
+    Msg.RequestedState = CFS_CORE_APP_MODE_STATE_RECOVERY;
+    Msg.RequestToken   = 0x1111;
+
+    CFS_CORE_APP_Data.CurrentModeState = CFS_CORE_APP_MODE_STATE_NORMAL;
+    CFS_CORE_APP_Data.CmdCounter       = 0;
+
+    CFS_CORE_APP_ProcessModeCommand(&Msg);
+
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.CurrentModeState, CFS_CORE_APP_MODE_STATE_RECOVERY);
+    UtAssert_INT32_EQ((int)CFS_CORE_APP_Data.LastModeRequestToken, 0x1111);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.CmdCounter, 1);
+}
+
+void Test_CFS_CORE_APP_ProcessModeCommand_ExitRecovery(void)
+{
+    CFS_CORE_APP_ModeCmdTlm_t Msg;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.ModeAction     = CFS_CORE_APP_MODE_ACTION_EXIT;
+    Msg.RequestedState = CFS_CORE_APP_MODE_STATE_NORMAL;
+
+    CFS_CORE_APP_Data.CurrentModeState = CFS_CORE_APP_MODE_STATE_RECOVERY;
+    CFS_CORE_APP_Data.CmdCounter       = 0;
+
+    CFS_CORE_APP_ProcessModeCommand(&Msg);
+
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.CurrentModeState, CFS_CORE_APP_MODE_STATE_NORMAL);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.CmdCounter, 1);
+}
+
+void Test_CFS_CORE_APP_ProcessModeCommand_InvalidTransition(void)
+{
+    CFS_CORE_APP_ModeCmdTlm_t Msg;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.ModeAction     = CFS_CORE_APP_MODE_ACTION_ENTER;
+    Msg.RequestedState = CFS_CORE_APP_MODE_STATE_NORMAL; /* NORMAL->NORMAL, 정의되지 않은 전이 */
+
+    CFS_CORE_APP_Data.CurrentModeState = CFS_CORE_APP_MODE_STATE_NORMAL;
+    CFS_CORE_APP_Data.CmdCounter       = 0;
+
+    CFS_CORE_APP_ProcessModeCommand(&Msg);
+
+    /* 전이 불허 -> 상태 불변 */
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.CurrentModeState, CFS_CORE_APP_MODE_STATE_NORMAL);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.CmdCounter, 1);
+}
+
+void Test_CFS_CORE_APP_ProcessModeCommand_UnknownState(void)
+{
+    CFS_CORE_APP_ModeCmdTlm_t Msg;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.ModeAction     = CFS_CORE_APP_MODE_ACTION_ENTER;
+    Msg.RequestedState = 0xFF; /* 정의되지 않은 상태값 */
+
+    CFS_CORE_APP_Data.CurrentModeState = CFS_CORE_APP_MODE_STATE_NORMAL;
+    CFS_CORE_APP_Data.CmdCounter       = 0;
+
+    CFS_CORE_APP_ProcessModeCommand(&Msg);
+
+    /* 매칭되는 분기 없음 -> 상태 불변 */
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.CurrentModeState, CFS_CORE_APP_MODE_STATE_NORMAL);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.CmdCounter, 1);
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(CFS_CORE_APP_ReportHousekeeping);
@@ -2082,4 +2249,13 @@ void UtTest_Setup(void)
     ADD_TEST(CFS_CORE_APP_UpdateHealth_Priority_UplinkOverLora);
     ADD_TEST(CFS_CORE_APP_ServicePrototype);
     ADD_TEST(CFS_CORE_APP_ProcessViewpointCommand);
+    ADD_TEST(CFS_CORE_APP_ProcessRecoveryCommand_ResetCounter);
+    ADD_TEST(CFS_CORE_APP_ProcessRecoveryCommand_RestartBridge);
+    ADD_TEST(CFS_CORE_APP_ProcessRecoveryCommand_ParserReset);
+    ADD_TEST(CFS_CORE_APP_ProcessRecoveryCommand_SerialReconnect);
+    ADD_TEST(CFS_CORE_APP_ProcessRecoveryCommand_UnknownAction);
+    ADD_TEST(CFS_CORE_APP_ProcessModeCommand_EnterRecovery);
+    ADD_TEST(CFS_CORE_APP_ProcessModeCommand_ExitRecovery);
+    ADD_TEST(CFS_CORE_APP_ProcessModeCommand_InvalidTransition);
+    ADD_TEST(CFS_CORE_APP_ProcessModeCommand_UnknownState);
 }

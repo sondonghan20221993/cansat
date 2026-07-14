@@ -792,7 +792,7 @@ Pi 실환경 동작은 불변** — env var는 테스트 전용이다.
 | `mavlink_bridge_app` unit test | unit-test 디렉터리 미구성 |
 | `lora_tdm_app` `ReportHousekeeping` 단위테스트 | HK payload 반영 확인 — 미작성 |
 | `lora_tdm_app` `ReportLinkStatus` 단위테스트 | LinkStatus TLM 반영 확인 — 미작성 |
-| `lora_tdm_app` SEQ_FAIL 경로 (TDM-RX-004) | `UPLINK_FB_SEQ_FAIL` 미구현 |
+| `lora_tdm_app` SEQ_FAIL 경로 (TDM-RX-004) | 실물 하드웨어 RT 검증만 미실행 — 로직은 구현/단위테스트 완료(`A3_unittest_cases.md` C.1/C.2, 2026-07-14) |
 | `lora_tdm_app` `RunCycle` TDM 타이밍 검증 | serial 의존 → Pi 런타임 필요 |
 | `lora_tdm_app` LoRa 하드웨어 연동 | Pi 실물 serial 필요 |
 | `uplink_app` LoRa serial read C 경로 단위테스트 | `ServiceLoRa()`/`ParseLoRaFrame()` static — 통합테스트로 대체 |
