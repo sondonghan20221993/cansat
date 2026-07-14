@@ -137,11 +137,22 @@ host 모드)를 켜는 것** — 이는 Raspberry Pi OS 기본 템플릿 문구�
 - `config.txt` `[cm4]`: `otg_mode=1` → `dtoverlay=dwc2,dr_mode=host`로 교체
   (백업: `config.txt.bak-20260714`) 후 재부팅 → `dwc2 fe980000.usb: DWC OTG
   Controller` 로그로 host 모드 활성 확인.
-- FC를 USB-C(C-to-C 케이블)로 연결 — **1차 시도 무반응**(`lsusb`/`dmesg`에
-  이벤트 없음, 수 분간). 원인 조사 중 Type-C CC 핀 역할협상(D2D 케이블 시
-  양쪽 다 device로 고정돼 협상 불가 가능성) 가설 세웠으나, **케이블을 다른
-  C-to-C로 교체하자 즉시 인식** — 첫 케이블이 데이터선 불량(충전전용)이었던
-  것으로 결론. CC 협상 가설은 검증 불필요해짐(실제 원인 아니었음).
+- FC 연결 실측 (2026-07-14 사용자 확인으로 최종 정정):
+  - **Pi USB-C 포트 ←C-to-C→ FC: 실패** (`lsusb`/`dmesg` 완전 무반응, 수 분간)
+  - **Pi USB-A 포트 ←A-to-C→ FC: 즉시 인식 성공**
+- **원인 분석**: USB-A 포트는 CC 협상 없이 항상 host 역할이라 정상 동작.
+  USB-C 포트의 C-to-C 실패는 **CM4-NANO-B USB-C 포트에 host용 CC 풀업(Rp)이
+  없어, `dr_mode=host` 소프트웨어 설정과 무관하게 C-to-C 연결 시 상대(FC)가
+  host 존재를 전기적으로 감지하지 못하는 보드 설계 제약**으로 추정 — 이
+  포트는 원래 전원 입력 + device(eMMC 플래싱)용으로 설계됨. (케이블 충전전용
+  가능성도 배제 못 하나, 보드 설계상 C-to-C는 원래 안 될 가능성이 높음.)
+- 참고: CM4는 USB2 인터페이스가 1개뿐이라 USB-A/USB-C 포트가 같은 dwc2
+  컨트롤러를 공유 — `dtoverlay=dwc2,dr_mode=host` 설정은 USB-A 포트 host
+  동작에도 필요했던 것이므로 헛수고는 아니었음 (`otg_mode=1` 제거 상태에서
+  이 overlay 없으면 USB 인식 자체가 안 됨, Waveshare wiki 지침과 일치).
+- **운영 기준 확정: FC 연결은 Pi USB-A 포트 + A-to-C 케이블 사용.**
+  Pi의 USB-C 포트는 전원/플래싱 전용으로 간주(현재 전원은 GPIO 5V로 옮겼으니
+  실질적으로 플래싱 전용).
 - **FC 인식 성공**: `usb 1-1: Product: MicoAir743v2, Manufacturer: MicoAir`
   (idVendor=1b8c, idProduct=0036) → `cdc_acm 1-1:1.0: ttyACM0` →
   **`/dev/ttyACM0`**로 확정.
@@ -186,8 +197,9 @@ MAVLINK_BRIDGE_SERIAL_PATH=/dev/ttyACM0 sudo -E ./core-cpu1
 - [x] GPIO 5V 외부 전원(5V 2A 이상) 배선 완료, USB-C 전원 분리, 정상 부팅 확인
 - [x] `config.txt`에서 `otg_mode=1` → `dtoverlay=dwc2,dr_mode=host` 교체 적용,
       재부팅 후 dwc2 host 모드 활성 확인
-- [x] FC를 USB-C로 연결 후 인식 확인 — `/dev/ttyACM0` (MicoAir743v2) 확정.
-      1차 케이블 무반응 → 케이블 불량으로 판명, 교체 후 즉시 인식
+- [x] FC USB 인식 확인 — `/dev/ttyACM0` (MicoAir743v2) 확정. 단 **USB-C 포트가
+      아니라 USB-A 포트**(A-to-C 케이블)로 연결됨 — USB-C C-to-C는 보드 설계
+      제약(추정)으로 실패, 운영 기준은 USB-A 포트로 확정
 - [ ] `MAVLINK_BRIDGE_SERIAL_PATH=/dev/ttyACM0` env var로 `mavlink_bridge_app` 연결 검증
 - [ ] 안정 확인되면 `default_mavlink_bridge_app_platform_cfg.h`의
       `MAVLINK_BRIDGE_APP_SERIAL_PATH` 기본값을 실제 장치명으로 변경(커밋)
