@@ -50,6 +50,7 @@ typedef struct
 
     /* TDM state */
     uint32 DownlinkSeq;
+    uint32 LastSentSeq; /* 마지막으로 전송에 성공한 DownlinkSeq(증가 전) — ACK SeqEcho 비교 기준 */
     uint32 TxCount;
     uint32 RxAckCount;
     uint32 RxCmdCount;

@@ -195,6 +195,7 @@ void Test_UpdateLinkState_Disconnected(void)
 void Test_ProcessRxLine_Ack(void)
 {
     LORA_TDM_APP_Data.DownlinkSeq        = 7;
+    LORA_TDM_APP_Data.LastSentSeq        = 7;
     LORA_TDM_APP_Data.NoAckCount         = 2;
     LORA_TDM_APP_Data.RxAckCount         = 0;
     LORA_TDM_APP_Data.LastAckTimestampMs = 0;
@@ -203,6 +204,33 @@ void Test_ProcessRxLine_Ack(void)
 
     UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.RxAckCount, 1);
     UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.NoAckCount, 0);
+}
+
+/* 실전 타이밍 재현: TX 성공 후 DownlinkSeq는 이미 다음 값(N+1)으로 증가돼 있고,
+ * LastSentSeq만 전송된 프레임의 seq(N)를 보존한다 — ACK,N 수신 시 SeqFailCount가
+ * 잘못 증가하면 안 된다. (DownlinkSeq와 비교하던 과거 버그의 회귀 방지) */
+void Test_ProcessRxLine_Ack_SeqMatch_NoFalseFail(void)
+{
+    LORA_TDM_APP_Data.LastSentSeq  = 7;
+    LORA_TDM_APP_Data.DownlinkSeq  = 8; /* TX 성공 직후 이미 증가된 상태 */
+    LORA_TDM_APP_Data.SeqFailCount = 0;
+
+    LORA_TDM_APP_ProcessRxLine("ACK,7\n", &LORA_TDM_APP_Data);
+
+    UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.SeqFailCount, 0);
+    UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.RxAckCount, 1);
+}
+
+void Test_ProcessRxLine_Ack_SeqMismatch(void)
+{
+    LORA_TDM_APP_Data.LastSentSeq  = 7;
+    LORA_TDM_APP_Data.DownlinkSeq  = 8;
+    LORA_TDM_APP_Data.SeqFailCount = 0;
+
+    LORA_TDM_APP_ProcessRxLine("ACK,3\n", &LORA_TDM_APP_Data);
+
+    UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.SeqFailCount, 1);
+    UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.RxAckCount, 1);
 }
 
 /* ---- ProcessRxLine: UP with CRC fail ---- */
@@ -619,6 +647,48 @@ void Test_ParseAck2Frame_TooShort(void)
     UtAssert_INT32_EQ(LORA_TDM_APP_ParseAck2Frame(Buf, sizeof(Buf), &SeqEcho), LORA_TDM_ACK_INVALID);
 }
 
+/* ---- ProcessRxBinaryFrame: ACK2 seq 검증 (TX 증가 후 타이밍 재현) ---- */
+
+void Test_ProcessRxBinaryFrame_Ack2_SeqMatch_NoFalseFail(void)
+{
+    uint8  Buf[5];
+    uint16 Crc;
+
+    Buf[0] = LORA_TDM_APP_ACK2_MAGIC;
+    PutU16LE_Test(&Buf[1], 7);
+    Crc = LORA_TDM_APP_Crc16(Buf, 3);
+    PutU16LE_Test(&Buf[3], Crc);
+
+    LORA_TDM_APP_Data.LastSentSeq  = 7;
+    LORA_TDM_APP_Data.DownlinkSeq  = 8; /* TX 성공 직후 이미 증가된 상태 */
+    LORA_TDM_APP_Data.SeqFailCount = 0;
+
+    LORA_TDM_APP_ProcessRxBinaryFrame(Buf, sizeof(Buf), &LORA_TDM_APP_Data);
+
+    UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.SeqFailCount, 0);
+    UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.RxAckCount, 1);
+}
+
+void Test_ProcessRxBinaryFrame_Ack2_SeqMismatch(void)
+{
+    uint8  Buf[5];
+    uint16 Crc;
+
+    Buf[0] = LORA_TDM_APP_ACK2_MAGIC;
+    PutU16LE_Test(&Buf[1], 3);
+    Crc = LORA_TDM_APP_Crc16(Buf, 3);
+    PutU16LE_Test(&Buf[3], Crc);
+
+    LORA_TDM_APP_Data.LastSentSeq  = 7;
+    LORA_TDM_APP_Data.DownlinkSeq  = 8;
+    LORA_TDM_APP_Data.SeqFailCount = 0;
+
+    LORA_TDM_APP_ProcessRxBinaryFrame(Buf, sizeof(Buf), &LORA_TDM_APP_Data);
+
+    UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.SeqFailCount, 1);
+    UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.RxAckCount, 1);
+}
+
 /* ---- ParseUp2Frame — lora_protocol_v2_spec.md §5 ---- */
 
 void Test_ParseUp2Frame_ValidWithPayload(void)
@@ -864,6 +934,8 @@ void UtTest_Setup(void)
     ADD_TEST(ParseAck2Frame_WrongMagic);
     ADD_TEST(ParseAck2Frame_CrcFail);
     ADD_TEST(ParseAck2Frame_TooShort);
+    ADD_TEST(ProcessRxBinaryFrame_Ack2_SeqMatch_NoFalseFail);
+    ADD_TEST(ProcessRxBinaryFrame_Ack2_SeqMismatch);
     ADD_TEST(ParseUp2Frame_ValidWithPayload);
     ADD_TEST(ParseUp2Frame_ZeroPayload);
     ADD_TEST(ParseUp2Frame_CrcFail);
@@ -886,6 +958,8 @@ void UtTest_Setup(void)
     ADD_TEST(UpdateLinkState_Degraded);
     ADD_TEST(UpdateLinkState_Disconnected);
     ADD_TEST(ProcessRxLine_Ack);
+    ADD_TEST(ProcessRxLine_Ack_SeqMatch_NoFalseFail);
+    ADD_TEST(ProcessRxLine_Ack_SeqMismatch);
     ADD_TEST(ProcessRxLine_CrcFail);
     ADD_TEST(ProcessRxLine_ValidUp);
     ADD_TEST(UpdateCacheFromMsg_Attitude);

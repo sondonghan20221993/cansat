@@ -258,6 +258,7 @@ static void RunTx(void)
             if (write(LORA_TDM_APP_Data.LoRaFd, Dl2Buf, (size_t)Dl2Len) == Dl2Len)
             {
                 LORA_TDM_APP_Data.TxCount++;
+                LORA_TDM_APP_Data.LastSentSeq = LORA_TDM_APP_Data.DownlinkSeq;
                 LORA_TDM_APP_Data.DownlinkSeq++;
                 LORA_TDM_APP_Data.PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_OK;
             }
@@ -293,6 +294,7 @@ static void RunTx(void)
         {
             LORA_TDM_APP_Data.PacketType = Type;
             LORA_TDM_APP_Data.TxCount++;
+            LORA_TDM_APP_Data.LastSentSeq = LORA_TDM_APP_Data.DownlinkSeq;
             LORA_TDM_APP_Data.DownlinkSeq++;
             LORA_TDM_APP_Data.PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_OK;
         }

@@ -520,12 +520,12 @@ void LORA_TDM_APP_ProcessRxLine(const char *Line, LORA_TDM_APP_Data_t *AppData)
         AckResult = LORA_TDM_APP_ParseAckFrame(Line, &SeqEcho);
         if (AckResult == LORA_TDM_ACK_OK)
         {
-            if (SeqEcho != AppData->DownlinkSeq)
+            if (SeqEcho != AppData->LastSentSeq)
             {
                 AppData->SeqFailCount++;
                 CFE_EVS_SendEvent(LORA_TDM_APP_SEQ_FAIL_EID, CFE_EVS_EventType_ERROR,
                                   "LORA_TDM_APP: ACK seq mismatch tx=%lu rx=%lu",
-                                  (unsigned long)AppData->DownlinkSeq, (unsigned long)SeqEcho);
+                                  (unsigned long)AppData->LastSentSeq, (unsigned long)SeqEcho);
             }
             AppData->RxAckCount++;
             AppData->NoAckCount         = 0;
@@ -608,12 +608,12 @@ void LORA_TDM_APP_ProcessRxBinaryFrame(const uint8 *Buf, size_t Len, LORA_TDM_AP
     {
         if (LORA_TDM_APP_ParseAck2Frame(Buf, Len, &SeqEcho) == LORA_TDM_ACK_OK)
         {
-            if (SeqEcho != AppData->DownlinkSeq)
+            if (SeqEcho != AppData->LastSentSeq)
             {
                 AppData->SeqFailCount++;
                 CFE_EVS_SendEvent(LORA_TDM_APP_SEQ_FAIL_EID, CFE_EVS_EventType_ERROR,
                                   "LORA_TDM_APP: ACK2 seq mismatch tx=%lu rx=%lu",
-                                  (unsigned long)AppData->DownlinkSeq, (unsigned long)SeqEcho);
+                                  (unsigned long)AppData->LastSentSeq, (unsigned long)SeqEcho);
             }
             AppData->RxAckCount++;
             AppData->NoAckCount         = 0;
