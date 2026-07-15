@@ -4,6 +4,7 @@
 #include "common_types.h"
 #include "cfe_msg_hdr.h"
 #include "lora_tdm_app_msgdefs.h"
+#include "fc_state_msg.h"
 #include "config_msg.h"
 
 typedef struct
@@ -70,6 +71,11 @@ typedef struct
     uint32                    RxAckCount;
     uint32                    RxCmdCount;
 } LORA_TDM_APP_LinkStatusTlm_t;
+
+typedef FC_ATTITUDE_TLM_t   LORA_TDM_APP_AttitudeTlm_t;
+typedef FC_EKF_LOCAL_TLM_t  LORA_TDM_APP_EkfLocalTlm_t;
+typedef FC_GPS_RAW_TLM_t    LORA_TDM_APP_GpsRawTlm_t;
+typedef FC_EKF_STATUS_TLM_t LORA_TDM_APP_EkfStatusTlm_t;
 
 /* Forwarded to UPLINK_APP_CMD_MID (0x18D0); layout matches UPLINK_APP_ProcessUplinkCmd_t */
 typedef struct

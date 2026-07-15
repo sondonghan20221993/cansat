@@ -5,6 +5,7 @@
 #include "common_types.h"
 #include "cfs_core_app_msgdefs.h"
 #include "cfs_core_app_mission_cfg.h"
+#include "fc_state_msg.h"
 #include "system_health_msg.h"
 #include "route_msg.h"
 #include "config_msg.h"
@@ -36,6 +37,11 @@ typedef INPUT_STATUS_t  CFS_CORE_APP_InputStatus_t;
 typedef BRIDGE_STATUS_t CFS_CORE_APP_BridgeStatus_t;
 typedef APP_STATUS_t    CFS_CORE_APP_AppStatus_t;
 typedef SYSTEM_HEALTH_TLM_t CFS_CORE_APP_SystemHealthTlm_t;
+
+typedef FC_ATTITUDE_TLM_t   CFS_CORE_APP_AttitudeTlm_t;
+typedef FC_EKF_LOCAL_TLM_t  CFS_CORE_APP_EkfLocalTlm_t;
+typedef FC_GPS_RAW_TLM_t    CFS_CORE_APP_GpsRawTlm_t;
+typedef FC_EKF_STATUS_TLM_t CFS_CORE_APP_EkfStatusTlm_t;
 
 typedef ROUTE_WAYPOINT_t CFS_CORE_APP_Waypoint_t;
 typedef ROUTE_UPDATE_TLM_t CFS_CORE_APP_RouteUpdateTlm_t;
