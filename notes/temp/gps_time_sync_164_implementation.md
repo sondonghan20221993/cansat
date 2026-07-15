@@ -96,6 +96,33 @@ Pi 자신의 시계가 GPS 규율된 뒤에야 그게 의미를 가짐.
   초 단위로 대조하는 방식이라 오차가 수백ms~초 단위로 클 수 있음** —
   "대략 맞는지"만 확인하는 정성적 체크로 취급, 1차 방법의 대체가 아님.
 
+### 테스트 케이스 설계 (§16.4.2 브릿지 유틸리티, 2026-07-15)
+
+브릿지는 Pi 호스트 프로세스(Python 예상, `bridge/` 관례) — cFS SB를 직접 못
+붙으므로 실제 입력 경로 결정 필요(후보: mavlink_bridge가 쓰는 것과 별개로
+FC UART을 이중 사용 불가 → **SB 구독 앱이 아니라, mavlink_bridge_app이
+SYSTEM_TIME 수신 시 로컬 UDS/파일로 내보내는 tap을 추가**하거나, 기존
+`SysTimeTlm` SB를 구독하는 초소형 cFS 앱. 구현 전 결정 항목).
+
+단위 테스트 (Python, `tests/`):
+- **TC-CHRONY-001 (SOCK 인코딩)**: 주어진 unix_usec 입력 → chrony SOCK
+  refclock 바이너리 샘플(struct: tv_sec/tv_usec/offset/pulse/leap/magic
+  0x534f434b) 필드/바이트 정확성.
+- **TC-CHRONY-002 (offset 계산)**: offset = GPS시각 − 로컬 CLOCK_REALTIME,
+  부호 포함 (로컬이 빠를 때/느릴 때 양쪽).
+- **TC-CHRONY-003 (invalid/stale 거부)**: TimeValid=0 또는 수신 정체
+  (마지막 샘플 후 N초 경과) 시 샘플 미주입.
+- **TC-CHRONY-004 (소켓 부재 폴백)**: chrony SOCK 경로 없음/연결 거부 시
+  크래시 없이 재시도.
+- **TC-CHRONY-005 (지연 보정 한계 명시)**: FC→Pi 전달 지연(UART+파싱)만큼
+  offset이 편향됨 — 보정 상수 적용 여부와 오차 예산(§16.5 수십 ms) 내
+  판정 테스트.
+
+런타임 (하드웨어, TEST_CASES.md 등재용):
+- **RT-CHRONY-001**: Pi에서 `chronyc sources`에 SOCK refclock 표시 + reach>0.
+- **RT-CHRONY-002**: Pi `date` vs 지상 CSV `sys_time_unix_usec` 오차 예산 내.
+- **RT-CHRONY-003**: 카메라(`chronyc tracking`)가 Pi 경유로 GPS 시각 수렴.
+
 ## 상태 (§16.4.2)
 
 - [x] 방식 결정 — chrony SOCK refclock 브릿지 + 2단계 검증(date/chronyc 1차,

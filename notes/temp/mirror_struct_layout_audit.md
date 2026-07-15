@@ -89,6 +89,41 @@
 **대안(더 가벼움, 병행 가능)**: 병합 전까지 각 수신측에
 `_Static_assert(sizeof/offsetof 일치)` 가드만 먼저 박아 재발을 즉시 차단.
 
+## 테스트 케이스 설계 (병합 리팩터링용, 2026-07-15)
+
+원칙: 이 리팩터링은 **동작 불변**(레이아웃/값 동일, 정의 위치만 통합)이므로
+핵심 검증은 "기존 UT 전량 무회귀" + "레이아웃 동일성 증명" 두 축.
+
+### 병합 단계 공통 (각 병합마다 반복)
+- **TC-MRG-COMMON-1 (레이아웃 동일성)**: 병합 전 `sizeof`/`offsetof` 전 필드
+  스냅샷 → 병합 후 동일값 `_Static_assert` 또는 UT assert로 증명.
+  (한 벌로 합치면 자동 충족되지만, 병합 커밋 자체가 레이아웃을 바꾸지
+  않았음을 증명하는 1회성 체크)
+- **TC-MRG-COMMON-2 (UT 전량 회귀)**: 해당 앱 쌍의 기존 coveragetest 전 스위트
+  PASS (cfs_core 245건 포함 4개 스위트, lora_tdm 114건 포함 4개 스위트 등)
+- **TC-MRG-COMMON-3 (UT fake struct 제거)**: coveragetest 내 `TEST_*_t` 로컬
+  fake를 공유 정의로 교체 — fake 자체가 드리프트 원인이었음(BridgeHk 사례).
+  교체 후에도 동일 시나리오 PASS 확인.
+
+### 개별
+- **TC-MRG-BRIDGEHK-1**: cfs_core `ProcessStateMessage_BridgeHk` 기존 테스트가
+  공유 `MAVLINK_BRIDGE_APP_HkTlm_t` 직접 사용으로 전환 후
+  LastRxTimestampMs/LinkState/LastErrorCode 판독 값 동일.
+- **TC-MRG-SYSHEALTH-1**: lora_tdm `UpdateCacheFromMsg` SystemHealth 분기 —
+  공유 정의 사용 후 Health/FaultFlags 캐시 값 동일.
+- **TC-MRG-FCSTATE-1**: cfs_core `GenericStateTlm_t` prefix 판독(TimestampMs/
+  Seq/Valid/Stale/ErrorCode)이 4종 공유 구조체 각각에서 동일 —
+  "generic prefix" 패턴 유지 여부(공유 prefix struct로 분리) 설계 결정 필요.
+- **TC-MRG-ROUTE-1 / TC-MRG-CONFIG-1**: 3벌→1벌 후 uplink 발행 → cfs_core/
+  mavlink_bridge(/lora_tdm) 수신 UT 시나리오 값 동일 (Waypoint[16], Payload[196]
+  경계 포함).
+- **TC-MRG-BUILD-1**: 4개 앱 전체 빌드(cFS 트리) 성공 — 공유 헤더 include
+  경로가 4개 앱 CMake에서 전부 해상되는지.
+
+### 런타임 후보 (하드웨어, TEST_CASES.md 등재용)
+- **RT-MRG-001**: 병합 배포 후 실기체에서 health 정상 판정 + DL2 값 무변화
+  (기존 soak 로그와 필드 값 대조).
+
 ## 상태
 
 - [x] 대상 식별 + 계획
