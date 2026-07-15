@@ -693,7 +693,13 @@ window 기반 제한과 카운터 재설정의 상호작용 규칙:
 | `lora_tdm_app` | **예** | TDM 슬롯 주기, 전송 타임아웃, 활성 MID 목록 등 런타임 변경 가능 파라미터를 보유한다 |
 | `uplink_app` | **제한적** | `uplink_app` 자체 파라미터(최대 payload 길이, 프로토콜 버전 허용 범위 등)가 필요한 경우에만 로컬 버퍼를 유지한다. 다른 앱 대상 config는 해당 앱 MID로 전달만 수행하며 버퍼를 소유하지 않는다 |
 
-`uplink_app`은 config 명령을 수신하면 `config_scope` 필드로 대상 앱을 판별하고, 대상 앱의 `CONFIG_CMD_MID`로 검증된 payload를 전달한다. 각 target 앱이 자신의 pending 버퍼에서 최종 검증 및 적용을 수행한다.
+`uplink_app`은 config 명령을 수신하면 다음을 수행한다:
+
+1. **Checksum 검증** (§13.4 참조): `ConfigPayloadHdr`의 checksum을 검증 → 실패 시 거부 후 event 발생
+2. **Scope 판별**: `config_scope` 필드로 대상 앱 결정
+3. **Forward**: 검증된 payload를 대상 앱의 `CONFIG_CMD_MID`로 전달
+
+각 target 앱(`cfs_core_app`, `mavlink_bridge_app`)이 자신의 pending 버퍼에서 최종 검증 및 적용을 수행한다.
 
 ### 13.2 앱별 필수 상태 변수
 
@@ -708,7 +714,32 @@ pending/active 버퍼를 소유하는 각 앱은 최소한 다음 상태 변수�
 
 `previous_config`(롤백 버퍼)와 `active_config_version` / `pending_config_version`은 각 앱의 파라미터 스키마 확정 이후 앱별로 추가한다.
 
-### 13.3 활성화 경계
+### 13.4 CONFIG_CMD_MID Checksum 검증
+
+모든 CONFIG 명령 수신 앱(`uplink_app`, `cfs_core_app`, `mavlink_bridge_app`)은 `ConfigPayloadHdr.Checksum` 검증을 수행해야 한다.
+
+**Checksum 정의** (§17.2 Payload 정밀도):
+
+```
+ConfigChecksum = additive sum (uint16 wrapping):
+  ConfigScope (1B)
+  + ConfigVersion (1B)  
+  + ParameterId[0] (1B, LE)
+  + ParameterId[1] (1B, LE)
+  + ValueType (1B)
+  + ValueLength (1B)
+  + ValueBytes[0..N] (N B)
+```
+
+**검증 정책**:
+- ConfigScope ≠ 자신의 scope → 조용히 무시 (다른 앱 대상)
+- ConfigScope = 자신의 scope
+  - Checksum 불일치 → error event 발생 + 거부
+  - Checksum 일치 → 다음 검증 단계로 진행 (ConfigVersion, PayloadLength 등)
+
+이 두 단계 checksum 검증(lora_tdm_app의 프레임 CRC + 각 app의 payload checksum)으로 SB 메시지 계층까지의 무결성을 보증한다.
+
+### 13.5 활성화 경계
 
 활성화 경계는 앱마다 다릅니다.
 

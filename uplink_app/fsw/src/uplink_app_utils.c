@@ -347,10 +347,64 @@ bool UPLINK_APP_ForwardRecoveryCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
     return (CFE_SB_TransmitMsg(CFE_MSG_PTR(RecoveryTlm.TelemetryHeader), true) == CFE_SUCCESS);
 }
 
+static uint16 UPLINK_APP_ConfigChecksum(const UPLINK_APP_ConfigPayloadHdr_t *Hdr,
+                                         const uint8 *ValueBytes, uint8 ValueLength)
+{
+    uint16 Sum = 0;
+    uint8  i;
+
+    Sum += (uint16)Hdr->ConfigScope;
+    Sum += (uint16)Hdr->ConfigVersion;
+    Sum += (uint16)(Hdr->ParameterId & 0xFFU);
+    Sum += (uint16)((Hdr->ParameterId >> 8U) & 0xFFU);
+    Sum += (uint16)Hdr->ValueType;
+    Sum += (uint16)Hdr->ValueLength;
+    for (i = 0; i < ValueLength; i++)
+    {
+        Sum += (uint16)ValueBytes[i];
+    }
+    return Sum;
+}
+
 bool UPLINK_APP_ForwardConfigCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
 {
-    UPLINK_APP_ConfigCmdTlm_t ConfigTlm;
-    bool                      Ok;
+    UPLINK_APP_ConfigCmdTlm_t       ConfigTlm;
+    const UPLINK_APP_ConfigPayloadHdr_t *Hdr;
+    const uint8                    *ValueBytes;
+    uint16                          Expected;
+    bool                           Ok;
+
+    if (Cmd->PayloadLength < (uint8)sizeof(UPLINK_APP_ConfigPayloadHdr_t))
+    {
+        UPLINK_APP_Data.ErrCounter++;
+        CFE_EVS_SendEvent(UPLINK_APP_COMMAND_ERR_EID, CFE_EVS_EventType_ERROR,
+                          "UPLINK_APP: config payload too short len=%u",
+                          (unsigned int)Cmd->PayloadLength);
+        return false;
+    }
+
+    Hdr = (const UPLINK_APP_ConfigPayloadHdr_t *)Cmd->Payload;
+
+    if (Hdr->ValueLength != sizeof(uint32) ||
+        (uint8)(sizeof(*Hdr) + Hdr->ValueLength) > Cmd->PayloadLength)
+    {
+        UPLINK_APP_Data.ErrCounter++;
+        CFE_EVS_SendEvent(UPLINK_APP_COMMAND_ERR_EID, CFE_EVS_EventType_ERROR,
+                          "UPLINK_APP: config checksum validation error: invalid length payload_len=%u hdr_len=%u val_len=%u",
+                          (unsigned int)Cmd->PayloadLength, (unsigned int)sizeof(*Hdr), (unsigned int)Hdr->ValueLength);
+        return false;
+    }
+
+    ValueBytes = Cmd->Payload + sizeof(*Hdr);
+    Expected   = UPLINK_APP_ConfigChecksum(Hdr, ValueBytes, Hdr->ValueLength);
+    if (Hdr->Checksum != Expected)
+    {
+        UPLINK_APP_Data.ErrCounter++;
+        CFE_EVS_SendEvent(UPLINK_APP_COMMAND_ERR_EID, CFE_EVS_EventType_ERROR,
+                          "UPLINK_APP: config checksum mismatch got=0x%04X expected=0x%04X",
+                          (unsigned int)Hdr->Checksum, (unsigned int)Expected);
+        return false;
+    }
 
     UPLINK_APP_Data.ConfigPendingState = UPLINK_APP_CONFIG_PENDING;
 

@@ -88,6 +88,17 @@ typedef struct
 
 typedef CONFIG_CMD_TLM_t UPLINK_APP_ConfigCmdTlm_t;
 
+/* config payload 내부 헤더 (openMCT fc_serial_ws_server.py _build_config_payload와 동일 레이아웃) */
+typedef struct
+{
+    uint8  ConfigScope;
+    uint8  ConfigVersion;
+    uint16 ParameterId;
+    uint8  ValueType;
+    uint8  ValueLength;
+    uint16 Checksum; /* additive sum: scope+version+param_id(2B)+value_type+value_length+value_bytes */
+} UPLINK_APP_ConfigPayloadHdr_t;
+
 typedef struct
 {
     CFE_MSG_TelemetryHeader_t TelemetryHeader;
