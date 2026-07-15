@@ -521,7 +521,7 @@ void Test_UPLINK_APP_ForwardConfigCommand_TransmitFail(void)
 
     UT_BuildValidConfigCmd(&Cmd, 500U);
 
-    UT_SetDefaultReturnValue(UT_KEY(CFE_SB_TransmitMsg), CFE_SB_CMD_BAD_MID_ERR);
+    UT_SetDefaultReturnValue(UT_KEY(CFE_SB_TransmitMsg), CFE_STATUS_EXTERNAL_RESOURCE_FAIL);
     UPLINK_APP_Data.ConfigPendingState = UPLINK_APP_CONFIG_IDLE;
     UPLINK_APP_Data.LastConfigResult   = 0;
 
