@@ -192,6 +192,31 @@ lora_tdm_app은 기존 prefix-only 인라인 `SHMsg_t`(로컬, 필드 5개만 �
 4스위트(114/40/30/12) 전부 PASS. FSW 빌드 `cfs_core_app.so`/
 `lora_tdm_app.so` 성공.
 
+### FC 상태 4종 병합 결과 (2026-07-15, 완료)
+
+**구현**: `shared_msgs/fc_state_msg.h`에 `FC_STATE_PREFIX_t`(공통 7필드
+prefix, cfs_core의 generic 캐스팅용) + `FC_ATTITUDE_TLM_t`/
+`FC_EKF_LOCAL_TLM_t`/`FC_GPS_RAW_TLM_t`/`FC_EKF_STATUS_TLM_t`(전체 필드)
+신설. **삼중 진실 → 단일 진실**:
+- 발행측(mavlink_bridge_app msgstruct.h): 4개 typedef 모두 별칭화
+- cfs_core_app: `CFS_CORE_APP_GenericStateTlm_t = FC_STATE_PREFIX_t`
+  별칭 — "4종을 하나의 핸들러로 처리"하는 generic 캐스팅 패턴은 유지하되,
+  그 prefix 타입 자체를 공유 정의로 고정(결정 필요 항목 해소: 패턴은
+  유지, 타입만 공유)
+- lora_tdm_app: 인라인 로컬 struct 4종(`AttMsg_t`/`LocalMsg_t`/`GpsMsg_t`/
+  `EkfMsg_t`) 전부 삭제 → 공유 타입 직접 캐스팅(EkfStatus는 prefix만
+  읽으므로 `FC_STATE_PREFIX_t` 사용)
+
+**사라진 테스트 아티팩트**: lora_tdm UT 로컬 fake 4종(`TEST_AttitudeTlm_t`/
+`TEST_EkfLocalTlm_t`/`TEST_GpsRawTlm_t`/`TEST_GenericStateTlm_t`) 전부
+삭제, 공유 타입(`FC_ATTITUDE_TLM_t` 등)으로 교체. cfs_core UT는 애초부터
+`CFS_CORE_APP_GenericStateTlm_t`를 직접 썼으므로 별도 fake 없었음(자동
+전파). 시나리오/개수 불변.
+
+**검증**: cfs_core_app(245/35/19/7) + mavlink_bridge_app(136/26/14/4) +
+lora_tdm_app(114/40/30/12) UT 12개 스위트 전부 PASS. FSW 빌드
+`cfs_core_app.so`/`mav_bridge_app.so`/`lora_tdm_app.so` 성공.
+
 ### 런타임 후보 (하드웨어, TEST_CASES.md 등재용)
 - **RT-MRG-001**: 병합 배포 후 실기체에서 health 정상 판정 + DL2 값 무변화
   (기존 soak 로그와 필드 값 대조).
@@ -207,6 +232,8 @@ lora_tdm_app은 기존 prefix-only 인라인 `SHMsg_t`(로컬, 필드 5개만 �
       UT 4스위트×2앱 무회귀, FSW 빌드 성공 (본 문서 "BridgeHk 병합 결과" 절)
 - [x] SystemHealth 병합 (2벌) — 완료 2026-07-15, `shared_msgs/system_health_msg.h`,
       UT 4스위트×2앱 무회귀 (본 문서 "SystemHealth 병합 결과" 절)
-- [ ] FC 상태 4종 / Route / Config 병합 (3벌)
+- [x] FC 상태 4종 병합 (삼중 진실, 3벌) — 완료 2026-07-15, `shared_msgs/fc_state_msg.h`,
+      UT 12스위트×3앱 무회귀 (본 문서 "FC 상태 4종 병합 결과" 절)
+- [ ] Route / Config 병합 (각 삼중 진실, 3벌)
 - [x] BridgeHk 병합 UT 회귀 확인 (완료, 나머지 병합은 각자 진행 시 확인)
 - [ ] (선택/병행) `_Static_assert` 가드 선제 삽입

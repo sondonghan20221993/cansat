@@ -1,68 +1,6 @@
 #include "lora_tdm_app_coveragetest_common.h"
 #include "system_health_msg.h"
-
-/* ---- Telemetry structs matching the source apps (used with UpdateCacheFromMsg) ---- */
-
-typedef struct
-{
-    CFE_MSG_TelemetryHeader_t TelemetryHeader;
-    uint32                    TimestampMs;
-    uint32                    Seq;
-    uint8                     Valid;
-    uint8                     Stale;
-    uint8                     ErrorCode;
-    uint8                     Reserved;
-    float                     RollRad;
-    float                     PitchRad;
-    float                     YawRad;
-    float                     RollspeedRps;
-    float                     PitchspeedRps;
-    float                     YawspeedRps;
-} TEST_AttitudeTlm_t;
-
-typedef struct
-{
-    CFE_MSG_TelemetryHeader_t TelemetryHeader;
-    uint32                    TimestampMs;
-    uint32                    Seq;
-    uint8                     Valid;
-    uint8                     Stale;
-    uint8                     ErrorCode;
-    uint8                     Reserved;
-    float                     X_m;
-    float                     Y_m;
-    float                     Z_m;
-    float                     Vx_mps;
-    float                     Vy_mps;
-    float                     Vz_mps;
-} TEST_EkfLocalTlm_t;
-
-typedef struct
-{
-    CFE_MSG_TelemetryHeader_t TelemetryHeader;
-    uint32                    TimestampMs;
-    uint32                    Seq;
-    uint8                     Valid;
-    uint8                     Stale;
-    uint8                     ErrorCode;
-    uint8                     FixType;
-    uint8                     SatellitesVisible;
-    uint8                     Reserved;
-    int32                     LatE7;
-    int32                     LonE7;
-    int32                     AltMm;
-} TEST_GpsRawTlm_t;
-
-typedef struct
-{
-    CFE_MSG_TelemetryHeader_t TelemetryHeader;
-    uint32                    TimestampMs;
-    uint32                    Seq;
-    uint8                     Valid;
-    uint8                     Stale;
-    uint8                     ErrorCode;
-    uint8                     Reserved;
-} TEST_GenericStateTlm_t;
+#include "fc_state_msg.h"
 
 /* ---- Helper: build a valid UP frame dynamically using the CRC function under test ---- */
 static void BuildValidUpFrame(char *Buf, size_t BufLen, uint8 Ver, uint8 Class, uint16 Seq, uint8 Flags,
@@ -302,14 +240,14 @@ void Test_ProcessRxLine_ValidUp(void)
 
 void Test_UpdateCacheFromMsg_Attitude(void)
 {
-    uint8               Storage[sizeof(TEST_AttitudeTlm_t)];
+    uint8               Storage[sizeof(FC_ATTITUDE_TLM_t)];
     CFE_SB_Buffer_t    *Buffer;
-    TEST_AttitudeTlm_t *Msg;
+    FC_ATTITUDE_TLM_t *Msg;
     CFE_SB_MsgId_t      MsgId;
 
     memset(Storage, 0, sizeof(Storage));
     Buffer = (CFE_SB_Buffer_t *)Storage;
-    Msg    = (TEST_AttitudeTlm_t *)Storage;
+    Msg    = (FC_ATTITUDE_TLM_t *)Storage;
     CFE_MSG_Init(CFE_MSG_PTR(Msg->TelemetryHeader),
                  CFE_SB_ValueToMsgId(LORA_TDM_APP_FC_ATTITUDE_STATE_MID_VALUE), sizeof(*Msg));
     Msg->TimestampMs = 1111;
@@ -331,14 +269,14 @@ void Test_UpdateCacheFromMsg_Attitude(void)
 
 void Test_UpdateCacheFromMsg_EkfLocal(void)
 {
-    uint8                Storage[sizeof(TEST_EkfLocalTlm_t)];
+    uint8                Storage[sizeof(FC_EKF_LOCAL_TLM_t)];
     CFE_SB_Buffer_t     *Buffer;
-    TEST_EkfLocalTlm_t  *Msg;
+    FC_EKF_LOCAL_TLM_t  *Msg;
     CFE_SB_MsgId_t       MsgId;
 
     memset(Storage, 0, sizeof(Storage));
     Buffer = (CFE_SB_Buffer_t *)Storage;
-    Msg    = (TEST_EkfLocalTlm_t *)Storage;
+    Msg    = (FC_EKF_LOCAL_TLM_t *)Storage;
     CFE_MSG_Init(CFE_MSG_PTR(Msg->TelemetryHeader),
                  CFE_SB_ValueToMsgId(LORA_TDM_APP_FC_EKF_LOCAL_STATE_MID_VALUE), sizeof(*Msg));
     Msg->TimestampMs = 2222;
@@ -358,14 +296,14 @@ void Test_UpdateCacheFromMsg_EkfLocal(void)
 
 void Test_UpdateCacheFromMsg_Gps(void)
 {
-    uint8             Storage[sizeof(TEST_GpsRawTlm_t)];
+    uint8             Storage[sizeof(FC_GPS_RAW_TLM_t)];
     CFE_SB_Buffer_t  *Buffer;
-    TEST_GpsRawTlm_t *Msg;
+    FC_GPS_RAW_TLM_t *Msg;
     CFE_SB_MsgId_t    MsgId;
 
     memset(Storage, 0, sizeof(Storage));
     Buffer = (CFE_SB_Buffer_t *)Storage;
-    Msg    = (TEST_GpsRawTlm_t *)Storage;
+    Msg    = (FC_GPS_RAW_TLM_t *)Storage;
     CFE_MSG_Init(CFE_MSG_PTR(Msg->TelemetryHeader),
                  CFE_SB_ValueToMsgId(LORA_TDM_APP_FC_GPS_RAW_STATE_MID_VALUE), sizeof(*Msg));
     Msg->TimestampMs       = 3333;
@@ -414,14 +352,14 @@ void Test_UpdateCacheFromMsg_SystemHealth(void)
 
 void Test_UpdateCacheFromMsg_EkfStatus(void)
 {
-    uint8                  Storage[sizeof(TEST_GenericStateTlm_t)];
+    uint8                  Storage[sizeof(FC_STATE_PREFIX_t)];
     CFE_SB_Buffer_t       *Buffer;
-    TEST_GenericStateTlm_t *Msg;
+    FC_STATE_PREFIX_t *Msg;
     CFE_SB_MsgId_t         MsgId;
 
     memset(Storage, 0, sizeof(Storage));
     Buffer = (CFE_SB_Buffer_t *)Storage;
-    Msg    = (TEST_GenericStateTlm_t *)Storage;
+    Msg    = (FC_STATE_PREFIX_t *)Storage;
     CFE_MSG_Init(CFE_MSG_PTR(Msg->TelemetryHeader),
                  CFE_SB_ValueToMsgId(LORA_TDM_APP_FC_EKF_STATUS_MID_VALUE), sizeof(*Msg));
     Msg->TimestampMs = 5555;

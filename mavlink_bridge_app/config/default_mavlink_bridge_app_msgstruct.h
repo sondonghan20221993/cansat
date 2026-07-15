@@ -5,6 +5,7 @@
 #include "common_types.h"
 #include "mavlink_bridge_app_msgdefs.h"
 #include "bridge_hk_msg.h"
+#include "fc_state_msg.h"
 
 typedef struct
 {
@@ -23,67 +24,10 @@ typedef struct
 
 typedef BRIDGE_HK_TLM_t MAVLINK_BRIDGE_APP_HkTlm_t;
 
-typedef struct
-{
-    CFE_MSG_TelemetryHeader_t TelemetryHeader;
-    uint32                    TimestampMs;
-    uint32                    Seq;
-    uint8                     Valid;
-    uint8                     Stale;
-    uint8                     ErrorCode;
-    uint8                     Reserved;
-    float                     X_m;
-    float                     Y_m;
-    float                     Z_m;
-    float                     Vx_mps;
-    float                     Vy_mps;
-    float                     Vz_mps;
-} MAVLINK_BRIDGE_APP_EkfLocalTlm_t;
-
-typedef struct
-{
-    CFE_MSG_TelemetryHeader_t TelemetryHeader;
-    uint32                    TimestampMs;
-    uint32                    Seq;
-    uint8                     Valid;
-    uint8                     Stale;
-    uint8                     ErrorCode;
-    uint8                     Reserved;
-    float                     RollRad;
-    float                     PitchRad;
-    float                     YawRad;
-    float                     RollspeedRps;
-    float                     PitchspeedRps;
-    float                     YawspeedRps;
-} MAVLINK_BRIDGE_APP_AttitudeTlm_t;
-
-typedef struct
-{
-    CFE_MSG_TelemetryHeader_t TelemetryHeader;
-    uint32                    TimestampMs;
-    uint32                    Seq;
-    uint8                     Valid;
-    uint8                     Stale;
-    uint8                     ErrorCode;
-    uint8                     FixType;
-    uint8                     SatellitesVisible;
-    uint8                     Reserved;
-    int32                     LatE7;
-    int32                     LonE7;
-    int32                     AltMm;
-} MAVLINK_BRIDGE_APP_GpsRawTlm_t;
-
-typedef struct
-{
-    CFE_MSG_TelemetryHeader_t TelemetryHeader;
-    uint32                    TimestampMs;
-    uint32                    Seq;
-    uint8                     Valid;
-    uint8                     Stale;
-    uint8                     ErrorCode;
-    uint8                     Reserved;
-    uint16                    Flags;
-} MAVLINK_BRIDGE_APP_EkfStatusTlm_t;
+typedef FC_EKF_LOCAL_TLM_t  MAVLINK_BRIDGE_APP_EkfLocalTlm_t;
+typedef FC_ATTITUDE_TLM_t   MAVLINK_BRIDGE_APP_AttitudeTlm_t;
+typedef FC_GPS_RAW_TLM_t    MAVLINK_BRIDGE_APP_GpsRawTlm_t;
+typedef FC_EKF_STATUS_TLM_t MAVLINK_BRIDGE_APP_EkfStatusTlm_t;
 
 typedef struct
 {

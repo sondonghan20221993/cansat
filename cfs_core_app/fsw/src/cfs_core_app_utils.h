@@ -3,17 +3,9 @@
 
 #include "cfs_core_app.h"
 #include "bridge_hk_msg.h"
+#include "fc_state_msg.h"
 
-typedef struct
-{
-    CFE_MSG_TelemetryHeader_t TelemetryHeader;
-    uint32                    TimestampMs;
-    uint32                    Seq;
-    uint8                     Valid;
-    uint8                     Stale;
-    uint8                     ErrorCode;
-    uint8                     Reserved;
-} CFS_CORE_APP_GenericStateTlm_t;
+typedef FC_STATE_PREFIX_t CFS_CORE_APP_GenericStateTlm_t;
 
 typedef BRIDGE_HK_TLM_t CFS_CORE_APP_BridgeHkMirror_t;
 

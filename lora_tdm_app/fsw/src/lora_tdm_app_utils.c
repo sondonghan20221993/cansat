@@ -1,6 +1,7 @@
 #include "lora_tdm_app_utils.h"
 #include "lora_tdm_app_eventids.h"
 #include "system_health_msg.h"
+#include "fc_state_msg.h"
 
 #include "cfe_time.h"
 
@@ -727,15 +728,7 @@ void LORA_TDM_APP_UpdateCacheFromMsg(CFE_SB_Buffer_t *SBBufPtr, LORA_TDM_APP_Dat
 
     if (CFE_SB_MsgId_Equal(MsgId, CFE_SB_ValueToMsgId(LORA_TDM_APP_FC_ATTITUDE_STATE_MID_VALUE)))
     {
-        /* Layout must match source app telemetry struct */
-        typedef struct {
-            CFE_MSG_TelemetryHeader_t Hdr;
-            uint32 TimestampMs; uint32 Seq;
-            uint8 Valid; uint8 Stale; uint8 ErrorCode; uint8 Reserved;
-            float RollRad; float PitchRad; float YawRad;
-            float RollspeedRps; float PitchspeedRps; float YawspeedRps;
-        } AttMsg_t;
-        const AttMsg_t *M = (const AttMsg_t *)SBBufPtr;
+        const FC_ATTITUDE_TLM_t *M = (const FC_ATTITUDE_TLM_t *)SBBufPtr;
         AppData->FcState.TimestampMs   = M->TimestampMs;
         AppData->FcState.AttitudeValid = M->Valid;
         AppData->FcState.RollRad       = M->RollRad;
@@ -744,14 +737,7 @@ void LORA_TDM_APP_UpdateCacheFromMsg(CFE_SB_Buffer_t *SBBufPtr, LORA_TDM_APP_Dat
     }
     else if (CFE_SB_MsgId_Equal(MsgId, CFE_SB_ValueToMsgId(LORA_TDM_APP_FC_EKF_LOCAL_STATE_MID_VALUE)))
     {
-        typedef struct {
-            CFE_MSG_TelemetryHeader_t Hdr;
-            uint32 TimestampMs; uint32 Seq;
-            uint8 Valid; uint8 Stale; uint8 ErrorCode; uint8 Reserved;
-            float X_m; float Y_m; float Z_m;
-            float Vx_mps; float Vy_mps; float Vz_mps;
-        } LocalMsg_t;
-        const LocalMsg_t *M = (const LocalMsg_t *)SBBufPtr;
+        const FC_EKF_LOCAL_TLM_t *M = (const FC_EKF_LOCAL_TLM_t *)SBBufPtr;
         AppData->FcState.TimestampMs = M->TimestampMs;
         AppData->FcState.LocalValid  = M->Valid;
         AppData->FcState.PosX        = M->X_m;
@@ -763,14 +749,7 @@ void LORA_TDM_APP_UpdateCacheFromMsg(CFE_SB_Buffer_t *SBBufPtr, LORA_TDM_APP_Dat
     }
     else if (CFE_SB_MsgId_Equal(MsgId, CFE_SB_ValueToMsgId(LORA_TDM_APP_FC_GPS_RAW_STATE_MID_VALUE)))
     {
-        typedef struct {
-            CFE_MSG_TelemetryHeader_t Hdr;
-            uint32 TimestampMs; uint32 Seq;
-            uint8 Valid; uint8 Stale; uint8 ErrorCode; uint8 FixType;
-            uint8 SatellitesVisible; uint8 Reserved;
-            int32 LatE7; int32 LonE7; int32 AltMm;
-        } GpsMsg_t;
-        const GpsMsg_t *M = (const GpsMsg_t *)SBBufPtr;
+        const FC_GPS_RAW_TLM_t *M = (const FC_GPS_RAW_TLM_t *)SBBufPtr;
         AppData->FcState.TimestampMs = M->TimestampMs;
         AppData->FcState.GpsValid    = M->Valid;
         AppData->FcState.LatE7       = M->LatE7;
@@ -802,12 +781,7 @@ void LORA_TDM_APP_UpdateCacheFromMsg(CFE_SB_Buffer_t *SBBufPtr, LORA_TDM_APP_Dat
     }
     else if (CFE_SB_MsgId_Equal(MsgId, CFE_SB_ValueToMsgId(LORA_TDM_APP_FC_EKF_STATUS_MID_VALUE)))
     {
-        typedef struct {
-            CFE_MSG_TelemetryHeader_t Hdr;
-            uint32 TimestampMs; uint32 Seq;
-            uint8 Valid; uint8 Stale; uint8 ErrorCode; uint8 Reserved;
-        } EkfMsg_t;
-        const EkfMsg_t *M = (const EkfMsg_t *)SBBufPtr;
+        const FC_STATE_PREFIX_t *M = (const FC_STATE_PREFIX_t *)SBBufPtr;
         AppData->FcState.TimestampMs = M->TimestampMs;
         AppData->FcState.EkfValid    = M->Valid;
         AppData->PacketType = LORA_TDM_APP_FC_STATE_PACKET_TYPE;
