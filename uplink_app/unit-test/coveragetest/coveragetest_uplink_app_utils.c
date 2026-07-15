@@ -515,6 +515,21 @@ void Test_UPLINK_APP_ForwardConfigCommand_PayloadOverflow(void)
     UtAssert_INT32_EQ(UPLINK_APP_Data.ErrCounter, ErrBefore + 1U);
 }
 
+void Test_UPLINK_APP_ForwardConfigCommand_TransmitFail(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t Cmd;
+
+    UT_BuildValidConfigCmd(&Cmd, 500U);
+
+    UT_SetDefaultReturnValue(UT_KEY(CFE_SB_TransmitMsg), CFE_SB_CMD_BAD_MID_ERR);
+    UPLINK_APP_Data.ConfigPendingState = UPLINK_APP_CONFIG_IDLE;
+    UPLINK_APP_Data.LastConfigResult   = 0;
+
+    UtAssert_BOOL_FALSE(UPLINK_APP_ForwardConfigCommand(&Cmd));
+    UtAssert_INT32_EQ(UPLINK_APP_Data.ConfigPendingState, UPLINK_APP_CONFIG_REJECTED);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastConfigResult, 1);
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(UPLINK_APP_ValidateProxyCommand);
@@ -534,4 +549,5 @@ void UtTest_Setup(void)
     ADD_TEST(UPLINK_APP_ForwardConfigCommand_PayloadTooShort);
     ADD_TEST(UPLINK_APP_ForwardConfigCommand_InvalidValueLength);
     ADD_TEST(UPLINK_APP_ForwardConfigCommand_PayloadOverflow);
+    ADD_TEST(UPLINK_APP_ForwardConfigCommand_TransmitFail);
 }

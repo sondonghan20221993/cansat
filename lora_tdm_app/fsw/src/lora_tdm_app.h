@@ -55,9 +55,10 @@ typedef struct
     uint32 RxCmdCount;
     uint16 RxErrorCount;
     uint16 NoAckCount;
+    uint16 SeqFailCount;
     uint32 LastAckTimestampMs;
     uint8  PendingUplinkFeedback;
-    uint8  Reserved[3];
+    uint8  Reserved[2];
 
     /* Serial fd */
     int    LoRaFd;
