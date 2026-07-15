@@ -89,6 +89,27 @@
 **대안(더 가벼움, 병행 가능)**: 병합 전까지 각 수신측에
 `_Static_assert(sizeof/offsetof 일치)` 가드만 먼저 박아 재발을 즉시 차단.
 
+## 공유 헤더 배치 위치 결정 (2026-07-15)
+
+**조사**: `mission_defs/`는 cFE 코어/타겟 설정용(startup script, targets.cmake,
+perfids 등)이라 앱 메시지 구조체 배치처로 부적합. 각 앱은 관례상
+`target_include_directories(<app> PUBLIC fsw/inc)`로 자기 include 경로만
+공개, cross-app include 메커니즘은 현재 전무(그래서 mirror 복제 패턴이
+생겼음).
+
+**결정**: 저장소 루트에 새 디렉토리 `shared_msgs/`를 만들고, 병합 대상마다
+헤더 1개씩 배치(예: `shared_msgs/bridge_hk_msg.h`). 각 앱의
+`CMakeLists.txt`에 `target_include_directories(<app> PUBLIC
+${CMAKE_CURRENT_LIST_DIR}/../shared_msgs)` 한 줄 추가해 참조.
+
+- 앱 독립성 관례(각자 `fsw/inc` 소유)는 깨지 않음 — `shared_msgs`는
+  "메시지 계약"이라는 별개 범주로 명시적 분리.
+  발행 앱이 필드를 바꾸면 컴파일 타임에 전 수신 앱이 즉시 깨짐(의도된 동작).
+- 이름 규칙: 기존 앱 접두사(`MAVLINK_BRIDGE_APP_*` 등) 제거하고 메시지
+  의미 기반으로 통일(예: `BRIDGE_HK_t`, `FC_ATTITUDE_STATE_t`,
+  `SYSTEM_HEALTH_t`, `ROUTE_UPDATE_t`, `CONFIG_CMD_t`) — 병합 시점에
+  네이밍도 함께 정리.
+
 ## 테스트 케이스 설계 (병합 리팩터링용, 2026-07-15)
 
 원칙: 이 리팩터링은 **동작 불변**(레이아웃/값 동일, 정의 위치만 통합)이므로
@@ -130,7 +151,7 @@
 - [x] #1~#6 전수 대조 완료 — #1 외 버그 없음
 - [x] 결과 문서화 (본 표)
 - [x] 근본 해결(3번) 방향 채택 + 병합 대상 목록화 (본 절)
-- [ ] 공유 헤더 배치 위치 결정 (mission_defs 공용 vs 발행앱 inc)
+- [x] 공유 헤더 배치 위치 결정 (2026-07-15)
 - [ ] BridgeHk 병합 (2벌, 최우선)
 - [ ] SystemHealth 병합 (2벌)
 - [ ] FC 상태 4종 / Route / Config 병합 (3벌)
