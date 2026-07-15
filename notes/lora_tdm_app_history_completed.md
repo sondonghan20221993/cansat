@@ -1,4 +1,117 @@
-# §16.4 GPS 시각 반영 — 방향 전환: cFE 코어 대신 DL2 다운링크로 실어보내기 (2026-07-14)
+# lora_tdm_app 완료 이력 모음
+
+## LoRa serial 재연결(reopen) 버그
+
+
+## 문제
+
+`lora_tdm_app`은 serial write/read 오류 시 **fd를 닫지 않아 재오픈이 트리거되지 않는다**.
+
+- write 실패: `SERIAL_WRITE_ERR_EID(8)` EVS만 송출, fd 유지 (`lora_tdm_app.c:184`)
+- 재오픈 조건: `LoRaFd < 0`일 때만 `OpenSerial()` 재시도 (`lora_tdm_app.c:256-259`)
+- USB 모듈 런타임 분리 시 fd는 유효값을 유지 → **영구 write 실패 루프**, 자동 복구 불가
+
+대비: mavlink_bridge_app은 read 실패 시 `CloseSerial()` 호출로 fd 정리 후
+다음 사이클에 재연결 (`mavlink_bridge_app_utils.c:1873-1879`) — 동일 패턴 적용 가능.
+
+## 필요 수정
+
+write/read 오류 감지 시:
+
+```c
+close(LORA_TDM_APP_Data.LoRaFd);
+LORA_TDM_APP_Data.LoRaFd = -1;   /* 다음 RunCycle에서 OpenSerial() 자동 재시도 */
+```
+
+- 연속 오류 판단(1회 오류 즉시 close vs N회 누적 후 close)은 구현 시 결정
+- coveragetest: write 실패 → fd == -1 확인 케이스 추가
+
+## 관련 항목
+
+- `tests/TEST_CASES.md` RT-LORA-001 (LoRa USB 런타임 분리) — 이 갭 해소가 선행 조건
+- TDM-RT-009 (serial open 실패 후 재시도)는 **초기 open 실패**만 커버, 런타임 분리는 미커버
+
+## 상태
+
+- [x] 오류 시 close+fd=-1 구현 (2026-07-10) — `CloseSerial()` 헬퍼 추가,
+      `RunTx` write 실패 및 `RunRxWindow` read 실제오류(EINTR/EAGAIN 제외) 경로에서 호출.
+      read `Rc<=0` 분기를 `Rc==0`(정상 무데이터) / `Rc<0`(errno 판별) 로 분리.
+      SERIAL_READ_ERR_EID(9)도 실오류 시 송출하도록 추가.
+- [x] coveragetest 추가 (2026-07-13) — `RunTx`/`RunRxWindow`가 static이라 리팩터를 고려했으나,
+      대신 실제 POSIX fd를 조작해 공개 진입점 `LORA_TDM_APP_RunCycle()`을 통해 간접 검증:
+      `Test_RunCycle_TxWriteFailClosesFd`(닫힌 fd → write EBADF), `Test_RunCycle_RxReadFailClosesFd`
+      (write-only fd → read EBADF, `/dev/null` 대상이라 write는 성공해 TX가 먼저 안 닫음).
+      두 경로 모두 `LoRaFd==-1` 확인, PASS.
+      단위 테스트 중 두 가지 숨은 전제 발견/처리:
+      (1) 이 unit(`lora_tdm_app.c`)만 단독 빌드 시 `BuildFcDownlinkLine`/`BuildShDownlinkLine`
+          (다른 파일 소속)은 stub 처리되어 기본 반환값 0 → `UT_SetDefaultReturnValue`로 양수
+          길이 명시 필요.
+      (2) `CFE_TIME_GetTime` 기본 stub은 호출마다 +1000ms 자동 증가 → RX_WINDOW_MS(<1000ms)
+          데드라인이 read() 호출 전에 항상 지나버림 → `UT_SetDataBuffer`로 고정 시각 주입 필요.
+      lora_tdm_app UT 전체 회귀 없음 (main 9, utils 49, cmds 8, dispatch 20 — 전부 PASS).
+- [x] 빌드 검증 (2026-07-10, Pi `~/cFS_clean`, GCC 14.2.0 native) — UT 빌드 에러·경고 0,
+      coverage 전체 78 PASS/0 FAIL (`lora_tdm_app` 3, `_utils` 47, `_cmds` 8, `_dispatch` 20).
+      런타임 `build/` 재빌드·재시작(systemd `cfs.service`) 후 기동 회귀 없음 — lora_tdm 시리얼 오류 무.
+- [ ] RT-LORA-001 실물 검증 (물리 USB 분리 → 재오픈 후 TxCount 재개 확인) — Pi 물리 접근 시 수동
+
+---
+
+## DL2 SysTime 플래그 길이 이슈
+
+
+## 문제
+
+`bridge/lora_downlink_decoder.py::decode_dl2()`가 `flags & DL2_FLAG_SYSTIME`만 보고
+SysTime 8바이트 블록을 `struct.unpack_from("<Q", frame, DL2_BASE_LEN)`으로 읽는다.
+`body_len`(frame[1])이 `DL2_BASE_LEN`(SysTime 블록 없음)인데 `flags` bit0만 켜진
+프레임이 들어오면 `frame` 길이(47)가 unpack이 요구하는 최소 길이(53)보다 짧아
+`struct.error`가 발생한다.
+
+- `_try_parse_dl2()`는 `body_len`이 `DL2_BASE_LEN`~`DL2_BASE_LEN+DL2_SYSTIME_BLOCK_LEN`
+  범위인지만 검증하고, `flags`와 `body_len`의 정합성은 검증하지 않음
+- CRC16은 실제 수신 바이트의 무결성만 보장하지, `flags` 비트와 `body_len`이
+  서로 논리적으로 맞는지는 보장하지 않음 — 두 필드가 서로 독립적으로 손상돼도
+  우연히(1/65536) CRC를 통과할 수 있고, FC측 인코더 버그·프로토콜 버전 불일치로도
+  이론상 발생 가능
+
+## 왜 문제인가
+
+- `decode_dl2()`의 예외가 `_try_parse_dl2()` → `DownlinkStream.feed()`까지 전파되고,
+  `main()`은 `KeyboardInterrupt`만 catch — 예외 발생 시 지상국 다운링크 디코더
+  프로세스 자체가 죽는다 (재시작 전까지 텔레메트리 수신·ACK 전송·CSV 로깅 전부 중단)
+- 재현 확인 (2026-07-14):
+  ```python
+  body[1] = DL2_BASE_LEN   # SysTime 블록 없음
+  body[4] = 0x01           # flags bit0 (SYSTIME) 켬
+  # CRC는 정상 계산 → CRC 검증 통과 → decode_dl2()에서 struct.error
+  ```
+
+## 결정 및 구현
+
+**입구에서 길이 재검증.** `flags & DL2_FLAG_SYSTIME`뿐 아니라
+`len(frame) >= DL2_BASE_LEN + DL2_SYSTIME_BLOCK_LEN + 2`(CRC 포함 전체 프레임 길이)도
+함께 확인한 뒤에만 SysTime 필드를 읽는다. 조건 불충족 시 크래시 대신 `sys_time_unix_usec=None`
+(SYSTIME 없음과 동일하게 안전 처리) — C 코드 쪽에서 이미 쓰던 "clamp 후 사용" 패턴과 동일한
+방어 원칙.
+
+- 수정 파일: `bridge/lora_downlink_decoder.py::decode_dl2()`
+- 대안(기각): `DecodeError` 반환 — CRC까지 통과한 프레임을 통째로 버리는 것보다,
+  나머지 40바이트(자세/위치 등 핵심 텔레메트리)는 신뢰 가능하므로 SysTime 필드만
+  누락 처리하는 편이 정보 손실이 적음
+
+## 상태
+
+- [x] 문제 확인 + 재현 스크립트 (2026-07-14)
+- [x] 수정 적용 (2026-07-14)
+- [x] `tests/TEST_CASES.md`에 회귀 케이스 명세 선기록 (2026-07-14)
+- [x] 회귀 테스트 구현 — `test_lora_downlink_decoder.py::StreamingTest::
+      test_systime_flag_set_but_block_missing_returns_none_not_crash`
+- [x] 전체 pytest 재실행 — 175 passed, 0 failed
+
+---
+
+## GPS 시각(SysTime) 다운링크 동기화 (§164)
+
 
 ## 배경 (앞선 시도 경위)
 

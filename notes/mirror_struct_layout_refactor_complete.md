@@ -309,3 +309,320 @@ plus utils: 245/136/114/88 = 583 PASS
       UT 12스위트×4앱 무회귀 (본 문서 "Config 병합 결과" 절)
 - [x] 전체 빌드 + UT 전량 회귀 확인 (완료 2026-07-15: 16개 스위트×4앱 = 899 tests PASS)
 - [ ] (선택/병행) `_Static_assert` 가드 선제 삽입
+
+---
+
+## 후속: Task #4 FC 상태 4종 병합 실행 기록
+
+
+## 목표
+mavlink_bridge 발행 Attitude/EkfLocal/GpsRaw/EkfStatus Tlm_t ↔ cfs_core GenericStateTlm_t ↔ lora_tdm 인라인 로컬 struct 4종 통합
+→ 단일 진실(shared_msgs) 기반으로 mirror 드리프트 제거
+
+## 현재 상황
+
+### ✅ 완료된 부분
+
+**shared_msgs/fc_state_msg.h (공용 헤더)**
+```
+위치: /home/sdh2983/cfs-telemetry-app/shared_msgs/fc_state_msg.h
+정의 구조체:
+├─ FC_STATE_PREFIX_t (7 필드 공통 prefix)
+│  ├─ CFE_MSG_TelemetryHeader_t TelemetryHeader
+│  ├─ uint32 TimestampMs
+│  ├─ uint32 Seq
+│  ├─ uint8 Valid
+│  ├─ uint8 Stale
+│  ├─ uint8 ErrorCode
+│  └─ uint8 Reserved
+├─ FC_ATTITUDE_TLM_t (prefix + 6개 attitude 필드)
+├─ FC_EKF_LOCAL_TLM_t (prefix + 6개 position/velocity 필드)
+├─ FC_GPS_RAW_TLM_t (prefix + 6개 GPS 필드, SatellitesVisible 포함)
+└─ FC_EKF_STATUS_TLM_t (prefix + status 필드들)
+```
+
+**mavlink_bridge_app (발행측)**
+```
+파일: /home/sdh2983/cfs-telemetry-app/mavlink_bridge_app/config/default_mavlink_bridge_app_msgstruct.h
+상태: ✅ fc_state_msg.h include 이미 적용
+typedef FC_EKF_LOCAL_TLM_t  MAVLINK_BRIDGE_APP_EkfLocalTlm_t;
+typedef FC_ATTITUDE_TLM_t   MAVLINK_BRIDGE_APP_AttitudeTlm_t;
+typedef FC_GPS_RAW_TLM_t    MAVLINK_BRIDGE_APP_GpsRawTlm_t;
+typedef FC_EKF_STATUS_TLM_t MAVLINK_BRIDGE_APP_EkfStatusTlm_t;
+```
+
+### ❌ 미완료 부분
+
+**cfs_core_app (수신측 1)**
+```
+파일: /home/sdh2983/cfs-telemetry-app/cfs_core_app/config/default_cfs_core_app_msgstruct.h
+상태: ❌ fc_state_msg.h include 없음
+현황: FC 구조체 정의 없음 (system_health_msg.h, route_msg.h 등만 include)
+필요: 
+  ✗ #include "fc_state_msg.h" 추가
+  ✗ typedef FC_*_TLM_t CFS_CORE_APP_*Tlm_t 추가 (4종)
+```
+
+**lora_tdm_app (수신측 2)**
+```
+파일: /home/sdh2983/cfs-telemetry-app/lora_tdm_app/config/default_lora_tdm_app_msgstruct.h
+상태: ❌ fc_state_msg.h include 없음
+현황: FC 구조체 정의 없음 (config_msg.h만 include)
+필요:
+  ✗ #include "fc_state_msg.h" 추가
+  ✗ typedef FC_*_TLM_t LORA_TDM_APP_*Tlm_t 추가 (4종)
+```
+
+## 다음 단계
+
+### Phase 1: msgstruct 병합 (즉시 진행 가능)
+
+```bash
+1. cfs_core_app/config/default_cfs_core_app_msgstruct.h
+   ├─ #include "fc_state_msg.h" 추가 (system_health_msg.h 다음)
+   └─ typedef 추가:
+      typedef FC_ATTITUDE_TLM_t   CFS_CORE_APP_AttitudeTlm_t;
+      typedef FC_EKF_LOCAL_TLM_t  CFS_CORE_APP_EkfLocalTlm_t;
+      typedef FC_GPS_RAW_TLM_t    CFS_CORE_APP_GpsRawTlm_t;
+      typedef FC_EKF_STATUS_TLM_t CFS_CORE_APP_EkfStatusTlm_t;
+
+2. lora_tdm_app/config/default_lora_tdm_app_msgstruct.h
+   ├─ #include "fc_state_msg.h" 추가 (config_msg.h 다음)
+   └─ typedef 추가 (동일):
+      typedef FC_ATTITUDE_TLM_t   LORA_TDM_APP_AttitudeTlm_t;
+      typedef FC_EKF_LOCAL_TLM_t  LORA_TDM_APP_EkfLocalTlm_t;
+      typedef FC_GPS_RAW_TLM_t    LORA_TDM_APP_GpsRawTlm_t;
+      typedef FC_EKF_STATUS_TLM_t LORA_TDM_APP_EkfStatusTlm_t;
+```
+
+### Phase 2: 코드 참조 업데이트 (msgstruct 이후)
+
+```bash
+1. cfs_core_app 코드 스캔
+   grep -r "FC_ATTITUDE\|FC_EKF_LOCAL\|FC_GPS_RAW\|FC_EKF_STATUS" \
+     cfs_core_app/fsw/src/
+
+2. lora_tdm_app 코드 스캔
+   grep -r "FC_ATTITUDE\|FC_EKF_LOCAL\|FC_GPS_RAW\|FC_EKF_STATUS" \
+     lora_tdm_app/fsw/src/
+
+3. 각 앱에서 로컬 구조체 정의가 있으면 제거/대체
+```
+
+### Phase 3: UT 업데이트
+
+```bash
+1. coveragetest_cfs_core_app_*.c
+   ├─ FC 상태 수신 테스트에서 공용 구조체 사용
+   └─ 레이아웃 일치 검증 (_Static_assert 추가 권장)
+
+2. coveragetest_lora_tdm_app_*.c
+   ├─ FC 상태 처리 테스트에서 공용 구조체 사용
+   └─ 기존 TEST_*Tlm_t 레이아웃과 일치 확인
+```
+
+### Phase 4: 빌드 & 회귀 테스트
+
+```bash
+1. 개별 앱 빌드
+   cmake --build . --target cfs_core_app
+   cmake --build . --target lora_tdm_app
+   cmake --build . --target mavlink_bridge_app
+
+2. 전체 UT 회귀
+   ctest -V
+
+3. 의존성 확인
+   grep -r "CFS_CORE_APP_*Tlm_t\|LORA_TDM_APP_*Tlm_t" --include="*.c" --include="*.h"
+```
+
+## 설계 고려사항
+
+**generic prefix 패턴 유지**
+```
+모든 4종이 동일 prefix(7필드, 32바이트)로 시작 → cfs_core의 UpdateStateCache
+함수가 FC_STATE_PREFIX_t로 캐스팅해서 처리 가능
+
+static inline void CFS_CORE_APP_UpdateStateCache(const void *Msg)
+{
+  const FC_STATE_PREFIX_t *Prefix = (FC_STATE_PREFIX_t*)Msg;
+  Data->LastFcStateTimestamp = Prefix->TimestampMs;
+  // ... prefix 필드만 사용
+}
+```
+
+**네이밍 규칙**
+- shared_msgs: FC_*_TLM_t (앱 접두사 없음)
+- 각 앱: CFS_CORE_APP_*Tlm_t, LORA_TDM_APP_*Tlm_t (앱 접두사 포함)
+  → typedef로 bridge 역할, 공유 구조체는 FC_ prefix로 통일
+
+## 우선순위
+
+**High**: Phase 1 (msgstruct) — ✅ 완료 (2026-07-15 20:25)
+**Medium**: Phase 2 (코드 참조) — ✅ 이미 통합됨 (lora_tdm_app_utils.c)
+**Low**: Phase 3 (UT) — ⏳ 필요 여부 확인 중
+
+---
+
+## 실행 상황 (2026-07-15 20:25)
+
+### ✅ 완료된 작업
+
+**Phase 1: msgstruct 통합**
+```c
+// cfs_core_app/config/default_cfs_core_app_msgstruct.h
+#include "fc_state_msg.h"
+typedef FC_ATTITUDE_TLM_t   CFS_CORE_APP_AttitudeTlm_t;
+typedef FC_EKF_LOCAL_TLM_t  CFS_CORE_APP_EkfLocalTlm_t;
+typedef FC_GPS_RAW_TLM_t    CFS_CORE_APP_GpsRawTlm_t;
+typedef FC_EKF_STATUS_TLM_t CFS_CORE_APP_EkfStatusTlm_t;
+
+// lora_tdm_app/config/default_lora_tdm_app_msgstruct.h
+#include "fc_state_msg.h"
+typedef FC_ATTITUDE_TLM_t   LORA_TDM_APP_AttitudeTlm_t;
+typedef FC_EKF_LOCAL_TLM_t  LORA_TDM_APP_EkfLocalTlm_t;
+typedef FC_GPS_RAW_TLM_t    LORA_TDM_APP_GpsRawTlm_t;
+typedef FC_EKF_STATUS_TLM_t LORA_TDM_APP_EkfStatusTlm_t;
+```
+
+**Phase 2: 코드 참조 확인**
+```
+cfs_core_app_utils.h:
+  typedef FC_STATE_PREFIX_t CFS_CORE_APP_GenericStateTlm_t;
+  ✅ 이미 fc_state_msg.h 기반
+
+lora_tdm_app_utils.c:
+  const FC_ATTITUDE_TLM_t *M = (const FC_ATTITUDE_TLM_t *)SBBufPtr;
+  ✅ 이미 공용 구조체 사용
+```
+
+**커밋**
+```
+a48638b Task #4: FC 상태 4종 구조체 병합 (msgstruct 통합)
+- cfs_core_app msgstruct 수정
+- lora_tdm_app msgstruct 수정
+```
+
+### ⏳ 미진행
+
+**Phase 3: UT 업데이트**
+- coveragetest_cfs_core_app_utils.c에서 CFS_CORE_APP_GenericStateTlm_t 사용
+- 구조체 정의는 cfs_core_app_utils.h에서 FC_STATE_PREFIX_t typedef
+- ✅ 정의가 이미 있으므로 UT 컴파일 문제 없을 것으로 예상
+- 실제 테스트 필요: `ctest -V` 또는 개별 빌드
+
+**Phase 4: 빌드 + 회귀**
+- cFS 빌드 시스템 설정 필요
+- Task #7 (전체 빌드 + UT 회귀)과 병행 가능
+
+---
+
+## 설계 고려사항 (재확인)
+
+**generic prefix 패턴 유지** ✅
+```c
+// shared_msgs/fc_state_msg.h
+typedef struct {
+  CFE_MSG_TelemetryHeader_t TelemetryHeader;
+  uint32 TimestampMs;
+  uint32 Seq;
+  uint8 Valid;
+  uint8 Stale;
+  uint8 ErrorCode;
+  uint8 Reserved;
+} FC_STATE_PREFIX_t;  // ← 4종 모두 이 prefix로 시작
+
+// cfs_core_app_utils.h
+typedef FC_STATE_PREFIX_t CFS_CORE_APP_GenericStateTlm_t;
+// cfs_core의 UpdateStateCache는 이 prefix로만 캐스팅해서 처리
+```
+
+**네이밍 규칙 확인** ✅
+```
+shared_msgs: FC_*_TLM_t (앱 접두사 없음) ← 공용
+cfs_core_app: CFS_CORE_APP_*Tlm_t ← typedef로 bridge
+lora_tdm_app: LORA_TDM_APP_*Tlm_t ← typedef로 bridge
+mavlink_bridge_app: MAVLINK_BRIDGE_APP_*Tlm_t ← typedef로 bridge
+```
+
+---
+
+## 참고
+
+- 기존 mirror struct 레이아웃 점검: notes/mirror_struct_layout_refactor_complete.md
+- FC STATE 구조체 설계: shared_msgs/fc_state_msg.h 코멘트
+- 일관성 검증: _Static_assert(sizeof/offsetof) 권장
+- UT = Unit Test (단위 테스트, 각 함수/모듈 독립 검증)
+- coverage test = 코드 커버리지 측정 UT
+
+---
+
+## 후속: 전체 빌드 + UT 회귀 검증 (Task #7)
+
+
+## 빌드 환경
+```
+cFS 프레임워크: ~/cFS_clean (native UT 빌드)
+소스: ~/cfs-telemetry-app
+동기화 대상: uplink_app, cfs_core_app, mavlink_bridge_app, lora_tdm_app, shared_msgs
+```
+
+## 발견한 문제: 동기화 불완전
+
+`cp -r`로 최초 동기화했으나 일부 파일이 실제로 덮어써지지 않음
+(uplink_app_utils.c 등 다수 파일이 6월 시점 stale 버전으로 남아있었음).
+
+**증상**: uplink_app_utils UT에서 `UPLINK_APP_ParseLoRaFrame` 테스트
+4건 실패 — 이 함수/테스트는 현재 소스 저장소에 존재하지 않는
+과거(cFS_clean 로컬) 전용 코드였음.
+
+**원인**: `cp -r src/ dst/` 형태가 예상과 다르게 일부 파일을 덮어쓰지
+못함(정확한 원인 미확정, WSL 파일시스템 관련 가능성).
+
+**해결**: `rsync -av --delete`로 완전 재동기화 → 소스와 100% 일치 확보.
+이후 `cmake .` 재실행(캐시된 CMakeLists 반영) → 재빌드 → 전량 PASS.
+
+## 최종 빌드 결과
+
+```
+✅ 4개 앱 전체 빌드 성공 (컴파일 에러 0건)
+✅ shared_msgs include 정상 동작 확인
+   (fc_state_msg.h, route_msg.h, config_msg.h, system_health_msg.h,
+    bridge_hk_msg.h 전부 정상 include)
+```
+
+## UT 회귀 결과 (16개 테스트 러너 전량 PASS)
+
+| 앱 | 모듈 | TOTAL | PASS | FAIL |
+|---|---|---|---|---|
+| lora_tdm_app | cmds | 12 | 12 | 0 |
+| lora_tdm_app | app | 40 | 40 | 0 |
+| lora_tdm_app | utils | 114 | 114 | 0 |
+| lora_tdm_app | dispatch | 30 | 30 | 0 |
+| uplink_app | cmds | 91 | 91 | 0 |
+| uplink_app | dispatch | 29 | 29 | 0 |
+| uplink_app | app | 9 | 9 | 0 |
+| uplink_app | utils | 88 | 88 | 0 |
+| cfs_core_app | cmds | 7 | 7 | 0 |
+| cfs_core_app | utils | 245 | 245 | 0 |
+| cfs_core_app | dispatch | 35 | 35 | 0 |
+| cfs_core_app | app | 19 | 19 | 0 |
+| mavlink_bridge_app | cmds | 4 | 4 | 0 |
+| mavlink_bridge_app | app | 14 | 14 | 0 |
+| mavlink_bridge_app | utils | 136 | 136 | 0 |
+| mavlink_bridge_app | dispatch | 26 | 26 | 0 |
+| **합계** | | **899** | **899** | **0** |
+
+## 결론
+
+**구조체 병합(Task #2~#6) 관련 회귀 없음.**
+- msgstruct typedef 변경(로컬→공용 헤더)은 바이트 레이아웃 불변이므로
+  UT 코드 수정 불필요, 재컴파일만으로 전량 통과 확인.
+- 유일한 실패는 병합과 무관한 로컬 동기화 문제(위 설명)였고
+  재동기화 후 해결됨.
+
+## 교훈: 향후 동기화 시 `rsync --delete` 권장
+
+`cp -r`은 소스에서 삭제/변경된 파일을 dst에서 확실히 반영 안 할 수 있음.
+`rsync -av --delete`가 소스-dst 완전 일치를 보장하므로 이후
+cFS_clean 동기화 작업 시 기본으로 사용 권장.
