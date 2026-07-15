@@ -2,6 +2,7 @@
 #define CFS_CORE_APP_UTILS_H
 
 #include "cfs_core_app.h"
+#include "bridge_hk_msg.h"
 
 typedef struct
 {
@@ -14,19 +15,7 @@ typedef struct
     uint8                     Reserved;
 } CFS_CORE_APP_GenericStateTlm_t;
 
-typedef struct
-{
-    CFE_MSG_TelemetryHeader_t TelemetryHeader;
-    uint8                     CommandCounter;
-    uint8                     CommandErrorCounter;
-    uint8                     LinkState;
-    uint8                     LastErrorCode;
-    uint32                    BytesReceived;
-    uint32                    ReconnectAttemptCount;
-    uint32                    ParseErrorCount;
-    uint32                    NonFiniteValueCount; /* 발행측 HkTlm_t와 레이아웃 정합 필수 (947b3cf에서 추가됨) */
-    uint32                    LastRxTimestampMs;
-} CFS_CORE_APP_BridgeHkMirror_t;
+typedef BRIDGE_HK_TLM_t CFS_CORE_APP_BridgeHkMirror_t;
 
 void CFS_CORE_APP_LoadState(void);
 void CFS_CORE_APP_SaveState(void);

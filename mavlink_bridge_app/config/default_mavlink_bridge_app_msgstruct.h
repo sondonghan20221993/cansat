@@ -4,6 +4,7 @@
 #include "cfe_msg_hdr.h"
 #include "common_types.h"
 #include "mavlink_bridge_app_msgdefs.h"
+#include "bridge_hk_msg.h"
 
 typedef struct
 {
@@ -20,25 +21,7 @@ typedef struct
     CFE_MSG_CommandHeader_t CommandHeader;
 } MAVLINK_BRIDGE_APP_MissionQueryCmd_t;
 
-typedef struct
-{
-    CFE_MSG_TelemetryHeader_t TelemetryHeader;
-    uint8                     CommandCounter;
-    uint8                     CommandErrorCounter;
-    uint8                     LinkState;
-    uint8                     LastErrorCode;
-    uint32                    BytesReceived;
-    uint32                    ReconnectAttemptCount;
-    uint32                    ParseErrorCount;
-    uint32                    NonFiniteValueCount;
-    uint32                    LastRxTimestampMs;
-    uint32                    MissionUploadSuccessCount;
-    uint32                    MissionUploadFailCount;
-    uint32                    LastUploadTimestampMs;
-    uint8                     LastUploadWaypointCount;
-    uint8                     LastUploadResult;
-    uint16                    HkSpare;
-} MAVLINK_BRIDGE_APP_HkTlm_t;
+typedef BRIDGE_HK_TLM_t MAVLINK_BRIDGE_APP_HkTlm_t;
 
 typedef struct
 {

@@ -23,6 +23,7 @@ include_directories(../fsw/src)
 include_directories(../fsw/inc)
 include_directories(../config)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/inc)
+include_directories(${CMAKE_CURRENT_LIST_DIR}/../../shared_msgs)
 
 add_cfe_coverage_stubs(cfs_core_app
   stubs/cfs_core_app_global_stubs.c

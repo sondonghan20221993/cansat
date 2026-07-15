@@ -95,7 +95,7 @@
 | `CFS_CORE_APP_UpdateHealth_HealthTransition` | 상태 변화 시 EVS 이벤트가 1회 발생하고, 동일 상태 유지 시 재발생하지 않는지 확인 |
 | `CFS_CORE_APP_ProcessStateMessage_RouteUpdate` | `ROUTE_UPDATE_MID` 수신 → mission route cache 갱신 |
 | `CFS_CORE_APP_ProcessStateMessage_LandingRouteUpdate` | `ROUTE_UPDATE_MID` landing type → landing route cache 갱신 |
-| `CFS_CORE_APP_ProcessStateMessage_BridgeHk` | bridge HK 수신 → bridge state cache 갱신 |
+| `CFS_CORE_APP_ProcessStateMessage_BridgeHk` | bridge HK 수신 → bridge state cache 갱신 (2026-07-15: `shared_msgs/bridge_hk_msg.h`(`BRIDGE_HK_TLM_t`) 공유 정의로 로컬 fake struct 제거 — `notes/temp/mirror_struct_layout_audit.md` TC-MRG-BRIDGEHK-1/TC-MRG-COMMON-3) |
 
 > **2026-06-16 추가 테스트** (config·seq/timestamp·bridge 재시작·영속화·FAILED 기능 반영). 위 목록은 구버전이며 실제 coveragetest는 아래 그룹을 포함한다.
 

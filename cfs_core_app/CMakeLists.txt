@@ -18,7 +18,7 @@ endif()
 
 add_cfe_app(cfs_core_app ${APP_SRC_FILES})
 
-target_include_directories(cfs_core_app PUBLIC fsw/inc)
+target_include_directories(cfs_core_app PUBLIC fsw/inc ${CMAKE_CURRENT_LIST_DIR}/../shared_msgs)
 
 if (ENABLE_UNIT_TESTS)
   add_subdirectory(unit-test)

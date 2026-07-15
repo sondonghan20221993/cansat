@@ -141,6 +141,39 @@ ${CMAKE_CURRENT_LIST_DIR}/../shared_msgs)` 한 줄 추가해 참조.
 - **TC-MRG-BUILD-1**: 4개 앱 전체 빌드(cFS 트리) 성공 — 공유 헤더 include
   경로가 4개 앱 CMake에서 전부 해상되는지.
 
+### BridgeHk 병합 결과 (2026-07-15, 완료)
+
+**구현**: `shared_msgs/bridge_hk_msg.h`에 `BRIDGE_HK_TLM_t` 신설(원래
+`MAVLINK_BRIDGE_APP_HkTlm_t` 필드 그대로 이동). 발행측
+(`mavlink_bridge_app/config/default_mavlink_bridge_app_msgstruct.h`)은
+`typedef BRIDGE_HK_TLM_t MAVLINK_BRIDGE_APP_HkTlm_t;`로 별칭화, 수신측
+(`cfs_core_app/fsw/src/cfs_core_app_utils.h`)의 `CFS_CORE_APP_BridgeHkMirror_t`
+정의(필드 나열)를 삭제하고 `typedef BRIDGE_HK_TLM_t
+CFS_CORE_APP_BridgeHkMirror_t;`로 교체 — **레이아웃 정의는 이제 물리적으로
+1곳(`shared_msgs/bridge_hk_msg.h`)뿐**, 두 앱은 별칭 typedef만 가짐.
+각 앱 `CMakeLists.txt`(+unit-test `CMakeLists.txt`)에
+`${CMAKE_CURRENT_LIST_DIR}/../shared_msgs` include 경로 추가.
+
+**네이밍 계획 대비 변경**: 애초 계획한 완전한 접두사 제거(`BRIDGE_HK_t`)
+대신 `BRIDGE_HK_TLM_t`로 확정(관례상 `_TLM_t` 접미사 유지가 다른 메시지
+타입과 일관적). 앱 접두사(`MAVLINK_BRIDGE_APP_`/`CFS_CORE_APP_`)는
+계획대로 제거됨 — 각 앱은 이제 별칭 typedef로만 기존 이름을 유지.
+
+**사라진 테스트 아티팩트**: `coveragetest_cfs_core_app_utils.c`의 로컬 fake
+struct `TEST_CFS_CORE_APP_BridgeHk_t`(필드 나열 + 자체 크기) 삭제 —
+`BRIDGE_HK_TLM_t`를 직접 씀. 이게 바로 이번 버그 클래스의 재발원이었던
+"테스트 자체의 fake 레이아웃"이라 제거가 목적에 부합. **테스트 케이스
+개수 변화 없음**(같은 시나리오 `Test_CFS_CORE_APP_ProcessStateMessage_BridgeHk`
+유지), 내부 구현만 공유 타입 사용으로 교체.
+
+**검증 (2026-07-15, `~/verify-build/cFS_verify` 로컬)**:
+- cfs_core_app UT 4개 스위트: 245/35/19/7 전부 PASS
+- mavlink_bridge_app UT 4개 스위트: 136/26/14/4 전부 PASS
+- 실제 FSW 타겟 빌드 성공: `cfs_core_app.so`, `mav_bridge_app.so`
+- TC-MRG-COMMON-1(레이아웃 동일성): 별도 assert 불필요 — 공유 정의라
+  레이아웃 상이 자체가 컴파일 불가능한 구조로 원천 보장됨
+- TC-MRG-BRIDGEHK-1, TC-MRG-COMMON-2, TC-MRG-COMMON-3 전부 충족
+
 ### 런타임 후보 (하드웨어, TEST_CASES.md 등재용)
 - **RT-MRG-001**: 병합 배포 후 실기체에서 health 정상 판정 + DL2 값 무변화
   (기존 soak 로그와 필드 값 대조).
@@ -152,8 +185,9 @@ ${CMAKE_CURRENT_LIST_DIR}/../shared_msgs)` 한 줄 추가해 참조.
 - [x] 결과 문서화 (본 표)
 - [x] 근본 해결(3번) 방향 채택 + 병합 대상 목록화 (본 절)
 - [x] 공유 헤더 배치 위치 결정 (2026-07-15)
-- [ ] BridgeHk 병합 (2벌, 최우선)
+- [x] BridgeHk 병합 (2벌, 최우선) — 완료 2026-07-15, `shared_msgs/bridge_hk_msg.h`,
+      UT 4스위트×2앱 무회귀, FSW 빌드 성공 (본 문서 "BridgeHk 병합 결과" 절)
 - [ ] SystemHealth 병합 (2벌)
 - [ ] FC 상태 4종 / Route / Config 병합 (3벌)
-- [ ] 각 병합마다 UT 회귀 확인
+- [x] BridgeHk 병합 UT 회귀 확인 (완료, 나머지 병합은 각자 진행 시 확인)
 - [ ] (선택/병행) `_Static_assert` 가드 선제 삽입

@@ -244,28 +244,14 @@ void Test_CFS_CORE_APP_ProcessStateMessage_LandingRouteUpdate(void)
 
 void Test_CFS_CORE_APP_ProcessStateMessage_BridgeHk(void)
 {
-    typedef struct
-    {
-        CFE_MSG_TelemetryHeader_t TelemetryHeader;
-        uint8                     CommandCounter;
-        uint8                     CommandErrorCounter;
-        uint8                     LinkState;
-        uint8                     LastErrorCode;
-        uint32                    BytesReceived;
-        uint32                    ReconnectAttemptCount;
-        uint32                    ParseErrorCount;
-        uint32                    NonFiniteValueCount; /* 발행측 HkTlm_t 실제 레이아웃 반영 */
-        uint32                    LastRxTimestampMs;
-    } TEST_CFS_CORE_APP_BridgeHk_t;
-
-    uint8                      Storage[sizeof(TEST_CFS_CORE_APP_BridgeHk_t)];
+    uint8                      Storage[sizeof(BRIDGE_HK_TLM_t)];
     CFE_SB_Buffer_t           *Buffer;
     CFE_SB_MsgId_t             MsgId;
-    TEST_CFS_CORE_APP_BridgeHk_t *BridgeMsg;
+    BRIDGE_HK_TLM_t           *BridgeMsg;
 
     memset(Storage, 0, sizeof(Storage));
     Buffer    = (CFE_SB_Buffer_t *)Storage;
-    BridgeMsg = (TEST_CFS_CORE_APP_BridgeHk_t *)Storage;
+    BridgeMsg = (BRIDGE_HK_TLM_t *)Storage;
     CFE_MSG_Init(CFE_MSG_PTR(BridgeMsg->TelemetryHeader), CFE_SB_ValueToMsgId(CFS_CORE_APP_BRIDGE_HK_MID_VALUE),
                  sizeof(*BridgeMsg));
     MsgId = CFE_SB_ValueToMsgId(CFS_CORE_APP_BRIDGE_HK_MID_VALUE);
