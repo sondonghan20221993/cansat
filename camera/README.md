@@ -183,6 +183,17 @@ ssh root@192.168.1.10 "cli -s .encoder.codec h264"
 - **SCP 미지원**: OpenIPC sftp-server 없음 → SSH stdin 파이프로 파일 전달 필수
 - **코덱 호환성**: H265는 fpv4win FFmpeg에서 호환성 문제, H264 권장 (단, H264도 완전하진 않음 — data partitioning 경고 존재)
 - **외부 OSD는 라이브 화면 전용**: 녹화 파일엔 반영 안 됨 — 녹화용 타임스탬프가 필요하면 카메라 SD카드 자체 녹화(진짜 burn-in 경로) 사용해야 함
+- **OSD-미녹화 근본원인 재확인 (2026-07-15, 미검증 정보)**: msposd는 OSD를 wfb-ng
+  라이브 스트림 위에만 합성하고, majestic이 SD카드에 저장하는 로컬 mp4는 센서
+  원본 스트림을 그대로 저장해 OSD 합성 단계를 거치지 않음 — 라이브 경로와 로컬
+  녹화 경로가 애초에 분리된 구조(오디오도 같은 이유로 mp4에 안 들어감). fpv4win
+  녹화(위 실측)뿐 아니라 카메라 SD카드 자체 녹화도 동일 제약일 가능성 높음.
+  **해결책(미적용, TODO(bench))**: msposd 기동 시 `--subtitle <path>` 옵션 추가 →
+  mp4 녹화 시작마다 동일 이름의 `.osd`(walksnail-osd-tool 호환)/`.srt` 사이드카
+  파일을 별도 생성, 녹화 종료 시 같이 닫힘. air측에서 recording 폴더 감시하려면
+  majestic을 flat 구조로: `cli -i /etc/majestic.yaml -s .records.path
+  /mnt/mmcblk0p1/%F/..`. 비행 후 mp4+osd를 walksnail-osd-tool로 합성하면 OSD
+  박힌 결과물 획득 가능. 출처: msposd README(OpenIPC/msposd), 직접 실기체 검증 안 됨.
 - **카메라 재부팅**: 설정 적용 후 전원 껐다 켜야 안정화되지만, msposd/OSD 설정은 재부팅마다 유실됨 (영구 적용 미해결)
 - **시각 매칭 방식 채택**: fpv4win 녹화 파일명(`<epoch_ms>.mp4`)과 openMCT 텔레메트리 CSV의
   `timestamp`(ISO, PC 수신시각)가 둘 다 지상 PC의 절대시각 기준이라 별도 동기화 없이
