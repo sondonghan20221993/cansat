@@ -212,11 +212,37 @@ chrony 브릿지 전체가 불필요하고 "녹화시작 앵커 1회 매칭" 방
 
 **미결정** — 사용자 판단 필요.
 
+### 최종 정리 (2026-07-15) — 실제 목적 확인 결과: 이미 해결됨
+
+**사용자 목적 확정**: "카메라 Wi-Fi로 수신한 영상에 타임스탬프를 붙여
+텔레메트리와 매칭" — 즉 **Wi-Fi(WFB-ng)→지상 fpv4win 수신 영상**의 대조가
+목적이지, 카메라 SD카드 자체 녹화나 OSD 실시간 표시가 아님.
+
+**이 목적은 이미 해결되어 있음** (2026-07-13, `camera/README.md` "시각 매칭
+방식 채택" 절):
+- 영상: fpv4win 녹화 파일명 = `<epoch_ms>.mp4` (지상 PC 시계 기준)
+- 텔레메트리: openMCT CSV `timestamp`(같은 PC 시계) + GPS 기준
+  `sys_time_unix_usec`(§16.4 메인, DL2)
+- 매칭 도구: `camera/correlate_video_telemetry.py` (이미 존재)
+- 같은 PC 시계에서 양쪽이 찍히므로 앵커/chrony/cFS 시각 규율 전부 불필요
+
+**전제 (사용자 확인함)**: fpv4win과 지상국 서버(`fc_serial_ws_server.py`)가
+**같은 PC**에서 실행되어야 함. 분리 운용 시 두 PC 간 NTP 동기 필요
+(README TODO(bench)).
+
+**§16.4.2 처리**: 대안 A(chrony 브릿지)·대안 C(앵커+역산)는 "SD카드 자체
+녹화 대조"나 "OSD 실시간 절대시각 표시"가 필요해질 때만 유효한 보류
+옵션으로 남김. 현재 목적(Wi-Fi 수신 영상 매칭)에는 **추가 구현 0건** —
+§16.4.2 착수 안 함.
+
 ## 상태 (§16.4.2)
 
 - [x] 방식 결정 — chrony SOCK refclock 브릿지 + 2단계 검증(date/chronyc 1차,
       육안 라이브화면 2차·오차 큼 명시)
-- [ ] Pi 호스트 브릿지 유틸리티 구현 (cFS SB 구독 → SOCK refclock 인코딩)
-- [ ] chrony 자체 설정(upstream `refclock SOCK`)에 추가 — `pi_chrony_camera.conf`와는
+- [x] 목적 재확인(2026-07-15) → **착수 불필요로 종결** — 실제 목적(Wi-Fi 수신
+      영상↔텔레메트리 매칭)은 기존 fpv4win 동일-PC 매칭으로 이미 해결.
+      아래 항목은 SD카드 녹화 대조/OSD 절대시각 표시가 필요해질 때만 재개:
+- [ ] (보류) Pi 호스트 브릿지 유틸리티 구현 (cFS SB 구독 → SOCK refclock 인코딩)
+- [ ] (보류) chrony 자체 설정(upstream `refclock SOCK`)에 추가 — `pi_chrony_camera.conf`와는
       별개(그건 카메라→Pi 방향)
-- [ ] Pi+FC+카메라 실기체 검증 (date/chronyc 대조)
+- [ ] (보류) Pi+FC+카메라 실기체 검증 (date/chronyc 대조)
