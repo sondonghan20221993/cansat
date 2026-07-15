@@ -36,8 +36,14 @@
 | UPLINK_APP_ForwardConfigCommand | ~60% | 100% | 5 |
 | UPLINK_APP_ConfigChecksum | N/A | 100% | 1 |
 
-## 상태
-- [ ] coveragetest_uplink_app_utils.c에 5개 TC 추가
-- [ ] 빌드 테스트 (cFS build system)
-- [ ] UT 실행 (~/build/default_cfs/bin/cfs_cts)
-- [ ] 회귀 확인 (모든 uplink_app UT)
+## 상태 (완료, 2026-07-15)
+- [x] coveragetest_uplink_app_utils.c에 5개 TC 추가
+- [x] 빌드 테스트 (~/cFS_clean native UT) — 에러 0건
+- [x] UT 실행 — 5개 TC 전부 PASS
+- [x] 회귀 확인 — uplink_app 전체 4개 러너 227 TOTAL PASS (cmds 91, dispatch 29, app 9, utils 98)
+
+## 실행 중 발견/수정
+- ChecksumValid 테스트에서 forward 성공 후 `ConfigPendingState`가
+  `UPLINK_APP_CONFIG_PENDING`이 아니라 `UPLINK_APP_CONFIG_IDLE`로 리셋됨을 확인
+  (uplink_app_utils.c:424 — SB 전송 성공 시 IDLE로 즉시 복귀).
+  테스트 어서션을 IDLE 기대값으로 수정.

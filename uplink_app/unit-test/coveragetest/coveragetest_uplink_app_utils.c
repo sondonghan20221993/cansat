@@ -413,6 +413,102 @@ void Test_UPLINK_APP_ForwardViewpointCommand(void)
     UtAssert_BOOL_FALSE(UPLINK_APP_ForwardViewpointCommand(&Cmd, &Payload));
 }
 
+/* CONFIG_CMD_MID checksum 검증 (uplink_app_utils.c UPLINK_APP_ForwardConfigCommand) */
+
+static void UT_BuildValidConfigCmd(UPLINK_APP_ProcessUplinkCmd_t *Cmd, uint32 Value)
+{
+    UPLINK_APP_ConfigPayloadHdr_t *Hdr;
+    uint8                         *ValueBytes;
+
+    memset(Cmd, 0, sizeof(*Cmd));
+    Hdr        = (UPLINK_APP_ConfigPayloadHdr_t *)Cmd->Payload;
+    ValueBytes = Cmd->Payload + sizeof(*Hdr);
+
+    Hdr->ConfigScope   = 1;
+    Hdr->ConfigVersion = 1;
+    Hdr->ParameterId   = 0x1000;
+    Hdr->ValueType     = 0; /* uint32 */
+    Hdr->ValueLength   = (uint8)sizeof(uint32);
+    memcpy(ValueBytes, &Value, sizeof(uint32));
+
+    Hdr->Checksum = (uint16)(Hdr->ConfigScope + Hdr->ConfigVersion +
+                              (Hdr->ParameterId & 0xFFU) + ((Hdr->ParameterId >> 8U) & 0xFFU) +
+                              Hdr->ValueType + Hdr->ValueLength +
+                              ValueBytes[0] + ValueBytes[1] + ValueBytes[2] + ValueBytes[3]);
+
+    Cmd->PayloadLength = (uint8)(sizeof(*Hdr) + Hdr->ValueLength);
+}
+
+void Test_UPLINK_APP_ForwardConfigCommand_ChecksumValid(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t Cmd;
+
+    UT_BuildValidConfigCmd(&Cmd, 500U);
+
+    UT_SetDefaultReturnValue(UT_KEY(CFE_SB_TransmitMsg), CFE_SUCCESS);
+    UtAssert_BOOL_TRUE(UPLINK_APP_ForwardConfigCommand(&Cmd));
+    UtAssert_INT32_EQ(UPLINK_APP_Data.ConfigPendingState, UPLINK_APP_CONFIG_IDLE);
+}
+
+void Test_UPLINK_APP_ForwardConfigCommand_ChecksumInvalid(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t Cmd;
+    UPLINK_APP_ConfigPayloadHdr_t *Hdr;
+    uint32                         ErrBefore;
+
+    UT_BuildValidConfigCmd(&Cmd, 500U);
+    Hdr           = (UPLINK_APP_ConfigPayloadHdr_t *)Cmd.Payload;
+    Hdr->Checksum ^= 0x00FFU; /* 변조 */
+    ErrBefore = UPLINK_APP_Data.ErrCounter;
+
+    UtAssert_BOOL_FALSE(UPLINK_APP_ForwardConfigCommand(&Cmd));
+    UtAssert_INT32_EQ(UPLINK_APP_Data.ErrCounter, ErrBefore + 1U);
+}
+
+void Test_UPLINK_APP_ForwardConfigCommand_PayloadTooShort(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t Cmd;
+    uint32                         ErrBefore;
+
+    UT_BuildValidConfigCmd(&Cmd, 500U);
+    Cmd.PayloadLength = (uint8)(sizeof(UPLINK_APP_ConfigPayloadHdr_t) - 1U);
+    ErrBefore = UPLINK_APP_Data.ErrCounter;
+
+    UtAssert_BOOL_FALSE(UPLINK_APP_ForwardConfigCommand(&Cmd));
+    UtAssert_INT32_EQ(UPLINK_APP_Data.ErrCounter, ErrBefore + 1U);
+}
+
+void Test_UPLINK_APP_ForwardConfigCommand_InvalidValueLength(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t Cmd;
+    UPLINK_APP_ConfigPayloadHdr_t *Hdr;
+    uint32                         ErrBefore;
+
+    UT_BuildValidConfigCmd(&Cmd, 500U);
+    Hdr              = (UPLINK_APP_ConfigPayloadHdr_t *)Cmd.Payload;
+    Hdr->ValueLength = 2; /* uint32(4)가 아닌 값 */
+    ErrBefore = UPLINK_APP_Data.ErrCounter;
+
+    UtAssert_BOOL_FALSE(UPLINK_APP_ForwardConfigCommand(&Cmd));
+    UtAssert_INT32_EQ(UPLINK_APP_Data.ErrCounter, ErrBefore + 1U);
+}
+
+void Test_UPLINK_APP_ForwardConfigCommand_PayloadOverflow(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t Cmd;
+    UPLINK_APP_ConfigPayloadHdr_t *Hdr;
+    uint32                         ErrBefore;
+
+    UT_BuildValidConfigCmd(&Cmd, 500U);
+    Hdr = (UPLINK_APP_ConfigPayloadHdr_t *)Cmd.Payload;
+    /* PayloadLength가 (Hdr+ValueLength) 미만이 되도록 축소 */
+    Cmd.PayloadLength = (uint8)(sizeof(*Hdr) + Hdr->ValueLength - 1U);
+    ErrBefore = UPLINK_APP_Data.ErrCounter;
+
+    UtAssert_BOOL_FALSE(UPLINK_APP_ForwardConfigCommand(&Cmd));
+    UtAssert_INT32_EQ(UPLINK_APP_Data.ErrCounter, ErrBefore + 1U);
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(UPLINK_APP_ValidateProxyCommand);
@@ -427,4 +523,9 @@ void UtTest_Setup(void)
     ADD_TEST(UPLINK_APP_ForwardDiagnosticCommand);
     ADD_TEST(UPLINK_APP_ParseViewpointPayload);
     ADD_TEST(UPLINK_APP_ForwardViewpointCommand);
+    ADD_TEST(UPLINK_APP_ForwardConfigCommand_ChecksumValid);
+    ADD_TEST(UPLINK_APP_ForwardConfigCommand_ChecksumInvalid);
+    ADD_TEST(UPLINK_APP_ForwardConfigCommand_PayloadTooShort);
+    ADD_TEST(UPLINK_APP_ForwardConfigCommand_InvalidValueLength);
+    ADD_TEST(UPLINK_APP_ForwardConfigCommand_PayloadOverflow);
 }
