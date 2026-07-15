@@ -266,6 +266,26 @@ CMakeLists는 이미 shared_msgs 경로 포함.
 plus utils: 245/136/114/88 = 583 PASS
 총 899 tests PASS.
 
+## 병합 완료 요약 (2026-07-15)
+
+5개 mirror struct 클래스를 2-4벌의 복제에서 단일 진실(shared header)로 통합:
+1. **BridgeHk** (2벌): 발행 1 + 구독 1
+2. **SystemHealth** (2벌): 발행 1 + 구독 1
+3. **FC State 4종** (3벌): 발행 1 + 구독 2
+4. **Route** (3벌): 발행 1 + 구독 2
+5. **Config** (4벌): 발행 1 + 구독 3
+
+**결과**:
+- 공용 헤더 5개 생성 (`shared_msgs/*.h`)
+- 각 앱 msgstruct에서 로컬 typedef struct 제거 → alias typedef로 교체
+- UT 로컬 fake struct 제거 → 공유 정의 직접 사용
+- 전체 899 tests PASS, 0 regression
+- **근본 원인(mirror 레이아웃 드리프트) 원천 차단**: 한 발행 구조체 = 한 정의 위치
+
+**향후 유지비**:
+- 발행 앱이 필드 추가/변경 → 공유 헤더만 수정 → 수신 앱들은 자동으로 최신 정의 사용
+  (예: NonFiniteValueCount 누락 버그 방지 — 발행측 추가 시 수신 앱들도 동일 오프셋 보장)
+
 ### 런타임 후보 (하드웨어, TEST_CASES.md 등재용)
 - **RT-MRG-001**: 병합 배포 후 실기체에서 health 정상 판정 + DL2 값 무변화
   (기존 soak 로그와 필드 값 대조).
@@ -287,5 +307,5 @@ plus utils: 245/136/114/88 = 583 PASS
       UT 12스위트×4앱 무회귀 (본 문서 "Route 병합 결과" 절)
 - [x] Config 병합 (4벌, 최대) — 완료 2026-07-15, `shared_msgs/config_msg.h`,
       UT 12스위트×4앱 무회귀 (본 문서 "Config 병합 결과" 절)
-- [x] BridgeHk 병합 UT 회귀 확인 (완료, 나머지 병합은 각자 진행 시 확인)
+- [x] 전체 빌드 + UT 전량 회귀 확인 (완료 2026-07-15: 16개 스위트×4앱 = 899 tests PASS)
 - [ ] (선택/병행) `_Static_assert` 가드 선제 삽입
