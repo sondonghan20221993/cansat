@@ -221,6 +221,9 @@ void Test_UPLINK_APP_UpdateStatusTelemetry(void)
     UPLINK_APP_Data.ConfigPendingState  = UPLINK_APP_CONFIG_IDLE;
     UPLINK_APP_Data.LastConfigResult    = 0;
     UPLINK_APP_Data.LastRollbackReason  = 0;
+    UPLINK_APP_Data.FcMissionResult             = 2;
+    UPLINK_APP_Data.FcMissionUploadState        = 1;
+    UPLINK_APP_Data.FcMissionUploadSuccessCount = 9;
 
     UPLINK_APP_UpdateStatusTelemetry(555);
 
@@ -240,6 +243,9 @@ void Test_UPLINK_APP_UpdateStatusTelemetry(void)
     UtAssert_INT32_EQ(UPLINK_APP_Data.StatusTlm.ConfigPendingState, UPLINK_APP_CONFIG_IDLE);
     UtAssert_INT32_EQ(UPLINK_APP_Data.StatusTlm.LastConfigResult, 0);
     UtAssert_INT32_EQ(UPLINK_APP_Data.StatusTlm.LastRollbackReason, 0);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.StatusTlm.FcMissionResult, 2);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.StatusTlm.FcMissionUploadState, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.StatusTlm.FcMissionUploadSuccessCount, 9);
 }
 
 void Test_UPLINK_APP_LoadState_NoFile(void)

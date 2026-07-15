@@ -57,6 +57,13 @@ void Test_UPLINK_APP_Init_Subscribe3Error(void)
     UtAssert_INT32_NEQ(UPLINK_APP_Init(), CFE_SUCCESS);
 }
 
+/* Subscribe #4(BRIDGE_HK) 실패 */
+void Test_UPLINK_APP_Init_Subscribe4Error(void)
+{
+    UT_SetDeferredRetcode(UT_KEY(CFE_SB_Subscribe), 4, CFE_SB_BAD_ARGUMENT);
+    UtAssert_INT32_NEQ(UPLINK_APP_Init(), CFE_SUCCESS);
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(UPLINK_APP_Init);
@@ -67,4 +74,5 @@ void UtTest_Setup(void)
     ADD_TEST(UPLINK_APP_Init_CreatePipeError);
     ADD_TEST(UPLINK_APP_Init_Subscribe1Error);
     ADD_TEST(UPLINK_APP_Init_Subscribe3Error);
+    ADD_TEST(UPLINK_APP_Init_Subscribe4Error);
 }

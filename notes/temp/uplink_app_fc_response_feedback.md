@@ -67,14 +67,45 @@ uint32 FcMissionUploadSuccessCount; // 누적 성공
 - fc_serial_ws_server.py에서 UPLINK_STATUS_MID 파싱 시 FC 응답 필드 노출
 - UI에서 "FC 응답" 상태 표시 (ACCEPTED/DENIED/TIMEOUT)
 
-## 상태
+## 상태 (완료, 2026-07-15)
 
-- [ ] spec 18.7 업데이트 (필드 정의 추가)
-- [ ] uplink_app HK 구독 구현
-- [ ] StatusTlm 필드 추가
-- [ ] UT 추가 (4건 이상)
-- [ ] 빌드/회귀 검증
-- [ ] 지상국(openMCT) 파싱 업데이트 (별도 저장소)
+- [x] spec 18.7 업데이트 (필드 정의 추가)
+- [x] uplink_app HK 구독 구현 (BRIDGE_HK_MID Subscribe #4 추가)
+- [x] StatusTlm 필드 추가 (FcMissionResult/FcMissionUploadState/FcMissionUploadSuccessCount)
+- [x] UT 추가 — Init_Subscribe4Error, TaskPipe_BridgeHk, UpdateStatusTelemetry FC 필드 검증
+- [x] 빌드/회귀 검증 — uplink_app 4개 러너 전량 PASS(235 TOTAL), 타 앱 회귀 없음
+- [ ] 지상국(openMCT) 파싱 업데이트 (별도 저장소, fc_serial_ws_server.py)
+
+## 구현 요약
+
+```
+shared_msgs/bridge_hk_msg.h (BRIDGE_HK_TLM_t)
+  ├─ LastUploadResult, MissionUploadSuccessCount 이미 존재 (재사용)
+
+uplink_app/config/default_uplink_app_msgid_values.h
+  └─ BRIDGE_HK_MID_VALUE (0x08A0) 추가
+
+uplink_app/config/default_uplink_app_msgstruct.h
+  ├─ #include "bridge_hk_msg.h"
+  ├─ typedef BRIDGE_HK_TLM_t UPLINK_APP_BridgeHkMirror_t
+  └─ UPLINK_APP_StatusTlm_t 끝에 FcMissionResult/FcMissionUploadState/
+     FcMissionUploadSuccessCount 필드 append (mirror 레이아웃 컨벤션 준수)
+
+uplink_app/fsw/src/uplink_app.c
+  └─ Init()에 BRIDGE_HK_MID Subscribe 추가 (#4)
+
+uplink_app/fsw/src/uplink_app_dispatch.c
+  └─ TaskPipe()에 BRIDGE_HK_MID 처리 분기 추가
+     (LastUploadResult/MissionUploadSuccessCount 캐시, UploadState=ACTIVE)
+
+uplink_app/fsw/src/uplink_app_utils.c
+  └─ UPLINK_APP_UpdateStatusTelemetry()에서 캐시값을 StatusTlm에 반영
+```
+
+## 다음 단계 (별도 저장소, openMCT/지상국)
+
+fc_serial_ws_server.py에서 UPLINK_STATUS_MID 파싱 시 FcMissionResult 등
+3개 필드 파싱 추가 필요. 이 저장소 범위 밖.
 
 ## 노트
 

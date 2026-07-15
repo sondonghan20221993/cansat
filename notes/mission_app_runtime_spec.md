@@ -1645,6 +1645,14 @@ cFS 상태 및 운영자 인증 수준은 전환을 허용합니다. `uplink_app
 - 구성 보류 중 상태: 유휴, 보류 중, 검증 중 또는 거부됨.
 - 마지막 구성 활성화 결과.
 - 해당되는 경우 마지막 롤백 이유입니다.
+- FC MISSION_ACK 결과(`FcMissionResult`): `mavlink_bridge_app`의 `BRIDGE_HK_MID`
+  `LastUploadResult`를 캐시한 값. uplink_app 자체 검증(수신 성공)과
+  FC의 실제 accept/reject를 지상국이 구분할 수 있도록 별도 필드로 노출한다
+  (2026-07-15, openMCT 피드백 갭 해결).
+- FC 업로드 상태(`FcMissionUploadState`): `BRIDGE_HK_MID` 최신 수신 여부 기반
+  0=IDLE(미수신) / 1=ACTIVE(수신됨).
+- FC 누적 성공 업로드 수(`FcMissionUploadSuccessCount`): `BRIDGE_HK_MID`의
+  `MissionUploadSuccessCount`를 캐시한 값.
 
 기준 publish rate:
 

@@ -8,6 +8,7 @@
 #include "uplink_app_internal_cfg_values.h" /* UPLINK_APP_MAX_PAYLOAD_LENGTH — msgstruct 자립화 */
 #include "route_msg.h"
 #include "config_msg.h"
+#include "bridge_hk_msg.h"
 
 typedef struct
 {
@@ -133,6 +134,8 @@ typedef struct
     uint8                     Reserved;
 } UPLINK_APP_SysHealthMirror_t;
 
+typedef BRIDGE_HK_TLM_t UPLINK_APP_BridgeHkMirror_t;
+
 typedef struct
 {
     CFE_MSG_TelemetryHeader_t TelemetryHeader;
@@ -162,6 +165,10 @@ typedef struct
     uint8                     ConfigPendingState;
     uint8                     LastConfigResult;
     uint8                     LastRollbackReason;
+    uint8                     FcMissionResult;             /* FC MISSION_ACK 결과 (BRIDGE_HK LastUploadResult 캐시) */
+    uint8                     FcMissionUploadState;        /* 0=IDLE 1=ACTIVE (BRIDGE_HK 최신 수신 여부 기반) */
+    uint8                     Reserved2[2];
+    uint32                    FcMissionUploadSuccessCount; /* BRIDGE_HK MissionUploadSuccessCount 캐시 */
 } UPLINK_APP_StatusTlm_t;
 
 #endif

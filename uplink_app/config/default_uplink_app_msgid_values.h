@@ -12,6 +12,7 @@
 #define MODE_CMD_MID          0x190F
 #define DIAGNOSTIC_CMD_MID    0x1910
 #define SYSTEM_HEALTH_MID_VALUE 0x1904
+#define BRIDGE_HK_MID_VALUE     0x08A0
 
 #endif
 

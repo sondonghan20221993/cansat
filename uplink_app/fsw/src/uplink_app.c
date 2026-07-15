@@ -101,6 +101,12 @@ CFE_Status_t UPLINK_APP_Init(void)
         return Status;
     }
 
+    Status = CFE_SB_Subscribe(CFE_SB_ValueToMsgId(BRIDGE_HK_MID_VALUE), UPLINK_APP_Data.CommandPipe);
+    if (Status != CFE_SUCCESS)
+    {
+        return Status;
+    }
+
     UPLINK_APP_Data.Valid = 1;
     UPLINK_APP_LoadState();
 

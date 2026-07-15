@@ -33,6 +33,16 @@ void UPLINK_APP_TaskPipe(CFE_SB_Buffer_t *SBBufPtr)
         return;
     }
 
+    if (CFE_SB_MsgIdToValue(MsgId) == BRIDGE_HK_MID_VALUE)
+    {
+        const UPLINK_APP_BridgeHkMirror_t *BridgeHk =
+            (const UPLINK_APP_BridgeHkMirror_t *)MsgPtr;
+        UPLINK_APP_Data.FcMissionResult             = BridgeHk->LastUploadResult;
+        UPLINK_APP_Data.FcMissionUploadState         = 1U; /* HK 수신 = ACTIVE */
+        UPLINK_APP_Data.FcMissionUploadSuccessCount = BridgeHk->MissionUploadSuccessCount;
+        return;
+    }
+
     if (CFE_SB_MsgIdToValue(MsgId) != UPLINK_APP_CMD_MID_VALUE)
     {
         UPLINK_APP_Data.ErrCounter++;
