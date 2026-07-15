@@ -242,6 +242,30 @@ shared_msgs 디렉토리 추가.
 - uplink_app utils/cmds/dispatch: 88/91/29 = 208 PASS
 총 817 tests PASS.
 
+### Config 병합 결과 (2026-07-15, 완료)
+
+**구현**: `shared_msgs/config_msg.h`에 `CONFIG_MAX_PAYLOAD`(196, 통합 매크로),
+`CONFIG_CMD_TLM_t`(Telemetry 헤더 + 6필드 + Payload 배열) 신설. **4벌 → 단일 진실**:
+- 발행측(uplink_app msgstruct.h): 로컬 typedef struct 삭제
+  → `UPLINK_APP_ConfigCmdTlm_t = CONFIG_CMD_TLM_t` 별칭 (payload는 발행측이 정함)
+- 구독측1(cfs_core_app msgstruct.h): 로컬 typedef + 매크로 삭제
+  → 동일 별칭화
+- 구독측2(mavlink_bridge_app msgstruct.h): 로컬 typedef + 매크로 삭제
+  → 동일 별칭화
+- 구독측3(lora_tdm_app msgstruct.h): 로컬 typedef + 매크로 삭제
+  → 동일 별칭화
+
+**포함 경로 업데이트**: 4개 앱의 msgstruct에 `#include "config_msg.h"` 추가;
+CMakeLists는 이미 shared_msgs 경로 포함.
+
+**검증**: 4개 앱 UT 12개 스위트 전부 PASS (no regression):
+- cfs_core_app main/cmds/dispatch: 19/7/35 = 61 PASS
+- mavlink_bridge_app main/cmds/dispatch: 14/4/26 = 44 PASS
+- lora_tdm_app main/cmds/dispatch: 40/12/30 = 82 PASS
+- uplink_app main/cmds/dispatch: 9/91/29 = 129 PASS
+plus utils: 245/136/114/88 = 583 PASS
+총 899 tests PASS.
+
 ### 런타임 후보 (하드웨어, TEST_CASES.md 등재용)
 - **RT-MRG-001**: 병합 배포 후 실기체에서 health 정상 판정 + DL2 값 무변화
   (기존 soak 로그와 필드 값 대조).
@@ -261,6 +285,7 @@ shared_msgs 디렉토리 추가.
       UT 12스위트×3앱 무회귀 (본 문서 "FC 상태 4종 병합 결과" 절)
 - [x] Route 병합 (삼중 진실, 3벌) — 완료 2026-07-15, `shared_msgs/route_msg.h`,
       UT 12스위트×4앱 무회귀 (본 문서 "Route 병합 결과" 절)
-- [ ] Config 병합 (삼중 진실, 3벌)
+- [x] Config 병합 (4벌, 최대) — 완료 2026-07-15, `shared_msgs/config_msg.h`,
+      UT 12스위트×4앱 무회귀 (본 문서 "Config 병합 결과" 절)
 - [x] BridgeHk 병합 UT 회귀 확인 (완료, 나머지 병합은 각자 진행 시 확인)
 - [ ] (선택/병행) `_Static_assert` 가드 선제 삽입

@@ -7,6 +7,7 @@
 #include "cfs_core_app_mission_cfg.h"
 #include "system_health_msg.h"
 #include "route_msg.h"
+#include "config_msg.h"
 
 typedef struct
 {
@@ -40,18 +41,7 @@ typedef ROUTE_WAYPOINT_t CFS_CORE_APP_Waypoint_t;
 typedef ROUTE_UPDATE_TLM_t CFS_CORE_APP_RouteUpdateTlm_t;
 
 /* CONFIG_CMD_MID 수신용 — uplink_app의 UPLINK_APP_ConfigCmdTlm_t와 동일 레이아웃 */
-#define CFS_CORE_APP_CONFIG_MAX_PAYLOAD 196
-
-typedef struct
-{
-    CFE_MSG_TelemetryHeader_t TelemetryHeader;
-    uint32                    Seq;
-    uint32                    TimestampMs;
-    uint16                    SourceSequence;
-    uint8                     PayloadLength;
-    uint8                     Reserved;
-    uint8                     Payload[CFS_CORE_APP_CONFIG_MAX_PAYLOAD];
-} CFS_CORE_APP_ConfigCmdTlm_t;
+typedef CONFIG_CMD_TLM_t CFS_CORE_APP_ConfigCmdTlm_t;
 
 /* RECOVERY_CMD_MID 수신용 — uplink_app의 UPLINK_APP_RecoveryCmdTlm_t와 동일 레이아웃 */
 typedef struct

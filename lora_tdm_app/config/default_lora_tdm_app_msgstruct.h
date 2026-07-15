@@ -4,6 +4,7 @@
 #include "common_types.h"
 #include "cfe_msg_hdr.h"
 #include "lora_tdm_app_msgdefs.h"
+#include "config_msg.h"
 
 typedef struct
 {
@@ -98,17 +99,7 @@ typedef struct
 /* CONFIG_CMD_MID(0x190E) 수신용 — uplink_app UPLINK_APP_ConfigCmdTlm_t와 동일 레이아웃
  * (cfs_core_app_msgstruct.h CFS_CORE_APP_ConfigCmdTlm_t와도 동일 — 여러 앱이 같은
  * MID를 구독하고 Payload 내부 scope로 자기 것만 골라 처리). */
-#define LORA_TDM_APP_CONFIG_MAX_PAYLOAD 196
-typedef struct
-{
-    CFE_MSG_TelemetryHeader_t TelemetryHeader;
-    uint32                    Seq;
-    uint32                    TimestampMs;
-    uint16                    SourceSequence;
-    uint8                     PayloadLength;
-    uint8                     Reserved;
-    uint8                     Payload[LORA_TDM_APP_CONFIG_MAX_PAYLOAD];
-} LORA_TDM_APP_ConfigCmdTlm_t;
+typedef CONFIG_CMD_TLM_t LORA_TDM_APP_ConfigCmdTlm_t;
 
 /* config payload 내부 헤더 (openMCT fc_serial_ws_server.py _build_config_payload와 동일 레이아웃) */
 typedef struct

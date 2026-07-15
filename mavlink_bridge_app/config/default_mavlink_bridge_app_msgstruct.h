@@ -7,6 +7,7 @@
 #include "bridge_hk_msg.h"
 #include "fc_state_msg.h"
 #include "route_msg.h"
+#include "config_msg.h"
 
 typedef struct
 {
@@ -48,18 +49,7 @@ typedef ROUTE_WAYPOINT_t MAVLINK_BRIDGE_APP_WaypointMirror_t;
 typedef ROUTE_UPDATE_TLM_t MAVLINK_BRIDGE_APP_RouteUpdateMirror_t;
 
 /* CONFIG_CMD_MID 수신용 (uplink_app의 UPLINK_APP_ConfigCmdTlm_t와 동일 레이아웃) */
-#define MAVLINK_BRIDGE_APP_CONFIG_MAX_PAYLOAD 196U
-
-typedef struct
-{
-    CFE_MSG_TelemetryHeader_t TelemetryHeader;
-    uint32                    Seq;
-    uint32                    TimestampMs;
-    uint16                    SourceSequence;
-    uint8                     PayloadLength;
-    uint8                     Reserved;
-    uint8                     Payload[MAVLINK_BRIDGE_APP_CONFIG_MAX_PAYLOAD];
-} MAVLINK_BRIDGE_APP_ConfigCmdTlm_t;
+typedef CONFIG_CMD_TLM_t MAVLINK_BRIDGE_APP_ConfigCmdTlm_t;
 
 typedef struct
 {

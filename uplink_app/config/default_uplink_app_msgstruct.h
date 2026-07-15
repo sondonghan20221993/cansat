@@ -7,6 +7,7 @@
 #include "uplink_app_mission_cfg.h"
 #include "uplink_app_internal_cfg_values.h" /* UPLINK_APP_MAX_PAYLOAD_LENGTH — msgstruct 자립화 */
 #include "route_msg.h"
+#include "config_msg.h"
 
 typedef struct
 {
@@ -85,16 +86,7 @@ typedef struct
     uint32                    HoldTimeMs;
 } UPLINK_APP_ViewpointCmdTlm_t;
 
-typedef struct
-{
-    CFE_MSG_TelemetryHeader_t TelemetryHeader;
-    uint32                    Seq;
-    uint32                    TimestampMs;
-    uint16                    SourceSequence;
-    uint8                     PayloadLength;
-    uint8                     Reserved;
-    uint8                     Payload[UPLINK_APP_MAX_PAYLOAD_LENGTH];
-} UPLINK_APP_ConfigCmdTlm_t;
+typedef CONFIG_CMD_TLM_t UPLINK_APP_ConfigCmdTlm_t;
 
 typedef struct
 {
