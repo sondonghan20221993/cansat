@@ -217,6 +217,31 @@ prefix, cfs_core의 generic 캐스팅용) + `FC_ATTITUDE_TLM_t`/
 lora_tdm_app(114/40/30/12) UT 12개 스위트 전부 PASS. FSW 빌드
 `cfs_core_app.so`/`mav_bridge_app.so`/`lora_tdm_app.so` 성공.
 
+### Route 병합 결과 (2026-07-15, 완료)
+
+**구현**: `shared_msgs/route_msg.h`에 `ROUTE_MAX_WAYPOINTS`(16, 통합 매크로),
+`ROUTE_WAYPOINT_t`(X/Y/Z 3float), `ROUTE_UPDATE_TLM_t`(Telemetry 헤더 +
+7필드 + Waypoint 배열) 신설. **삼중 진실 → 단일 진실**:
+- 발행측(uplink_app msgstruct.h): 로컬 typedef struct 전부 삭제
+  → `UPLINK_APP_Waypoint_t = ROUTE_WAYPOINT_t`, `UPLINK_APP_RouteUpdateTlm_t = ROUTE_UPDATE_TLM_t`
+  별칭; RouteUpdatePayload_t는 ROUTE_MAX_WAYPOINTS 사용하도록 업데이트
+- 구독측(cfs_core_app msgstruct.h): 로컬 typedef 전부 삭제
+  → 동일한 별칭화
+- 구독측(mavlink_bridge_app msgstruct.h): 로컬 mirror 전부 삭제
+  → `MAVLINK_BRIDGE_APP_WaypointMirror_t = ROUTE_WAYPOINT_t`,
+  `MAVLINK_BRIDGE_APP_RouteUpdateMirror_t = ROUTE_UPDATE_TLM_t`
+
+**포함 경로 업데이트**: uplink_app/CMakeLists.txt (FSW+UT) +
+cfs_core_app/CMakeLists.txt(이미 있음) + mavlink_bridge_app/CMakeLists.txt(이미 있음)에
+shared_msgs 디렉토리 추가.
+
+**검증**: 4개 앱 UT 12개 스위트 전부 PASS (no regression):
+- cfs_core_app utils/cmds/dispatch: 245/7/35 = 287 PASS
+- mavlink_bridge_app utils/cmds/dispatch: 136/4/26 = 166 PASS
+- lora_tdm_app utils/cmds/dispatch: 114/12/30 = 156 PASS
+- uplink_app utils/cmds/dispatch: 88/91/29 = 208 PASS
+총 817 tests PASS.
+
 ### 런타임 후보 (하드웨어, TEST_CASES.md 등재용)
 - **RT-MRG-001**: 병합 배포 후 실기체에서 health 정상 판정 + DL2 값 무변화
   (기존 soak 로그와 필드 값 대조).
@@ -234,6 +259,8 @@ lora_tdm_app(114/40/30/12) UT 12개 스위트 전부 PASS. FSW 빌드
       UT 4스위트×2앱 무회귀 (본 문서 "SystemHealth 병합 결과" 절)
 - [x] FC 상태 4종 병합 (삼중 진실, 3벌) — 완료 2026-07-15, `shared_msgs/fc_state_msg.h`,
       UT 12스위트×3앱 무회귀 (본 문서 "FC 상태 4종 병합 결과" 절)
-- [ ] Route / Config 병합 (각 삼중 진실, 3벌)
+- [x] Route 병합 (삼중 진실, 3벌) — 완료 2026-07-15, `shared_msgs/route_msg.h`,
+      UT 12스위트×4앱 무회귀 (본 문서 "Route 병합 결과" 절)
+- [ ] Config 병합 (삼중 진실, 3벌)
 - [x] BridgeHk 병합 UT 회귀 확인 (완료, 나머지 병합은 각자 진행 시 확인)
 - [ ] (선택/병행) `_Static_assert` 가드 선제 삽입

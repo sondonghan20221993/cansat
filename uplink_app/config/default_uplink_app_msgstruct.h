@@ -6,6 +6,7 @@
 #include "uplink_app_msgdefs.h"
 #include "uplink_app_mission_cfg.h"
 #include "uplink_app_internal_cfg_values.h" /* UPLINK_APP_MAX_PAYLOAD_LENGTH — msgstruct 자립화 */
+#include "route_msg.h"
 
 typedef struct
 {
@@ -29,12 +30,7 @@ typedef struct
     uint8                   Payload[UPLINK_APP_MAX_PAYLOAD_LENGTH];
 } UPLINK_APP_ProcessUplinkCmd_t;
 
-typedef struct
-{
-    float X;
-    float Y;
-    float Z;
-} UPLINK_APP_Waypoint_t;
+typedef ROUTE_WAYPOINT_t UPLINK_APP_Waypoint_t;
 
 typedef struct
 {
@@ -42,21 +38,10 @@ typedef struct
     uint8  RouteVersion;
     uint8  WaypointCount;
     uint8  Reserved;
-    UPLINK_APP_Waypoint_t Waypoints[UPLINK_APP_ROUTE_MAX_WAYPOINTS];
+    UPLINK_APP_Waypoint_t Waypoints[ROUTE_MAX_WAYPOINTS];
 } UPLINK_APP_RouteUpdatePayload_t;
 
-typedef struct
-{
-    CFE_MSG_TelemetryHeader_t TelemetryHeader;
-    uint32                    Seq;
-    uint32                    TimestampMs;
-    uint32                    SourceSequence;
-    uint8                     RouteType;
-    uint8                     RouteVersion;
-    uint8                     WaypointCount;
-    uint8                     Reserved;
-    UPLINK_APP_Waypoint_t     Waypoints[UPLINK_APP_ROUTE_MAX_WAYPOINTS];
-} UPLINK_APP_RouteUpdateTlm_t;
+typedef ROUTE_UPDATE_TLM_t UPLINK_APP_RouteUpdateTlm_t;
 
 typedef struct
 {

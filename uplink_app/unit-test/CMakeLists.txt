@@ -22,6 +22,7 @@
 include_directories(../fsw/src)
 include_directories(../fsw/inc)
 include_directories(../config)
+include_directories(../../shared_msgs)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/inc)
 
 add_cfe_coverage_stubs(uplink_app
