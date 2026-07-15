@@ -62,11 +62,11 @@ Pi ──이더넷──▶ WiFiLink (chrony NTP: Pi 시각 → 카메라 시계
 | 페이즈 | 목표 | 확인 코드 | 상태 |
 | --- | --- | --- | --- |
 | P0 영상 링크 | WFB-ng RF로 지상에서 영상 수신 | (fpv4win 육안 확인, 스크립트화 불필요) | ✅ 완료 |
-| P1 대역분리 | WFB-ng 채널이 5.8GHz대(LoRa 2.4GHz와 비중첩) | `./check_band_separation.sh <카메라IP> [Pi경유]` | ⬜ 미확인 |
-| P2 이더넷 접근 | 기체 장착 상태로 Pi 경유 SSH 접속 가능 | `./check_ethernet_access.sh [Pi호스트] [카메라IP]` | ⬜ 미확인 (Pi 오프라인 확인됨) |
-| P3 설정 적용 | majestic OSD/녹화 설정 + msposd 배포 | `./apply_camera_config.sh <카메라IP> [Pi경유]` → `./verify_camera.sh <카메라IP> [Pi경유]` | ⬜ P2 선행 필요 |
-| P4 SD 녹화 실물 확인 | 설정 적용 후 실제 녹화 파일 생성 | `./check_sd_recording.sh <카메라IP> [Pi경유] [분]` | ⬜ P3 선행 필요 |
-| P5 시각동기 | 카메라 OSD 타임스탬프를 절대시각으로 | (보류 — Pi GPS 동기 `mavlink_bridge_app_behavior_spec.md` §16.4 선행 필요) | ⬜ 차단 (2026-07-14: GPS 시각 자체는 이제 DL2 다운링크로 지상까지 도달함 — `sys_time_unix_usec`, §16.4/§4.2. 다만 이걸 카메라 OSD/OS 시계에 실제로 반영하는 배관은 아직 미착수) |
+| P1 대역분리 | WFB-ng 채널이 5.8GHz대(LoRa 2.4GHz와 비중첩) | `./check_band_separation.sh <카메라IP> [Pi경유]` | ✅ 완료 (2026-07-13 실측 — 채널 161/5.8GHz로 LoRa 2.4GHz와 비중첩 확인, §"실제 적용 결과" 참조) |
+| P2 이더넷 접근 | 기체 장착 상태로 Pi 경유 SSH 접속 가능 | `./check_ethernet_access.sh [Pi호스트] [카메라IP]` | ⬜ 미확인 — **원인 파악도 필요**. 2026-07-13 검증은 PC 이더넷 **직결**로 수행(기체 미장착 상태), Pi jump host 경유는 아직 실측 안 됨. 안 되면 원인이 카메라측(이더넷 포트/스위치 설정)인지 Pi측(라우팅/방화벽)인지 구분 필요. Pi는 온라인 확인됨(2026-07-16) — 스크립트 실행 가능 |
+| P3 설정 적용 | majestic OSD/녹화 설정 + msposd 배포 | `./apply_camera_config.sh <카메라IP> [Pi경유]` → `./verify_camera.sh <카메라IP> [Pi경유]` | ✅ 완료 (2026-07-13 실측 — OSD 라이브 활성화, 녹화 활성화, RTSP 활성화 확인. 단 PC 직결 기준, P2와 동일한 "Pi 경유" 재검증 여지 있음) |
+| P4 SD 녹화 실물 확인 | 설정 적용 후 실제 녹화 파일 생성 | `./check_sd_recording.sh <카메라IP> [Pi경유] [분]` | ⬜ 미확인 — **원인 파악도 필요**. `.records.enabled=true`는 설정됐으나 카메라 SD카드에 실제 파일이 생성되는지 미실측(fpv4win PC측 녹화만 확인됨). 파일이 안 생기면 SD카드 마운트 문제인지, records 설정 누락인지, 카드 자체 이상인지 구분 필요 |
+| P5 시각동기 | 카메라 OSD 타임스탬프를 절대시각으로 | (보류 — Pi GPS 동기 `mavlink_bridge_app_behavior_spec.md` §16.4 선행 필요) | 🟡 우회됨 (2026-07-16: 영상↔텔레메트리 매칭은 카메라 NTP 없이 §6 "시각 매칭 방식"으로 이미 해결 — fpv4win 파일명(`<epoch_ms>.mp4`)과 openMCT CSV가 같은 지상 PC 시계 기준이라 사후 매칭 가능. `correlate_video_telemetry.py` 참조. 카메라 자체 SD 녹화의 OSD 타임스탬프 절대화는 여전히 미착수이나, 운용 우선순위는 낮음 — 필요 재확인 시에만 착수) |
 
 각 스크립트는 `<Pi경유>` 인자를 생략하면 PC 직결을 시도한다 (예: `sdh2983@192.168.50.65` 형식으로 지정 시 `ssh -J`로 Pi를 경유).
 
@@ -195,14 +195,22 @@ ssh root@192.168.1.10 "cli -s .encoder.codec h264"
   /mnt/mmcblk0p1/%F/..`. 비행 후 mp4+osd를 walksnail-osd-tool로 합성하면 OSD
   박힌 결과물 획득 가능. 출처: msposd README(OpenIPC/msposd), 직접 실기체 검증 안 됨.
 - **카메라 재부팅**: 설정 적용 후 전원 껐다 켜야 안정화되지만, msposd/OSD 설정은 재부팅마다 유실됨 (영구 적용 미해결)
-- **시각 매칭 방식 채택**: fpv4win 녹화 파일명(`<epoch_ms>.mp4`)과 openMCT 텔레메트리 CSV의
-  `timestamp`(ISO, PC 수신시각)가 둘 다 지상 PC의 절대시각 기준이라 별도 동기화 없이
-  사후 매칭 가능. 전제: fpv4win과 `fc_serial_ws_server.py`가 같은 PC(같은 시계)에서 실행됨
-  (다른 PC면 두 PC 간 NTP 동기화 필요, TODO(bench) 확인).
+- **시각 매칭 방식 채택**: 영상의 시작 절대시각과 openMCT 텔레메트리 CSV의
+  `timestamp`(ISO, PC 수신시각)가 동일한 시간축이라는 전제로 사후 매칭. 전제:
+  fpv4win과 `fc_serial_ws_server.py`가 같은 PC(같은 시계)에서 실행됨(다른 PC면
+  두 PC 간 NTP 동기화 필요, TODO(bench) 확인).
   ```bash
   python3 camera/correlate_video_telemetry.py <video.mp4> <telemetry.csv> [--out matched.csv]
   ```
   영상 구간에 속하는 텔레메트리 행만 추출, 각 행에 `video_offset_sec`(영상 재생 시점) 추가.
+  **영상 시작 시각 소스는 2단계**(2026-07-16 개선, `mp4` 로컬 테스트로 양쪽 경로 검증):
+  1. mp4 컨테이너의 `creation_time` 메타데이터(ffprobe) — 녹화 버튼→실제 인코딩 시작
+     사이 지연 없이 컨테이너가 기록한 실제 시각. fpv4win이 이 태그를 실제로 남기는지는
+     `TODO(bench)` 확인 필요.
+  2. 없으면 파일명(`<epoch_ms>.mp4`) 파싱으로 폴백 — 녹화 버튼 누른 시점의 PC 시계
+     (버튼→실제 녹화 시작 지연만큼 오차 가능, 기존 방식).
+
+  실행 시 어느 소스를 썼는지 콘솔에 출력됨(`시작 시각 소스: ...`).
 
 ## 주의
 
