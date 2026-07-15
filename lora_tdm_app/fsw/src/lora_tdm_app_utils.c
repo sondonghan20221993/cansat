@@ -1,5 +1,6 @@
 #include "lora_tdm_app_utils.h"
 #include "lora_tdm_app_eventids.h"
+#include "system_health_msg.h"
 
 #include "cfe_time.h"
 
@@ -793,12 +794,7 @@ void LORA_TDM_APP_UpdateCacheFromMsg(CFE_SB_Buffer_t *SBBufPtr, LORA_TDM_APP_Dat
     }
     else if (CFE_SB_MsgId_Equal(MsgId, CFE_SB_ValueToMsgId(LORA_TDM_APP_SYSTEM_HEALTH_MID_VALUE)))
     {
-        typedef struct {
-            CFE_MSG_TelemetryHeader_t Hdr;
-            uint32 Seq; uint32 TimestampMs; uint32 LastValidInputTimestampMs;
-            uint8 HealthState; uint8 FaultCode; uint8 RecoveryRequested; uint8 Reserved;
-        } SHMsg_t;
-        const SHMsg_t *M = (const SHMsg_t *)SBBufPtr;
+        const SYSTEM_HEALTH_TLM_t *M = (const SYSTEM_HEALTH_TLM_t *)SBBufPtr;
         AppData->SystemHealth.TimestampMs       = M->TimestampMs;
         AppData->SystemHealth.SystemHealthState = M->HealthState;
         AppData->SystemHealth.FaultCode         = M->FaultCode;

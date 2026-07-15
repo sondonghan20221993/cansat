@@ -1,4 +1,5 @@
 #include "lora_tdm_app_coveragetest_common.h"
+#include "system_health_msg.h"
 
 /* ---- Telemetry structs matching the source apps (used with UpdateCacheFromMsg) ---- */
 
@@ -51,18 +52,6 @@ typedef struct
     int32                     LonE7;
     int32                     AltMm;
 } TEST_GpsRawTlm_t;
-
-typedef struct
-{
-    CFE_MSG_TelemetryHeader_t TelemetryHeader;
-    uint32                    Seq;
-    uint32                    TimestampMs;
-    uint32                    LastValidInputTimestampMs;
-    uint8                     HealthState;
-    uint8                     FaultCode;
-    uint8                     RecoveryRequested;
-    uint8                     Reserved;
-} TEST_SystemHealthTlm_t;
 
 typedef struct
 {
@@ -400,14 +389,14 @@ void Test_UpdateCacheFromMsg_Gps(void)
 
 void Test_UpdateCacheFromMsg_SystemHealth(void)
 {
-    uint8                   Storage[sizeof(TEST_SystemHealthTlm_t)];
+    uint8                   Storage[sizeof(SYSTEM_HEALTH_TLM_t)];
     CFE_SB_Buffer_t        *Buffer;
-    TEST_SystemHealthTlm_t *Msg;
+    SYSTEM_HEALTH_TLM_t    *Msg;
     CFE_SB_MsgId_t          MsgId;
 
     memset(Storage, 0, sizeof(Storage));
     Buffer = (CFE_SB_Buffer_t *)Storage;
-    Msg    = (TEST_SystemHealthTlm_t *)Storage;
+    Msg    = (SYSTEM_HEALTH_TLM_t *)Storage;
     CFE_MSG_Init(CFE_MSG_PTR(Msg->TelemetryHeader),
                  CFE_SB_ValueToMsgId(LORA_TDM_APP_SYSTEM_HEALTH_MID_VALUE), sizeof(*Msg));
     Msg->TimestampMs = 4444;

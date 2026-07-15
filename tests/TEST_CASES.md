@@ -670,7 +670,7 @@ Init/dispatch 추가:
 | TDM-CACHE-001 | ATTITUDE MID → roll/pitch/yaw 캐시 | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ |
 | TDM-CACHE-002 | EKF_LOCAL MID → pos/vel 캐시 | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ |
 | TDM-CACHE-003 | GPS MID → lat/lon/alt/fix 캐시 | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ |
-| TDM-CACHE-004 | SYSTEM_HEALTH MID → HealthState/FaultCode 캐시 | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ |
+| TDM-CACHE-004 | SYSTEM_HEALTH MID → HealthState/FaultCode 캐시 (2026-07-15: `shared_msgs/system_health_msg.h`(`SYSTEM_HEALTH_TLM_t`) 공유 정의로 로컬 fake struct 제거 — `notes/temp/mirror_struct_layout_audit.md` TC-MRG-SYSHEALTH-1) | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ |
 | TDM-CACHE-005 | EKF_STATUS MID → EkfValid=1, PacketType=FC_STATE | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ |
 | TDM-CACHE-006 | FC_SYS_TIME MID → TimeUnixUsec/TimeValid 캐시 (2026-07-14, §16.4) | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ (`UpdateCacheFromMsg_SysTime`) |
 

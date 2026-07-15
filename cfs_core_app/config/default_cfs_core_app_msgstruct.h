@@ -5,6 +5,7 @@
 #include "common_types.h"
 #include "cfs_core_app_msgdefs.h"
 #include "cfs_core_app_mission_cfg.h"
+#include "system_health_msg.h"
 
 typedef struct
 {
@@ -29,46 +30,10 @@ typedef struct
     uint32                    RouteUpdateCount;
 } CFS_CORE_APP_HkTlm_t;
 
-typedef struct
-{
-    uint8 Valid;
-    uint8 Stale;
-    uint8 ErrorCode;
-    uint8 TimedOut;
-} CFS_CORE_APP_InputStatus_t;
-
-typedef struct
-{
-    uint8 LinkState;
-    uint8 ErrorCode;
-    uint8 TimedOut;
-    uint8 Reserved;
-} CFS_CORE_APP_BridgeStatus_t;
-
-typedef struct
-{
-    uint8 TimedOut;
-    uint8 Reserved[3];
-} CFS_CORE_APP_AppStatus_t;
-
-typedef struct
-{
-    CFE_MSG_TelemetryHeader_t  TelemetryHeader;
-    uint32                     Seq;
-    uint32                     TimestampMs;
-    uint32                     LastValidInputTimestampMs;
-    uint8                      HealthState;
-    uint8                      FaultCode;
-    uint8                      RecoveryRequested;
-    uint8                      Reserved;
-    CFS_CORE_APP_InputStatus_t AttitudeStatus;
-    CFS_CORE_APP_InputStatus_t LocalStatus;
-    CFS_CORE_APP_InputStatus_t GpsStatus;
-    CFS_CORE_APP_InputStatus_t EkfStatus;
-    CFS_CORE_APP_BridgeStatus_t BridgeStatus;
-    CFS_CORE_APP_AppStatus_t    UplinkStatus;
-    CFS_CORE_APP_AppStatus_t    LoraStatus;
-} CFS_CORE_APP_SystemHealthTlm_t;
+typedef INPUT_STATUS_t  CFS_CORE_APP_InputStatus_t;
+typedef BRIDGE_STATUS_t CFS_CORE_APP_BridgeStatus_t;
+typedef APP_STATUS_t    CFS_CORE_APP_AppStatus_t;
+typedef SYSTEM_HEALTH_TLM_t CFS_CORE_APP_SystemHealthTlm_t;
 
 typedef struct
 {

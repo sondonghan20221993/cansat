@@ -9,7 +9,7 @@ set(APP_SRC_FILES
 
 add_cfe_app(lora_tdm_app ${APP_SRC_FILES})
 
-target_include_directories(lora_tdm_app PUBLIC fsw/inc)
+target_include_directories(lora_tdm_app PUBLIC fsw/inc ${CMAKE_CURRENT_LIST_DIR}/../shared_msgs)
 
 if (ENABLE_UNIT_TESTS)
   add_subdirectory(unit-test)

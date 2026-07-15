@@ -174,6 +174,24 @@ struct `TEST_CFS_CORE_APP_BridgeHk_t`(필드 나열 + 자체 크기) 삭제 —
   레이아웃 상이 자체가 컴파일 불가능한 구조로 원천 보장됨
 - TC-MRG-BRIDGEHK-1, TC-MRG-COMMON-2, TC-MRG-COMMON-3 전부 충족
 
+### SystemHealth 병합 결과 (2026-07-15, 완료)
+
+**구현**: `shared_msgs/system_health_msg.h`에 `SYSTEM_HEALTH_TLM_t`
++ 하위 `INPUT_STATUS_t`/`BRIDGE_STATUS_t`/`APP_STATUS_t` 신설(cfs_core
+발행측 필드 그대로 이동). 발행측(`cfs_core_app/config/
+default_cfs_core_app_msgstruct.h`)은 4개 typedef 전부 별칭화. 수신측
+lora_tdm_app은 기존 prefix-only 인라인 `SHMsg_t`(로컬, 필드 5개만 판독)를
+제거하고 **공유 정의 전체(`SYSTEM_HEALTH_TLM_t`, 서브구조체 포함)를
+직접 캐스팅**하는 방식으로 전환 — prefix만 맞추던 기존 방식보다 강화됨
+(전체 레이아웃이 공유 정의 하나로 고정).
+
+**사라진 테스트 아티팩트**: UT 로컬 fake `TEST_SystemHealthTlm_t`(lora_tdm)
+삭제, `SYSTEM_HEALTH_TLM_t` 직접 사용으로 교체. 시나리오/개수 불변.
+
+**검증**: cfs_core_app UT 4스위트(245/35/19/7) + lora_tdm_app UT
+4스위트(114/40/30/12) 전부 PASS. FSW 빌드 `cfs_core_app.so`/
+`lora_tdm_app.so` 성공.
+
 ### 런타임 후보 (하드웨어, TEST_CASES.md 등재용)
 - **RT-MRG-001**: 병합 배포 후 실기체에서 health 정상 판정 + DL2 값 무변화
   (기존 soak 로그와 필드 값 대조).
@@ -187,7 +205,8 @@ struct `TEST_CFS_CORE_APP_BridgeHk_t`(필드 나열 + 자체 크기) 삭제 —
 - [x] 공유 헤더 배치 위치 결정 (2026-07-15)
 - [x] BridgeHk 병합 (2벌, 최우선) — 완료 2026-07-15, `shared_msgs/bridge_hk_msg.h`,
       UT 4스위트×2앱 무회귀, FSW 빌드 성공 (본 문서 "BridgeHk 병합 결과" 절)
-- [ ] SystemHealth 병합 (2벌)
+- [x] SystemHealth 병합 (2벌) — 완료 2026-07-15, `shared_msgs/system_health_msg.h`,
+      UT 4스위트×2앱 무회귀 (본 문서 "SystemHealth 병합 결과" 절)
 - [ ] FC 상태 4종 / Route / Config 병합 (3벌)
 - [x] BridgeHk 병합 UT 회귀 확인 (완료, 나머지 병합은 각자 진행 시 확인)
 - [ ] (선택/병행) `_Static_assert` 가드 선제 삽입
