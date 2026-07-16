@@ -213,21 +213,25 @@ ssh root@192.168.1.10 "cli -s .encoder.codec h264"
 
   실행 시 어느 소스를 썼는지 콘솔에 출력됨(`시작 시각 소스: ...`).
 
-- **wfb 키 불일치 (2026-07-16, 미해결)**: 채널 5.8GHz(161) 전환 후 fpv4win에
-  `Unable to decrypt packet #0x...` 반복 + `[udp @ ...] bind failed: -10013`.
-  RF 패킷 자체는 정상 수신(채널/대역 문제 아님) — 복호화만 실패, 암호화 키
-  불일치로 확정.
-  - 카메라: `/etc/drone.key` (2025-09-05 생성, 최초 설정 이후 안 바뀜)
-  - PC: fpv4win 패키지(`runcamfpv4win-0.0.5-beta`, 2026-05-10 배포)에 딸려온
-    `gs.key`(범용 샘플 키로 추정) — drone.key와 원래부터 짝이 아니었을 가능성
-  - **시도 1 (실패)**: `drone.key`를 그대로 `gs.key`로 복사 — 여전히 decrypt 실패.
-    wfb-ng는 `wfb_keygen`으로 drone.key/gs.key를 비대칭 키페어로 함께 생성하는
-    구조로 추정되어 단순 복사로는 안 맞음.
-  - 카메라에 `wfb_keygen` 없음(busybox), `find / -iname '*.key'` 결과도
-    `/etc/drone.key`(+`/rom` 백업) 뿐 — 짝이 되는 gs 쪽 원본 키 분실 상태로 판단.
-  - **TODO(bench)**: PC/OpenIPC Configurator 쪽에 `wfb_keygen` 존재 여부 확인 →
-    있으면 새 키페어 생성 후 drone.key(카메라)/gs.key(PC) 양쪽 교체.
-    없으면 OpenIPC 공식 문서에서 키 재발급 절차 확인 필요.
+- **fpv4win decrypt 실패 (2026-07-16, 미해결 — 키 불일치 아님)**: 채널
+  5.8GHz(161) 전환 후 fpv4win에 `Unable to decrypt packet #0x...` 반복 +
+  `[udp @ ...] bind failed: -10013`. RF 패킷 자체는 정상 수신(채널/대역 문제
+  아님, `iw dev`로 5805MHz 실측 확인).
+  - **키 불일치 가설은 배제됨**: 카메라 `/etc/drone.key`와 fpv4win 번들
+    `gs.key`의 md5가 `24767056dc165963fe6db7794aee12cd`로 완전 동일 —
+    처음부터 양쪽 키가 같았음 (중간에 drone.key→gs.key 복사도 해봤으나
+    어차피 같은 파일이라 무의미).
+  - **남은 용의자**:
+    1. fpv4win `config.ini`가 `codec=H265`로 초기화돼 있음 — 카메라는
+       2026-07-13에 H264로 설정됨(§트러블슈팅). 구 폴더(`fpv4win-0.0.5-beta`)
+       → 신 폴더(`runcamfpv4win-0.0.5-beta`)로 옮기면서 설정 유실.
+       단, codec 불일치는 통상 디코딩 에러이지 decrypt 에러는 아님.
+    2. wfb-ng 세션 키 패킷 유실 — 세션 패킷을 못 받으면 데이터 패킷 전체가
+       unable to decrypt로 찍힘 (수신 품질/카메라 wfb 서비스 이상 시).
+    3. `link_id: 7669206`(카메라 wfb.yaml)와 fpv4win 쪽 link_id 매칭 여부 미확인
+       (config.ini에 항목 없음).
+  - **TODO(bench)**: fpv4win Codec→H264 변경, 카메라 재부팅 + fpv4win 재시작,
+    안 되면 카메라에서 `ps | grep -E 'wfb|majestic'`로 서비스 상태 확인.
   - `[udp bind -10013]`는 decrypt 실패와 별개/부차적 에러일 가능성 있음 —
     decrypt 문제 해결 후 재확인 필요.
 
