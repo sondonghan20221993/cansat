@@ -177,7 +177,8 @@ ssh root@192.168.1.10 "cli -s .encoder.codec h264"
 | 1080p 화질 저하/손상 | fps(120)와 해상도(1080p) 조합 불가 (IMX415는 1080p@90fps/720p@120fps만 지원) | fps부터 90으로 낮춘 후 size 1920x1080 적용 |
 | 1080p90 화면 깜빡임 | 실내 형광등(60Hz)과 안티플리커 주파수 불일치 | `cli -s .isp.antiFlickerFreq 60` |
 | 화면 가장자리 휘어 보임 | 렌즈 FOV 160° 광각 특성 (정상) | 조치 불필요 |
-| 채널 5.8GHz(161) 전환 후 영상 미표시, `Unable to decrypt packet` 반복 + `[udp @ ...] bind failed: -10013` | GS/드론 wfb 암호화 키 불일치 (미해결) | 아래 "wfb 키 불일치" 참조 |
+| 영상 미표시, `[udp @ ...] bind failed: -10013` (되다가 재부팅 후 갑자기 안 됨) | winnat(Hyper-V/WSL) 동적 포트 예약이 fpv4win 로컬 RTP 포트(52356)를 점유 — 예약 범위가 부팅마다 달라져 간헐 발생 | 관리자 PowerShell에서 `net stop winnat` 후 fpv4win 실행 (해결 확인 2026-07-16). 상세: 아래 "fpv4win 영상 미표시" 참조 |
+| USB 어댑터 12MBit/s 저속 폴백 + `rtw_read: iostream stream error` | Zadig(WinUSB) 드라이버 바인딩 손상 | 장치관리자에서 드라이버 제거 → 재삽입 → Zadig로 WinUSB 재설치 (480MBit/s 복구 확인) |
 
 ### 주요 발견
 
@@ -213,27 +214,26 @@ ssh root@192.168.1.10 "cli -s .encoder.codec h264"
 
   실행 시 어느 소스를 썼는지 콘솔에 출력됨(`시작 시각 소스: ...`).
 
-- **fpv4win decrypt 실패 (2026-07-16, 미해결 — 키 불일치 아님)**: 채널
-  5.8GHz(161) 전환 후 fpv4win에 `Unable to decrypt packet #0x...` 반복 +
-  `[udp @ ...] bind failed: -10013`. RF 패킷 자체는 정상 수신(채널/대역 문제
-  아님, `iw dev`로 5805MHz 실측 확인).
-  - **키 불일치 가설은 배제됨**: 카메라 `/etc/drone.key`와 fpv4win 번들
-    `gs.key`의 md5가 `24767056dc165963fe6db7794aee12cd`로 완전 동일 —
-    처음부터 양쪽 키가 같았음 (중간에 drone.key→gs.key 복사도 해봤으나
-    어차피 같은 파일이라 무의미).
-  - **남은 용의자**:
-    1. fpv4win `config.ini`가 `codec=H265`로 초기화돼 있음 — 카메라는
-       2026-07-13에 H264로 설정됨(§트러블슈팅). 구 폴더(`fpv4win-0.0.5-beta`)
-       → 신 폴더(`runcamfpv4win-0.0.5-beta`)로 옮기면서 설정 유실.
-       단, codec 불일치는 통상 디코딩 에러이지 decrypt 에러는 아님.
-    2. wfb-ng 세션 키 패킷 유실 — 세션 패킷을 못 받으면 데이터 패킷 전체가
-       unable to decrypt로 찍힘 (수신 품질/카메라 wfb 서비스 이상 시).
-    3. `link_id: 7669206`(카메라 wfb.yaml)와 fpv4win 쪽 link_id 매칭 여부 미확인
-       (config.ini에 항목 없음).
-  - **TODO(bench)**: fpv4win Codec→H264 변경, 카메라 재부팅 + fpv4win 재시작,
-    안 되면 카메라에서 `ps | grep -E 'wfb|majestic'`로 서비스 상태 확인.
-  - `[udp bind -10013]`는 decrypt 실패와 별개/부차적 에러일 가능성 있음 —
-    decrypt 문제 해결 후 재확인 필요.
+- **fpv4win 영상 미표시 트러블슈팅 전말 (2026-07-16, 해결)**: 재부팅 후
+  갑자기 영상이 안 뜨는 문제. 최종 원인은 **winnat(Hyper-V/WSL) 동적 포트
+  예약**이 fpv4win의 로컬 RTP 포트(52356)를 점유한 것 — 예약 범위
+  (`netsh interface ipv4 show excludedportrange protocol=udp`)가 부팅마다
+  달라져서, 예전엔 되던 게 갑자기 `bind failed: -10013`으로 깨짐.
+  **해결: 관리자 PowerShell에서 `net stop winnat` 후 fpv4win 실행** (필요 시
+  이후 `net start winnat`으로 복구 — WSL/Docker 네트워크에 필요).
+  - 진단 과정에서 배제된 가설들 (기록용):
+    - ~~키 불일치~~: 카메라 `/etc/drone.key`와 fpv4win `gs.key` md5 완전 동일
+      (`24767056...`). fpv4win은 키 없으면 `Unable to open gs.key`를 명시적으로
+      출력하므로 로드 실패도 아님.
+    - ~~채널/대역~~: 카메라 `iw dev`로 5805MHz(채널 161) 실측 정상, 카메라측
+      wfb_tx/majestic/msposd 전 프로세스 정상 동작 확인.
+    - ~~어댑터 5.8GHz 미지원~~: AC1200(RTL8812AU) 듀얼밴드. `SwChnl false`
+      로그는 뜨지만 실제 수신엔 지장 없음.
+  - 함께 발견/해결된 별개 문제: USB 12MBit/s 저속 폴백(→ Zadig 드라이버
+    재설치로 480MBit/s 복구), fpv4win 2개 중복 실행(USB/포트 점유 충돌 유발).
+  - 잔여 관찰: `Unable to decrypt packet` 로그가 진단 중 반복 출력됐으나
+    winnat 해결 후 영상 정상 — 중복 실행 인스턴스 간 USB 점유 충돌로 인한
+    수신 데이터 손상이었을 가능성. 재발 시에만 재조사.
 
 ## 주의
 
