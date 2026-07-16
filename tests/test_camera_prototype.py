@@ -122,5 +122,27 @@ class ConsistencyTest(unittest.TestCase):
         self.assertIn("local stratum", text)
 
 
+class RowEpochMsTest(unittest.TestCase):
+    """fc_serial_ws_server.py 실제 CSV 포맷(정수 epoch ms) 파싱 회귀 테스트."""
+
+    def setUp(self):
+        import sys
+        sys.path.insert(0, str(CAMERA_DIR))
+        global row_epoch_ms
+        from correlate_video_telemetry import row_epoch_ms
+
+    def test_integer_epoch_ms(self):
+        self.assertEqual(row_epoch_ms("1784034321805"), 1784034321805)
+
+    def test_iso_string_fallback(self):
+        from datetime import datetime
+        expected = int(datetime.fromisoformat("2026-07-16T03:00:00").timestamp() * 1000)
+        self.assertEqual(row_epoch_ms("2026-07-16T03:00:00"), expected)
+
+    def test_invalid_raises(self):
+        with self.assertRaises(ValueError):
+            row_epoch_ms("not-a-timestamp")
+
+
 if __name__ == "__main__":
     unittest.main()

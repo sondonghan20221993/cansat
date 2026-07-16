@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """fpv4win 녹화 영상과 openMCT 텔레메트리 CSV를 절대시각으로 매칭.
 
-전제: 영상의 시작 절대시각과 CSV의 timestamp(`datetime.now().isoformat()`,
-fc_serial_ws_server.py 수신 시각, 지상 PC 시계 기준)가 동일한 시간축이라는
-것 — OSD 번인이 녹화 파일에 반영되지 않는 문제(camera/README.md 트러블슈팅
-참조)의 대안으로 채택.
+전제: 영상의 시작 절대시각과 CSV의 timestamp(정수 epoch ms, UTC —
+fc_serial_ws_server.py의 `int(time.time()*1000)`)가 동일한 시간축이라는 것 —
+OSD 번인이 녹화 파일에 반영되지 않는 문제(camera/README.md 트러블슈팅 참조)의
+대안으로 채택.
 
 영상 시작 시각 소스는 두 단계로 결정한다 (정밀도 높은 순):
     1. mp4 컨테이너 메타데이터의 `creation_time` 태그(ffprobe) — 녹화 버튼을
@@ -78,8 +78,13 @@ def video_duration_sec(video_path: Path) -> float:
     return float(result.stdout.strip())
 
 
-def row_epoch_ms(timestamp_iso: str) -> int:
-    return int(datetime.fromisoformat(timestamp_iso).timestamp() * 1000)
+def row_epoch_ms(timestamp_raw: str) -> int:
+    """fc_serial_ws_server.py의 timestamp는 정수 epoch ms(UTC, time.time()*1000).
+    ISO 문자열 포맷 CSV와도 호환되도록 폴백 유지."""
+    try:
+        return int(timestamp_raw)
+    except ValueError:
+        return int(datetime.fromisoformat(timestamp_raw).timestamp() * 1000)
 
 
 def correlate(video_path: Path, csv_path: Path, out_path: Path) -> int:
