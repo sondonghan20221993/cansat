@@ -8,6 +8,7 @@
 실기기 검증은 camera/verify_camera.sh 담당.
 """
 
+import csv
 import pathlib
 import re
 import subprocess
@@ -142,6 +143,113 @@ class RowEpochMsTest(unittest.TestCase):
     def test_invalid_raises(self):
         with self.assertRaises(ValueError):
             row_epoch_ms("not-a-timestamp")
+
+
+class VideoCreationTimeTest(unittest.TestCase):
+    """ffprobe를 mock으로 대체 — 실물 영상 없이 creation_time 파싱 경로 검증."""
+
+    def setUp(self):
+        import sys
+        sys.path.insert(0, str(CAMERA_DIR))
+        global video_creation_time_epoch_ms
+        from correlate_video_telemetry import video_creation_time_epoch_ms
+
+    def _mock_ffprobe(self, stdout):
+        import subprocess
+        from unittest import mock
+        result = subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
+        return mock.patch("subprocess.run", return_value=result)
+
+    def test_utc_z_suffix(self):
+        from datetime import datetime, timezone
+        expected = int(datetime(2026, 7, 16, 3, 0, 0, tzinfo=timezone.utc).timestamp() * 1000)
+        with self._mock_ffprobe("2026-07-16T03:00:00.000000Z\n"):
+            self.assertEqual(video_creation_time_epoch_ms(pathlib.Path("x.mp4")), expected)
+
+    def test_naive_treated_as_utc(self):
+        from datetime import datetime, timezone
+        expected = int(datetime(2026, 7, 16, 3, 0, 0, tzinfo=timezone.utc).timestamp() * 1000)
+        with self._mock_ffprobe("2026-07-16T03:00:00\n"):
+            self.assertEqual(video_creation_time_epoch_ms(pathlib.Path("x.mp4")), expected)
+
+    def test_explicit_offset_preserved(self):
+        from datetime import datetime, timezone
+        # 12:00 KST(+09:00) == 03:00 UTC — 같은 순간이어야 함
+        expected = int(datetime(2026, 7, 16, 3, 0, 0, tzinfo=timezone.utc).timestamp() * 1000)
+        with self._mock_ffprobe("2026-07-16T12:00:00+09:00\n"):
+            self.assertEqual(video_creation_time_epoch_ms(pathlib.Path("x.mp4")), expected)
+
+    def test_no_tag_returns_none(self):
+        with self._mock_ffprobe(""):
+            self.assertIsNone(video_creation_time_epoch_ms(pathlib.Path("x.mp4")))
+
+    def test_unparseable_returns_none(self):
+        with self._mock_ffprobe("not-a-date\n"):
+            self.assertIsNone(video_creation_time_epoch_ms(pathlib.Path("x.mp4")))
+
+
+class CorrelateBoundaryTest(unittest.TestCase):
+    """correlate() 매칭 경계값/빈 결과 회귀 테스트 — ffprobe·CSV 모두 mock."""
+
+    def setUp(self):
+        import sys
+        sys.path.insert(0, str(CAMERA_DIR))
+        global correlate
+        from correlate_video_telemetry import correlate
+
+    def _run(self, csv_rows, duration_sec=10.0, creation_time="2026-07-16T00:00:00Z"):
+        import tempfile
+        from unittest import mock
+        import subprocess
+
+        def fake_run(cmd, **kwargs):
+            if "format_tags=creation_time" in cmd:
+                out = creation_time or ""
+            else:
+                out = str(duration_sec)
+            return subprocess.CompletedProcess(cmd, 0, stdout=out, stderr="")
+
+        with tempfile.TemporaryDirectory() as d:
+            d = pathlib.Path(d)
+            video = d / "video.mp4"
+            video.touch()
+            csv_path = d / "telemetry.csv"
+            with open(csv_path, "w", newline="") as f:
+                w = csv.DictWriter(f, fieldnames=["timestamp", "val"])
+                w.writeheader()
+                for ts, val in csv_rows:
+                    w.writerow({"timestamp": ts, "val": val})
+            out_path = d / "matched.csv"
+            with mock.patch("subprocess.run", side_effect=fake_run):
+                rc = correlate(video, csv_path, out_path)
+            matched = []
+            if out_path.exists():
+                with open(out_path, newline="") as f:
+                    matched = list(csv.DictReader(f))
+            return rc, matched
+
+    def test_no_overlap_returns_1(self):
+        rc, matched = self._run([("1784200000000", "a")])  # 구간(0~10s) 밖
+        self.assertEqual(rc, 1)
+        self.assertEqual(matched, [])
+
+    def test_exact_boundary_included(self):
+        from datetime import datetime, timezone
+        start_ms = int(datetime(2026, 7, 16, 0, 0, 0, tzinfo=timezone.utc).timestamp() * 1000)
+        end_ms = start_ms + 10000
+        rc, matched = self._run([(str(start_ms), "start"), (str(end_ms), "end"), (str(end_ms + 1), "outside")],
+                                 creation_time="2026-07-16T00:00:00Z")
+        self.assertEqual(rc, 0)
+        self.assertEqual(len(matched), 2)
+        self.assertEqual({m["val"] for m in matched}, {"start", "end"})
+
+    def test_missing_timestamp_row_skipped(self):
+        from datetime import datetime, timezone
+        start_ms = int(datetime(2026, 7, 16, 0, 0, 0, tzinfo=timezone.utc).timestamp() * 1000)
+        rc, matched = self._run([("", "empty"), (str(start_ms), "ok")], creation_time="2026-07-16T00:00:00Z")
+        self.assertEqual(rc, 0)
+        self.assertEqual(len(matched), 1)
+        self.assertEqual(matched[0]["val"], "ok")
 
 
 if __name__ == "__main__":
