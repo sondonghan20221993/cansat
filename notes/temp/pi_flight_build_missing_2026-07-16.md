@@ -37,6 +37,26 @@ make mission-install DESTDIR=/home/sdh2983/cFS_clean/build
 작동 중이라는 증거이나, mismatch 자체가 지속되면 링크 품질/재전송 원인 규명 필요
 (원인 미파악, 후속 확인 대상).
 
+### 재조사 (2026-07-20) — 코드 레벨 원인 배제, RF 실측 필요로 확정
+
+코드 쪽 확인:
+- `bridge/lora_downlink_decoder.py:319` — ACK2는 프레임 디코드 즉시(CSV 기록/flush보다
+  먼저) 회신함. GS 소프트웨어 지연 아님.
+- `lora_tdm_app_utils.c:523,611` — `SeqEcho != LastSentSeq` 비교 로직 자체는
+  `lora_tdm_seq_fail_eid_logic_gap.md`에서 이미 검증 완료(버그 아님).
+- TDM 타이밍: `CYCLE_PERIOD_MS=200`, `RX_WINDOW_MS=100`.
+
+tx=227/rx=223~225는 GS ACK 응답이 2~4 사이클(≈400~800ms) 뒤처져 도착한다는 뜻.
+가장 유력한 물리적 원인: LoRa 모듈의 실제 전파시간(air time)이 `RX_WINDOW_MS=100ms`를
+초과해서, 해당 사이클의 RX 창이 닫힌 뒤 ACK이 도착 → 몇 사이클 뒤에야 픽업됨.
+
+**한계**: 이 저장소에는 LoRa 모듈의 SF/BW/CR(전파시간을 결정하는 RF 파라미터) 설정이
+없음 — 모듈 자체 설정(AT 커맨드/펌웨어)이라 코드 밖. 코드만으로는 원인 확정 불가.
+
+**결론**: 코드 버그 아님, RF 타이밍 문제로 추정 — **실측 필요 항목으로 확정**
+(Pi UART 타임스탬프 vs GS 송신 타임스탬프 대조, 또는 모듈 SF/BW 확인). 코드 작업
+우선순위에서 제외, Pi+LoRa 실물 시험(D 그룹)으로 이관.
+
 ## 관련
 - `/etc/systemd/system/cfs.service` (Pi)
 - `notes/temp/lora_tdm_seq_fail_eid_logic_gap.md`
