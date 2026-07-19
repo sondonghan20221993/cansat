@@ -9,6 +9,9 @@
 #include "system_health_msg.h"
 #include "route_msg.h"
 #include "config_msg.h"
+#include "recovery_cmd_msg.h"
+#include "mode_cmd_msg.h"
+#include "viewpoint_cmd_msg.h"
 
 typedef struct
 {
@@ -49,47 +52,14 @@ typedef ROUTE_UPDATE_TLM_t CFS_CORE_APP_RouteUpdateTlm_t;
 /* CONFIG_CMD_MID 수신용 — uplink_app의 UPLINK_APP_ConfigCmdTlm_t와 동일 레이아웃 */
 typedef CONFIG_CMD_TLM_t CFS_CORE_APP_ConfigCmdTlm_t;
 
-/* RECOVERY_CMD_MID 수신용 — uplink_app의 UPLINK_APP_RecoveryCmdTlm_t와 동일 레이아웃 */
-typedef struct
-{
-    CFE_MSG_TelemetryHeader_t TelemetryHeader;
-    uint32                    Seq;
-    uint32                    TimestampMs;
-    uint16                    SourceSequence;
-    uint8                     RecoveryAction;
-    uint8                     TargetComponent;
-    uint16                    ReasonCode;
-    uint32                    RequestToken;
-} CFS_CORE_APP_RecoveryCmdTlm_t;
+/* RECOVERY_CMD_MID 수신용 — shared_msgs 단일 진실 (2026-07 병합) */
+typedef RECOVERY_CMD_TLM_t CFS_CORE_APP_RecoveryCmdTlm_t;
 
-/* MODE_CMD_MID 수신용 — uplink_app의 UPLINK_APP_ModeCmdTlm_t와 동일 레이아웃 */
-typedef struct
-{
-    CFE_MSG_TelemetryHeader_t TelemetryHeader;
-    uint32                    Seq;
-    uint32                    TimestampMs;
-    uint16                    SourceSequence;
-    uint8                     ModeAction;
-    uint8                     RequestedState;
-    uint32                    RequestToken;
-} CFS_CORE_APP_ModeCmdTlm_t;
+/* MODE_CMD_MID 수신용 — shared_msgs 단일 진실 (2026-07 병합) */
+typedef MODE_CMD_TLM_t CFS_CORE_APP_ModeCmdTlm_t;
 
-/* VIEWPOINT_CMD_MID 수신용 — uplink_app의 UPLINK_APP_ViewpointCmdTlm_t와 동일 레이아웃 */
-typedef struct
-{
-    CFE_MSG_TelemetryHeader_t TelemetryHeader;
-    uint32                    Seq;
-    uint32                    TimestampMs;
-    uint16                    SourceSequence;
-    uint8                     ViewpointType;
-    uint8                     PositionFrame;
-    float                     X;
-    float                     Y;
-    float                     Z;
-    float                     Yaw;
-    float                     Pitch;
-    uint32                    HoldTimeMs;
-} CFS_CORE_APP_ViewpointCmdTlm_t;
+/* VIEWPOINT_CMD_MID 수신용 — shared_msgs 단일 진실 (2026-07 병합) */
+typedef VIEWPOINT_CMD_TLM_t CFS_CORE_APP_ViewpointCmdTlm_t;
 
 /* config payload 내부 헤더 */
 typedef struct

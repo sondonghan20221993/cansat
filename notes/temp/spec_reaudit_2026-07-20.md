@@ -48,7 +48,13 @@ TDM-RT-* 실물 LoRa, B그룹 e2e는 cFS 빌드+--cfs로 실행 가능(미실행
 cross-app 와이어 레이아웃 전수 대조 (shared_msgs 병합 제외분) — **어긋난 레이아웃 0건**.
 상세는 spec_code_audit.md 패스 5 표.
 
-후속 후보 (코드 작업, 미착수):
-- [ ] 라우팅 명령 5종(RECOVERY/MODE/VIEWPOINT/DIAGNOSTIC/UplinkFwd) 중복 정의 →
-      shared_msgs 병합 (BridgeHkMirror 버그와 동일 패턴의 잠재 리스크 제거)
-- [ ] uplink `SysHealthMirror_t`(prefix 미러) → shared_msgs/system_health_msg.h typedef 교체
+후속 조치 완료 (2026-07-20):
+- [x] 라우팅 명령 5종(RECOVERY/MODE/VIEWPOINT/DIAGNOSTIC/UplinkFwd) 중복 정의 →
+      shared_msgs 헤더 5종 신설·병합 완료 (`recovery_cmd_msg.h`/`mode_cmd_msg.h`/
+      `viewpoint_cmd_msg.h`/`diagnostic_cmd_msg.h`/`uplink_fwd_cmd_msg.h`)
+- [x] uplink `SysHealthMirror_t`(prefix 미러) → `system_health_msg.h`(`SYSTEM_HEALTH_TLM_t`)
+      직접 typedef로 교체 완료
+
+검증: cFS UT 16/16 PASS(회귀 없음, baseline과 무관한 OSAL timer 3건 제외),
+pytest 185/186(baseline 동일 1건 무관 실패 제외). 순수 리팩터 — spec 본문 수정 불필요.
+spec_code_audit.md 패스 5 표 전 항목 ✅ 갱신 완료.

@@ -203,17 +203,17 @@ shared_msgs 병합(2026-07-15)에서 **제외된** cross-app 메시지 전수 �
 
 | # | 계약 | 발행측 정의 | 구독측 정의 | 대조 결과 | 판정 |
 |---|---|---|---|---|---|
-| R5-1 | RECOVERY_CMD 0x190C | `UPLINK_APP_RecoveryCmdTlm_t` | `CFS_CORE_APP_RecoveryCmdTlm_t` (중복 정의) | 필드/순서/타입 완전 동일 | ✅ (⚠️ 중복) |
-| R5-2 | MODE_CMD 0x190F | `UPLINK_APP_ModeCmdTlm_t` | `CFS_CORE_APP_ModeCmdTlm_t` (중복 정의) | 완전 동일 | ✅ (⚠️ 중복) |
-| R5-3 | VIEWPOINT_CMD 0x190D | `UPLINK_APP_ViewpointCmdTlm_t` | `CFS_CORE_APP_ViewpointCmdTlm_t` (중복 정의) | 완전 동일 | ✅ (⚠️ 중복) |
-| R5-4 | DIAGNOSTIC_CMD 0x1910 | `UPLINK_APP_DiagnosticCmdTlm_t` | `LORA_TDM_APP_DiagnosticCmdTlm_t` (중복 정의) | 완전 동일 | ✅ (⚠️ 중복) |
-| R5-5 | UPLINK_APP_CMD 0x18D0 (UP forward) | `LORA_TDM_APP_UplinkFwdCmd_t` (Payload[196]) | `UPLINK_APP_ProcessUplinkCmd_t` (Payload[`MAX_PAYLOAD_LENGTH`=196]) | 완전 동일 | ✅ (⚠️ 중복) |
+| R5-1 | RECOVERY_CMD 0x190C | `UPLINK_APP_RecoveryCmdTlm_t` | `CFS_CORE_APP_RecoveryCmdTlm_t` | `shared_msgs/recovery_cmd_msg.h`(`RECOVERY_CMD_TLM_t`) typedef로 병합 완료 | ✅ |
+| R5-2 | MODE_CMD 0x190F | `UPLINK_APP_ModeCmdTlm_t` | `CFS_CORE_APP_ModeCmdTlm_t` | `shared_msgs/mode_cmd_msg.h`(`MODE_CMD_TLM_t`) typedef로 병합 완료 | ✅ |
+| R5-3 | VIEWPOINT_CMD 0x190D | `UPLINK_APP_ViewpointCmdTlm_t` | `CFS_CORE_APP_ViewpointCmdTlm_t` | `shared_msgs/viewpoint_cmd_msg.h`(`VIEWPOINT_CMD_TLM_t`) typedef로 병합 완료 | ✅ |
+| R5-4 | DIAGNOSTIC_CMD 0x1910 | `UPLINK_APP_DiagnosticCmdTlm_t` | `LORA_TDM_APP_DiagnosticCmdTlm_t` | `shared_msgs/diagnostic_cmd_msg.h`(`DIAGNOSTIC_CMD_TLM_t`) typedef로 병합 완료 | ✅ |
+| R5-5 | UPLINK_APP_CMD 0x18D0 (UP forward) | `LORA_TDM_APP_UplinkFwdCmd_t` | `UPLINK_APP_ProcessUplinkCmd_t` | `shared_msgs/uplink_fwd_cmd_msg.h`(`UPLINK_FWD_CMD_TLM_t`) typedef로 병합 완료 | ✅ |
 | R5-6 | UPLINK_STATUS 0x190A | `UPLINK_APP_StatusTlm_t` | lora_tdm이 `uplink_app_msg.h` **직접 include** (dispatch.c:7) | 단일 정의 — 미러 없음 | ✅ |
-| R5-7 | SYSTEM_HEALTH 0x1904 → uplink | `SYSTEM_HEALTH_TLM_t` (shared_msgs) | `UPLINK_APP_SysHealthMirror_t` — **prefix 미러**(선두 8필드만) | prefix 정합 확인 (uplink은 선두 필드만 읽음) | ✅ (⚠️ prefix 미러) |
+| R5-7 | SYSTEM_HEALTH 0x1904 → uplink | `SYSTEM_HEALTH_TLM_t` (shared_msgs) | `UPLINK_APP_SysHealthMirror_t` | prefix 재정의 제거, `SYSTEM_HEALTH_TLM_t` 직접 typedef로 교체 완료 | ✅ |
 | R5-8 | SCH_LAB SEND_HK 스케줄 | `mission_defs/tables/cpu1_sch_lab_table.c:44-47` | 각 앱 SEND_HK MID | 0x18A1/0x18C1/0x18D1/0x18E1 — 4앱 전부 일치 | ✅ |
 | R5-9 | CONFIG scope 분담 | GS→0x190E 공용 발행 | mavlink SCOPE=2 / cfs_core=1 / lora_tdm=3 | 중복 없음, 앱별 자기 scope만 처리 | ✅ |
 
-> 종합: **현재 어긋난 레이아웃 0건.** 단 ⚠️ 5건(R5-1~5-5)은 BridgeHkMirror 버그(NonFiniteValueCount 누락으로 health FAILED 고착)를 낳았던 것과 같은 "중복 정의" 패턴이고, R5-7은 "prefix 미러" 패턴 — 발행측에 필드가 **중간 삽입**되는 순간 깨진다. 후속 후보: 라우팅 명령 5종을 `shared_msgs/routing_cmd_msg.h`(가칭)로 병합 + uplink SysHealthMirror를 shared 헤더 typedef로 교체 (코드 작업, 별도 승인).
+> 종합 (2026-07-20 후속 조치 완료): 발견 당시 "현재 어긋난 레이아웃 0건이나 중복/prefix 미러 6건이 BridgeHkMirror 사고와 같은 잠재 리스크"였던 것을 코드 작업으로 전부 해소. `shared_msgs/`에 헤더 5종(`recovery_cmd_msg.h`/`mode_cmd_msg.h`/`viewpoint_cmd_msg.h`/`diagnostic_cmd_msg.h`/`uplink_fwd_cmd_msg.h`) 신설, 관련 4개 앱(`uplink_app`/`cfs_core_app`/`lora_tdm_app`)의 로컬 중복 정의를 typedef로 교체. uplink의 `SysHealthMirror_t` prefix 재정의도 `SYSTEM_HEALTH_TLM_t` 직접 typedef로 교체. 순수 리팩터(레이아웃 불변) — cFS UT 16/16 PASS 회귀 없음 확인, spec 본문 수정 불필요(동작 변경 없음).
 
 
 | 값 | 심볼 | 소유 앱 | 배포 |

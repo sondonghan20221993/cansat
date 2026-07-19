@@ -6,6 +6,8 @@
 #include "lora_tdm_app_msgdefs.h"
 #include "fc_state_msg.h"
 #include "config_msg.h"
+#include "uplink_fwd_cmd_msg.h"
+#include "diagnostic_cmd_msg.h"
 
 typedef struct
 {
@@ -77,30 +79,11 @@ typedef FC_EKF_LOCAL_TLM_t  LORA_TDM_APP_EkfLocalTlm_t;
 typedef FC_GPS_RAW_TLM_t    LORA_TDM_APP_GpsRawTlm_t;
 typedef FC_EKF_STATUS_TLM_t LORA_TDM_APP_EkfStatusTlm_t;
 
-/* Forwarded to UPLINK_APP_CMD_MID (0x18D0); layout matches UPLINK_APP_ProcessUplinkCmd_t */
-typedef struct
-{
-    CFE_MSG_CommandHeader_t CommandHeader;
-    uint8                   Version;
-    uint8                   CommandClass;
-    uint8                   PayloadLength;
-    uint8                   Flags;
-    uint16                  Sequence;
-    uint16                  Checksum; /* CRC-16/CCITT-FALSE over Version+CommandClass+PayloadLength+Flags+Sequence(LE)+Payload */
-    uint8                   Payload[196]; /* LORA_TDM_APP_MAX_PAYLOAD_LENGTH */
-} LORA_TDM_APP_UplinkFwdCmd_t;
+/* Forwarded to UPLINK_APP_CMD_MID (0x18D0); shared_msgs 단일 진실 (2026-07 병합) */
+typedef UPLINK_FWD_CMD_TLM_t LORA_TDM_APP_UplinkFwdCmd_t;
 
-/* DIAGNOSTIC_CMD_MID (0x1910) received from uplink_app */
-typedef struct
-{
-    CFE_MSG_TelemetryHeader_t TelemetryHeader;
-    uint32                    Seq;
-    uint32                    TimestampMs;
-    uint16                    SourceSequence;
-    uint8                     DiagAction;
-    uint8                     DiagTarget;
-    uint32                    RequestToken;
-} LORA_TDM_APP_DiagnosticCmdTlm_t;
+/* DIAGNOSTIC_CMD_MID (0x1910) received from uplink_app; shared_msgs 단일 진실 (2026-07 병합) */
+typedef DIAGNOSTIC_CMD_TLM_t LORA_TDM_APP_DiagnosticCmdTlm_t;
 
 /* CONFIG_CMD_MID(0x190E) 수신용 — uplink_app UPLINK_APP_ConfigCmdTlm_t와 동일 레이아웃
  * (cfs_core_app_msgstruct.h CFS_CORE_APP_ConfigCmdTlm_t와도 동일 — 여러 앱이 같은

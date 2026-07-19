@@ -9,6 +9,12 @@
 #include "route_msg.h"
 #include "config_msg.h"
 #include "bridge_hk_msg.h"
+#include "system_health_msg.h"
+#include "uplink_fwd_cmd_msg.h"
+#include "diagnostic_cmd_msg.h"
+#include "recovery_cmd_msg.h"
+#include "mode_cmd_msg.h"
+#include "viewpoint_cmd_msg.h"
 
 typedef struct
 {
@@ -20,17 +26,7 @@ typedef struct
     CFE_MSG_CommandHeader_t CommandHeader;
 } UPLINK_APP_ResetCountersCmd_t;
 
-typedef struct
-{
-    CFE_MSG_CommandHeader_t CommandHeader;
-    uint8                   Version;
-    uint8                   CommandClass;
-    uint8                   PayloadLength;
-    uint8                   Flags;
-    uint16                  Sequence;
-    uint16                  Checksum;
-    uint8                   Payload[UPLINK_APP_MAX_PAYLOAD_LENGTH];
-} UPLINK_APP_ProcessUplinkCmd_t;
+typedef UPLINK_FWD_CMD_TLM_t UPLINK_APP_ProcessUplinkCmd_t;
 
 typedef ROUTE_WAYPOINT_t UPLINK_APP_Waypoint_t;
 
@@ -45,17 +41,7 @@ typedef struct
 
 typedef ROUTE_UPDATE_TLM_t UPLINK_APP_RouteUpdateTlm_t;
 
-typedef struct
-{
-    CFE_MSG_TelemetryHeader_t TelemetryHeader;
-    uint32                    Seq;
-    uint32                    TimestampMs;
-    uint16                    SourceSequence;
-    uint8                     RecoveryAction;
-    uint8                     TargetComponent;
-    uint16                    ReasonCode;
-    uint32                    RequestToken;
-} UPLINK_APP_RecoveryCmdTlm_t;
+typedef RECOVERY_CMD_TLM_t UPLINK_APP_RecoveryCmdTlm_t;
 
 typedef struct
 {
@@ -71,21 +57,7 @@ typedef struct
     uint32 HoldTimeMs;
 } UPLINK_APP_ViewpointPayload_t;
 
-typedef struct
-{
-    CFE_MSG_TelemetryHeader_t TelemetryHeader;
-    uint32                    Seq;
-    uint32                    TimestampMs;
-    uint16                    SourceSequence;
-    uint8                     ViewpointType;
-    uint8                     PositionFrame;
-    float                     X;
-    float                     Y;
-    float                     Z;
-    float                     Yaw;
-    float                     Pitch;
-    uint32                    HoldTimeMs;
-} UPLINK_APP_ViewpointCmdTlm_t;
+typedef VIEWPOINT_CMD_TLM_t UPLINK_APP_ViewpointCmdTlm_t;
 
 typedef CONFIG_CMD_TLM_t UPLINK_APP_ConfigCmdTlm_t;
 
@@ -100,39 +72,11 @@ typedef struct
     uint16 Checksum; /* additive sum: scope+version+param_id(2B)+value_type+value_length+value_bytes */
 } UPLINK_APP_ConfigPayloadHdr_t;
 
-typedef struct
-{
-    CFE_MSG_TelemetryHeader_t TelemetryHeader;
-    uint32                    Seq;
-    uint32                    TimestampMs;
-    uint16                    SourceSequence;
-    uint8                     ModeAction;
-    uint8                     RequestedState;
-    uint32                    RequestToken;
-} UPLINK_APP_ModeCmdTlm_t;
+typedef MODE_CMD_TLM_t UPLINK_APP_ModeCmdTlm_t;
 
-typedef struct
-{
-    CFE_MSG_TelemetryHeader_t TelemetryHeader;
-    uint32                    Seq;
-    uint32                    TimestampMs;
-    uint16                    SourceSequence;
-    uint8                     DiagAction;
-    uint8                     DiagTarget;
-    uint32                    RequestToken;
-} UPLINK_APP_DiagnosticCmdTlm_t;
+typedef DIAGNOSTIC_CMD_TLM_t UPLINK_APP_DiagnosticCmdTlm_t;
 
-typedef struct
-{
-    CFE_MSG_TelemetryHeader_t TelemetryHeader;
-    uint32                    Seq;
-    uint32                    TimestampMs;
-    uint32                    LastValidInputTimestampMs;
-    uint8                     HealthState;
-    uint8                     FaultCode;
-    uint8                     RecoveryRequested;
-    uint8                     Reserved;
-} UPLINK_APP_SysHealthMirror_t;
+typedef SYSTEM_HEALTH_TLM_t UPLINK_APP_SysHealthMirror_t;
 
 typedef BRIDGE_HK_TLM_t UPLINK_APP_BridgeHkMirror_t;
 
