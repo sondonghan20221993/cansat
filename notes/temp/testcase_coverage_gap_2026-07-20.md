@@ -22,13 +22,10 @@ TEST_CASES.md 기준, 코드 공개 함수 전수 ↔ 테스트 함수 전수 �
       `Test_RequestTelemetryStreams_SendsSixStreamRequests` (TargetSystemId!=0 → COMMAND_LONG
       45B 프레임 6개 순서대로 전송 확인, 17 assertion), `Test_RequestTelemetryStreams_SkippedWhenNoTarget`
       (TargetSystemId==0 → 전송 없음, 3 assertion). 156/156 PASS, 4앱 UT 16/16 회귀 없음.
-- [ ] A-4. cfs_core_app 재시작 로직 변형 비대칭
-      Bridge 재시작: First/GetAppIdFail/MaxReached/ResetOnRecovery 4변형.
-      Uplink 재시작: First/MaxReached/ResetOnRecovery 3변형 (GetAppIdFail 없음).
-      Lora 재시작: First/MaxReached **2변형뿐** (GetAppIdFail, ResetOnRecovery 없음) — 셋 중 커버리지 최소.
-      RECOVERY_CMD 4-action(RESET_COUNTER/RESTART_BRIDGE/PARSER_RESET/SERIAL_RECONNECT) 자체는
-      `Test_CFS_CORE_APP_ProcessRecoveryCommand_*` 4종으로 커버됨 — 이 갭은 그 하위의
-      "재시작 시도 카운터 상태 전이" 세부 경로 한정.
+- [x] A-4. cfs_core_app 재시작 로직 변형 비대칭 (2026-07-20 완료)
+      Lora 재시작에 `Test_CFS_CORE_APP_LoraRestart_GetAppIdFail`,
+      `Test_CFS_CORE_APP_LoraRestart_ResetOnRecovery` 추가 — Bridge/Uplink와 동일 4변형 확보.
+      249/249 PASS(해당 바이너리), 4앱 UT 16/16 회귀 없음.
 
 ## B. 경미 (선택)
 
