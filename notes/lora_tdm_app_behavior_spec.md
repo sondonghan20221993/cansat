@@ -46,7 +46,7 @@
 - Config: `lora_tdm_app/config/default_lora_tdm_app_mission_cfg.h` — 타이밍 상수, 링크 임계값
 - Config: `lora_tdm_app/config/default_lora_tdm_app_topicid_values.h` — MID 값
 - Config: `lora_tdm_app/config/default_lora_tdm_app_msgstruct.h` — 메시지 구조체
-- 차기 프로토콜: `notes/lora_protocol_v2_spec.md` — 바이너리 프레임(DL2/UP2/ACK2) 및 TDM 200ms 설계 (미구현 초안). 본 문서 §8의 텍스트 프레임과 §7의 1000ms 주기는 v2 이행 시 대체 예정.
+- 프로토콜 v2: `notes/lora_protocol_v2_spec.md` — 바이너리 프레임(DL2/UP2/ACK2). **구현·배포됨** (2026-07, `BuildDl2Frame`/`ParseUp2Frame`/`ParseAck2Frame`). CONFIG `PARAM_DOWNLINK_PROTOCOL`(0=v1 텍스트, 1=v2 바이너리)로 런타임 전환. TDM 주기도 Stage 3 값(200ms, §7)으로 전환 완료.
 
 ## 5. 인터페이스
 
@@ -55,7 +55,7 @@
 `lora_tdm_app`은 초기화 중 다음 MID를 구독한다. 모든 구독은 단일 파이프 `LORA_TDM_PIPE` (깊이 50, `lora_tdm_app.c:268`)로 수신한다.
 
 기본 원칙: 이 앱의 구독은 기존 앱들과 동일하게 **`CFE_SB_Subscribe()`(기본 limit=4)를 기준**으로 한다.
-정말 저빈도인 MID(명령·HK 요청)는 이 기본값을 그대로 따른다. 다만 아래 표의 5개 MID는
+정말 저빈도인 MID(명령·HK 요청)는 이 기본값을 그대로 따른다. 다만 아래 표의 6개 MID는
 **문서화된 예외**로 `CFE_SB_SubscribeEx()` + 커스텀 `MsgLim`을 쓴다 — 이유는 표 아래 노트 참고.
 
 | 심볼 | 값 | 목적 | 구독 함수 |
@@ -68,13 +68,15 @@
 | `LORA_TDM_APP_FC_ATTITUDE_STATE_MID_VALUE` | `0x1906` | FC attitude 캐시 갱신 | `CFE_SB_SubscribeEx()`, MsgLim=10 **(예외)** |
 | `LORA_TDM_APP_FC_GPS_RAW_STATE_MID_VALUE` | `0x1907` | FC GPS 캐시 갱신 | `CFE_SB_SubscribeEx()`, MsgLim=10 **(예외)** |
 | `LORA_TDM_APP_FC_EKF_STATUS_MID_VALUE` | `0x1908` | FC EKF status 캐시 갱신 | `CFE_SB_SubscribeEx()`, MsgLim=10 **(예외)** |
+| `LORA_TDM_APP_FC_SYS_TIME_MID_VALUE` | `0x1909` | FC GPS SysTime 캐시 갱신 — DL2 SysTime 확장 블록용 (2026-07 추가) | `CFE_SB_SubscribeEx()`, MsgLim=10 **(예외)** |
+| `LORA_TDM_APP_UPLINK_STATUS_MID_VALUE` | `0x190A` | uplink_app 명령 처리 결과 — `UFB_SEQ_FAIL` 피드백 판정 (2026-07 추가) | `CFE_SB_Subscribe()` (기본) |
 
 > **수정 완료 (2026-06-16, 실 Pi 런타임 2차 검증에서 발견 후 코드 수정)**: 위 MID들이 원래
 > 다른 MID와 동일하게 `CFE_SB_Subscribe()`(기본 함수)를 썼는데, 이 경우 cFE 기본값
 > `CFE_PLATFORM_SB_DEFAULT_MSG_LIMIT = 4`가 적용된다 — **MsgId별로 미처리 메시지 4개까지만
 > 허용**하며, 이는 파이프 깊이(50)와는 별개의 제한이다(파이프 깊이를 늘려도 해결되지 않음).
 >
-> `lora_tdm_app`의 cycle 주기는 약 1.3초(`OS_TaskDelay(1000ms)` + 최대 `RX_WINDOW_MS(300)`)인데, FC가
+> (당시 Stage 1 타이밍 기준 서술) `lora_tdm_app`의 cycle 주기는 약 1.3초(`OS_TaskDelay(1000ms)` + 최대 `RX_WINDOW_MS(300)`)인데, FC가
 > `FC_ATTITUDE_STATE_MID`/`FC_EKF_LOCAL_STATE_MID`를 5 Hz(200ms)로 보내면 한 cycle 사이에 6~7개가 쌓여
 > limit 4를 넘었다. 1차 수정(이 4개 MID만 SubscribeEx 적용) 후 재검증한 로그에서 그 4개는 해결됐지만,
 > **`SYSTEM_HEALTH_MID`에서 동일 에러가 16회 연속(부팅 직후 5ms 안에 몰림) 추가로 확인됐다.** 원인을
@@ -143,7 +145,7 @@
 `LORA_TDM_APP_Main()`은 `OS_TaskDelay(CYCLE_PERIOD_MS)` 후 `RunCycle()`을 반복한다.
 
 ```
-CYCLE_PERIOD_MS = 1000 ms
+CYCLE_PERIOD_MS = 200 ms   (Stage 3, 5 Hz — 2026-07 전환. Stage 1은 1000 ms)
 ```
 
 각 주기(`RunCycle`) 실행 순서:
@@ -154,7 +156,7 @@ CYCLE_PERIOD_MS = 1000 ms
    - CMD MID → dispatch (NOOP, RESET_COUNTERS)
 2. **serial open**: `LoRaFd < 0`이면 `OpenSerial()` 시도.
 3. **TX** (`RunTx`): FC 또는 SH downlink 패킷 1건 전송.
-4. **RX 창** (`RunRxWindow`): 300 ms 동안 serial 읽기.
+4. **RX 창** (`RunRxWindow`): `RX_WINDOW_MS(100)` 동안 serial 읽기.
 5. **링크 상태 갱신** (`UpdateLinkState`): 현재 시각 기준으로 상태 재계산.
 
 ## 8. TX 동작
@@ -183,7 +185,7 @@ CYCLE_PERIOD_MS = 1000 ms
 
 ## 9. RX 창 동작
 
-`RunRxWindow()`는 `GetTimeMs() + RX_WINDOW_MS(300)`을 deadline으로 설정하고 반복한다.
+`RunRxWindow()`는 `GetTimeMs() + RX_WINDOW_MS(100)`을 deadline으로 설정하고 반복한다.
 
 - deadline 초과 또는 `read()` ≤ 0 시 즉시 종료.
 - 1바이트씩 읽어 줄 버퍼 누적 (최대 `LORA_TDM_APP_LINE_BUF_LEN - 1`).
@@ -272,7 +274,7 @@ elapsed = NowMs - LastAckTimestampMs
 
 if elapsed > LINK_TIMEOUT_MS (5000):
     LinkState = DISCONNECTED (0)
-elif NoAckCount >= LINK_LOSS_THRESHOLD (3):
+elif NoAckCount >= LINK_LOSS_THRESHOLD (15):
     LinkState = DEGRADED (2)
 else:
     LinkState = CONNECTED (1)
@@ -329,7 +331,7 @@ else:
 | 9 | `SERIAL_READ_ERR_EID` | ERROR | RX read 실패 | ✅ |
 | 10 | `ACK_PARSE_ERR_EID` | ERROR | "ACK," 프레임 파싱 실패 | ✅ |
 | 11 | `CRC_FAIL_EID` | ERROR | UP frame CRC 불일치 | ✅ |
-| 12 | `SEQ_FAIL_EID` | ERROR | ACK sequence echo 불일치 | ⚪ **미구현** — EID 정의됨, `SeqEcho` 파싱 후 `(void)SeqEcho`로 무시 (`lora_tdm_app_utils.c:295`). `DownlinkSeq`와 비교하는 로직 없음 |
+| 12 | `SEQ_FAIL_EID` | ERROR | ACK sequence echo 불일치 (`SeqEcho != LastSentSeq`, ACK/ACK2 공통 — `lora_tdm_app_utils.c:520-526`) | ✅ 구현 (2026-07, 타이밍 버그 수정 commit `48c8d12`) |
 | 13 | `LINK_LOST_EID` | ERROR | LinkState → DISCONNECTED 전이 | ✅ |
 | 14 | `LINK_DEGRADED_EID` | WARNING | LinkState → DEGRADED 전이 | ✅ |
 | 15 | `LINK_RESTORED_EID` | INFO | LinkState → CONNECTED 복구 | ✅ |
@@ -350,20 +352,20 @@ else:
 
 | 상수 | 값 | 의미 |
 | --- | --- | --- |
-| `LORA_TDM_APP_CYCLE_PERIOD_MS` | `1000` | TDM 주기 (ms) |
-| `LORA_TDM_APP_RX_WINDOW_MS` | `300` | RX 창 길이 (ms) |
-| `LORA_TDM_APP_LINK_LOSS_THRESHOLD` | `3` | DEGRADED 전이 NoAckCount 임계값 |
+| `LORA_TDM_APP_CYCLE_PERIOD_MS` | `200` | TDM 주기 (ms) — Stage 3 (구 1000) |
+| `LORA_TDM_APP_RX_WINDOW_MS` | `100` | RX 창 길이 (ms) — Stage 3 (구 300) |
+| `LORA_TDM_APP_LINK_LOSS_THRESHOLD` | `15` | DEGRADED 전이 NoAckCount 임계값 — Stage 3 (구 3) |
 | `LORA_TDM_APP_LINK_TIMEOUT_MS` | `5000` | DISCONNECTED 전이 elapsed 임계값 (ms) |
 | `LORA_TDM_APP_UPLINK_FB_OK` | `0` | UplinkFeedback 정상 |
 | `LORA_TDM_APP_UPLINK_FB_CRC_FAIL` | `1` | UplinkFeedback CRC 실패 |
-| `LORA_TDM_APP_UPLINK_FB_SEQ_FAIL` | `2` | UplinkFeedback 시퀀스 실패 (미구현) |
+| `LORA_TDM_APP_UPLINK_FB_SEQ_FAIL` | `2` | UplinkFeedback 시퀀스 실패 — 구현됨 (`UPLINK_STATUS_MID` 구독, `LastCommandResult==3(REJECT_SEQUENCE)` 시 설정, `lora_tdm_app_dispatch.c:105-108`) |
 | `LORA_TDM_APP_LINK_DISCONNECTED` | `0` | 링크 상태: 단절 |
 | `LORA_TDM_APP_LINK_CONNECTED` | `1` | 링크 상태: 정상 |
 | `LORA_TDM_APP_LINK_DEGRADED` | `2` | 링크 상태: 저하 |
 
 ## 17. 미구현 항목 <!-- 구 §15 -->
 
-- `SEQ_FAIL` 경로: `UPLINK_FB_SEQ_FAIL` 상수가 정의되어 있으나, sequence 단조 증가 검증 및 피드백 전송 로직이 구현되지 않았다.
+- ~~`SEQ_FAIL` 경로~~: 구현 완료 (2026-07) — ACK SeqEcho 검증(`SEQ_FAIL_EID`)과 `UFB_SEQ_FAIL` 피드백(`UPLINK_STATUS_MID` 경유) 모두 동작. §13 EID 표, §12 UFB 참조.
 - `PacketType` 전환 명령: 현재 외부 명령으로 `PacketType`을 전환하는 command code가 없다.
 
 > 수정 완료(2026-06-16): `ReportLinkStatus()`가 `dispatch.c`의 SEND_HK 처리에서 호출되지 않던 dead code 문제를 발견 — `LORA_TDM_APP_ProcessCommandPacket()`의 SEND_HK 분기에 `LORA_TDM_APP_ReportLinkStatus()` 호출을 추가해 해소함.

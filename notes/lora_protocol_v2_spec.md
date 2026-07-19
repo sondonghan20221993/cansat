@@ -1,6 +1,6 @@
 # LoRa 링크 프로토콜 v2 명세 (바이너리) — 초안
 
-작성: 2026-07-13. 상태: **설계 확정 전 초안 — 코드 미구현.**
+작성: 2026-07-13. 상태: **구현·배포됨 (2026-07)** — `lora_tdm_app`에 DL2(`BuildDl2Frame`, SysTime 확장 블록 포함)/UP2(`ParseUp2Frame`)/ACK2(`ParseAck2Frame`) 구현, CONFIG `PARAM_DOWNLINK_PROTOCOL`(0=v1/1=v2)로 런타임 전환. Stage 3 타이밍(CYCLE 200ms) 적용 완료. (구 상태: 설계 확정 전 초안)
 
 ## 1. 목적
 

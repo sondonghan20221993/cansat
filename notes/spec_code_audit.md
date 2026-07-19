@@ -109,7 +109,112 @@
 
 ---
 
-## 부록 A. 마스터 MID 인벤토리 (코드 기준, 2026-06-16)
+## 재감사 (2026-07-20) — 패스 1: `mavlink_bridge_app`
+
+2026-07-14 이후 변경분(shared_msgs 병합, DL2 SysTime, NaN/Inf 검증, CONFIG checksum 등) 중심 재점검. 모드: 보고 우선.
+
+**코드 권위 요약 (변경분)**
+- MID: 기존 + `FC_SYS_TIME_MID 0x1909` (interface_cfg_values.h:11). 구독 4종(CMD/SEND_HK/ROUTE_UPDATE/CONFIG_CMD) 변동 없음 (`mavlink_bridge_app.c:132-150`)
+- EID: **13 `NONFINITE_VALUE_ERR_EID` 신설** (`eventids.h:16`), HK에 `NonFiniteValueCount` 필드 추가 (`utils.c:291-292,1931`)
+- internal_cfg 신규/현행: `RECONNECT 1000`/`STALE_TIMEOUT 1000`/`HEARTBEAT_INTERVAL 1000`/`STREAM_REQUEST_RETRY 2000`/`TARGET_DISCOVERY_TIMEOUT 10000`/`STREAM_REACQUIRE_TIMEOUT 5000`/`SYS_TIME_INTERVAL_US 1000000`/`CONFIG_VERSION 1`/`CONFIG_SCOPE 2`/`PARAM_INTERVAL 10000~10000000us`/`PARAM_MS 100~60000`
+- platform_cfg: `SERIAL_BAUDRATE 57600`, `PIPE_DEPTH 32`
+- FC 상태 구조체 4종: `shared_msgs/fc_state_msg.h`의 `FC_*_TLM_t`를 msgstruct.h에서 typedef (Task #4 병합). `SysTimeTlm_t`는 msgstruct.h:44에 직접 정의
+
+| # | 카테고리 | spec 위치 | 코드 위치 | spec | 코드 | 판정 | 권고 |
+|---|---|---|---|---|---|---|---|
+| R1-1 | 이벤트 | (EID 표/§ 어디에도 없음) | eventids.h:16, utils.c:291 | NONFINITE/NaN 검증 언급 0건 | `NONFINITE_VALUE_ERR_EID 13` + `NonFiniteValueCount` HK 필드 실사용 | ❌ | spec에 NaN/Inf 게이트 동작·EID 13·HK 필드 추가 |
+| R1-2 | 설정·한도 | §16.5 표 | platform_cfg.h:8 | "UART **115200**, 1 Hz 폴링" | `SERIAL_BAUDRATE **57600**` (§13.4 예시·코드 일치) | ❌ | §16.5 표 115200→57600 정정 |
+| R1-3 | 페이로드 구조체 | §16(507,515행) | msgstruct.h:8,29 / shared_msgs/fc_state_msg.h | "msgstruct.h의 `EkfLocalTlm_t`…" 서술 | 실정의는 `shared_msgs/fc_state_msg.h`(typedef 경유라 호환) | ⚠️ | shared_msgs 병합 사실 한 줄 언급 권장 (기능적 불일치 아님) |
+| R1-4 | 설정·한도 | (미기재) | internal_cfg_values.h:4-9,19-26 | 재연결/stale/하트비트/디스커버리/재획득 타이밍, CONFIG version/scope/param 한도 미문서화 | 좌기 상수 11종 실사용 | ⚠️ | spec에 타이밍·CONFIG 한도 표 추가 (값 자체 불일치는 없음) |
+| R1-5 | 교차 참조 | spec 540행 | mission spec §5.1.1 | "`FC_SYS_TIME_MID` 행 추가 필요 (미반영)" | mission spec §5.1.1 표에 여전히 0x1909 행 없음 (부록 인벤토리에만 있음) | 🕒 | 패스 4에서 처리: §5.1.1에 0x1909 행 추가 후 본 spec 540행 문구 해소 |
+| R1-6 | 파서 결함 | §17 | utils.c:1631-1646 | "STX 이스케이프 결함, 코드 미적용" | 코드 확인: 여전히 무조건 STX 선점 — spec 기술과 일치 | ✅ | — (P1 미적용 상태 정확히 문서화됨) |
+| R1-7 | MID/CC/구독 | §4.1,§10 | config/*, app.c | MID·CC·구독 목록 | 동일 | ✅ | — |
+
+> 종합: 핵심 계약(MID/CC/구독/타이밍 상수값)은 정합 유지. 실 불일치는 ❌R1-1(EID 13 미문서화), ❌R1-2(baud 115200 오기) 2건. R1-5는 패스 4 이관.
+
+## 재감사 (2026-07-20) — 패스 2: `cfs_core_app`
+
+**코드 권위 요약 (변경분)**
+- EID: **13 `RECOVERY_CMD`/14 `MODE_CMD`/15 `UPLINK_RESTART`/16 `LORA_RESTART` 신설** (eventids.h:16-19)
+- 구독 13종: CMD/SEND_HK/BRIDGE_HK/**UPLINK_HK(0x08D0)/LORA_HK(0x08E0)**/FC_* 4종/ROUTE_UPDATE/CONFIG/VIEWPOINT/**RECOVERY/MODE** (`cfs_core_app.c:95-173`)
+- internal_cfg 신규: `UPLINK/LORA_TIMEOUT 5000`, `UPLINK/LORA_RESTART_INTERVAL 5000`/`MAX_RESTARTS 3`, `CONFIG_VERSION 1`/`SCOPE 1`/`PARAM 100~60000ms`
+- **uplink_app·lora_tdm_app 자동 재시작 구현됨** (`cfs_core_app_utils.c:353-404`, bridge와 동일 패턴, EID 15/16)
+- RECOVERY 명령: `RecoveryAction` 4종(RESET_COUNTER/RESTART_BRIDGE/PARSER_RESET/SERIAL_RECONNECT) switch 분기 + unknown 거부 (utils.c:740-784)
+- MODE 명령: `ModeAction` ENTER/EXIT + NORMAL↔RECOVERY 전이 허용 검증, 불허 시 REJECTED ERROR 이벤트 (utils.c:786-829)
+- 미러 구조체: `shared_msgs/`(bridge_hk/system_health/route/config/fc_state) 단일 진실, 앱측은 typedef. `BRIDGE_HK_TLM_t`에 `NonFiniteValueCount` 포함
+
+| # | 카테고리 | spec 위치 | 코드 위치 | spec | 코드 | 판정 | 권고 |
+|---|---|---|---|---|---|---|---|
+| R2-1 | 복구/재시작 | §1(61행), §14.x(507,525행) | utils.c:353-404, internal_cfg:19-26 | uplink/lora 타임아웃 "**자동 재시작 없음 (보고 전용)**" | 둘 다 자동 재시작 구현(5s 간격, 최대 3회, EID 15/16) | ❌ | §1/§14.x를 bridge와 동일 패턴 재시작으로 정정, EID 15/16 문서화 |
+| R2-2 | 명령 처리 | §17(626-627행) | utils.c:740-829 | RECOVERY "action/target 구분 검증 **미구현**", MODE "전이 검증 **미구현**" | RecoveryAction 4종 분기+거부, MODE NORMAL↔RECOVERY 전이 검증+REJECTED 구현됨 | ❌ | §17 두 항목을 구현 상태로 정정 (RESET_COUNTER 외 action은 로그 전용임도 명시) |
+| R2-3 | 페이로드 구조체 | §7.2(145행) | shared_msgs/bridge_hk_msg.h, utils.h:10 | BridgeHkMirror 소비 필드 3개 표, shared_msgs 미언급 | 실정의는 `BRIDGE_HK_TLM_t`(shared_msgs, `NonFiniteValueCount` 등 16필드), typedef 경유 | ⚠️ | §7.2에 shared_msgs 단일 진실 + NonFiniteValueCount 언급 추가 |
+| R2-4 | MID/구독 | §4(96-107행) | msgid_values.h, app.c | 구독 13종·UPLINK/LORA_HK·RECOVERY/MODE 전부 표에 존재 | 동일 | ✅ | — |
+| R2-5 | 설정·한도/FAULT | §12.x,§21.5(806-807행) | internal_cfg, utils.c | 타임아웃 일습, FAULT_UPLINK(6)/LORA(7) | 동일 | ✅ | — |
+
+> 종합: MID/구독/타임아웃/FAULT 코드는 정합. 실 불일치 ❌2건 — R2-1(uplink/lora 자동 재시작을 spec이 "없음"으로 부정), R2-2(RECOVERY/MODE 검증 로직 "미구현" 스테일). 둘 다 코드가 spec보다 앞선 패턴의 재발.
+
+## 재감사 (2026-07-20) — 패스 3: `lora_tdm_app`
+
+**코드 권위 요약 (변경분)**
+- **Stage 3 타이밍**: `CYCLE_PERIOD_MS 200`(5Hz)/`RX_WINDOW_MS 100`/`LINK_LOSS_THRESHOLD 15` (mission_cfg.h:7-9, commit `454f8b4`)
+- 구독 10종: CMD/SEND_HK + SubscribeEx(SYSTEM_HEALTH MsgLim20, FC_* 4종 MsgLim10, **FC_SYS_TIME 0x1909**) + DIAGNOSTIC(0x1910) + **UPLINK_STATUS(0x190A)** (`lora_tdm_app.c:411-479`), 파이프 깊이 50 유지
+- **프로토콜 v2 구현됨**: `BuildDl2Frame`(SysTime 확장 블록 포함)/`ParseAck2Frame`/`ParseUp2Frame`+`ForwardUp2ToUplinkApp` (utils.c:108-300,552+), CONFIG `PARAM_DOWNLINK_PROTOCOL`(0=v1/1=v2) 런타임 전환
+- **SEQ_FAIL 구현됨**: ACK `SeqEcho != LastSentSeq` 비교 → `SEQ_FAIL_EID 12` 발생 (utils.c:520-526, 타이밍 버그 수정 commit `48c8d12`)
+- **UFB_SEQ_FAIL 구현됨**: `UPLINK_STATUS_MID` 구독, `LastCommandResult==3(REJECT_SEQUENCE)`이면 `PendingUplinkFeedback=UFB_SEQ_FAIL` (dispatch.c:105-108)
+
+| # | 카테고리 | spec 위치 | 코드 위치 | spec | 코드 | 판정 | 권고 |
+|---|---|---|---|---|---|---|---|
+| R3-1 | TDM 상수 | §1(49행),§4노트(77행),§7(143-146,186행),§14(275행),설정표(353-355행) | mission_cfg.h:7-9 | CYCLE **1000**/RX **300**/THRESHOLD **3**, "200ms 설계는 미구현 초안" | CYCLE **200**/RX **100**/THRESHOLD **15** 배포 중 | ❌ | 전 구간 Stage 3 값으로 정정 (구값은 이력 주석으로) |
+| R3-2 | 이벤트/UFB | EID표(332행), 설정표(359행), §15(366행) | utils.c:520-526, dispatch.c:105-108 | `SEQ_FAIL_EID 12` "⚪ 미구현", `UFB_SEQ_FAIL` "미구현" | 둘 다 구현·실동작(Pi 로그에서 SEQ_FAIL 관측됨) | ❌ | EID표 ✅ 전환, §15 미구현 목록에서 제거 |
+| R3-3 | Pub/Sub | §4 표(63-70행) | lora_tdm_app.c:465,479 | `FC_SYS_TIME(0x1909)`·`UPLINK_STATUS(0x190A)` 행 누락 (본문 240행엔 언급) | 둘 다 구독 중 (0x1909는 SubscribeEx) | ❌ | §4 표에 2행 추가 |
+| R3-4 | 프로토콜 문서 | lora_protocol_v2_spec.md 헤더(3행) | utils.c DL2/UP2/ACK2 전부 | "설계 확정 전 초안 — **코드 미구현**" | DL2/ACK2/UP2 구현 + CONFIG 런타임 전환 배포 | ❌ | 헤더를 "구현됨(2026-07-13~)"으로 갱신, 미구현 잔여 있으면 명시 |
+| R3-5 | MID/CC/깊이 | §4,§5 | topicid_values.h, app.c:405 | MID 값·CC·깊이 50·MsgLim 예외 5종 | 동일 | ✅ | — |
+
+> 종합: MID/CC/MsgLim 정합. 그러나 **Stage 3 전환(5Hz)과 프로토콜 v2 구현이 behavior spec에 전혀 반영 안 됨** — 패스 1·2보다 스테일 폭이 큼 (❌4건).
+
+## 재감사 (2026-07-20) — 패스 4: 교차 통합 ↔ `mission_app_runtime_spec.md` (+ uplink_app)
+
+**확인된 정합 (✅)**
+- CONFIG checksum 검증: spec §13.4 "3개 앱 모두 검증" ↔ 코드 3앱 전부 `*_ConfigChecksum` 구현 확인 (uplink_utils.c:353, cfs_core_utils.c:504, mavlink_utils.c:1758)
+- FC MISSION_ACK 피드백: §18.7(1648-1655행) `FcMissionResult`/`FcMissionUploadState`/`FcMissionUploadSuccessCount` ↔ `uplink_app_dispatch.c:40` BRIDGE_HK 캐시 — 일치 (2026-07-15 반영분)
+- MID 인벤토리·0x190F/0x1909 충돌 해소 상태 유지, startup.scr 앱 집합 변동 없음
+
+| # | 카테고리 | spec 위치 | 코드 위치 | spec | 코드 | 판정 | 권고 |
+|---|---|---|---|---|---|---|---|
+| R4-1 (=R1-5) | MID 인벤토리 | §5.1.1 표 | mavlink interface_cfg:11 | `FC_SYS_TIME_MID 0x1909` 행 없음 (부록/§17.1엔 있음) | 발행 중(1Hz), lora_tdm 구독 | ❌ | §5.1.1에 0x1909 행 추가 → mavlink spec 540행 주석도 해소 |
+| R4-2 | Pub/Sub 표 | §5.1.1(169-170행) | uplink_app.c:98,104 | `0x08A0` 구독자 "cfs_core_app"만, `SYSTEM_HEALTH` 구독자에 uplink_app 없음 | **uplink_app도 BRIDGE_HK·SYSTEM_HEALTH 구독** (MISSION_ACK 캐시·헬스 게이트) | ❌ | 두 행 구독자 목록에 uplink_app 추가 |
+| R4-3 | 앱 집합 표 | §4(103행) | lora_tdm_app.c:465,479 | lora_tdm 구독 목록에 `FC_SYS_TIME(0x1909)`/`UPLINK_STATUS(0x190A)` 누락 | 둘 다 구독 | ❌ | §4 표 갱신 (R3-3과 동일 원인) |
+| R4-4 | 감시 입력 | §5.1.1 | cfs_core_app.c:113,119 | `UPLINK_APP_HK(0x08D0)`/`LORA_TDM_APP_HK(0x08E0)`의 cfs_core 구독(생존 감시) 행/언급 없음 | 구독·타임아웃 감시·자동 재시작 구현 | ❌ | §5.1.1에 HK 2행(또는 기존 행 구독자 갱신) + §11 복구 표에 uplink/lora 재시작 반영 (R2-1 연동) |
+| R4-5 | 폐기 앱 서술 | §5.1.1 주(174행), §6.6(285행) | — | `lora_fc_downlink_app`이 "…HK만 publish**한다**" 현재형 서술 | 앱은 저장소에서 삭제됨(`7c080f1`) | ⚠️ | 과거형/"(삭제됨)" 표기로 정정 |
+
+> 종합: 신규 기능 자체(checksum, MISSION_ACK 피드백)는 mission spec에 이미 반영돼 있으나, **구독 관계 표들이 코드 변화(uplink의 BRIDGE_HK/SYSTEM_HEALTH 구독, cfs_core의 HK 생존감시, lora_tdm의 0x1909/0x190A)를 못 따라감** — ❌4건 전부 표 갱신 성격.
+
+### 재감사 종합 (2026-07-20)
+
+- 패스1 ❌2: EID 13 미문서화, baud 115200 오기
+- 패스2 ❌2: uplink/lora 자동 재시작 "없음" 부정, RECOVERY/MODE 검증 "미구현" 스테일
+- 패스3 ❌4: Stage 3 타이밍(200/100/15) 미반영, SEQ_FAIL/UFB_SEQ_FAIL "미구현" 스테일, 구독 표 0x1909/0x190A 누락, protocol v2 "코드 미구현" 헤더 스테일
+- 패스4 ❌4: §5.1.1 0x1909 행, 구독자 표 3건, (⚠️ 폐기 앱 현재형 서술)
+- 공통 패턴: **값 계약(MID/CC/상수)은 전부 정합, 스테일은 전부 "코드가 spec보다 앞섬"** — 기능 추가 시 behavior spec 동반 갱신 누락이 원인. spec 정정은 승인 후 일괄 진행.
+
+## 재감사 (2026-07-20) — 패스 5: 통합 (cross-app 와이어 레이아웃 + 배포 산출물)
+
+shared_msgs 병합(2026-07-15)에서 **제외된** cross-app 메시지 전수 레이아웃 대조. 앱별 audit이 못 잡는 "양쪽 정의가 어긋나는" 축 점검.
+
+| # | 계약 | 발행측 정의 | 구독측 정의 | 대조 결과 | 판정 |
+|---|---|---|---|---|---|
+| R5-1 | RECOVERY_CMD 0x190C | `UPLINK_APP_RecoveryCmdTlm_t` | `CFS_CORE_APP_RecoveryCmdTlm_t` (중복 정의) | 필드/순서/타입 완전 동일 | ✅ (⚠️ 중복) |
+| R5-2 | MODE_CMD 0x190F | `UPLINK_APP_ModeCmdTlm_t` | `CFS_CORE_APP_ModeCmdTlm_t` (중복 정의) | 완전 동일 | ✅ (⚠️ 중복) |
+| R5-3 | VIEWPOINT_CMD 0x190D | `UPLINK_APP_ViewpointCmdTlm_t` | `CFS_CORE_APP_ViewpointCmdTlm_t` (중복 정의) | 완전 동일 | ✅ (⚠️ 중복) |
+| R5-4 | DIAGNOSTIC_CMD 0x1910 | `UPLINK_APP_DiagnosticCmdTlm_t` | `LORA_TDM_APP_DiagnosticCmdTlm_t` (중복 정의) | 완전 동일 | ✅ (⚠️ 중복) |
+| R5-5 | UPLINK_APP_CMD 0x18D0 (UP forward) | `LORA_TDM_APP_UplinkFwdCmd_t` (Payload[196]) | `UPLINK_APP_ProcessUplinkCmd_t` (Payload[`MAX_PAYLOAD_LENGTH`=196]) | 완전 동일 | ✅ (⚠️ 중복) |
+| R5-6 | UPLINK_STATUS 0x190A | `UPLINK_APP_StatusTlm_t` | lora_tdm이 `uplink_app_msg.h` **직접 include** (dispatch.c:7) | 단일 정의 — 미러 없음 | ✅ |
+| R5-7 | SYSTEM_HEALTH 0x1904 → uplink | `SYSTEM_HEALTH_TLM_t` (shared_msgs) | `UPLINK_APP_SysHealthMirror_t` — **prefix 미러**(선두 8필드만) | prefix 정합 확인 (uplink은 선두 필드만 읽음) | ✅ (⚠️ prefix 미러) |
+| R5-8 | SCH_LAB SEND_HK 스케줄 | `mission_defs/tables/cpu1_sch_lab_table.c:44-47` | 각 앱 SEND_HK MID | 0x18A1/0x18C1/0x18D1/0x18E1 — 4앱 전부 일치 | ✅ |
+| R5-9 | CONFIG scope 분담 | GS→0x190E 공용 발행 | mavlink SCOPE=2 / cfs_core=1 / lora_tdm=3 | 중복 없음, 앱별 자기 scope만 처리 | ✅ |
+
+> 종합: **현재 어긋난 레이아웃 0건.** 단 ⚠️ 5건(R5-1~5-5)은 BridgeHkMirror 버그(NonFiniteValueCount 누락으로 health FAILED 고착)를 낳았던 것과 같은 "중복 정의" 패턴이고, R5-7은 "prefix 미러" 패턴 — 발행측에 필드가 **중간 삽입**되는 순간 깨진다. 후속 후보: 라우팅 명령 5종을 `shared_msgs/routing_cmd_msg.h`(가칭)로 병합 + uplink SysHealthMirror를 shared 헤더 typedef로 교체 (코드 작업, 별도 승인).
+
 
 | 값 | 심볼 | 소유 앱 | 배포 |
 |---|---|---|---|

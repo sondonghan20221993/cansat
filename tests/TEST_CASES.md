@@ -215,7 +215,7 @@ Init/dispatch 추가:
 
 ### ~~`lora_fc_downlink_app`~~ (baseline 제거됨, 2026-06-16 — `lora_tdm_app`으로 대체)
 
-> startup script에서 제거됨(`lora_tdm_app`이 prio 58 슬롯 대체). 코드와 아래 테스트는 이력 참고용으로 유지.
+> startup script에서 제거됨(`lora_tdm_app`이 prio 58 슬롯 대체). **앱 코드·테스트 파일은 저장소에서 삭제됨** (commit `7c080f1`, 2026-06-30) — 아래 목록·TC는 이력 기록일 뿐, 파일은 더 이상 존재하지 않는다.
 
 테스트 위치:
 - `lora_fc_downlink_app/unit-test/coveragetest/coveragetest_lora_fc_downlink_app.c`
@@ -474,7 +474,7 @@ Init/dispatch 추가:
 | 항목 | 내용 |
 |---|---|
 | 시험 방법 | GS PC에서 LoRa serial 포트를 열고 수신 라인 모니터링 |
-| 기대 결과 | 약 1초 간격으로 `FC,<seq>,...` 또는 `SH,<seq>,...` 라인 수신 |
+| 기대 결과 | 약 200ms 간격(Stage 3 `CYCLE_PERIOD_MS`, 구 1초)으로 `FC,<seq>,...` 또는 `SH,<seq>,...` 라인 수신 (기본 v1 텍스트 — `UseV2Downlink` 활성화 시 DL2 바이너리) |
 | 판정 기준 | 30초 이상 공백 없이 수신, seq 단조 증가 |
 
 #### TDM-RT-002 — ACK 응답 시 링크 CONNECTED 확인
@@ -513,7 +513,7 @@ Init/dispatch 추가:
 
 | 항목 | 내용 |
 |---|---|
-| 시험 방법 | GS에서 RX 윈도우 내(다운링크 직후 300ms) 유효한 UP 프레임 전송 |
+| 시험 방법 | GS에서 RX 윈도우 내(다운링크 직후 `RX_WINDOW_MS(100)`, Stage 3 — 구 300ms) 유효한 UP 프레임 전송 |
 | 기대 결과 | `uplink_app` EVS: `routed uplink class=N seq=N` |
 | 판정 기준 | HK `RxCmdCount` 증가, `PendingUplinkFeedback==0` |
 
@@ -659,7 +659,7 @@ Init/dispatch 추가:
 | TDM-RX-001 | ACK 수신 → RxAckCount++, NoAckCount=0 | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ |
 | TDM-RX-002 | UP 프레임 CRC 오류 → PendingUplinkFeedback=CRC_FAIL, RxErrorCount++ | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ |
 | TDM-RX-003 | UP 프레임 정상 → RxCmdCount++, PendingUplinkFeedback=OK, SB transmit | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ |
-| TDM-RX-004 | UP 프레임 SEQ_FAIL 경로 | 단위 | 미구현 |
+| TDM-RX-004 | UP 프레임 SEQ_FAIL 경로 | 단위 | `coveragetest_lora_tdm_app_utils.c` ✓ (2026-07-14 구현 — `A3_unittest_cases.md` C.1/C.2, UFB=SEQ_FAIL은 `UPLINK_STATUS_MID` 경유) |
 
 ---
 
@@ -758,9 +758,9 @@ EVS 로그/HK/serial 출력으로 결과를 검증한다.
 
 | 파일 | 검증 TC | 방법 | 상태 |
 |---|---|---|---|
-| `test_uplink_e2e.py` | LORA-UP seq regression C 경로, REC-008 C 검증 | LoRa serial → cFS → EVS 로그 확인 | 미구현 |
-| `test_lora_fc_downlink_e2e.py` | LORA-FRAME C 실제 출력, LORA-FC-006~007 | SB mock → cFS → PTY serial 캡처 | 미구현 |
-| `test_rec_serial.py` | REC-001~004 장애/복구 | PTY close/reopen 시뮬레이션 | 미구현 |
+| `test_uplink_e2e.py` | LORA-UP seq regression C 경로, REC-008 C 검증 | LoRa serial → cFS → EVS 로그 확인 | 구현됨 (테스트 4건, `--cfs` 게이트/skip — 아래 매트릭스와 동일) |
+| `test_lora_fc_downlink_e2e.py` | LORA-FRAME C 실제 출력, LORA-FC-006~007 | SB mock → cFS → PTY serial 캡처 | 구현됨 (테스트 10건, `--cfs` 게이트/skip) |
+| `test_rec_serial.py` | REC-001~004 장애/복구 | PTY close/reopen 시뮬레이션 | 구현됨 (테스트 5건, `--cfs` 게이트/skip) |
 
 **B 그룹 실행 조건:**
 - cFS 빌드 완료 (`build/` 또는 `cFS_clean/build/`)
@@ -803,7 +803,7 @@ Pi 실환경 동작은 불변** — env var는 테스트 전용이다.
 
 | 항목 | 비고 |
 |---|---|
-| `mavlink_bridge_app` unit test | unit-test 디렉터리 미구성 |
+| ~~`mavlink_bridge_app` unit test~~ | 해소됨 — `mavlink_bridge_app/unit-test/` 구성 완료, 테스트 바이너리 4종(app/cmds/utils/dispatch) build-ut 등록·PASS (2026-07-20 확인) |
 | `lora_tdm_app` `ReportHousekeeping` 단위테스트 | HK payload 반영 확인 — 미작성 |
 | `lora_tdm_app` `ReportLinkStatus` 단위테스트 | LinkStatus TLM 반영 확인 — 미작성 |
 | `lora_tdm_app` SEQ_FAIL 경로 (TDM-RX-004) | 실물 하드웨어 RT 검증만 미실행 — 로직은 구현/단위테스트 완료(`A3_unittest_cases.md` C.1/C.2, 2026-07-14) |
@@ -979,7 +979,7 @@ lora_tdm_app 장애 처리와 uplink_app 명령 검증/차단 경로.
 |---|---|---|---|---|
 | RT-LORA-001 | LoRa USB 모듈 런타임 분리 (동작 중 뽑기) | write/read 오류 감지 + 재오픈 시도 | `SERIAL_WRITE_ERR_EID(8)`/`SERIAL_READ_ERR_EID(9)` → `CloseSerial()`로 `fd=-1` → 다음 RunCycle 재오픈 → TxCount 재개. (구현 완료 2026-07-10, `lora_tdm_app.c` `RunTx`/`RunRxWindow`; [[lora_tdm_serial_reopen_gap]]) | Unit(실제 POSIX fd 조작, mock 아님): ✓ 있음 (2026-07-13, `coveragetest_lora_tdm_app.c` `Test_RunCycle_TxWriteFailClosesFd`/`Test_RunCycle_RxReadFailClosesFd` — closed-fd write→EBADF, write-only-fd read→EBADF 각각 `LoRaFd==-1` 확인, lora_tdm_app UT 9 PASS 회귀 없음). Runtime(물리 USB 분리): 미실측 |
 | RT-LORA-002 | 깨진 ACK 수신 (형식 불일치) | ACK 파싱 실패 처리 | `ACK_PARSE_ERR_EID(10)` + HK `RxErrorCount` 증가, `RxAckCount` 불변 | 🔵 E2E(B) (깨진 ACK 바이트 주입) |
-| RT-LORA-003 | UP 프레임 seq 재사용/역행 (재전송 공격 모사) | 시퀀스 검증 거부 | uplink `COMMAND_ERR_EID(2)` replay 거부 + 다음 다운링크 `UFB=SEQ_FAIL`(`LastCommandResult==REJECT_SEQUENCE`, §18.11.1). lora_tdm은 UP 프레임 자체 seq 검증을 하지 않고 uplink_app 판정 결과만 피드백 전달(`lora_tdm_app_dispatch.c:91-96`) — **`SEQ_FAIL_EID(12)`와는 무관**: EID 12는 ACK 응답의 `SeqEcho` 불일치 검출용으로 별도 미구현 갭 (`SeqEcho` 파싱 후 `(void)` 무시, `lora_tdm_app_utils.c:295`) | 🔵 E2E(B) (UP 프레임 seq 조작) |
+| RT-LORA-003 | UP 프레임 seq 재사용/역행 (재전송 공격 모사) | 시퀀스 검증 거부 | uplink `COMMAND_ERR_EID(2)` replay 거부 + 다음 다운링크 `UFB=SEQ_FAIL`(`LastCommandResult==REJECT_SEQUENCE`, §18.11.1). lora_tdm은 UP 프레임 자체 seq 검증을 하지 않고 uplink_app 판정 결과만 피드백 전달(`lora_tdm_app_dispatch.c:91-96`) — **`SEQ_FAIL_EID(12)`와는 무관**: EID 12는 ACK 응답의 `SeqEcho` 불일치 검출용 — 2026-07 구현 완료(`SeqEcho != LastSentSeq` 비교, `lora_tdm_app_utils.c:520-526`, 타이밍 버그 수정 commit `48c8d12`) | 🔵 E2E(B) (UP 프레임 seq 조작) |
 | RT-LORA-004 | 링크 상태 전이 EVS 관측 (GS 정지→재개) | DEGRADED→DISCONNECTED→CONNECTED 전이 이벤트 | `LINK_DEGRADED_EID(14)` → `LINK_LOST_EID(13)` → `LINK_RESTORED_EID(15)`, HK `LinkState`/`NoAckCount` 일치 | ✅ 실물 (GS 정지/재개) |
 
 **② uplink_app — 명령 검증/차단 (ProcessUplink 거부 파이프라인):**

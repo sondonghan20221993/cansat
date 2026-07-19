@@ -198,6 +198,23 @@ x/y는 `int32` (degE7, MISSION_ITEM_INT 표준 인코딩), z는 `float` meters(r
 
 > 정의 위치: `mavlink_bridge_app_utils.c:63-65` (`MAVLINK_BRIDGE_APP_MISSION_UPLOAD_TIMEOUT_MS=2000U`, `MAVLINK_BRIDGE_APP_MISSION_MAX_RETRIES=3U`, `MAVLINK_BRIDGE_APP_MISSION_CLEAR_DELAY_MS=300U`) — 코드 확인, 2026-06-16.
 
+### 8.1 링크·스트림 타이밍 및 CONFIG 한도 상수 (internal_cfg)
+
+`default_mavlink_bridge_app_internal_cfg_values.h` 정의 (2026-07-20 재감사 시 문서화):
+
+| 상수 | 값 | 의미 |
+| --- | --- | --- |
+| `RECONNECT_INTERVAL_MS` | 1000 | serial 재연결 시도 간격 |
+| `STALE_TIMEOUT_MS` | 1000 | FC 수신 stale 판정 |
+| `HEARTBEAT_INTERVAL_MS` | 1000 | 자체 HEARTBEAT 송신 주기 |
+| `STREAM_REQUEST_RETRY_MS` | 2000 | 스트림 요청 재시도 간격 |
+| `TARGET_DISCOVERY_TIMEOUT_MS` | 10000 | FC sysid lock-in 대기 한도 |
+| `STREAM_REACQUIRE_TIMEOUT_MS` | 5000 | 스트림 재획득 판단 한도 |
+| `SYS_TIME_INTERVAL_US` | 1000000 | SYS_TIME 스트림 요청 간격 (1 Hz, §16) |
+| `CONFIG_VERSION` / `CONFIG_SCOPE` | 1 / 2 | CONFIG 명령 수락 조건 |
+| `PARAM_INTERVAL_MIN/MAX_US` | 10000 / 10000000 | CONFIG 스트림 간격 파라미터 허용 범위 |
+| `PARAM_MS_MIN/MAX` | 100 / 60000 | CONFIG ms 파라미터 허용 범위 |
+
 ## 9. 실패 및 성공 처리
 
 ### 9.1 실패 처리
@@ -317,6 +334,19 @@ python3 tools/query_fc_mission.py <Pi_IP> 1234
 | `FcBaseMode` | `uint8` | 마지막 수신 HEARTBEAT base_mode |
 | `FcSystemStatus` | `uint8` | 마지막 수신 HEARTBEAT system_status |
 | `IsArmed` | `uint8` | 0=DISARMED, 1=ARMED (base_mode bit7 기준) |
+| `NonFiniteValueCount` | `uint32` | NaN/Inf 값 거부 누적 횟수 (§12.1) |
+
+### 12.1 FC 값 finite 검증 (NaN/Inf 입구 차단)
+
+CRC는 전송 오류만 잡고 값 자체의 NaN/Inf(EKF 발산, 센서 고장 등)는 통과시키므로,
+FC 상태 메시지 파싱 직후 `isfinite()` 검사로 걸러 **SB 게시 자체를 차단**한다
+(`MAVLINK_BRIDGE_APP_ValuesFinite6`/`RecordNonFiniteError`, `mavlink_bridge_app_utils.c:283-295`).
+거부 시 `NONFINITE_VALUE_ERR_EID (13)` ERROR 이벤트 발생, `NonFiniteValueCount` 증가,
+`LastErrorCode = INVALID_VALUE`. 이 카운터는 HK로 노출되며 `cfs_core_app`의
+`BRIDGE_HK_TLM_t` 미러(shared_msgs/bridge_hk_msg.h)에도 포함된다.
+
+> 참고 (2026-07-20 재감사): FC 상태 payload 구조체 4종(`EkfLocalTlm_t` 등)의 실정의는
+> `shared_msgs/fc_state_msg.h`(`FC_*_TLM_t`)로 병합되었고, 앱측 이름은 typedef로 유지된다.
 
 ## 13. 알려진 FC 호환성 제약
 
@@ -537,7 +567,7 @@ typedef struct
 
 **단위테스트 검증**: 기존 `SysTime_*` 4개 테스트(§16.2) + `mavlink_bridge_app` Init 테스트가 새 `CFE_MSG_Init()` 호출 경로를 포함해 회귀 없이 통과. 로컬 `~/verify-build/cFS_verify` 재빌드 결과: `coverage-mav_bridge_app-mavlink_bridge_app_utils-testrunner` 105/105 PASS, `coverage-mav_bridge_app-mavlink_bridge_app-testrunner` 14/14 PASS.
 
-`mission_app_runtime_spec.md` §5.1.1 MID 계약 테이블에 `FC_SYS_TIME_MID (0x1909)` 행 추가 필요 (미반영).
+`mission_app_runtime_spec.md` §5.1.1 MID 계약 테이블에 `FC_SYS_TIME_MID (0x1909)` 행 추가 완료 (2026-07-20 재감사에서 반영).
 
 **남은 유의사항**: §16.2에서 서술한 mavlink_bridge STX 이스케이프 결함(P1, 04-repository-map.md §5)이 아직 해결되지 않은 상태 — SysTimeTlm 발행은 살아있지만 페이로드 내 `0xFD`/`0xFE` 우연 출현 시 SYSTEM_TIME 프레임 자체가 유실될 수 있다. 또한 Pi 실기 연결 검증(실제 FC로부터 SYSTEM_TIME 수신 → SB 발행 확인)은 아직 미완 — 지금까지는 로컬 UT 검증만 완료된 상태.
 
@@ -608,7 +638,7 @@ void CFE_TIME_ExternalGPS(CFE_TIME_SysTime_t NewTime, int16 NewLeaps);   /* cfe_
 | 구간 | 예상 오차 |
 | --- | --- |
 | GPS → FC | ~ms |
-| FC → bridge (UART 115200, 1 Hz 폴링) | ~수십 ms 지터 |
+| FC → bridge (UART 57600, 1 Hz 폴링) | ~수십 ms 지터 |
 | bridge → cFS 내부 시각 (`CFE_TIME_ExternalGPS`) | STCF 상관 갱신 — 수신 지터 수준(~수십 ms) |
 | bridge → OS 시계 (카메라용, chrony) | chrony slew 수렴 후 ~수십 ms |
 

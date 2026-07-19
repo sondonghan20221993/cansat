@@ -58,8 +58,8 @@
 - 입력이 없을 때 주기적으로 시스템 헬스 재계산
 - `SYSTEM_HEALTH_MID` 게시 (per-input 상태 구조 포함)
 - bridge 타임아웃 지속 시 `mavlink_bridge_app` 재시작 시도 (최대 3회) 및 FAILED 에스컬레이션
-- uplink_app·lora_tdm_app HK 수신 시각 추적, 5초 타임아웃 시 DEGRADED 보고 (자동 재시작 없음)
-- RECOVERY 명령(`RECOVERY_CMD_MID`) 수신 시 bridge 재시작 카운터 리셋, MODE 명령(`MODE_CMD_MID`) 수신 시 모드 값 캐시
+- uplink_app·lora_tdm_app HK 수신 시각 추적, 5초 타임아웃 시 DEGRADED 보고 + bridge와 동일 패턴 자동 재시작 (5초 간격, 최대 3회 — §13.6/§13.7)
+- RECOVERY 명령(`RECOVERY_CMD_MID`) 수신 시 action별 처리(§17), MODE 명령(`MODE_CMD_MID`) 수신 시 상태 전이 검증 후 모드 갱신(§17)
 - config 명령으로 런타임 타임아웃/게시주기 파라미터 변경 (pending/active 이중버퍼)
 - viewpoint 명령 캐시
 - 헬스 상태를 파일에 영속화하여 재시작 후 복원
@@ -142,7 +142,9 @@
 
 ### 7.2 Bridge HK 입력
 
-`cfs_core_app`이 소비하는 `CFS_CORE_APP_BridgeHkMirror_t` 필드는 다음과 같다.
+`CFS_CORE_APP_BridgeHkMirror_t`는 `shared_msgs/bridge_hk_msg.h`의 `BRIDGE_HK_TLM_t` typedef이다
+(2026-07 미러 병합 — 단일 진실, `NonFiniteValueCount` 등 발행측 전체 필드 포함).
+`cfs_core_app`이 소비하는 필드는 다음과 같다.
 
 | 필드 | 형식 | 용도 |
 | --- | --- | --- |
@@ -504,7 +506,7 @@ GPS 가용성(만료 / `Valid == 0` / `Stale != 0`)은 **HealthState를 저하�
 - `DEGRADED` 생성
 - `FAULT_UPLINK_TIMEOUT` 생성
 - `RecoveryRequested = 0`
-- 자동 재시작 없음 (보고 전용)
+- **자동 재시작** (2026-07 구현, bridge와 동일 패턴 — `cfs_core_app_utils.c:353-384`): 타임아웃 지속 시 `UPLINK_RESTART_INTERVAL_MS(5000)` 간격으로 `CFE_ES_RestartApp("uplink_app")` 시도, 최대 `UPLINK_MAX_RESTARTS(3)`회. 시도마다 `UPLINK_RESTART_EID (15)` 발생. 타임아웃 해소 또는 상위 우선순위 fault 발생 시 카운터 리셋
 
 `UplinkAppState.LastHkRxMs`는 HK를 수신한 시점의 `NowMs` (cFS wall-clock ms)로 갱신된다. uplink_app의 내부 timestamp를 사용하지 않는다.
 
@@ -522,7 +524,7 @@ GPS 가용성(만료 / `Valid == 0` / `Stale != 0`)은 **HealthState를 저하�
 - `DEGRADED` 생성
 - `FAULT_LORA_TIMEOUT` 생성
 - `RecoveryRequested = 0`
-- 자동 재시작 없음 (보고 전용)
+- **자동 재시작** (2026-07 구현, bridge와 동일 패턴 — `cfs_core_app_utils.c:385-415`): 타임아웃 지속 시 `LORA_RESTART_INTERVAL_MS(5000)` 간격으로 `CFE_ES_RestartApp("lora_tdm_app")` 시도, 최대 `LORA_MAX_RESTARTS(3)`회. 시도마다 `LORA_RESTART_EID (16)` 발생. 타임아웃 해소 또는 상위 우선순위 fault 발생 시 카운터 리셋
 
 ## 14. 시작, 입력 손실, 복구 동작
 
@@ -623,8 +625,8 @@ mission route와 landing route는 독립적으로 캐시된다.
 
 - **`CONFIG_CMD_MID` (0x190E)** — 런타임 config 명령 (`CFS_CORE_APP_ProcessConfigCommand`). payload 헤더(`ConfigScope`/`ConfigVersion`/`ParameterId`/`ValueType`/`ValueLength`/`Checksum`) + `uint32` 값을 단계 검증: ① 길이 ② scope(`CONFIG_SCOPE=1`) ③ version(`CONFIG_VERSION=1`) ④ checksum ⑤ 값 범위(`PARAM_MIN_MS 100` ~ `PARAM_MAX_MS 60000`). 통과 시 `ActiveConfig` 기반 `PendingConfig`에 6개 파라미터(attitude/local/gps/ekf/bridge 타임아웃, publish 주기) 중 해당 항목 기록 → 교차 검증 → `PreviousConfig` 백업 후 `ActiveConfig`로 활성화, `ConfigGeneration` 증가. 각 실패는 `ConfigPendingState=REJECTED` + `LastConfigResult`(BAD_LENGTH/SCOPE/VERSION/CHECKSUM/VALUE/PARAM)로 기록. (§21.2)
 - **`VIEWPOINT_CMD_MID` (0x190D)** — viewpoint 명령 (`CFS_CORE_APP_ProcessViewpointCommand`). type/frame/X/Y/Z/Yaw/Pitch/HoldTime를 `ViewpointCmd` 캐시에 저장(`Valid=true`)하고 `VIEWPOINT_EID` 발생. 실제 실행은 미구현(캐시만).
-- **`RECOVERY_CMD_MID` (0x190C)** — 복구 명령 (`CFS_CORE_APP_ProcessRecoveryCommand`). payload 없이 무조건 `RecoveryStartMs=0`, `BridgeRestartCount=0` 리셋, `RecoveryRequestedCount` 증가, `RECOVERY_CMD_EID` 발생. `recovery_action`/`target_component` 구분 검증은 미구현 (mission spec §18.4.6.4는 목표 계약).
-- **`MODE_CMD_MID` (0x190F)** — 모드 명령 (`CFS_CORE_APP_ProcessModeCommand`). `Payload[0]`을 `LastModeValue`로 캐시하고 `MODE_CMD_EID` 발생. 실제 상태 전이·허용 전이 검증은 미구현.
+- **`RECOVERY_CMD_MID` (0x190C)** — 복구 명령 (`CFS_CORE_APP_ProcessRecoveryCommand`, `cfs_core_app_utils.c:740-784`). `RecoveryAction` 4종을 switch 분기 처리 (2026-07 구현): `RESET_COUNTER`는 `RecoveryStartMs=0`/`BridgeRestartCount=0` 리셋, `RESTART_BRIDGE`/`PARSER_RESET`/`SERIAL_RECONNECT`는 수신 로그만(실행 로직 미구현 — 로그 전용), unknown action은 ERROR 이벤트로 거부. 모든 경로에서 `RecoveryRequestedCount` 증가, `RECOVERY_CMD_EID (13)` 발생 (seq/target/reason/token 포함).
+- **`MODE_CMD_MID` (0x190F)** — 모드 명령 (`CFS_CORE_APP_ProcessModeCommand`, `cfs_core_app_utils.c:786-829`). 상태 전이 검증 구현됨 (2026-07): `ENTER`는 NORMAL→RECOVERY, `EXIT`는 RECOVERY→NORMAL만 허용, 허용 전이는 `CurrentModeState` 갱신 + `MODE_CMD_EID (14)` INFO, 불허 조합은 REJECTED ERROR 이벤트.
 
 NOOP/RESET은 명령 길이 검사(`VerifyCmdLength`)로 유효성을 검사한다. 텔레메트리 상태 입력은 길이 검사를 하지 않는다. 알 수 없는 함수/MID는 명령 오류 카운터를 증가시킨다.
 
