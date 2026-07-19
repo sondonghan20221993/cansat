@@ -1111,6 +1111,73 @@ void Test_PublishAttitude_FiniteValuesAccepted(void)
     UtAssert_INT32_EQ((int32)MAVLINK_BRIDGE_APP_Data.NonFiniteValueCount, 0);
 }
 
+/* -----------------------------------------------------------------------
+ * RequestTelemetryStreams — 스트림 요청 경로 테스트
+ * MAVLINK_MSG_ID_COMMAND_LONG=76, COMMAND_LONG payload=33B -> frame=45B(10+33+2).
+ * 6개 스트림(ATTITUDE/LOCAL_POSITION_NED/GLOBAL_POSITION_INT/GPS_RAW_INT/
+ * EKF_STATUS_REPORT/SYS_TIME) 각 1개 COMMAND_LONG 요청 프레임을 보낸다.
+ * ----------------------------------------------------------------------- */
+#define UT_COMMAND_LONG_MSGID   76U
+#define UT_COMMAND_LONG_FRAME_LEN 45U /* 10(header) + 33(payload) + 2(crc) */
+
+void Test_RequestTelemetryStreams_SendsSixStreamRequests(void)
+{
+    int     Sv[2];
+    uint8   OutBuf[512];
+    ssize_t CapLen;
+    size_t  i;
+    int     FrameCount = 0;
+
+    UtAssert_INT32_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, Sv), 0);
+    UtAssert_INT32_EQ(fcntl(Sv[0], F_SETFL, O_NONBLOCK), 0);
+    UtAssert_INT32_EQ(fcntl(Sv[1], F_SETFL, O_NONBLOCK), 0);
+
+    MAVLINK_BRIDGE_APP_Data.SerialFd       = Sv[0];
+    MAVLINK_BRIDGE_APP_Data.TargetSystemId = 1;
+    MAVLINK_BRIDGE_APP_Data.TargetComponentId = 1;
+
+    MAVLINK_BRIDGE_APP_RequestTelemetryStreams();
+
+    CapLen = read(Sv[1], OutBuf, sizeof(OutBuf));
+    close(Sv[0]);
+    close(Sv[1]);
+    MAVLINK_BRIDGE_APP_Data.SerialFd = -1;
+
+    UtAssert_True(CapLen == (ssize_t)(6U * UT_COMMAND_LONG_FRAME_LEN),
+                  "6 stream request frames captured (got %ld bytes)", (long)CapLen);
+
+    for (i = 0; i + UT_COMMAND_LONG_FRAME_LEN <= (size_t)CapLen; i += UT_COMMAND_LONG_FRAME_LEN)
+    {
+        UtAssert_True(OutBuf[i] == 0xFD, "frame starts with STX_V2");
+        UtAssert_True(OutBuf[i + 7] == (uint8)UT_COMMAND_LONG_MSGID, "frame msgid == COMMAND_LONG");
+        FrameCount++;
+    }
+    UtAssert_INT32_EQ(FrameCount, 6);
+}
+
+/* TargetSystemId==0(아직 FC heartbeat 미수신) -> 요청 생략, 아무 것도 전송하지 않음 */
+void Test_RequestTelemetryStreams_SkippedWhenNoTarget(void)
+{
+    int     Sv[2];
+    uint8   OutBuf[64];
+    ssize_t CapLen;
+
+    UtAssert_INT32_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, Sv), 0);
+    UtAssert_INT32_EQ(fcntl(Sv[1], F_SETFL, O_NONBLOCK), 0);
+
+    MAVLINK_BRIDGE_APP_Data.SerialFd       = Sv[0];
+    MAVLINK_BRIDGE_APP_Data.TargetSystemId = 0;
+
+    MAVLINK_BRIDGE_APP_RequestTelemetryStreams();
+
+    CapLen = read(Sv[1], OutBuf, sizeof(OutBuf));
+    close(Sv[0]);
+    close(Sv[1]);
+    MAVLINK_BRIDGE_APP_Data.SerialFd = -1;
+
+    UtAssert_True(CapLen <= 0, "no frame written when TargetSystemId==0");
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(UpdateFromHeartbeat_Armed);
@@ -1151,4 +1218,6 @@ void UtTest_Setup(void)
     ADD_TEST(PublishAttitude_NaNRejected);
     ADD_TEST(PublishEkfLocal_InfRejected);
     ADD_TEST(PublishAttitude_FiniteValuesAccepted);
+    ADD_TEST(RequestTelemetryStreams_SendsSixStreamRequests);
+    ADD_TEST(RequestTelemetryStreams_SkippedWhenNoTarget);
 }

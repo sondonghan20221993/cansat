@@ -226,10 +226,85 @@ void Test_RunRxWindow_Up2FrameSpansAcrossWindows(void)
     LORA_TDM_APP_Data.LoRaFd = -1;
 }
 
+/* -----------------------------------------------------------------------
+ * ReportHousekeeping — HK payload 필드 복사 확인
+ * ----------------------------------------------------------------------- */
+void Test_ReportHousekeeping(void)
+{
+    memset(&LORA_TDM_APP_Data, 0, sizeof(LORA_TDM_APP_Data));
+
+    LORA_TDM_APP_Data.CmdCounter                     = 3;
+    LORA_TDM_APP_Data.ErrCounter                     = 1;
+    LORA_TDM_APP_Data.LinkState                      = 2;
+    LORA_TDM_APP_Data.PacketType                     = 1;
+    LORA_TDM_APP_Data.FcState.AttitudeValid          = 1;
+    LORA_TDM_APP_Data.FcState.LocalValid             = 1;
+    LORA_TDM_APP_Data.FcState.GpsValid               = 0;
+    LORA_TDM_APP_Data.FcState.EkfValid               = 1;
+    LORA_TDM_APP_Data.SystemHealth.SystemHealthState = 2;
+    LORA_TDM_APP_Data.PendingUplinkFeedback          = 1;
+    LORA_TDM_APP_Data.TxCount                        = 10;
+    LORA_TDM_APP_Data.RxAckCount                     = 8;
+    LORA_TDM_APP_Data.RxCmdCount                     = 4;
+    LORA_TDM_APP_Data.RxErrorCount                   = 2;
+    LORA_TDM_APP_Data.NoAckCount                     = 1;
+    LORA_TDM_APP_Data.LastAckTimestampMs             = 12345;
+
+    LORA_TDM_APP_ReportHousekeeping();
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.HkTlm.Payload.CommandCounter,        3);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.HkTlm.Payload.CommandErrorCounter,   1);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.HkTlm.Payload.LinkState,             2);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.HkTlm.Payload.PacketType,            1);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.HkTlm.Payload.AttitudeValid,         1);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.HkTlm.Payload.LocalValid,            1);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.HkTlm.Payload.GpsValid,              0);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.HkTlm.Payload.EkfValid,              1);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.HkTlm.Payload.SystemHealthState,     2);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.HkTlm.Payload.PendingUplinkFeedback, 1);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.HkTlm.Payload.TxCount,              10);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.HkTlm.Payload.RxAckCount,            8);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.HkTlm.Payload.RxCmdCount,            4);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.HkTlm.Payload.RxErrorCount,          2);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.HkTlm.Payload.NoAckCount,            1);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.HkTlm.Payload.LastAckTimestampMs, 12345);
+}
+
+/* -----------------------------------------------------------------------
+ * ReportLinkStatus — LinkStatus TLM 필드 반영 확인
+ * ----------------------------------------------------------------------- */
+void Test_ReportLinkStatus(void)
+{
+    memset(&LORA_TDM_APP_Data, 0, sizeof(LORA_TDM_APP_Data));
+
+    LORA_TDM_APP_Data.DownlinkSeq         = 42;
+    LORA_TDM_APP_Data.LinkState           = LORA_TDM_APP_LINK_DEGRADED;
+    LORA_TDM_APP_Data.LastAckTimestampMs  = 5000;
+    LORA_TDM_APP_Data.NoAckCount          = 3;
+    LORA_TDM_APP_Data.RxErrorCount        = 2;
+    LORA_TDM_APP_Data.TxCount             = 100;
+    LORA_TDM_APP_Data.RxAckCount          = 90;
+    LORA_TDM_APP_Data.RxCmdCount          = 7;
+
+    LORA_TDM_APP_ReportLinkStatus();
+
+    UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.LinkStatusTlm.Seq,          42);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.LinkStatusTlm.LinkState,
+                      LORA_TDM_APP_LINK_DEGRADED);
+    UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.LinkStatusTlm.LastAckTimestampMs, 5000);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.LinkStatusTlm.NoAckCount,          3);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.LinkStatusTlm.RxErrorCount,        2);
+    UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.LinkStatusTlm.TxCount,      100);
+    UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.LinkStatusTlm.RxAckCount,    90);
+    UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.LinkStatusTlm.RxCmdCount,     7);
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(Init);
     ADD_TEST(Init_SubscribeError);
+    ADD_TEST(ReportHousekeeping);
+    ADD_TEST(ReportLinkStatus);
     ADD_TEST(RunCycle_TxWriteFailClosesFd);
     ADD_TEST(RunCycle_UseV2Downlink_SendsDl2Only);
     ADD_TEST(RunCycle_RxReadFailClosesFd);

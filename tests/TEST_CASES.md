@@ -804,8 +804,8 @@ Pi 실환경 동작은 불변** — env var는 테스트 전용이다.
 | 항목 | 비고 |
 |---|---|
 | ~~`mavlink_bridge_app` unit test~~ | 해소됨 — `mavlink_bridge_app/unit-test/` 구성 완료, 테스트 바이너리 4종(app/cmds/utils/dispatch) build-ut 등록·PASS (2026-07-20 확인) |
-| `lora_tdm_app` `ReportHousekeeping` 단위테스트 | HK payload 반영 확인 — 미작성 |
-| `lora_tdm_app` `ReportLinkStatus` 단위테스트 | LinkStatus TLM 반영 확인 — 미작성 |
+| ~~`lora_tdm_app` `ReportHousekeeping` 단위테스트~~ | 해소됨 — `coveragetest_lora_tdm_app.c` `Test_ReportHousekeeping` 추가, 16 assertion PASS (2026-07-20) |
+| ~~`lora_tdm_app` `ReportLinkStatus` 단위테스트~~ | 해소됨 — `coveragetest_lora_tdm_app.c` `Test_ReportLinkStatus` 추가, 8 assertion PASS (2026-07-20) |
 | `lora_tdm_app` SEQ_FAIL 경로 (TDM-RX-004) | 실물 하드웨어 RT 검증만 미실행 — 로직은 구현/단위테스트 완료(`A3_unittest_cases.md` C.1/C.2, 2026-07-14) |
 | `lora_tdm_app` `RunCycle` TDM 타이밍 검증 | serial 의존 → Pi 런타임 필요 |
 | `lora_tdm_app` LoRa 하드웨어 연동 | Pi 실물 serial 필요 |
@@ -859,7 +859,8 @@ Pi 실환경 동작은 불변** — env var는 테스트 전용이다.
 |---|---|---|---|---|
 | **Unit** | `OpenSerial()`, `CloseSerial()` | `coveragetest_mavlink_bridge_app.c` | — | ✓ 있음 |
 | | MAVLink 메시지 파싱 (ATTITUDE 등) | `coveragetest_mavlink_bridge_app_utils.c` | MAV-PARSE-001~010 | ✓ 있음 |
-| | 캐시 업데이트, 스트림 요청 | `coveragetest_mavlink_bridge_app_cmds.c` | MAV-CACHE-001~005 | ✓ 있음 |
+| | 캐시 업데이트 | `coveragetest_mavlink_bridge_app_cmds.c` | MAV-CACHE-001~005 | ✓ 있음 |
+| | 스트림 요청(`RequestTelemetryStreams`, COMMAND_LONG 6종) (2026-07-20 추가) | `coveragetest_mavlink_bridge_app_utils.c` | — | ✓ 있음 (socketpair로 실제 write 캡처, TargetSystemId==0 시 미전송 케이스 포함) |
 | | heartbeat timeout, link state | `coveragetest_mavlink_bridge_app_dispatch.c` | — | ✓ 있음 |
 | | `SendMissionItemInt` GLOBAL_RELATIVE_ALT frame/lat-lon degE7 인코딩 (2026-07-13, [[mission_item_int_frame_gap]]) | `coveragetest_mavlink_bridge_app_utils.c` | — | ✓ 있음 (GLOBAL_POSITION_INT 주입 + socketpair로 실제 write 캡처, legacy 공식과 비교) |
 | | FC 값 finite 검증 — NaN/Inf 수신 시 미게시 (2026-07-13, [[fc_value_validation_gap]] 설계안 A) | `coveragetest_mavlink_bridge_app_utils.c` | — | ✓ 있음 (ATTITUDE NaN, LOCAL_POSITION_NED +Inf 거부 + 정상값 통과 회귀 3건) |
