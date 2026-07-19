@@ -419,11 +419,33 @@ Init/dispatch 추가:
 | `BuildLoraFrameTest.test_crc_is_valid` | 프레임 CRC 유효성 확인 |
 | `BuildLoraFrameTest.test_payload_hex_matches` | hex payload가 원본 bytes와 일치 |
 
-### `test_lora_downlink_decoder.py` (추가분, 2026-07-14)
+### `test_lora_downlink_decoder.py` (2026-07-20 표 전체 갱신 — 기존 1건만 기재됐던 것을 실제 23건으로 정정)
 
 | 테스트 이름 | 검증 내용 |
 |---|---|
-| `test_systime_flag_set_but_block_missing_returns_none_not_crash` | DL2 프레임의 `flags` SYSTIME 비트는 켜져 있는데 `body_len`이 SysTime 블록을 포함하지 않는 (짧은) 길이인 손상/불일치 프레임 — `decode_dl2()`가 `struct.error`로 크래시하지 않고 `sys_time_unix_usec=None`으로 안전 처리하며 나머지 필드(자세/위치 등)는 정상 디코드됨을 확인 (2026-07-14 수정한 크래시 버그의 회귀 방지) |
+| `Crc16Test.test_known_vector` | CRC-16 알려진 벡터 검증 |
+| `RoundtripTest.test_basic_roundtrip` | DL2 인코딩→디코딩 기본 라운드트립 |
+| `RoundtripTest.test_systime_block` | SysTime 블록 포함 라운드트립 |
+| `RoundtripTest.test_base_frame_is_47_bytes` | 기본 프레임 47B 크기 확인 |
+| `RoundtripTest.test_saturation_flag` | 위치 saturation flag 확인 |
+| `RoundtripTest.test_angle_range_pi` | 각도 범위(±π) 인코딩 확인 |
+| `StreamingTest.test_byte_by_byte_feed` | 1바이트씩 피드해도 프레임 완성 |
+| `StreamingTest.test_two_frames_one_chunk` | 한 청크에 프레임 2개 → 둘 다 파싱 |
+| `StreamingTest.test_crc_corruption_resync` | CRC 오류 프레임 후 재동기화 |
+| `StreamingTest.test_garbage_prefix_resync` | 쓰레기 바이트 프리픽스 후 재동기화 |
+| `StreamingTest.test_v1_v2_mixed_stream` | v1(텍스트)/v2(바이너리) 혼합 스트림 파싱 |
+| `StreamingTest.test_bad_len_field` | 잘못된 길이 필드 처리 |
+| `StreamingTest.test_systime_flag_set_but_block_missing_returns_none_not_crash` | DL2 프레임의 `flags` SYSTIME 비트는 켜져 있는데 `body_len`이 SysTime 블록을 포함하지 않는 (짧은) 길이인 손상/불일치 프레임 — `decode_dl2()`가 `struct.error`로 크래시하지 않고 `sys_time_unix_usec=None`으로 안전 처리하며 나머지 필드(자세/위치 등)는 정상 디코드됨을 확인 (2026-07-14 수정한 크래시 버그의 회귀 방지) |
+| `Ack2Test.test_format` | ACK2 프레임 포맷 확인 |
+| `Ack2Test.test_seq_wrap` | ACK2 seq wrap-around 처리 |
+| `Up2Test.test_roundtrip_with_payload` | UP2 payload 포함 라운드트립 |
+| `Up2Test.test_roundtrip_zero_payload` | UP2 zero-payload 라운드트립 |
+| `Up2Test.test_crc_present_and_valid` | UP2 CRC 존재·유효성 확인 |
+| `Up2Test.test_magic_byte` | UP2 매직바이트 확인 |
+| `Up2Test.test_seq_wrap` | UP2 seq wrap-around 처리 |
+| `Up2Test.test_cross_language_vector_matches_c_ut` | Python 디코더 결과가 C 단위테스트 벡터와 일치 (cross-language 검증) |
+| `CsvRowTest.test_row_fields` | CSV row 필드 구성 확인 |
+| `CsvRowTest.test_row_without_systime` | SysTime 없는 경우 CSV row 처리 |
 
 ### `test_uplink_route_update_sender.py`
 
@@ -848,7 +870,7 @@ Pi 실환경 동작은 불변** — env var는 테스트 전용이다.
 | | FC/SH 다운링크 패킷 포맷 | `test_lora_fc_downlink_packet.py` | LORA-FRAME-001~008 | ✓ 구현 |
 | **E2E (B)** | PTY mock serial → lora_tdm_app 제어 | `test_rec_serial.py` | REC-001~004 (serial open/disconnect/recover) | ⏸️ pytest.skip() |
 | | cFS SB message → LoRa 실제 출력 | `test_lora_fc_downlink_e2e.py` (재작성) | LORA-FRAME, LORA-FC-006~007 | ⏸️ pytest.skip() |
-| | UP 수신 → SB 라우팅 | `test_uplink_e2e.py` | LORA-UP-011~013, REC-008 | ⏸️ pytest.skip() |
+| | UP 수신 → SB 라우팅 | `test_uplink_e2e.py` | LORA-UP-011~013, REC-008 | ✓ 구현됨 (`--cfs` 게이트, 2026-07-20 정정) |
 | **Runtime** | LoRa 하드웨어 TDM 사이클 | 수동 PI 테스트 | TDM-RT-001~009 | 미실행 (LoRa 필요) |
 
 ---
@@ -882,8 +904,8 @@ Pi 실환경 동작은 불변** — env var는 테스트 전용이다.
 | **PyUnit (A)** | LoRa UP 프레임 파싱 | `test_uplink_lora_frame.py` | LORA-UP-003~013, CFS-CMD-001~008 | ✓ 구현 |
 | | route update sender (Python ↔ C 동등성) | `test_uplink_route_update_sender.py` | UPLINK-ROUTE-PYEQUIV-001~005 | ✓ 구현 |
 | | config sender payload/checksum | `test_uplink_config_sender.py` | UPLINK-CONFIG-PYEQUIV-001~012 | ✓ 구현 |
-| **E2E (B)** | UDP → uplink_app → SB 경로 | `test_uplink_e2e.py` | LORA-UP-011~013 (seq increase/reject/regression) | ⏸️ pytest.skip() |
-| | LoRa serial RX → SB 라우팅 | `test_uplink_e2e.py` | REC-008 (seq regression count) | ⏸️ pytest.skip() |
+| **E2E (B)** | UDP → uplink_app → SB 경로 | `test_uplink_e2e.py` | LORA-UP-011~013 (seq increase/reject/regression) | ✓ 구현됨 (`--cfs` 게이트, 2026-07-20 정정 — 원 표기 `pytest.skip()`은 stale, 실제로는 조건부 실행) |
+| | LoRa serial RX → SB 라우팅 | `test_uplink_e2e.py` | REC-008 (seq regression count) | ✓ 구현됨 (`--cfs` 게이트) |
 | **Runtime** | 지상국 명령 → FC MISSION 업로드 | Pi + FC 수동 테스트 | RT-UPLINK-001~003 | 미실행 (LoRa 필요) |
 
 ---

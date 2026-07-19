@@ -29,8 +29,11 @@ TEST_CASES.md 기준, 코드 공개 함수 전수 ↔ 테스트 함수 전수 �
 
 ## B. 경미 (선택)
 
-- [ ] B-1. `UPLINK_APP_Init` 실패주입 — `Subscribe2Error` 결손
-      `Init_Subscribe1Error`/`3Error`/`4Error`는 있는데 `2Error`만 없음. 패턴상 누락으로 추정.
+- [x] B-1. `UPLINK_APP_Init` 실패주입 — `Subscribe2Error` 결손 (2026-07-20 재확인, 갭 아님)
+      재확인 결과 `Test_UPLINK_APP_Init_SubscribeError`가 `CFE_SB_Subscribe` 2번째 호출
+      실패를 이미 커버(`UT_SetDeferredRetcode(..., 2, ...)`) — 이름만 `Subscribe2Error`가
+      아니라 `SubscribeError`로 지어져 grep에서 누락으로 오판됨. 1/2/3/4 전 호출 커버 확인,
+      코드 변경 불필요.
 
 ## 참고 (테스트 코드는 있으나 문서 미반영 — 착수 불필요, 문서만 정정)
 
@@ -55,9 +58,13 @@ TEST_CASES.md 기준, 코드 공개 함수 전수 ↔ 테스트 함수 전수 �
 
 ## E. 문서 정정 (소규모, 코드 작업 아님)
 
-- [ ] E-1. TEST_CASES.md 862행 "스트림 요청 ✓" 과대표기 정정 (A-3 처리 시 함께)
-- [ ] E-2. decoder 테스트 22건 누락 기재 (위 "참고" 항목과 동일)
-- [ ] E-3. 매트릭스의 e2e 3파일 "⏸️ pytest.skip()" 행 — 본문 표는 "구현됨"으로 정정했으나 매트릭스(837행대)는 구 표기 잔존
+- [x] E-1. TEST_CASES.md 862행 "스트림 요청 ✓" 과대표기 정정 — A-3 처리 시 완료
+- [x] E-2. decoder 테스트 22건 누락 기재 (2026-07-20 완료) — 표를 1건→23건 전체로 갱신
+- [x] E-3. 매트릭스의 e2e 파일 "⏸️ pytest.skip()" 표기 재확인·부분 정정 (2026-07-20)
+      실제 코드 확인 결과: `test_rec_serial.py`, `test_lora_fc_downlink_e2e.py`는 진짜
+      무조건 `pytest.skip()` 스텁 — 표기 정확, 유지. `test_uplink_e2e.py`는 실제로 `--cfs`
+      fixture 게이트(cfs_host/cfs_port)로 조건부 실행되는 구현된 테스트 — "⏸️ pytest.skip()"은
+      stale 표기였음. 매트릭스 871~873행, 907~908행 정정.
 
 ## 착수 우선순위
 
