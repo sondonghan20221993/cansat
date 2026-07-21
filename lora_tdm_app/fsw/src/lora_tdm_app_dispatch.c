@@ -102,8 +102,8 @@ void LORA_TDM_APP_ProcessCommandPacket(CFE_SB_Buffer_t *SBBufPtr)
     {
         /* Phase 3.3: Update uplink feedback based on uplink_app result (§18.11.1 SEQ_FAIL) */
         const UPLINK_APP_StatusTlm_t *StatusMsg = (const UPLINK_APP_StatusTlm_t *)SBBufPtr;
-        /* UPLINK_APP_RESULT_REJECT_SEQUENCE = 3 (defined in uplink_app_cmds.c context) */
-        if (StatusMsg->LastCommandResult == 3U)  /* REJECT_SEQUENCE */
+        /* UPLINK_APP_RESULT_REJECT_SEQUENCE = 10 (default_uplink_app_msgdefs.h) */
+        if (StatusMsg->LastCommandResult == 10U)  /* REJECT_SEQUENCE */
         {
             LORA_TDM_APP_Data.PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_SEQ_FAIL;
         }

@@ -176,7 +176,7 @@ void Test_ProcessCommandPacket_UplinkStatus_RejectSequence(void)
     CFE_SB_MsgId_t          MsgId;
 
     memset(&Msg, 0, sizeof(Msg));
-    Msg.LastCommandResult = 3U; /* REJECT_SEQUENCE */
+    Msg.LastCommandResult = 10U; /* UPLINK_APP_RESULT_REJECT_SEQUENCE */
 
     MsgId = CFE_SB_ValueToMsgId(LORA_TDM_APP_UPLINK_STATUS_MID_VALUE);
     UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
@@ -187,13 +187,30 @@ void Test_ProcessCommandPacket_UplinkStatus_RejectSequence(void)
     UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.PendingUplinkFeedback, LORA_TDM_APP_UPLINK_FB_SEQ_FAIL);
 }
 
+void Test_ProcessCommandPacket_UplinkStatus_Routed_NoFalsePositive(void)
+{
+    UPLINK_APP_StatusTlm_t Msg;
+    CFE_SB_MsgId_t          MsgId;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.LastCommandResult = 3U; /* UPLINK_APP_RESULT_ROUTED (success) - must NOT set SEQ_FAIL */
+
+    MsgId = CFE_SB_ValueToMsgId(LORA_TDM_APP_UPLINK_STATUS_MID_VALUE);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+
+    LORA_TDM_APP_Data.PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_OK;
+    LORA_TDM_APP_ProcessCommandPacket((CFE_SB_Buffer_t *)&Msg);
+
+    UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.PendingUplinkFeedback, LORA_TDM_APP_UPLINK_FB_OK);
+}
+
 void Test_ProcessCommandPacket_UplinkStatus_Success(void)
 {
     UPLINK_APP_StatusTlm_t Msg;
     CFE_SB_MsgId_t          MsgId;
 
     memset(&Msg, 0, sizeof(Msg));
-    Msg.LastCommandResult = 0U; /* SUCCESS */
+    Msg.LastCommandResult = 0U; /* UPLINK_APP_RESULT_NONE */
 
     MsgId = CFE_SB_ValueToMsgId(LORA_TDM_APP_UPLINK_STATUS_MID_VALUE);
     UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
@@ -217,5 +234,6 @@ void UtTest_Setup(void)
     ADD_TEST(ProcessCommandPacket_InvalidCC);
     ADD_TEST(ProcessCommandPacket_DiagnosticCmd);
     ADD_TEST(ProcessCommandPacket_UplinkStatus_RejectSequence);
+    ADD_TEST(ProcessCommandPacket_UplinkStatus_Routed_NoFalsePositive);
     ADD_TEST(ProcessCommandPacket_UplinkStatus_Success);
 }

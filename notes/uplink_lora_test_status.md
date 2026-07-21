@@ -3,6 +3,17 @@
 > uplink 명령(지상국 → 드론) LoRa 경로 실시간 검증 기록. §1-9 전 항목 결론 확정
 > (§8.4 EKF 게이트는 옵션 A 채택으로 최종 결정, 실외 재검증만 잔여) — temp에서 승격.
 
+## 10. CONFIG 실측 재확인 (2026-07-21)
+
+`lora_tdm.downlink_protocol=2` CONFIG 명령 실사격, [UP->slot] 4/4 재전송 →
+`config activated` 확인, 이후 SH/FC seq 정상 지속(link_state=1, packet_loss=0.0).
+CONFIG 경로 정상 동작 재확인.
+
+**정정**: 이 경로는 FC-Pi UART(921600 baud, mavlink_bridge)와 무관 —
+`lora_tdm_app` 시리얼(Pi↔LoRa 모듈)은 `lora_tdm_app.c:35`에서 `B57600` 고정.
+"921600 전환 후 CONFIG 미검증"이라는 이전 우려는 애초에 성립하지 않았음
+(별개의 링크).
+
 ## 1. 목표
 지상국(OpenMCT) CLI에서 보낸 CONFIG/RECOVERY 명령이 LoRa를 통해
 드론 `uplink_app`까지 도달·처리되는지 실시간 확인.
