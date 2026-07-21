@@ -843,6 +843,12 @@ static bool MAVLINK_BRIDGE_APP_GetBaudConstant(uint32 Baudrate, speed_t *BaudCon
         case 230400:
             *BaudConstant = B230400;
             return true;
+        case 460800:
+            *BaudConstant = B460800;
+            return true;
+        case 921600:
+            *BaudConstant = B921600;
+            return true;
         default:
             return false;
     }

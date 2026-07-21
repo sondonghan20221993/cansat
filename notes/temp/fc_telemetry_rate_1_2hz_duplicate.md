@@ -27,8 +27,36 @@
 - `correlate_video_telemetry.py` 매칭에는 영향 없음(중복이어도 시각 매칭 자체는
   유효).
 
-## 다음 단계 (미착수)
-실외 실측 또는 FC 로그로 SET_MESSAGE_INTERVAL 실제 반영 여부 확인 필요.
+## 재조사 및 수정 (2026-07-21)
+
+`mavlink status` (NSH 콘솔, USB-C 직결)로 실측:
+```
+instance #0 (ttyS3 @57600, TEL2/UART4, Pi 링크):
+  tx: 2416.4 B/s
+  tx rate mult: 0.137   ← 요청 레이트의 13.7%만 실전송
+  tx rate max: 2880 B/s ← baud(57600)/10/2 로 PX4가 계산한 캡
+```
+
+`tx rate max = baud/20` 관계 확인. 역산 결과 mult=1.0 도달에 필요한
+실제 요구 대역폭 ≈ 2416.4/0.137 ≈ **17,638 B/s** → 필요 baud ≥ 352,760bps.
+57600/115200 둘 다 부족, 최소 460800 이상 필요.
+
+**원인 확정**: PX4가 UART4/TELEM2(Onboard 모드, 우리 요청분 외 기본 스트림도
+포함) 링크의 baud 대역폭 부족으로 전 스트림 레이트를 자동으로
+0.137배까지 스로틀링 — 코드/설정 버그 아니라 **baud rate 설정 부족**이 근본 원인.
+
+**수정**:
+- FC: `SER_TEL2_BAUD` = 921600 (사용자 QGC에서 적용 완료)
+- Pi: `mavlink_bridge_app/config/default_mavlink_bridge_app_platform_cfg.h`
+  `MAVLINK_BRIDGE_APP_SERIAL_BAUDRATE` 57600 → 921600
+- `mavlink_bridge_app_utils.c:MAVLINK_BRIDGE_APP_GetBaudConstant()`에
+  B460800/B921600 케이스 추가 (기존엔 B230400까지만 매핑돼 있어 921600
+  설정 시 초기화 실패했을 것 — 같이 수정)
+- 검증: 4개 앱 UT 16/16 PASS, 회귀 없음
+
+## 다음 단계
+Pi 플라이트 빌드 재생성+배포 후 실측으로 `mavlink status`의 tx rate mult가
+1.0에 근접하는지, CSV 로그상 중복값이 사라지는지 확인 필요 (미착수).
 
 ## 관련
 - `mavlink_bridge_app/fsw/src/mavlink_bridge_app_utils.c`
