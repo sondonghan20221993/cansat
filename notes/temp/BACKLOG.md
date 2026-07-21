@@ -29,7 +29,7 @@ BL-16   downlink_protocol 기체 엄격화(0/1만 수락)
         (uplink_app+cfs_core_app, img_app 잔재) 삭제. MAX_PAYLOAD_LENGTH는 실사용 중이라
         존치. LORA_BAUDRATE·STREAM_REACQUIRE는 제외(아래 고민 목록)
 ✅BL-20 문서 stale 식별자(MID/앱이름) 정정 — 완료(2026-07-21)
-BL-21   fcncode 정의 위치 중복 정리
+✅BL-21 fcncode 정의 위치 중복 정리 — 완료(2026-07-21)
 BL-03   다운링크에 seq 동봉 (v2/DL2 확정, v1 제외)
   ├─ BL-12 부트카운터
   ├─ BL-13 모듈러 seq 비교
@@ -130,7 +130,7 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 | ~~**BL-18**~~ | ✅ **완료(2026-07-21)**. 파일 fd fsync 후 rename, rename 후 부모 디렉터리(`/cf`) fd도 fsync — POSIX 표준상 rename 자체 유실 방지에 필요. `/cf`가 없는 테스트 환경에선 open 단계에서 조용히 return(기존 동작 유지), 104/104 PASS | T11 |
 | **BL-19** | 🤔 **일부 고민 필요(2026-07-21)** — 죽은 config 상수. `SERIAL_REOPEN_DELAY_MS`/`PROTOCOL_VERSION`/`MAX_PAYLOAD_LENGTH`/img_app 잔재는 삭제로 바로 가능. **`LORA_TDM_APP_LORA_BAUDRATE`**(코드가 `B57600` 하드코딩해 무시)와 **`STREAM_REACQUIRE_TIMEOUT_MS`**(`git log -S`로도 도입 이력이 안 잡힘 — 애초에 미구현 상태로 방치됐을 가능성)만 "삭제 vs 실제 기능 연결" 결정 필요 | `system_wide_reaudit` F-4/F-5/F-6 |
 | **BL-20** | 문서 stale 식별자 — `uplink_lora_test_status.md`의 `UPLINK_RAW=0x1909`(실제 `0x18D0`, 0x1909는 FC_SYS_TIME), 존재하지 않는 `lora_fc_downlink_app` 참조 4곳 | 동 F-7 |
-| **BL-21** | `lora_tdm_app` fcncode 정의 위치 중복(`fsw/inc` vs `config/`) — 기능 문제 아님, 정리만 | 동 F-6 |
+| ~~**BL-21**~~ | ✅ **완료(2026-07-21)**. `config/default_lora_tdm_app_fcncode_values.h`는 어디서도 include 안 되는 죽은 중복본(SET_DOWNLINK_PROTO_CC도 누락)이라 삭제. 실사용은 `fsw/inc/lora_tdm_app_fcncodes.h`(dispatch.c가 이걸 include). 회귀 4종 234/234 PASS | 동 F-6 |
 | **BL-22** | Pi `/boot/firmware/config.txt`의 `init_uart_clock=48000000` — **기각된 가설의 잔재**, 되돌릴지 결정(Pi 전원 필요) | `selfaudit` B-1 |
 
 ---
