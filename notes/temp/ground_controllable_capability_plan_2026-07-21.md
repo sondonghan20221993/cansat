@@ -1,5 +1,26 @@
 # 지상 제어 가능 기능 확장 계획 (2026-07-21)
 
+## TODO (착수 전 목록만 — 실행은 별도 결정 후)
+
+- [ ] **P0**: `uplink_app` EXECUTED 상태 왕복 채널 설계+구현
+  (`UPLINK_APP_RESULT_EXECUTED` 결과코드, 대상앱→uplink_app 회신 MID
+  신규 설계, `mission_app_runtime_spec.md §18.4.6.4` 정합화)
+- [ ] **P1-a**: `mavlink_bridge_app`에 `PARSER_RESET_CMD`/
+  `SERIAL_RECONNECT_CMD` 신설, `cfs_core_app`의 RECOVERY 액션에서 실제 publish
+- [ ] **P1-b**: `RESTART_BRIDGE`를 `ProcessRecoveryCommand()`에서
+  `CFE_ES_RestartApp()`에 직접 연결
+- [ ] **P1-c**: `RecoveryAction` enum에 `RESTART_UPLINK`/`RESTART_LORA`
+  추가 후 각각 `CFE_ES_RestartApp()` 연결(전수조사 신규 발견분)
+- [ ] **P1-d**: 위 5개 액션(RESTART_BRIDGE/UPLINK/LORA, PARSER_RESET,
+  SERIAL_RECONNECT) 회귀 테스트 추가
+- [ ] **P2**: `VIEWPOINT_CMD_MID` 캐시의 실제 활용처 존재 여부 결정 —
+  없으면 spec에 "저장만, 활용 미정" 명시로 종결
+- [ ] (참고, 낮은 우선순위) `SaveState()`/`MarkOutputsStale()` 강제
+  트리거 필요성 재검토 — 현재는 불필요 판단, 필요해지면 재고
+- [ ] (참고, 위생) `lora_tdm_app` fcncode 정의 위치 중복
+  (`fsw/inc/lora_tdm_app_fcncodes.h` vs
+  `config/default_..._fcncode_values.h`) 정리
+
 ## 배경
 
 `command_dead_end_audit_2026-07-21.md`에서 발견한 3개 항목에 대한 방향 결정:
