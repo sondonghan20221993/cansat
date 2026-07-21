@@ -24,8 +24,10 @@ BL-04   링크 EID 3종 구현 (히스테리시스 설계 포함)
 ✅BL-06 stale TODO 주석 2건 정정 — 완료(2026-07-21)
 BL-16   downlink_protocol 기체 엄격화(0/1만 수락)
 ✅BL-18 SaveState() fsync() — 완료(2026-07-21), 파일+부모디렉터리 둘 다
-BL-19'  죽은 config 상수 중 일부만: SERIAL_REOPEN_DELAY_MS/PROTOCOL_VERSION/
-        MAX_PAYLOAD_LENGTH/img_app 잔재 삭제 (LORA_BAUDRATE·STREAM_REACQUIRE는 제외, 아래 고민 목록)
+✅BL-19' 죽은 config 상수 안전 부분 삭제 — 완료(2026-07-21): SERIAL_REOPEN_DELAY_MS/
+        PROTOCOL_VERSION(lora_tdm_app), IMAGE_ID_LEN/CAMERA_ID_LEN/ARTIFACT_REF_LEN
+        (uplink_app+cfs_core_app, img_app 잔재) 삭제. MAX_PAYLOAD_LENGTH는 실사용 중이라
+        존치. LORA_BAUDRATE·STREAM_REACQUIRE는 제외(아래 고민 목록)
 BL-20   문서 stale 식별자(MID/앱이름) 정정
 BL-21   fcncode 정의 위치 중복 정리
 BL-03   다운링크에 seq 동봉 (v2/DL2 확정, v1 제외)

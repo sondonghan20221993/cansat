@@ -115,12 +115,12 @@ Python 디코더 쪽 `test_systime_block` 테스트도 통과 중.
 
 | 앱 | 상수/EID | 비고 |
 |---|---|---|
-| lora_tdm_app | `LORA_TDM_APP_PROTOCOL_VERSION` | 미참조 |
-| lora_tdm_app | `LORA_TDM_APP_MAX_PAYLOAD_LENGTH` | 미참조(별도 `DL2_*` 상수 사용 중) |
-| mavlink_bridge_app | `STREAM_REACQUIRE_TIMEOUT_MS` | 미참조 — 스트림 재획득 타임아웃이 실제로 강제되지 않음 |
-| cfs_core_app | `CFS_CORE_APP_ROUTE_MAX_WAYPOINTS` | 미참조 |
-| cfs_core_app / uplink_app | `CAMERA_ID_LEN`, `IMAGE_ID_LEN`, `ARTIFACT_REF_LEN` | `legacy/img_app` 잔재로 추정 |
-| cfs_core_app | `CFS_CORE_APP_PUBLISH_EID` | 정의만, 미발생 |
+| ~~lora_tdm_app~~ | ~~`LORA_TDM_APP_PROTOCOL_VERSION`~~ | ✅ 삭제됨(2026-07-21, BL-19') |
+| ~~lora_tdm_app~~ | ~~`LORA_TDM_APP_MAX_PAYLOAD_LENGTH`~~ | ✅ 삭제됨(2026-07-21, BL-19') — 별도 `DL2_*` 상수 사용 중이라 진짜 미참조 확인 |
+| mavlink_bridge_app | `STREAM_REACQUIRE_TIMEOUT_MS` | 미참조 — 스트림 재획득 타임아웃이 실제로 강제되지 않음. **고민 필요(BL-19 잔여)**, 삭제 전 도입 의도 확인 |
+| cfs_core_app | `CFS_CORE_APP_ROUTE_MAX_WAYPOINTS` | **정정(2026-07-21)**: 실제로는 `cfs_core_app.h:50` `Waypoints[]` 배열 크기로 사용 중 — 이 표 자체가 오류였음, 삭제 대상 아님 |
+| ~~cfs_core_app / uplink_app~~ | ~~`CAMERA_ID_LEN`, `IMAGE_ID_LEN`, `ARTIFACT_REF_LEN`~~ | ✅ 삭제됨(2026-07-21, BL-19') — `legacy/img_app` 잔재 확인 |
+| cfs_core_app | `CFS_CORE_APP_PUBLISH_EID` | 정의만, 미발생 — BL-19' 범위 밖(EID는 발생 위치 설계 필요, 단순 삭제 대상 아님) |
 
 ---
 

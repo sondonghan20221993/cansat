@@ -8,7 +8,6 @@
 #define LORA_TDM_APP_RX_WINDOW_MS             100
 #define LORA_TDM_APP_LINK_LOSS_THRESHOLD      15
 #define LORA_TDM_APP_LINK_TIMEOUT_MS          5000
-#define LORA_TDM_APP_SERIAL_REOPEN_DELAY_MS   1000
 
 /* Packet types */
 #define LORA_TDM_APP_FC_STATE_PACKET_TYPE      1
@@ -29,10 +28,6 @@
 #define LORA_TDM_APP_LORA_SERIAL_PATH \
     "/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0"
 #define LORA_TDM_APP_LORA_BAUDRATE 57600
-
-/* Protocol */
-#define LORA_TDM_APP_PROTOCOL_VERSION          1
-#define LORA_TDM_APP_MAX_PAYLOAD_LENGTH        196
 
 /* uplink_app function code for forwarded UP frames (mirrors UPLINK_APP_PROCESS_UPLINK_CC) */
 #define LORA_TDM_APP_UPLINK_PROCESS_UPLINK_CC  2
