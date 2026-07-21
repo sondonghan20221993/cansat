@@ -1636,19 +1636,22 @@ static void MAVLINK_BRIDGE_APP_HandleFrameComplete(uint32 RxTimestampMs, uint8 C
 
 static void MAVLINK_BRIDGE_APP_ProcessReceivedByte(uint8 Byte, uint32 RxTimestampMs)
 {
-    if (Byte == MAVLINK_STX_V1)
+    if (MAVLINK_BRIDGE_APP_Parser.State == MAVLINK_PARSE_WAIT_STX)
     {
-        MAVLINK_BRIDGE_APP_ResetParser();
-        MAVLINK_BRIDGE_APP_Parser.IsV2  = 0;
-        MAVLINK_BRIDGE_APP_Parser.State = MAVLINK_PARSE_GOT_LENGTH;
-        return;
-    }
-    else if (Byte == MAVLINK_STX_V2)
-    {
-        MAVLINK_BRIDGE_APP_ResetParser();
-        MAVLINK_BRIDGE_APP_Parser.IsV2  = 1;
-        MAVLINK_BRIDGE_APP_Parser.State = MAVLINK_PARSE_GOT_LENGTH;
-        return;
+        if (Byte == MAVLINK_STX_V1)
+        {
+            MAVLINK_BRIDGE_APP_ResetParser();
+            MAVLINK_BRIDGE_APP_Parser.IsV2  = 0;
+            MAVLINK_BRIDGE_APP_Parser.State = MAVLINK_PARSE_GOT_LENGTH;
+            return;
+        }
+        else if (Byte == MAVLINK_STX_V2)
+        {
+            MAVLINK_BRIDGE_APP_ResetParser();
+            MAVLINK_BRIDGE_APP_Parser.IsV2  = 1;
+            MAVLINK_BRIDGE_APP_Parser.State = MAVLINK_PARSE_GOT_LENGTH;
+            return;
+        }
     }
 
     switch (MAVLINK_BRIDGE_APP_Parser.State)

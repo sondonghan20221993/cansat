@@ -1111,6 +1111,33 @@ void Test_PublishAttitude_FiniteValuesAccepted(void)
     UtAssert_INT32_EQ((int32)MAVLINK_BRIDGE_APP_Data.NonFiniteValueCount, 0);
 }
 
+/* 페이로드 바이트에 STX_V1(0xFE)/STX_V2(0xFD) 값이 포함돼도 파서가 프레임
+ * 중간에 재진입(리셋)하지 않고 정상 완주하는지 회귀 확인.
+ * (파서가 상태 무관하게 모든 바이트를 STX로 검사하던 버그의 재발 방지) */
+void Test_ProcessReceivedByte_StxByteInPayload_NoReentry(void)
+{
+    uint8  Payload[28];
+    uint8  Frame[64];
+    size_t Len;
+    float  Roll = 0.25f;
+
+    memset(Payload, 0, sizeof(Payload));
+    Payload[0] = 0xFDU; /* MAVLINK_STX_V2 */
+    Payload[1] = 0xFEU; /* MAVLINK_STX_V1 */
+    Payload[2] = 0x00;
+    Payload[3] = 0x00; /* time_boot_ms = 0x0000FEFD */
+    memcpy(&Payload[4], &Roll, sizeof(float));
+
+    MAVLINK_BRIDGE_APP_Data.AttitudeTlm.Valid = 0;
+
+    Len = UT_BuildMavFrameGeneric(Frame, (uint8)UT_ATTITUDE_MSGID, (uint8)UT_ATTITUDE_CRC_EXTRA,
+                                  Payload, sizeof(Payload));
+    UT_FeedSerial(Frame, Len);
+
+    UtAssert_INT32_EQ((int32)MAVLINK_BRIDGE_APP_Data.AttitudeTlm.Valid, 1);
+    UtAssert_True(MAVLINK_BRIDGE_APP_Data.AttitudeTlm.RollRad == Roll, "RollRad passed through despite STX bytes in payload");
+}
+
 /* -----------------------------------------------------------------------
  * RequestTelemetryStreams — 스트림 요청 경로 테스트
  * MAVLINK_MSG_ID_COMMAND_LONG=76, COMMAND_LONG payload=33B -> frame=45B(10+33+2).
@@ -1218,6 +1245,7 @@ void UtTest_Setup(void)
     ADD_TEST(PublishAttitude_NaNRejected);
     ADD_TEST(PublishEkfLocal_InfRejected);
     ADD_TEST(PublishAttitude_FiniteValuesAccepted);
+    ADD_TEST(ProcessReceivedByte_StxByteInPayload_NoReentry);
     ADD_TEST(RequestTelemetryStreams_SendsSixStreamRequests);
     ADD_TEST(RequestTelemetryStreams_SkippedWhenNoTarget);
 }
