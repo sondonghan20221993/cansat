@@ -260,7 +260,13 @@ static void RunTx(void)
                 LORA_TDM_APP_Data.TxCount++;
                 LORA_TDM_APP_Data.LastSentSeq = LORA_TDM_APP_Data.DownlinkSeq;
                 LORA_TDM_APP_Data.DownlinkSeq++;
-                LORA_TDM_APP_Data.PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_OK;
+                /* PendingUplinkFeedback은 여기서 리셋하지 않는다 (2026-07-21) —
+                 * uplink_app 처리 결과(UPLINK_STATUS_MID)가 SB 라운드트립 지연으로
+                 * 이 사이클 안에 도착 못 하면, 확정된 판정(SEQ_FAIL/STATE_BLOCKED)이
+                 * 다음 TX에서 곧바로 OK로 덮여써져 지상국이 놓치는 레이스가 있었음.
+                 * 리셋은 ProcessUpFrame/ForwardUp2ToUplinkApp에서 새 명령을
+                 * 포워딩할 때만 수행 — 판정값이 다음 명령 전까지 유지되어야
+                 * 지상국이 여러 다운링크 사이클에 걸쳐 안정적으로 관측 가능. */
             }
             else
             {
@@ -296,7 +302,7 @@ static void RunTx(void)
             LORA_TDM_APP_Data.TxCount++;
             LORA_TDM_APP_Data.LastSentSeq = LORA_TDM_APP_Data.DownlinkSeq;
             LORA_TDM_APP_Data.DownlinkSeq++;
-            LORA_TDM_APP_Data.PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_OK;
+            /* PendingUplinkFeedback 리셋 안 함 — v2 분기와 동일 이유(위 주석 참조) */
         }
         else
         {
