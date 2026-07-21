@@ -109,6 +109,7 @@ CFE_Status_t UPLINK_APP_Init(void)
 
     UPLINK_APP_Data.Valid = 1;
     UPLINK_APP_LoadState();
+    UPLINK_APP_IncrementBootCount(); /* BL-12(2026-07-21): 복원값(또는 0)에서 +1, 즉시 영속화 */
 
     CFE_EVS_SendEvent(UPLINK_APP_STARTUP_EID, CFE_EVS_EventType_INFORMATION,
                       "UPLINK_APP Initialized");

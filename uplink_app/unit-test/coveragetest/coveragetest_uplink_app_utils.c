@@ -269,6 +269,26 @@ void Test_UPLINK_APP_SaveState_NoDir(void)
     UtAssert_INT32_EQ(UPLINK_APP_Data.LastAcceptedSequence, 99);
 }
 
+void Test_UPLINK_APP_IncrementBootCount_FromZero(void)
+{
+    /* BL-12: 첫 부팅(복원값 없음, BootCount==0)에서 +1 */
+    UPLINK_APP_Data.BootCount = 0;
+
+    UPLINK_APP_IncrementBootCount();
+
+    UtAssert_INT32_EQ((int)UPLINK_APP_Data.BootCount, 1);
+}
+
+void Test_UPLINK_APP_IncrementBootCount_WrapsAt256(void)
+{
+    /* BL-12: uint8 wrap — 255에서 +1하면 0으로 되돌아감 */
+    UPLINK_APP_Data.BootCount = 255;
+
+    UPLINK_APP_IncrementBootCount();
+
+    UtAssert_INT32_EQ((int)UPLINK_APP_Data.BootCount, 0);
+}
+
 void Test_UPLINK_APP_ForwardModeCommand(void)
 {
     UPLINK_APP_ProcessUplinkCmd_t Cmd;
@@ -540,6 +560,8 @@ void UtTest_Setup(void)
     ADD_TEST(UPLINK_APP_UpdateStatusTelemetry);
     ADD_TEST(UPLINK_APP_LoadState_NoFile);
     ADD_TEST(UPLINK_APP_SaveState_NoDir);
+    ADD_TEST(UPLINK_APP_IncrementBootCount_FromZero);
+    ADD_TEST(UPLINK_APP_IncrementBootCount_WrapsAt256);
     ADD_TEST(UPLINK_APP_ForwardModeCommand);
     ADD_TEST(UPLINK_APP_ForwardDiagnosticCommand);
     ADD_TEST(UPLINK_APP_ParseViewpointPayload);

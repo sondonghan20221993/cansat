@@ -17,6 +17,7 @@ typedef struct
 {
     uint32 Magic;
     uint32 LastAcceptedSequence;
+    uint32 BootCount; /* BL-12: 8비트 값만 쓰지만 구조체는 uint32로 통일(다른 필드와 정렬) */
     uint32 Checksum;
 } UPLINK_APP_PersistentState_t;
 
@@ -500,17 +501,27 @@ void UPLINK_APP_LoadState(void)
     {
         return;
     }
-    if (State.Checksum != (State.Magic + State.LastAcceptedSequence))
+    if (State.Checksum != (State.Magic + State.LastAcceptedSequence + State.BootCount))
     {
         return;
     }
 
     UPLINK_APP_Data.LastAcceptedSequence = State.LastAcceptedSequence;
     UPLINK_APP_Data.AcceptedCount        = 1;
+    UPLINK_APP_Data.BootCount            = (uint8)State.BootCount;
 
     CFE_EVS_SendEvent(UPLINK_APP_STARTUP_EID, CFE_EVS_EventType_INFORMATION,
-                      "UPLINK_APP: restored persistent state seq=%lu",
-                      (unsigned long)State.LastAcceptedSequence);
+                      "UPLINK_APP: restored persistent state seq=%lu boot_count=%u",
+                      (unsigned long)State.LastAcceptedSequence, (unsigned int)UPLINK_APP_Data.BootCount);
+}
+
+void UPLINK_APP_IncrementBootCount(void)
+{
+    /* BL-12(2026-07-21): LoadState() 이후 호출 — 복원된 값(또는 첫 부팅
+     * 0)에서 +1(uint8 wrap), 즉시 SaveState()로 영속화해 이번 부팅
+     * 세션의 boot_count를 첫 다운링크부터 반영할 수 있게 한다. */
+    UPLINK_APP_Data.BootCount++;
+    UPLINK_APP_SaveState();
 }
 
 void UPLINK_APP_SaveState(void)
@@ -524,7 +535,8 @@ void UPLINK_APP_SaveState(void)
 
     State.Magic                = UPLINK_APP_STATE_MAGIC;
     State.LastAcceptedSequence = UPLINK_APP_Data.LastAcceptedSequence;
-    State.Checksum             = State.Magic + State.LastAcceptedSequence;
+    State.BootCount            = UPLINK_APP_Data.BootCount;
+    State.Checksum             = State.Magic + State.LastAcceptedSequence + State.BootCount;
 
     snprintf(TmpPath, sizeof(TmpPath), "%s.tmp", UPLINK_APP_STATE_FILE_PATH);
 

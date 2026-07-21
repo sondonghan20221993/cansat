@@ -135,3 +135,8 @@ void UPLINK_APP_SaveState(void)
 {
     UT_GenStub_Execute(UPLINK_APP_SaveState, Basic, NULL);
 }
+
+void UPLINK_APP_IncrementBootCount(void)
+{
+    UT_GenStub_Execute(UPLINK_APP_IncrementBootCount, Basic, NULL);
+}

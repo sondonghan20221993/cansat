@@ -27,6 +27,7 @@ typedef struct
     uint32                 DuplicateCount;
     uint32                 RoutingFailureCount;
     uint32                 LastAcceptedSequence;
+    uint8                  BootCount; /* BL-12(2026-07-21): 부팅마다 +1, 8비트 wrap, /cf에 영속 */
     uint16                 LastCommandCode;
     uint16                 LastRxSequence;
     uint8                  LastCommandResult;
