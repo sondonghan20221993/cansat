@@ -378,13 +378,29 @@ else:
 | 10 | `ACK_PARSE_ERR_EID` | ERROR | "ACK," 프레임 파싱 실패 | ✅ |
 | 11 | `CRC_FAIL_EID` | ERROR | UP frame CRC 불일치 | ✅ |
 | 12 | `SEQ_FAIL_EID` | ERROR | ACK sequence echo 불일치 (`SeqEcho != LastSentSeq`, ACK/ACK2 공통 — `lora_tdm_app_utils.c:520-526`) | ✅ 구현 (2026-07, 타이밍 버그 수정 commit `48c8d12`) |
-| 13 | `LINK_LOST_EID` | ERROR | LinkState → DISCONNECTED 전이 | ✅ |
-| 14 | `LINK_DEGRADED_EID` | WARNING | LinkState → DEGRADED 전이 | ✅ |
-| 15 | `LINK_RESTORED_EID` | INFO | LinkState → CONNECTED 복구 | ✅ |
-| 16 | `PIPE_ERR_EID` | ERROR | SB 파이프 수신 오류 | ✅ |
-| 17 | `SUB_ERR_EID` | ERROR | SB 구독 실패 | ✅ |
-| 18 | `SB_SEND_ERR_EID` | ERROR | SB 메시지 송신 실패 | ✅ |
+| 13 | `LINK_LOST_EID` | ERROR | LinkState → DISCONNECTED 전이(엣지 트리거) | ✅ 구현(2026-07-21, BL-04, `LORA_TDM_APP_UpdateLinkState`) |
+| 14 | `LINK_DEGRADED_EID` | ERROR (cFE EVS엔 WARNING 타입 없음, 코드베이스 전체가 ERROR/INFORMATION만 사용) | LinkState → DEGRADED 전이(엣지 트리거) | ✅ 구현(2026-07-21, BL-04) |
+| 15 | `LINK_RESTORED_EID` | INFO | LinkState → CONNECTED 복구(DEGRADED/DISCONNECTED 어느 쪽에서든) | ✅ 구현(2026-07-21, BL-04) |
+| 16 | `PIPE_ERR_EID` | ERROR | SB 파이프 수신 오류 | ❌ **미구현** — 정의만 있고 발생 지점 없음(`system_wide_reaudit` F-1b, BL-04 범위 밖) |
+| 17 | `SUB_ERR_EID` | ERROR | SB 구독 실패 | ❌ **미구현** — 상동 |
+| 18 | `SB_SEND_ERR_EID` | ERROR | SB 메시지 송신 실패 | ❌ **미구현** — 상동 |
 | 19 | `DIAGNOSTIC_CMD_EID` | INFO | `DIAGNOSTIC_CMD_MID` 수신 (2026-06-17 추가) | ✅ |
+| 20 | `SET_DL_PROTO_INF_EID` | INFO | downlink_protocol 값 정상 변경 | ✅ |
+| 21 | `SET_DL_PROTO_ERR_EID` | ERROR | downlink_protocol 값 거부(0/1 외, BL-16, 2026-07-21) | ✅ |
+
+### 16.1. 링크 상태 전이 이벤트 정책 (2026-07-21, BL-04)
+
+`LORA_TDM_APP_UpdateLinkState()`는 매 사이클(200ms) 실행되지만 상태값이
+실제로 **바뀔 때만**(엣지 트리거) 이벤트를 낸다. 결정 사항:
+
+- **부팅 직후 첫 관측은 전이로 치지 않음** — `LinkStateInitialized` 플래그로
+  구분, 첫 호출에서 이벤트 없이 초기 상태만 기록.
+- **플래핑 폭주 방지에 별도 히스테리시스(N 사이클 연속)를 추가하지 않음** —
+  `LinkState` 산출 자체가 이미 `NoAckCount>=15`(≈3초), `LINK_TIMEOUT_MS=5000`
+  같은 다중 사이클 임계값을 쓰므로 상태값 자체가 빠르게 오가지 않음. 임계값
+  경계에서만 드물게 연속 전이가 날 수 있으나 추가 디바운스는 과설계로 판단.
+- **RESTORED는 DEGRADED/DISCONNECTED 어느 쪽에서 오든 CONNECTED로 들어오는
+  모든 전이를 포함**한다 — spec 원문("복구")이 출발 상태를 구분하지 않았음.
 
 ## 17. Serial 재열기 정책 <!-- 구 §13 -->
 

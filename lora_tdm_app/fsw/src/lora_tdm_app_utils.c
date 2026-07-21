@@ -344,6 +344,8 @@ int LORA_TDM_APP_BuildShDownlinkLine(char *Buf, size_t BufLen, const LORA_TDM_AP
 void LORA_TDM_APP_UpdateLinkState(LORA_TDM_APP_Data_t *AppData, uint32 NowMs)
 {
     uint32 Elapsed;
+    uint8  NewState;
+    uint8  OldState = AppData->LinkState;
 
     if (AppData->LastAckTimestampMs == 0)
     {
@@ -360,15 +362,49 @@ void LORA_TDM_APP_UpdateLinkState(LORA_TDM_APP_Data_t *AppData, uint32 NowMs)
 
     if (Elapsed > LORA_TDM_APP_LINK_TIMEOUT_MS)
     {
-        AppData->LinkState = LORA_TDM_APP_LINK_DISCONNECTED;
+        NewState = LORA_TDM_APP_LINK_DISCONNECTED;
     }
     else if (AppData->NoAckCount >= LORA_TDM_APP_LINK_LOSS_THRESHOLD)
     {
-        AppData->LinkState = LORA_TDM_APP_LINK_DEGRADED;
+        NewState = LORA_TDM_APP_LINK_DEGRADED;
     }
     else
     {
-        AppData->LinkState = LORA_TDM_APP_LINK_CONNECTED;
+        NewState = LORA_TDM_APP_LINK_CONNECTED;
+    }
+
+    AppData->LinkState = NewState;
+
+    /* BL-04(2026-07-21): 상태가 바뀔 때만 이벤트 발생(엣지 트리거) —
+     * 부팅 직후 첫 관측은 "전이"가 아니므로 제외. 플래핑 폭주 방지는
+     * 이미 위 임계값 자체가 다중 사이클 디바운스(NoAckCount>=15회 ≈3s,
+     * LINK_TIMEOUT=5s)를 제공하므로 이벤트단 추가 히스테리시스는 두지
+     * 않음 — 임계값 경계에서만 드물게 발생 가능. RESTORED는 CONNECTED로
+     * 들어오는 모든 전이(DEGRADED/DISCONNECTED 어느 쪽에서든)를 포함. */
+    if (AppData->LinkStateInitialized == 0U)
+    {
+        AppData->LinkStateInitialized = 1U;
+    }
+    else if (NewState != OldState)
+    {
+        if (NewState == LORA_TDM_APP_LINK_DISCONNECTED)
+        {
+            CFE_EVS_SendEvent(LORA_TDM_APP_LINK_LOST_EID, CFE_EVS_EventType_ERROR,
+                              "LORA_TDM_APP: link lost (state %u -> %u)",
+                              (unsigned int)OldState, (unsigned int)NewState);
+        }
+        else if (NewState == LORA_TDM_APP_LINK_DEGRADED)
+        {
+            CFE_EVS_SendEvent(LORA_TDM_APP_LINK_DEGRADED_EID, CFE_EVS_EventType_ERROR,
+                              "LORA_TDM_APP: link degraded (state %u -> %u)",
+                              (unsigned int)OldState, (unsigned int)NewState);
+        }
+        else /* CONNECTED */
+        {
+            CFE_EVS_SendEvent(LORA_TDM_APP_LINK_RESTORED_EID, CFE_EVS_EventType_INFORMATION,
+                              "LORA_TDM_APP: link restored (state %u -> %u)",
+                              (unsigned int)OldState, (unsigned int)NewState);
+        }
     }
 }
 

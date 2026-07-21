@@ -190,6 +190,85 @@ void Test_UpdateLinkState_Disconnected(void)
     UtAssert_INT32_EQ(LORA_TDM_APP_Data.LinkState, LORA_TDM_APP_LINK_DISCONNECTED);
 }
 
+void Test_UpdateLinkState_FirstObservation_NoEvent(void)
+{
+    /* BL-04: 부팅 직후 첫 호출은 전이가 아니므로 이벤트 없음(LinkStateInitialized==0) */
+    UT_CheckEvent_t Evt;
+
+    LORA_TDM_APP_Data.NoAckCount         = 0;
+    LORA_TDM_APP_Data.LastAckTimestampMs = 1000;
+
+    UT_CHECKEVENT_SETUP(&Evt, LORA_TDM_APP_LINK_RESTORED_EID, NULL);
+    LORA_TDM_APP_UpdateLinkState(&LORA_TDM_APP_Data, 2000);
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.LinkStateInitialized, 1);
+    UtAssert_INT32_EQ(Evt.MatchCount, 0);
+}
+
+void Test_UpdateLinkState_ConnectedToDegraded_FiresLinkDegradedEid(void)
+{
+    UT_CheckEvent_t Evt;
+
+    LORA_TDM_APP_Data.NoAckCount         = 0;
+    LORA_TDM_APP_Data.LastAckTimestampMs = 1000;
+    LORA_TDM_APP_UpdateLinkState(&LORA_TDM_APP_Data, 2000); /* CONNECTED, no event(first) */
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.LinkState, LORA_TDM_APP_LINK_CONNECTED);
+
+    UT_CHECKEVENT_SETUP(&Evt, LORA_TDM_APP_LINK_DEGRADED_EID, NULL);
+    LORA_TDM_APP_Data.NoAckCount = LORA_TDM_APP_LINK_LOSS_THRESHOLD;
+    LORA_TDM_APP_UpdateLinkState(&LORA_TDM_APP_Data, 2200); /* CONNECTED -> DEGRADED */
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.LinkState, LORA_TDM_APP_LINK_DEGRADED);
+    UtAssert_INT32_EQ(Evt.MatchCount, 1);
+}
+
+void Test_UpdateLinkState_SameStateAgain_NoDuplicateEvent(void)
+{
+    /* 임계값 경계에서 매 사이클 재계산해도 상태 불변이면 이벤트가 또 안 나야 함 */
+    UT_CheckEvent_t Evt;
+
+    LORA_TDM_APP_Data.NoAckCount         = LORA_TDM_APP_LINK_LOSS_THRESHOLD;
+    LORA_TDM_APP_Data.LastAckTimestampMs = 1000;
+    LORA_TDM_APP_UpdateLinkState(&LORA_TDM_APP_Data, 2000); /* DEGRADED, first observation, no event */
+
+    UT_CHECKEVENT_SETUP(&Evt, LORA_TDM_APP_LINK_DEGRADED_EID, NULL);
+    LORA_TDM_APP_UpdateLinkState(&LORA_TDM_APP_Data, 2200); /* still DEGRADED */
+    LORA_TDM_APP_UpdateLinkState(&LORA_TDM_APP_Data, 2400); /* still DEGRADED */
+
+    UtAssert_INT32_EQ(Evt.MatchCount, 0);
+}
+
+void Test_UpdateLinkState_DegradedToConnected_FiresLinkRestoredEid(void)
+{
+    UT_CheckEvent_t Evt;
+
+    LORA_TDM_APP_Data.NoAckCount         = LORA_TDM_APP_LINK_LOSS_THRESHOLD;
+    LORA_TDM_APP_Data.LastAckTimestampMs = 1000;
+    LORA_TDM_APP_UpdateLinkState(&LORA_TDM_APP_Data, 2000); /* DEGRADED, first observation */
+
+    UT_CHECKEVENT_SETUP(&Evt, LORA_TDM_APP_LINK_RESTORED_EID, NULL);
+    LORA_TDM_APP_Data.NoAckCount = 0;
+    LORA_TDM_APP_UpdateLinkState(&LORA_TDM_APP_Data, 2200); /* DEGRADED -> CONNECTED */
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.LinkState, LORA_TDM_APP_LINK_CONNECTED);
+    UtAssert_INT32_EQ(Evt.MatchCount, 1);
+}
+
+void Test_UpdateLinkState_ToDisconnected_FiresLinkLostEid(void)
+{
+    UT_CheckEvent_t Evt;
+
+    LORA_TDM_APP_Data.NoAckCount         = 0;
+    LORA_TDM_APP_Data.LastAckTimestampMs = 1000;
+    LORA_TDM_APP_UpdateLinkState(&LORA_TDM_APP_Data, 2000); /* CONNECTED, first observation */
+
+    UT_CHECKEVENT_SETUP(&Evt, LORA_TDM_APP_LINK_LOST_EID, NULL);
+    LORA_TDM_APP_UpdateLinkState(&LORA_TDM_APP_Data, 1000 + LORA_TDM_APP_LINK_TIMEOUT_MS + 1);
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.LinkState, LORA_TDM_APP_LINK_DISCONNECTED);
+    UtAssert_INT32_EQ(Evt.MatchCount, 1);
+}
+
 /* ---- ProcessRxLine: ACK ---- */
 
 void Test_ProcessRxLine_Ack(void)
@@ -976,6 +1055,11 @@ void UtTest_Setup(void)
     ADD_TEST(UpdateLinkState_Connected);
     ADD_TEST(UpdateLinkState_Degraded);
     ADD_TEST(UpdateLinkState_Disconnected);
+    ADD_TEST(UpdateLinkState_FirstObservation_NoEvent);
+    ADD_TEST(UpdateLinkState_ConnectedToDegraded_FiresLinkDegradedEid);
+    ADD_TEST(UpdateLinkState_SameStateAgain_NoDuplicateEvent);
+    ADD_TEST(UpdateLinkState_DegradedToConnected_FiresLinkRestoredEid);
+    ADD_TEST(UpdateLinkState_ToDisconnected_FiresLinkLostEid);
     ADD_TEST(ProcessRxLine_Ack);
     ADD_TEST(ProcessRxLine_Ack_SeqMatch_NoFalseFail);
     ADD_TEST(ProcessRxLine_Ack_SeqMismatch);

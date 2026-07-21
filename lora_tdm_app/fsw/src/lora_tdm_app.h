@@ -59,7 +59,8 @@ typedef struct
     uint16 SeqFailCount;
     uint32 LastAckTimestampMs;
     uint8  PendingUplinkFeedback;
-    uint8  Reserved[2];
+    uint8  LinkStateInitialized; /* BL-04: 첫 관측(부팅 직후)은 전이 이벤트 대상 아님 */
+    uint8  Reserved[1];
 
     /* Serial fd */
     int    LoRaFd;

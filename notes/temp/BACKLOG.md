@@ -20,7 +20,7 @@
 
 ```
 ✅BL-01  재전송 중복 오탐 차단           ← 완료(2026-07-21), 코드는 Pi 미배포
-BL-04   링크 EID 3종 구현 (히스테리시스 설계 포함)
+✅BL-04 링크 EID 3종 구현 — 완료(2026-07-21)
 ✅BL-06 stale TODO 주석 2건 정정 — 완료(2026-07-21)
 ✅BL-16 downlink_protocol 기체 엄격화(0/1만 수락) — 완료(2026-07-21)
 ✅BL-18 SaveState() fsync() — 완료(2026-07-21), 파일+부모디렉터리 둘 다
@@ -92,7 +92,7 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 
 | ID | 내용 | 근거 |
 |---|---|---|
-| **BL-04** | ✅ **결정(2026-07-21): 구현한다.** `lora_tdm_app_behavior_spec.md:381-386`이 ✅로 표기한 EID 6종(`LINK_LOST/DEGRADED/RESTORED`, `PIPE_ERR`, `SUB_ERR`, `SB_SEND_ERR`)을 실제로 발생시킴. `UpdateLinkState()`에 이전 상태 보존 + 전이 시에만 이벤트, 플래핑 방지(히스테리시스/레이트리밋) 설계 필요(`ambiguity_audit` 참조) | `system_wide_reaudit` F-1 |
+| ~~**BL-04**~~ | ✅ **부분 완료(2026-07-21)**. `LINK_LOST/DEGRADED/RESTORED` 3종은 `UpdateLinkState()`에 `LinkStateInitialized` 플래그로 첫 관측 제외 + 엣지 트리거로 구현(추가 히스테리시스는 기존 다중사이클 임계값으로 충분해 불필요 판단). `PIPE_ERR/SUB_ERR/SB_SEND_ERR` 3종은 **범위 밖으로 미룸** — spec 표기를 ❌ 미구현으로 정정. 회귀 UT 135/135 PASS(신규 5건) | `system_wide_reaudit` F-1 |
 | **BL-05** | ⏸️ **BL-08 보류에 종속** — `mission_app_runtime_spec.md` §18.4.6.4가 "전달 vs 실행 구분 … 완료"라 하지만 `EXECUTED` 결과코드 자체가 없음 | `command_dead_end_audit` F1 |
 | **BL-06** | stale TODO 주석 2건 — `lora_tdm_app.h:68`("CONFIG 커맨드 미배선"), `lora_tdm_app_utils.h:72`("SysTime 미지원") 둘 다 **실제로는 구현 완료**. 주석만 정정 | `system_wide_reaudit` F-2/F-3 |
 | **BL-07** | `cfs_core_app_command_execution_gap.md` **문서 자체가 낡음** — "MODE 상태 전이 미구현"이라 적혀 있으나 실제로는 구현돼 있음(`cfs_core_app_utils.c:786-829`, 전이 검증 포함). RECOVERY 항목도 부분 진전됨(switch 추가). 문서 갱신 후 이 백로그로 흡수 | 오늘 확인 |

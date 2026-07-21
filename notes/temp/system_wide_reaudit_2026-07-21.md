@@ -154,16 +154,18 @@ Python 디코더 쪽 `test_systime_block` 테스트도 통과 중.
 > 읽고 기존 결정사항(TDM 타이밍 제약, UFB 판정 지속 정책 등)과
 > 충돌하지 않는지 확인 후 범위를 정할 것.
 
-- [ ] **F-1a**: `UpdateLinkState()`에 이전 상태 보존 + 전이 시에만
-      `LINK_LOST/DEGRADED/RESTORED_EID` 발생하도록 구현
-      → 관련 spec: `lora_tdm_app_behavior_spec.md` §11(링크 상태 관리),
-      §13(EID 표). **주의**: 5Hz 사이클이라 플래핑 시 이벤트 폭주 가능 —
-      전이 이벤트에 히스테리시스/레이트리밋 필요한지 spec에서 정할 것
+- [x] **F-1a**: 완료(2026-07-21, BL-04). `UpdateLinkState()`에
+      `LinkStateInitialized` 플래그로 이전 상태 보존 + 전이 시에만
+      `LINK_LOST/DEGRADED/RESTORED_EID` 발생. 히스테리시스는 기존
+      `NoAckCount>=15`/`LINK_TIMEOUT_MS=5000` 다중사이클 임계값으로
+      충분하다고 판단해 추가하지 않음(`lora_tdm_app_behavior_spec.md`
+      §16.1에 정책 문서화). 회귀 UT 135/135 PASS
 - [ ] **F-1b**: `SUB_ERR_EID`/`PIPE_ERR_EID`/`SB_SEND_ERR_EID`를 각
       실패 지점에서 실제로 발생시키도록 연결(초기화 구독 실패가 조용히
-      넘어가는 문제 해소)
-- [ ] **F-1c**: 위 구현 후 spec의 ✅ 표기가 실제와 맞는지 재확인
-      (지금은 spec이 과장 — 구현 안 하려면 표기를 정정해야 함)
+      넘어가는 문제 해소) — BL-04 범위 밖으로 미룸, 별도 작업
+- [x] **F-1c**: spec ✅ 표기 정정 완료(2026-07-21) —
+      LINK_LOST/DEGRADED/RESTORED는 이제 실제로 ✅, PIPE_ERR/SUB_ERR/
+      SB_SEND_ERR는 ❌ 미구현으로 정정(F-1b 완료 전까지)
 - [x] **F-2 / F-3**: stale TODO 주석 2건 정정 완료(2026-07-21, BL-06,
       `lora_tdm_app.h:67-69`, `lora_tdm_app_utils.h:71-73`). 코드 변경 없음,
       빌드+회귀 UT 통과(lora_tdm_app 64/64, utils 122/122)
