@@ -35,7 +35,7 @@ BL-03   다운링크에 seq 동봉 (v2/DL2 확정, v1 제외)
   ├─ BL-13 모듈러 seq 비교
   └─ BL-14 재전송 인덱스(선택)
 BL-09   cfs_core_app RECOVERY 명령 실제 연결 (+BL-25)
-BL-26/27/28  매직넘버 C↔Python 교차검증 테스트
+✅BL-26/27/28  매직넘버 C↔Python 교차검증 테스트 — 완료(2026-07-21, openMCT)
 ```
 
 ### 🤔 고민 필요 (별도 기록, 결정 전까지 보류)
@@ -142,9 +142,7 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 | **BL-23** | `_flush_pending_uplink()`가 타이머 없이 **다운링크 수신 시에만** 동작 → 링크 끊기면 큐 명령이 유실되는데 HTTP는 이미 성공 반환. **단, 반이중 슬롯 정렬을 깨지 않아야 함** |
 | **BL-24** | UFB=1 자동 재전송이 **새 seq로 재조립** — 진짜 재전송이 아니라 "같은 내용의 새 명령". 3회 카운트가 원 프레임 기준이 아님. BL-01/BL-13과 함께 볼 것 |
 | **BL-25** | `uplinkCLI` 도움말은 RECOVERY의 `action/target/reason`을 "무시됨"이라 하는데 서버는 실제로 조립·전송·성공로그 → **BL-09와 묶어서** 처리(BL-09는 착수 가능, BL-08 보류와 무관) |
-| **BL-26** | `DL2_BASE_LEN=45`, UFB 값들이 기체 enum을 손으로 복제한 매직넘버 → 동기화 강제 장치 없음 |
-| **BL-27** | `PARAM_BOUNDS`도 기체 상수를 손으로 복제(오늘 내가 추가) → **BL-26과 함께 C헤더 교차검증 테스트**로 해결 권장 |
-| **BL-28** | `test_dl2_base_len_includes_sats_field`가 상수를 **자기 자신과만 비교** → 크로스 repo 드리프트를 못 잡음. `test_lora_downlink_decoder.py`의 C↔Python 교차검증 패턴 참고 |
+| ~~**BL-26/27/28**~~ | ✅ **완료(2026-07-21, openMCT `c561aa3`)**. `tests/test_fc_serial_ws_server.py`에 형제 디렉터리 C 헤더를 정규식 파싱해 비교하는 교차검증 테스트 4건 추가(`DL2_BASE_LEN`↔`LORA_TDM_APP_DL2_LEN_FIELD`, `PARAM_BOUNDS[cfs_core/mavlink_bridge]`↔C 상수). repo 없는 환경은 skip. 35/35 PASS |
 
 ---
 
