@@ -240,7 +240,10 @@ downlink 패킷의 피드백 바이트(UFB)는 가장 최근 uplink 명령의 �
 2. **CRC 오류 감지**: frame 검증 실패 시 `UFB_CRC_FAIL` 설정 (기존 구현)
 3. **시퀀스 거부 감지** (Phase 3.3 추가):
    - lora_tdm_app이 `UPLINK_STATUS_MID` 구독
-   - `LastCommandResult == 3 (REJECT_SEQUENCE)`이면 `UFB_SEQ_FAIL` 설정
+   - `LastCommandResult == 10 (REJECT_SEQUENCE)`이면 `UFB_SEQ_FAIL` 설정
+     (2026-07-21 정정: 원문은 "3"이었으나 `default_uplink_app_msgdefs.h` 기준
+     실제 값은 10 — 코드가 매직넘버 3을 그대로 써서 ROUTED(성공)를 오탐하던
+     버그를 유발함, `lora_tdm_app_dispatch.c` 수정 및 회귀 테스트 추가 완료)
 4. **downlink 게시**: TDM slot에서 피드백 바이트 포함하여 전송
 
 **신호 흐름**:
@@ -358,7 +361,7 @@ else:
 | `LORA_TDM_APP_LINK_TIMEOUT_MS` | `5000` | DISCONNECTED 전이 elapsed 임계값 (ms) |
 | `LORA_TDM_APP_UPLINK_FB_OK` | `0` | UplinkFeedback 정상 |
 | `LORA_TDM_APP_UPLINK_FB_CRC_FAIL` | `1` | UplinkFeedback CRC 실패 |
-| `LORA_TDM_APP_UPLINK_FB_SEQ_FAIL` | `2` | UplinkFeedback 시퀀스 실패 — 구현됨 (`UPLINK_STATUS_MID` 구독, `LastCommandResult==3(REJECT_SEQUENCE)` 시 설정, `lora_tdm_app_dispatch.c:105-108`) |
+| `LORA_TDM_APP_UPLINK_FB_SEQ_FAIL` | `2` | UplinkFeedback 시퀀스 실패 — 구현됨 (`UPLINK_STATUS_MID` 구독, `LastCommandResult==10(REJECT_SEQUENCE)` 시 설정, `lora_tdm_app_dispatch.c:105-108`; 2026-07-21 매직넘버 3→10 오류 수정) |
 | `LORA_TDM_APP_LINK_DISCONNECTED` | `0` | 링크 상태: 단절 |
 | `LORA_TDM_APP_LINK_CONNECTED` | `1` | 링크 상태: 정상 |
 | `LORA_TDM_APP_LINK_DEGRADED` | `2` | 링크 상태: 저하 |
