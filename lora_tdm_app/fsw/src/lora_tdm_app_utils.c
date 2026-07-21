@@ -717,6 +717,16 @@ void LORA_TDM_APP_ProcessConfigCommand(const LORA_TDM_APP_ConfigCmdTlm_t *Msg)
     switch (Hdr->ParameterId)
     {
         case LORA_TDM_APP_PARAM_DOWNLINK_PROTOCOL:
+            /* BL-16(2026-07-21): 0/1 외 값은 거부 — lora_tdm_app_cmds.c의
+             * LORA_TDM_APP_SetDownlinkProtocol()와 동일 정책(기체 엄격화). */
+            if (Value != 0U && Value != 1U)
+            {
+                LORA_TDM_APP_Data.ErrCounter++;
+                CFE_EVS_SendEvent(LORA_TDM_APP_SET_DL_PROTO_ERR_EID, CFE_EVS_EventType_ERROR,
+                                  "LORA_TDM_APP: rejected downlink protocol value=%u via CONFIG_CMD_MID (only 0/1 accepted)",
+                                  (unsigned int)Value);
+                break;
+            }
             LORA_TDM_APP_Data.UseV2Downlink = (Value != 0U) ? 1U : 0U;
             LORA_TDM_APP_Data.CmdCounter++;
             CFE_EVS_SendEvent(LORA_TDM_APP_SET_DL_PROTO_INF_EID, CFE_EVS_EventType_INFORMATION,

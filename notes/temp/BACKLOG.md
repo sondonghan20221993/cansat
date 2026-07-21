@@ -22,7 +22,7 @@
 ✅BL-01  재전송 중복 오탐 차단           ← 완료(2026-07-21), 코드는 Pi 미배포
 BL-04   링크 EID 3종 구현 (히스테리시스 설계 포함)
 ✅BL-06 stale TODO 주석 2건 정정 — 완료(2026-07-21)
-BL-16   downlink_protocol 기체 엄격화(0/1만 수락)
+✅BL-16 downlink_protocol 기체 엄격화(0/1만 수락) — 완료(2026-07-21)
 ✅BL-18 SaveState() fsync() — 완료(2026-07-21), 파일+부모디렉터리 둘 다
 ✅BL-19' 죽은 config 상수 안전 부분 삭제 — 완료(2026-07-21): SERIAL_REOPEN_DELAY_MS/
         PROTOCOL_VERSION(lora_tdm_app), IMAGE_ID_LEN/CAMERA_ID_LEN/ARTIFACT_REF_LEN
@@ -118,7 +118,7 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 | **BL-13** | seq 비교를 **모듈러 윈도우**로: `diff=(uint16)(seq-last); 0<diff<0x8000`. 65535 wrap 해소. **uint16/uint32 혼용 주의**(무선은 uint16, 내부는 uint32) | T6 / 문제3 |
 | **BL-14** | **재전송 인덱스**를 `Flags` 여유비트(`bits[5:1]`)에 실을지 — 프레임 크기 증가 없음. 정확성보다 **RF 링크 마진 진단** 목적 | T9 |
 | **BL-15** | 🔶 **결정(2026-07-21): 상향 필요(A안) — 단 실측이 선행돼야 함.** 200ms는 검증됨(2026-07-14, 손실 0%), 200ms 미만은 미검증. Pi/LoRa 하드웨어로 단계적 실측(runbook Stage 2 방식 재사용) 후 상한 확정 → **BL-32로 이관** | `lora_downlink_5hz_cap` |
-| **BL-16** | ✅ **결정(2026-07-21): 기체 엄격화.** `LORA_TDM_APP_ProcessConfigCommand`/`SetDownlinkProtocol`을 `(Value != 0)` 대신 `Value == 0 or 1`만 수락, 그 외 값은 거부(현재는 CONFIG 결과코드 회신이 없으니 무시+ErrCounter 증가 또는 EVS 에러로). 지상 `PARAM_BOUNDS`의 `(0,1)`은 유지 — 이제 양쪽 일치. v1은 검증 목적 달성, v2가 주력 | `selfaudit` A-4 |
+| ~~**BL-16**~~ | ✅ **구현 완료(2026-07-21)**. `LORA_TDM_APP_SetDownlinkProtocol`/`ProcessConfigCommand` 둘 다 `Value==0 or 1`만 수락, 그 외는 `ErrCounter++`+신규 EID(`SET_DL_PROTO_ERR_EID=21`)로 거부. 지상 `PARAM_BOUNDS(0,1)`과 대칭 일치. 회귀 UT 4종(64/14/36/125, 신규 2건 포함) PASS | `selfaudit` A-4 |
 
 ---
 

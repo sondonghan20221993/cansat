@@ -64,16 +64,23 @@ void Test_SetDownlinkProtocol_BackToV1(void)
     UtAssert_INT32_EQ(LORA_TDM_APP_Data.UseV2Downlink, 0);
 }
 
-void Test_SetDownlinkProtocol_NonZeroTreatedAsOne(void)
+void Test_SetDownlinkProtocol_OutOfRangeRejected(void)
 {
+    /* BL-16(2026-07-21): 0/1 외 값은 거부(기체 엄격화), 이전엔 "0이 아니면
+     * v2"로 정규화했음 — 지상 PARAM_BOUNDS(0,1)와 대칭 일치시킴. */
     LORA_TDM_APP_SetDownlinkProtocolCmd_t TestMsg;
 
     memset(&TestMsg, 0, sizeof(TestMsg));
-    TestMsg.UseV2 = 0xFF; /* 0/1 외 값도 "0이 아니면 v2"로 정규화 */
+    TestMsg.UseV2 = 0xFF;
+    LORA_TDM_APP_Data.UseV2Downlink = 0;
+    LORA_TDM_APP_Data.CmdCounter    = 0;
+    LORA_TDM_APP_Data.ErrCounter    = 0;
 
     LORA_TDM_APP_SetDownlinkProtocol(&TestMsg);
 
-    UtAssert_INT32_EQ(LORA_TDM_APP_Data.UseV2Downlink, 1);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.UseV2Downlink, 0);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.CmdCounter, 0);
+    UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.ErrCounter, 1);
 }
 
 void UtTest_Setup(void)
@@ -82,5 +89,5 @@ void UtTest_Setup(void)
     ADD_TEST(ResetCounters);
     ADD_TEST(SetDownlinkProtocol_ToV2);
     ADD_TEST(SetDownlinkProtocol_BackToV1);
-    ADD_TEST(SetDownlinkProtocol_NonZeroTreatedAsOne);
+    ADD_TEST(SetDownlinkProtocol_OutOfRangeRejected);
 }

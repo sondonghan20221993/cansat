@@ -815,6 +815,24 @@ void Test_ProcessConfigCommand_SetV2(void)
     UtAssert_INT32_EQ(LORA_TDM_APP_Data.CmdCounter, 1);
 }
 
+void Test_ProcessConfigCommand_DownlinkProtocolOutOfRangeRejected(void)
+{
+    /* BL-16(2026-07-21): 0/1 외 값은 거부(기체 엄격화) */
+    LORA_TDM_APP_ConfigCmdTlm_t Msg;
+
+    LORA_TDM_APP_Data.UseV2Downlink = 0;
+    LORA_TDM_APP_Data.CmdCounter    = 0;
+    LORA_TDM_APP_Data.ErrCounter    = 0;
+    BuildConfigMsgTest(&Msg, LORA_TDM_APP_CONFIG_SCOPE, LORA_TDM_APP_CONFIG_VERSION,
+                       LORA_TDM_APP_PARAM_DOWNLINK_PROTOCOL, 2U);
+
+    LORA_TDM_APP_ProcessConfigCommand(&Msg);
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.UseV2Downlink, 0);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.CmdCounter, 0);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.ErrCounter, 1);
+}
+
 void Test_ProcessConfigCommand_WrongScopeIgnoredSilently(void)
 {
     LORA_TDM_APP_ConfigCmdTlm_t Msg;
@@ -942,6 +960,7 @@ void UtTest_Setup(void)
     ADD_TEST(ParseUp2Frame_TooShort);
     ADD_TEST(ParseUp2Frame_PayloadLenExceedsBuf);
     ADD_TEST(ProcessConfigCommand_SetV2);
+    ADD_TEST(ProcessConfigCommand_DownlinkProtocolOutOfRangeRejected);
     ADD_TEST(ProcessConfigCommand_WrongScopeIgnoredSilently);
     ADD_TEST(ProcessConfigCommand_BadChecksumRejected);
     ADD_TEST(ProcessConfigCommand_UnknownParamRejected);
