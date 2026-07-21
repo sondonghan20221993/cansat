@@ -230,9 +230,10 @@ downlink 패킷의 피드백 바이트(UFB)는 가장 최근 uplink 명령의 �
 
 | UFB 코드 | 값 | 의미 | 발생 조건 |
 |---|---|---|---|
-| `UFB_OK` | 0 | 정상 수신 | uplink frame CRC/길이 검증 통과 |
+| `UFB_OK` | 0 | 정상 수신 **또는 pending 명령 없음** (아래 "알려진 한계" 참조) | uplink frame CRC/길이 검증 통과 |
 | `UFB_CRC_FAIL` | 1 | CRC 오류 | raw frame CRC mismatch, 길이 오류, framing 오류 |
 | `UFB_SEQ_FAIL` | 2 | 시퀀스 거부 | uplink_app의 `UPLINK_STATUS_MID`에서 `LastCommandResult == REJECT_SEQUENCE` (§18.10.1) |
+| `UFB_STATE_BLOCKED` | 3 | 헬스 게이트 차단 (2026-07-21 추가) | uplink_app의 `UPLINK_STATUS_MID`에서 `LastCommandResult == REJECT_STATE` — fail-safe boot(health 미수신)/DEGRADED/RECOVERY/FAILED 상태에서 허용 안 되는 클래스의 명령이 왔을 때 (§18.10.1) |
 
 **구현 정책**:
 
@@ -244,7 +245,14 @@ downlink 패킷의 피드백 바이트(UFB)는 가장 최근 uplink 명령의 �
      (2026-07-21 정정: 원문은 "3"이었으나 `default_uplink_app_msgdefs.h` 기준
      실제 값은 10 — 코드가 매직넘버 3을 그대로 써서 ROUTED(성공)를 오탐하던
      버그를 유발함, `lora_tdm_app_dispatch.c` 수정 및 회귀 테스트 추가 완료)
-4. **downlink 게시**: TDM slot에서 피드백 바이트 포함하여 전송
+4. **헬스 게이트 차단 감지** (2026-07-21 추가):
+   - 같은 `UPLINK_STATUS_MID` 핸들러에서 `LastCommandResult == 11 (REJECT_STATE)`이면
+     `UFB_STATE_BLOCKED` 설정
+   - 배경: 이 감지가 없던 동안 CONFIG 명령이 DEGRADED에서 실제로는 차단됐는데도
+     지상국 GUI가 `UFB=OK`를 "적용됨"으로 잘못 표시하는 문제 발생(실측으로 발견,
+     `mavlink_bridge.attitude_interval_us` 변경 시도가 health_state=1에서 조용히
+     거부됐음에도 GUI는 성공으로 표시)
+5. **downlink 게시**: TDM slot에서 피드백 바이트 포함하여 전송
 
 **신호 흐름**:
 ```
@@ -254,11 +262,11 @@ uplink raw frame (lora_tdm_app RX)
   └─ CRC pass → uplink_app으로 forward
            ↓
       uplink_app (ProcessUplinkCommand)
-      [시퀀스검증] → UPLINK_STATUS_MID 발행
+      [헬스게이트/시퀀스검증] → UPLINK_STATUS_MID 발행
            ↓ (lora_tdm_app 구독)
-      LastCommandResult = REJECT_SEQUENCE
+      LastCommandResult = REJECT_SEQUENCE | REJECT_STATE | ROUTED(성공) | ...
            ↓
-      PendingUplinkFeedback = UFB_SEQ_FAIL
+      PendingUplinkFeedback = UFB_SEQ_FAIL | UFB_STATE_BLOCKED | (변경 없음)
            ↓
       downlink TDM slot에서 포함
 ```
@@ -267,6 +275,16 @@ uplink raw frame (lora_tdm_app RX)
 - UFB=OK: 명령이 수락되었거나, 현재 pending 명령이 없음
 - UFB=CRC_FAIL: 패킷 손상/framing 문제 → 재전송 권장
 - UFB=SEQ_FAIL: 명령의 sequence가 거부됨 → sequence 재설정 또는 recovery 필요
+- UFB=STATE_BLOCKED: 기체 health_state가 이 명령 클래스를 허용하지 않음 →
+  health_state/fault_code 확인 후 재시도 (예: CONFIG는 NOMINAL에서만 통과)
+
+**알려진 한계 (2026-07-21)**: `UFB_OK`는 "성공적으로 적용됨"과 "현재 보고할
+pending 결과가 없음(default/idle)"을 구분하지 못하는 구조적 모호성이 있다.
+`ROUTED`(성공)일 때 명시적으로 `UFB_OK`를 세팅하는 코드가 없고, 단지 아무
+실패 분기도 안 탔을 때 이전 값(대개 OK)이 그대로 유지되는 방식이기 때문.
+`REJECT_STATE`(STATE_BLOCKED) 추가로 가장 흔한 오탐 사례(health 차단)는
+해소됐으나, 근본적으로 "적용 성공"을 명시적으로 확인하려면 `ROUTED` 감지도
+추가해 `UFB_APPLIED` 같은 별도 코드를 두는 것이 정확하다 — 아직 미착수.
 
 ## 11. 링크 상태 관리
 

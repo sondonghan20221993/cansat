@@ -102,10 +102,17 @@ void LORA_TDM_APP_ProcessCommandPacket(CFE_SB_Buffer_t *SBBufPtr)
     {
         /* Phase 3.3: Update uplink feedback based on uplink_app result (§18.11.1 SEQ_FAIL) */
         const UPLINK_APP_StatusTlm_t *StatusMsg = (const UPLINK_APP_StatusTlm_t *)SBBufPtr;
-        /* UPLINK_APP_RESULT_REJECT_SEQUENCE = 10 (default_uplink_app_msgdefs.h) */
+        /* UPLINK_APP_RESULT_REJECT_SEQUENCE = 10, REJECT_STATE = 11
+         * (default_uplink_app_msgdefs.h). REJECT_STATE covers the health-gate
+         * block (fail-safe boot / DEGRADED / RECOVERY / FAILED, §18.10.1) —
+         * without this, a blocked command silently reports UFB_OK (2026-07-21). */
         if (StatusMsg->LastCommandResult == 10U)  /* REJECT_SEQUENCE */
         {
             LORA_TDM_APP_Data.PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_SEQ_FAIL;
+        }
+        else if (StatusMsg->LastCommandResult == 11U)  /* REJECT_STATE */
+        {
+            LORA_TDM_APP_Data.PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_STATE_BLOCKED;
         }
     }
     else

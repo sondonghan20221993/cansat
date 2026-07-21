@@ -18,6 +18,7 @@
 #define LORA_TDM_APP_UPLINK_FB_OK              0
 #define LORA_TDM_APP_UPLINK_FB_CRC_FAIL        1
 #define LORA_TDM_APP_UPLINK_FB_SEQ_FAIL        2
+#define LORA_TDM_APP_UPLINK_FB_STATE_BLOCKED   3
 
 /* Link state values */
 #define LORA_TDM_APP_LINK_DISCONNECTED         0
