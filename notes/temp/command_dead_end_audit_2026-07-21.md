@@ -83,9 +83,9 @@ openMCT GUI로 `cfs_core_app`의 CONFIG 파라미터 목록을 보다가 "왜 �
       실제 구현 상태(ROUTED만 있고 EXECUTED 없음)에 맞게 정정할지,
       아니면 EXECUTED 결과 코드를 실제로 구현할지 결정 필요
       (spec 정정만 할지 vs 기능 자체를 완성할지 — 사용자 판단 필요)
-- [ ] Finding 2: RESTART_BRIDGE/PARSER_RESET/SERIAL_RECONNECT 액션을
-      실제로 구현할지(예: RESTART_BRIDGE → `CFE_ES_RestartApp()` 연결),
-      아니면 "이 3개는 의도적으로 미구현"이라고 명시적으로 확정할지 결정
+- [x] 완료(2026-07-21, BL-09). Finding 2: `RESTART_BRIDGE`는
+      `CFE_ES_RestartApp()`에 실제 연결, `PARSER_RESET`/`SERIAL_RECONNECT`는
+      크로스앱 CMD_MID 신설이 필요해 범위 밖으로 명시적으로 남김(로그만 유지)
 - [ ] Finding 3: 두 spec 문서(`mission_app_runtime_spec.md` vs
       `cfs_core_app_behavior_spec.md`) 간 VIEWPOINT 캐시-전용 한계
       언급 수준 통일

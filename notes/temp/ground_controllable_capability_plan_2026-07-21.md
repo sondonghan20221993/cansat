@@ -19,7 +19,7 @@
   없으면 spec에 "저장만, 활용 미정" 명시로 종결
 - [ ] (참고, 낮은 우선순위) `SaveState()`/`MarkOutputsStale()` 강제
   트리거 필요성 재검토 — 현재는 불필요 판단, 필요해지면 재고
-- [ ] (참고, 위생) `lora_tdm_app` fcncode 정의 위치 중복
+- [x] 완료(2026-07-21, BL-21). (참고, 위생) `lora_tdm_app` fcncode 정의 위치 중복
   (`fsw/inc/lora_tdm_app_fcncodes.h` vs
   `config/default_..._fcncode_values.h`) 정리
 
@@ -147,16 +147,19 @@ RESTART_LORA를 RecoveryAction enum에 추가하고 cfs_core_app에서
 ### P1 — Finding 2: cfs_core_app RECOVERY → 각 앱 크로스앱 연결
 - [ ] `mavlink_bridge_app`에 새 CMD_MID 추가: `PARSER_RESET_CMD`,
       `SERIAL_RECONNECT_CMD` (또는 기존 RESET 함수코드 재사용 검토)
+      — **범위 밖으로 남음(2026-07-21)**, 아래 3개 완료로 대체 착수하지 않음
 - [ ] `cfs_core_app_utils.c`의 `ProcessRecoveryCommand()`에서
       `PARSER_RESET`/`SERIAL_RECONNECT` 액션 시 위 MID를 실제로 publish
-- [ ] `RESTART_BRIDGE`는 기존 `CFE_ES_RestartApp()` 경로 그대로 재사용,
+      — 상동, 범위 밖
+- [x] 완료(2026-07-21, BL-09). `RESTART_BRIDGE`는 기존 `CFE_ES_RestartApp()` 경로 그대로 재사용,
       ProcessRecoveryCommand에서 직접 호출하도록 연결
-- [ ] **(전수조사 신규)** `RecoveryAction` enum에 `RESTART_UPLINK`/
+- [x] 완료(2026-07-21, BL-09). **(전수조사 신규)** `RecoveryAction` enum에 `RESTART_UPLINK`/
       `RESTART_LORA` 추가, `cfs_core_app.c:551-560`/`583-592`의
       기존 자동재시작 로직과 동일한 `CFE_ES_RestartApp()` 호출을
       지상 명령 경로에서도 사용하도록 연결
-- [ ] 회귀 테스트: 5개 액션(RESTART_BRIDGE/UPLINK/LORA, PARSER_RESET,
-      SERIAL_RECONNECT) 각각 실제 효과 발생 검증
+- [x] 완료(2026-07-21, BL-09). 회귀 테스트: RESTART_BRIDGE(+AppNotFound)/UPLINK/LORA
+      3개 액션 실제 효과 발생 검증(257/257 PASS). PARSER_RESET/SERIAL_RECONNECT는
+      동작 변경이 없어 신규 테스트 대상 아님
 
 ### P2 — Finding 3: VIEWPOINT 캐시 활용처 확인
 - [ ] VIEWPOINT_CMD_MID로 캐시된 값이 실제로 쓰이는 곳이 설계상

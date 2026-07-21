@@ -39,7 +39,7 @@
       로직(`IsSequenceAccepted`) 및 `uplink_lora_test_status.md` §4
       "문제 A"(4연속 재전송 설계) — seq 재사용이 그 중복거부 로직과
       상충하지 않는지 확인 필요.
-- [ ] **openMCT-3**: `uplinkCLI` 도움말은 RECOVERY의
+- [x] 완료(2026-07-22, BL-25+BL-09). **openMCT-3**: `uplinkCLI` 도움말은 RECOVERY의
       `action/target/reason` 바이트를 "uplink_app이 무시함"이라고
       적어놨는데, 서버는 실제로 그 바이트들을 조립해서 전송하고
       성공으로 로그함(`fc_serial_ws_server.py:142` 부근) — cfs_core_app
@@ -50,7 +50,8 @@
       프로토콜) — `command_dead_end_audit_2026-07-21.md` Finding
       1/2(cfs_core_app 쪽 RECOVERY 미구현)와 **같이 묶어서** 처리
       방향 결정할 것(지상 코드만 고쳐봐야 기체 쪽이 무시하면 무의미).
-- [ ] **openMCT-4**: `lora_protocol_v2.py`의 `DL2_BASE_LEN=45`,
+- [x] 부분 완료(2026-07-21, BL-26/27/28 — 교차검증 테스트로 드리프트 감지는
+      되지만 SSOT 파일 통합 자체는 안 함). **openMCT-4**: `lora_protocol_v2.py`의 `DL2_BASE_LEN=45`,
       UFB 0/1/2/3 값들이 기체측(`lora_tdm_app`) enum을 손으로 옮겨
       적은 매직넘버 — 이번에 `UFB_STATE_BLOCKED=3`을 기체측에 추가한
       것처럼, 앞으로 기체측 enum이 바뀌면 이 repo가 조용히 깨짐.
@@ -61,7 +62,7 @@
       `lora_tdm_app_behavior_spec.md` §10 UFB 코드표 — 두 문서를
       "단일 진실 공급원(SSOT)"으로 놓고 이 repo는 그걸 참조하는
       형태로 재구성하는 게 근본 해법.
-- [ ] **openMCT-5**: `tests/test_fc_serial_ws_server.py:79`의
+- [x] 완료(2026-07-21, BL-26/27/28). **openMCT-5**: `tests/test_fc_serial_ws_server.py:79`의
       `test_dl2_base_len_includes_sats_field`가 상수를 자기 자신과만
       비교(`DL2_BASE_LEN == 45`) — cfs-telemetry-app 쪽 실제 프레임
       길이와의 교차검증이 없어서, lora_tdm_app 쪽 필드가 추가/삭제돼도
