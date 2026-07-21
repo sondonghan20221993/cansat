@@ -11,17 +11,27 @@ typedef enum
 
 static UPLINK_APP_SeqCheck_t UPLINK_APP_CheckSequence(uint16 Sequence)
 {
+    uint16 Last;
+    uint16 Diff;
+
     if (UPLINK_APP_Data.AcceptedCount == 0U)
     {
         return UPLINK_APP_SEQ_NEW;
     }
 
-    if (Sequence == UPLINK_APP_Data.LastAcceptedSequence)
+    Last = (uint16)UPLINK_APP_Data.LastAcceptedSequence;
+
+    if (Sequence == Last)
     {
         return UPLINK_APP_SEQ_DUPLICATE;
     }
 
-    return (Sequence > UPLINK_APP_Data.LastAcceptedSequence) ? UPLINK_APP_SEQ_NEW : UPLINK_APP_SEQ_REPLAY;
+    /* BL-13(2026-07-21): 지상 seq가 uint16 랩어라운드(65535->1)될 때 평범한
+     * `>` 비교는 정상 명령을 REPLAY로 오판함(1 > 65535 == false). 모듈러
+     * 비교(윈도우 절반=0x8000)로 대체 — Sequence-Last를 uint16 산술로 계산해
+     * 0x8000 미만이면 "앞으로 진행"(NEW), 이상이면 REPLAY. */
+    Diff = (uint16)(Sequence - Last);
+    return (Diff < 0x8000U) ? UPLINK_APP_SEQ_NEW : UPLINK_APP_SEQ_REPLAY;
 }
 
 static uint8 UPLINK_APP_GetClassRequiredLevel(uint8 CommandClass)

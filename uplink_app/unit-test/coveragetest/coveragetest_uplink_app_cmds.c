@@ -106,6 +106,33 @@ void Test_UPLINK_APP_ProcessUplink_DuplicateRetransmit(void)
     UtAssert_INT32_EQ(UPLINK_APP_Data.LinkState, UPLINK_APP_LINK_NOMINAL);
 }
 
+void Test_UPLINK_APP_ProcessUplink_AcceptedAfterSequenceWraparound(void)
+{
+    /* BL-13(2026-07-21): 지상 seq가 65535->1로 랩어라운드해도 정상 수락돼야 함 */
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_CONFIG;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(2);
+    TestMsg.PayloadLength = 0;
+    TestMsg.Sequence      = 1;
+
+    UPLINK_APP_Data.CfsHealthReceived    = 1U;
+    UPLINK_APP_Data.AcceptedCount        = 1;
+    UPLINK_APP_Data.LastAcceptedSequence = 65535;
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ForwardConfigCommand), true);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.AcceptedCount, 2);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastAcceptedSequence, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_ROUTED);
+}
+
 void Test_UPLINK_APP_ProcessUplink_Reject(void)
 {
     UPLINK_APP_ProcessUplinkCmd_t TestMsg;
@@ -795,6 +822,7 @@ void UtTest_Setup(void)
     ADD_TEST(UPLINK_APP_ProcessUplink_Accept);
     ADD_TEST(UPLINK_APP_ProcessUplink_RejectSequenceReplay);
     ADD_TEST(UPLINK_APP_ProcessUplink_DuplicateRetransmit);
+    ADD_TEST(UPLINK_APP_ProcessUplink_AcceptedAfterSequenceWraparound);
     ADD_TEST(UPLINK_APP_ProcessUplink_Reject);
     ADD_TEST(UPLINK_APP_ProcessUplink_RouteMiss);
     ADD_TEST(UPLINK_APP_ProcessUplink_RouteUpdate);

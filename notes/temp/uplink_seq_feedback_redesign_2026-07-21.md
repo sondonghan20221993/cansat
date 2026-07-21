@@ -176,9 +176,11 @@ seq만 같이 내려보내면 지상이 대조 가능해지고, 오늘 씨름한
       기체가 "나는 seq N까지 받았다"를 상시 내려보내므로, 지상은
       서버 기동 시 그 값을 보고 `N+1`부터 시작하면 됨
       → **지상이 파일로 기억할 필요 자체가 없어짐. 새 장비에서 켜도 자동 정합.**
-- [ ] 기체 비교를 모듈러 윈도우로 변경(문제 3):
-      `uint16 diff = (uint16)(seq - last); accept if (diff != 0 && diff < 0x8000)`
-      — uint16/uint32 혼용(문제 3의 타입 불일치) 주의
+- [x] **완료(2026-07-22, BL-13)**: 기체 비교를 모듈러 윈도우로 변경.
+      `uplink_app_cmds.c UPLINK_APP_CheckSequence()` — DUPLICATE(==) 분리 후
+      `uint16 diff = (uint16)(seq - last); NEW if diff < 0x8000 else REPLAY`.
+      회귀 UT: uplink_app_cmds 99/99, 4종 합계 회귀 없음. 랩어라운드
+      (65535→1) 정상 수락 회귀 테스트 추가
 - [ ] 프레임 크기 47B → ~49B. `lora_protocol_v2_spec.md` §7 및
       Stage 2/3 실측 마진(`lora_stage_measurement_runbook.md`) 안에
       드는지 확인 필요
