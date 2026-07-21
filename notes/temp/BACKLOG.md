@@ -16,7 +16,7 @@
 `BL-08`(실행결과 회신 채널)은 3개 대상 앱의 결과 스키마가 제각각이라
 설계에 시간이 걸림 — **보류**. 종속된 `BL-05`/`BL-11`도 자동 보류.
 
-### ▶ 바로 진행 가능 (방향 확정 + 모호성 재점검 완료, 2026-07-21 2차)
+### ▶ 바로 진행 가능 (모호성 없음, 착수만 하면 됨 — 2026-07-21 3차 확정)
 
 ```
 BL-01   재전송 중복 오탐 차단           ← 배포된 코드가 버그, 최우선
@@ -24,6 +24,8 @@ BL-04   링크 EID 3종 구현 (히스테리시스 설계 포함)
 BL-06   stale TODO 주석 2건 정정
 BL-16   downlink_protocol 기체 엄격화(0/1만 수락)
 BL-18   SaveState()에 fsync() — 파일+부모디렉터리(/cf) 둘 다(POSIX 표준)
+BL-19'  죽은 config 상수 중 일부만: SERIAL_REOPEN_DELAY_MS/PROTOCOL_VERSION/
+        MAX_PAYLOAD_LENGTH/img_app 잔재 삭제 (LORA_BAUDRATE·STREAM_REACQUIRE는 제외, 아래 고민 목록)
 BL-20   문서 stale 식별자(MID/앱이름) 정정
 BL-21   fcncode 정의 위치 중복 정리
 BL-03   다운링크에 seq 동봉 (v2/DL2 확정, v1 제외)
@@ -31,22 +33,22 @@ BL-03   다운링크에 seq 동봉 (v2/DL2 확정, v1 제외)
   ├─ BL-13 모듈러 seq 비교
   └─ BL-14 재전송 인덱스(선택)
 BL-09   cfs_core_app RECOVERY 명령 실제 연결 (+BL-25)
-BL-26/27/28  매직넘버 C↔Python 교차검증 테스트 (C상수가 단순 #define라 파싱 쉬움, 모호성 낮음)
+BL-26/27/28  매직넘버 C↔Python 교차검증 테스트
+```
+
+### 🤔 고민 필요 (별도 기록, 결정 전까지 보류)
+
+```
+BL-17   LoadState() 실패 이벤트 — 첫부팅(정상) vs 진짜손상(비정상) 구분 방식
+BL-19   LORA_TDM_APP_LORA_BAUDRATE(하드코딩 무시) — 삭제 vs 실제 baud 가변 지원
+        STREAM_REACQUIRE_TIMEOUT_MS — 삭제 vs 원래 의도한 재요청 타임아웃 기능 구현
 ```
 
 **목록에서 제거됨**: `BL-29` — 재확인 결과 **이미 완료 상태**
 (`testcase_coverage_gap_2026-07-20.md` A-1~A-4/B-1 전부 `[x]`).
-백로그 작성 시 문서를 제대로 안 읽고 잘못 분류했던 것.
 
 **순서 조정 권장**: `BL-07`은 `BL-09`(RECOVERY 실제 연결) **완료 후**로
 이동 — 지금 갱신하면 BL-09 완료 후 다시 고쳐야 해서 이중작업.
-
-**착수 전 추가 결정 필요** (`ambiguity_recheck_immediate_list` 참조):
-- `BL-17`: 첫 부팅(파일 없음, 정상)과 진짜 손상(체크섬 불일치)을
-  같은 이벤트/심각도로 묶을지 구분할지
-- `BL-19`: `STREAM_REACQUIRE_TIMEOUT_MS`는 커밋 이력에서 원 의도가
-  안 잡힘(애초에 미구현 상태로 남아있었을 가능성) — 삭제 vs 기능
-  구현 중 택일 필요, 나머지 죽은 상수는 삭제로 진행 가능
 
 ### ⏸ 추후 결정 필요 (방향 자체가 미정이거나 후속 논의 필요)
 
@@ -122,9 +124,9 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 
 | ID | 내용 | 근거 |
 |---|---|---|
-| **BL-17** | `LoadState()` 실패 경로가 **조용히 `return`만** 함 → 상태파일 손상으로 "아무 seq나 수락" 상태 기동을 지상이 알 수 없음. 이벤트 추가 | T10 |
+| **BL-17** | 🤔 **고민 필요(2026-07-21)** — `LoadState()` 실패 경로가 **조용히 `return`만** 함 → 상태파일 손상으로 "아무 seq나 수락" 상태 기동을 지상이 알 수 없음. **막힌 지점**: 첫 부팅(파일 없음=정상)과 진짜 손상(체크섬 불일치=비정상)을 같은 이벤트/심각도로 묶을지 구분할지 미정 — 구분 안 하면 매 최초기동마다 오탐성 에러 로그 | T10 |
 | **BL-18** | `SaveState()`에 **`fsync()` 없음** — rename은 원자적이나 전원차단 시 내용 손상 가능 | T11 |
-| **BL-19** | **죽은 config 상수** — `LORA_TDM_APP_LORA_BAUDRATE`(코드가 `B57600` 하드코딩해 무시), `SERIAL_REOPEN_DELAY_MS`(미사용), `PROTOCOL_VERSION`, `MAX_PAYLOAD_LENGTH`, `STREAM_REACQUIRE_TIMEOUT_MS`, img_app 잔재 상수들 | `system_wide_reaudit` F-4/F-5/F-6 |
+| **BL-19** | 🤔 **일부 고민 필요(2026-07-21)** — 죽은 config 상수. `SERIAL_REOPEN_DELAY_MS`/`PROTOCOL_VERSION`/`MAX_PAYLOAD_LENGTH`/img_app 잔재는 삭제로 바로 가능. **`LORA_TDM_APP_LORA_BAUDRATE`**(코드가 `B57600` 하드코딩해 무시)와 **`STREAM_REACQUIRE_TIMEOUT_MS`**(`git log -S`로도 도입 이력이 안 잡힘 — 애초에 미구현 상태로 방치됐을 가능성)만 "삭제 vs 실제 기능 연결" 결정 필요 | `system_wide_reaudit` F-4/F-5/F-6 |
 | **BL-20** | 문서 stale 식별자 — `uplink_lora_test_status.md`의 `UPLINK_RAW=0x1909`(실제 `0x18D0`, 0x1909는 FC_SYS_TIME), 존재하지 않는 `lora_fc_downlink_app` 참조 4곳 | 동 F-7 |
 | **BL-21** | `lora_tdm_app` fcncode 정의 위치 중복(`fsw/inc` vs `config/`) — 기능 문제 아님, 정리만 | 동 F-6 |
 | **BL-22** | Pi `/boot/firmware/config.txt`의 `init_uart_clock=48000000` — **기각된 가설의 잔재**, 되돌릴지 결정(Pi 전원 필요) | `selfaudit` B-1 |
