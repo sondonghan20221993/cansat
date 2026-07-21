@@ -54,9 +54,19 @@ instance #0 (ttyS3 @57600, TEL2/UART4, Pi 링크):
   설정 시 초기화 실패했을 것 — 같이 수정)
 - 검증: 4개 앱 UT 16/16 PASS, 회귀 없음
 
-## 다음 단계
-Pi 플라이트 빌드 재생성+배포 후 실측으로 `mavlink status`의 tx rate mult가
-1.0에 근접하는지, CSV 로그상 중복값이 사라지는지 확인 필요 (미착수).
+## 최종 확인 (2026-07-21, 계속)
+
+baud 상향 배포 후에도 CRC fail로 인해 실질적 개선이 안 됐던 추가 문제 발견 및
+해결 — 상세는 `notes/mavlink_stx_reentry_parser_bug_completed.md` 참조.
+
+- 파서의 STX 재진입 버그(페이로드 바이트가 우연히 0xFD/0xFE면 프레임 파싱
+  도중 리셋)가 baud 상향으로 고엔트로피 메시지 비중이 늘면서 크게 드러남 → 수정.
+- `mission-install` 배포 누락으로 실제 서비스가 구버전 바이너리로 돌던 문제
+  발견 및 수정.
+
+두 문제 해결 후 baud 921600 확정, `mavlink status` tx rate mult=1.0 확인,
+journalctl에 ATTITUDE/LOCAL_POSITION_NED/SYSTEM_TIME 등 정상 디코딩 로그
+확인 완료. 원래 증상(1.2Hz 중복값)의 근본 원인이었던 대역폭 스로틀링 해소됨.
 
 ## 관련
 - `mavlink_bridge_app/fsw/src/mavlink_bridge_app_utils.c`

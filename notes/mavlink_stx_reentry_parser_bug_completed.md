@@ -61,7 +61,17 @@ crc fail이 찍힌 msgid(2=SYSTEM_TIME, 24=GPS_RAW_INT, 32=LOCAL_POSITION_NED,
       파싱되는지 회귀 UT 추가 (`Test_ProcessReceivedByte_StxByteInPayload_NoReentry`) —
       구버전 코드에서는 이 테스트가 실패했을 것(파서 재진입으로 Valid=0 유지)
 - [x] 로컬 UT: 해당 바이너리 161/161 PASS, 4개 앱 전체 회귀 16/16 PASS
-- [ ] Pi 배포 후 `journalctl`로 crc fail 실제 소멸 확인 (미착수)
+- [x] Pi 배포 후 `journalctl`로 crc fail 실제 소멸 확인
+      **최초 재배포 시 crc fail이 계속 발생** → 원인은 파서 버그가 아니라
+      `make mission-all`만 하고 `mission-install`을 빼먹어서 **실제 서비스가
+      7/16일자 구버전 바이너리로 계속 돌고 있었음** (`cFS_clean/build/exe/cpu1/`가
+      배포 경로, `build/native/.../`는 빌드 트리일 뿐). `mission-install
+      DESTDIR=...`로 정식 설치 후 `.so`/`core-cpu1` md5sum이 빌드 트리와
+      일치함을 확인하고 재시작하니 crc fail 완전히 소멸, ATTITUDE/
+      LOCAL_POSITION_NED/SYSTEM_TIME 등 정상 디코딩 로그 확인.
+      이후 baud를 460800→921600으로 재상향해도 문제없이 정상 동작 재확인
+      (즉 애초에 baud/배선/클럭은 원인이 아니었고, 파서 버그 + 배포 누락
+      두 가지였음이 최종 확정).
 
 ## 관련
 - `mavlink_bridge_app/fsw/src/mavlink_bridge_app_utils.c`
