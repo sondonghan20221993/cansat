@@ -122,7 +122,7 @@ mavlink_bridge_app → FC : MISSION_COUNT     (count=N, ...)
 ...
 ```
 
-**이유**: 현재 테스트한 ArduPilot 환경에서 `MISSION_CLEAR_ALL` 없이 `MISSION_COUNT`만 전송했을 때 FC 응답이 확인되지 않았다 (`tools/mission_upload_diag.py`, 2026-05-28). 따라서 현재 구현은 호환성 확보를 위해 `MISSION_COUNT` 전에 반드시 `MISSION_CLEAR_ALL`을 전송한다.
+**이유**: 현재 테스트한 ArduPilot 환경에서 `MISSION_CLEAR_ALL` 없이 `MISSION_COUNT`만 전송했을 때 FC 응답이 확인되지 않았다 (`legacy/tools/mission_upload_diag.py`, 2026-05-28). 따라서 현재 구현은 호환성 확보를 위해 `MISSION_COUNT` 전에 반드시 `MISSION_CLEAR_ALL`을 전송한다.
 
 `MISSION_CLEAR_ALL`에 대한 ACK는 명시적으로 대기하지 않는다. 구현은 `MISSION_CLEAR_ALL` 전송 후 `MAVLINK_BRIDGE_APP_MISSION_CLEAR_DELAY_MS` (300ms) 경과 시 `MISSION_COUNT`를 전송한다.
 
@@ -442,7 +442,7 @@ MAVLINK_BRIDGE_APP: frame msgid=<id> len=<payload_len> rx_ms=<timestamp>
 
 ### 14.2 미션 업로드 단독 진단 스크립트
 
-**위치**: `tools/mission_upload_diag.py`
+**위치**: `legacy/tools/mission_upload_diag.py`
 
 cFS 없이 Pi에서 직접 MAVLink mission upload 시퀀스를 실행하고 FC 응답을 단계별로 출력하는 진단 도구.
 
@@ -451,7 +451,7 @@ cFS 없이 Pi에서 직접 MAVLink mission upload 시퀀스를 실행하고 FC �
 **실행**:
 ```bash
 # cFS 종료 후
-python3 tools/mission_upload_diag.py --port /dev/serial0 --baud 57600
+python3 legacy/tools/mission_upload_diag.py --port /dev/serial0 --baud 57600
 ```
 
 **단계별 동작**:

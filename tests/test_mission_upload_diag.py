@@ -1,5 +1,5 @@
 """
-tools/mission_upload_diag.py 단위 테스트
+legacy/tools/mission_upload_diag.py 단위 테스트
 
 검증 항목:
  - MAVLink X.25 CRC (_crc_acc, _compute_crc)
@@ -11,7 +11,7 @@ tools/mission_upload_diag.py 단위 테스트
 import struct
 import unittest
 
-from tools.mission_upload_diag import (
+from legacy.tools.mission_upload_diag import (
     STX_V1,
     STX_V2,
     MSG_MISSION_CLEAR_ALL,
