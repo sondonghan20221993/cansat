@@ -164,8 +164,9 @@ Python 디코더 쪽 `test_systime_block` 테스트도 통과 중.
       넘어가는 문제 해소)
 - [ ] **F-1c**: 위 구현 후 spec의 ✅ 표기가 실제와 맞는지 재확인
       (지금은 spec이 과장 — 구현 안 하려면 표기를 정정해야 함)
-- [ ] **F-2 / F-3**: stale TODO 주석 2건 제거 또는 "구현 완료" 문구로 정정
-      (코드 변경 없음, 주석만)
+- [x] **F-2 / F-3**: stale TODO 주석 2건 정정 완료(2026-07-21, BL-06,
+      `lora_tdm_app.h:67-69`, `lora_tdm_app_utils.h:71-73`). 코드 변경 없음,
+      빌드+회귀 UT 통과(lora_tdm_app 64/64, utils 122/122)
 - [ ] **F-4**: `OpenSerial()`이 `LORA_TDM_APP_LORA_BAUDRATE`를 실제로
       읽도록 수정(`mavlink_bridge_app`의 `GetBaudConstant()` 방식 참고)
       → 관련: `mavlink_bridge_app_utils.c`의 baud 상수 매핑 함수

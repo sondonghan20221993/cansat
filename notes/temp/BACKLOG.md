@@ -21,7 +21,7 @@
 ```
 ✅BL-01  재전송 중복 오탐 차단           ← 완료(2026-07-21), 코드는 Pi 미배포
 BL-04   링크 EID 3종 구현 (히스테리시스 설계 포함)
-BL-06   stale TODO 주석 2건 정정
+✅BL-06 stale TODO 주석 2건 정정 — 완료(2026-07-21)
 BL-16   downlink_protocol 기체 엄격화(0/1만 수락)
 BL-18   SaveState()에 fsync() — 파일+부모디렉터리(/cf) 둘 다(POSIX 표준)
 BL-19'  죽은 config 상수 중 일부만: SERIAL_REOPEN_DELAY_MS/PROTOCOL_VERSION/

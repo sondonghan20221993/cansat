@@ -65,8 +65,9 @@ typedef struct
     int    LoRaFd;
 
     /* 다운링크 송신 프로토콜 선택 — 0=v1(ASCII, 기본값), 1=v2(DL2 바이너리).
-     * §8 단계적 전환: 기본 v1 유지, CONFIG 명령으로 전환(TODO — 아직 커맨드 미배선,
-     * 지금은 memset(0)으로 항상 v1). */
+     * §8 단계적 전환: CONFIG 명령(SET_DOWNLINK_PROTO_CC — lora_tdm_app_cmds.c,
+     * CONFIG_CMD_MID의 PARAM_DOWNLINK_PROTOCOL — lora_tdm_app_utils.c)으로
+     * 런타임 전환 가능. 부팅 기본값만 v1(memset(0)). */
     uint8  UseV2Downlink;
 
     /* RX line buffer — RX창(RunRxWindow) 호출 경계를 넘어 유지된다.

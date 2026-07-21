@@ -69,8 +69,9 @@ void LORA_TDM_APP_UpdateCacheFromMsg(CFE_SB_Buffer_t *SBBufPtr, LORA_TDM_APP_Dat
 uint16 LORA_TDM_APP_Crc16(const uint8 *Data, size_t Len);
 
 /* Build DL2(v2 바이너리 다운링크 통합) 프레임 — lora_protocol_v2_spec.md §4.
- * SysTime 확장 블록(§4.2) 없이 기본 47B만 지원(TODO: FC_SYS_TIME_MID 구독 후 추가).
- * Buf는 최소 LORA_TDM_APP_DL2_FRAME_LEN 바이트, 성공 시 47(바이트 수) 또는 <0 on error. */
+ * SysTime 확장 블록(§4.2) 포함 — FC_SYS_TIME_MID 구독(lora_tdm_app.c) +
+ * 캐시(lora_tdm_app_utils.c) + 인코딩(버퍼 부족 시 47B 폴백) 모두 구현됨.
+ * Buf는 최소 LORA_TDM_APP_DL2_FRAME_LEN 바이트, 성공 시 바이트 수 또는 <0 on error. */
 int LORA_TDM_APP_BuildDl2Frame(uint8 *Buf, size_t BufLen, const LORA_TDM_APP_Data_t *AppData);
 
 /* Process DIAGNOSTIC_CMD_MID from uplink_app */
