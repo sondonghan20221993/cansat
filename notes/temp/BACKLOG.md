@@ -101,7 +101,7 @@
 | **BL-13** | seq 비교를 **모듈러 윈도우**로: `diff=(uint16)(seq-last); 0<diff<0x8000`. 65535 wrap 해소. **uint16/uint32 혼용 주의**(무선은 uint16, 내부는 uint32) | T6 / 문제3 |
 | **BL-14** | **재전송 인덱스**를 `Flags` 여유비트(`bits[5:1]`)에 실을지 — 프레임 크기 증가 없음. 정확성보다 **RF 링크 마진 진단** 목적 | T9 |
 | **BL-15** | **LoRa 다운링크 5Hz 상향 여부.** 200ms는 이미 실측 검증됨(2026-07-14, 손실 0%). **200ms 미만은 미검증** — 운용 요구가 실제 있는지부터 | `lora_downlink_5hz_cap` |
-| **BL-16** | `downlink_protocol` 범위 불일치 — 기체는 `!=0`이면 다 수락, 지상은 오늘 내가 0/1로 제한(**기존 되던 동작을 막음**). 기체를 엄격화할지 지상을 완화할지 | `selfaudit` A-4 |
+| **BL-16** | ✅ **결정(2026-07-21): 기체 엄격화.** `LORA_TDM_APP_ProcessConfigCommand`/`SetDownlinkProtocol`을 `(Value != 0)` 대신 `Value == 0 or 1`만 수락, 그 외 값은 거부(현재는 CONFIG 결과코드 회신이 없으니 무시+ErrCounter 증가 또는 EVS 에러로). 지상 `PARAM_BOUNDS`의 `(0,1)`은 유지 — 이제 양쪽 일치. v1은 검증 목적 달성, v2가 주력 | `selfaudit` A-4 |
 
 ---
 
@@ -168,7 +168,7 @@
           → BL-02 자동 해소, BL-24 재검토
 
 결정만 하면 되는 것
-   BL-04(구현 vs spec정정), BL-10, BL-15, BL-16
+   BL-04(구현 vs spec정정), BL-10, BL-15 — BL-16은 결정 완료(기체 엄격화)
 
 범위 큼 (별도 설계)
    BL-08 → BL-05, BL-11, BL-25 연쇄 해소
