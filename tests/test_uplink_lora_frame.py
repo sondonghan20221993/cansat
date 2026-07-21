@@ -13,7 +13,7 @@ import struct
 import unittest
 from unittest import mock
 
-from bridge.lora_uplink_bridge import (
+from legacy.bridge.lora_uplink_bridge import (
     ParsedUplinkFrame,
     build_process_uplink_payload,
     crc16_ccitt,
@@ -158,7 +158,7 @@ class CfsCmdPacketTest(unittest.TestCase):
 
     # REC-008: seq regression 반복 — parse는 통과, Bridge가 거부
     def test_seq_regression_rejected_by_bridge(self) -> None:
-        from bridge.lora_uplink_bridge import Bridge
+        from legacy.bridge.lora_uplink_bridge import Bridge
         import socket
 
         mock_sock = mock.MagicMock(spec=socket.socket)

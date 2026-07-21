@@ -9,7 +9,7 @@ bridge/mavlink_uart_bridge.py 단위 테스트
 import unittest
 from unittest.mock import MagicMock
 
-from bridge.mavlink_uart_bridge import describe_message, parse_args, DEFAULT_SERIAL_PATH, DEFAULT_BAUDRATE
+from legacy.bridge.mavlink_uart_bridge import describe_message, parse_args, DEFAULT_SERIAL_PATH, DEFAULT_BAUDRATE
 
 
 def _mock_msg(msg_type, **fields):

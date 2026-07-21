@@ -22,7 +22,7 @@ import struct
 import time
 import pytest
 
-from bridge.lora_uplink_bridge import (
+from legacy.bridge.lora_uplink_bridge import (
     build_process_uplink_payload,
     crc16_ccitt,
     parse_frame_line,

@@ -2,7 +2,7 @@ import socket
 import unittest
 from unittest import mock
 
-from bridge.lora_uplink_bridge import (
+from legacy.bridge.lora_uplink_bridge import (
     Bridge,
     ParsedUplinkFrame,
     build_process_uplink_payload,

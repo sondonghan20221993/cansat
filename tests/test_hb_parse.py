@@ -6,7 +6,7 @@ C의 ParseHb() static 함수와 동등한 로직을 Python에서 검증한다.
 
 import unittest
 
-from bridge.lora_telemetry_bridge import parse_canonical_frame, parse_heartbeat_line, parse_manual_frame
+from legacy.bridge.lora_telemetry_bridge import parse_canonical_frame, parse_heartbeat_line, parse_manual_frame
 
 
 def _crc16(data: str) -> int:
@@ -66,7 +66,7 @@ class HbParseTest(unittest.TestCase):
 
     # LORA-HB-006: seq 역행 — Bridge 수준에서 검증 (parse_heartbeat_line 자체는 seq 체크 안 함)
     def test_seq_regression_handled_by_bridge(self) -> None:
-        from bridge.lora_telemetry_bridge import Bridge
+        from legacy.bridge.lora_telemetry_bridge import Bridge
         bridge = Bridge(
             serial_path="/dev/null",
             baudrate=57600,
@@ -114,7 +114,7 @@ class HbParseTest(unittest.TestCase):
 
     # REC-005: HB timeout — last_valid_rx_time_monotonic 없을 때 valid=0
     def test_hb_timeout_valid_zero(self) -> None:
-        from bridge.lora_telemetry_bridge import Bridge
+        from legacy.bridge.lora_telemetry_bridge import Bridge
         bridge = Bridge(
             serial_path="/dev/null",
             baudrate=57600,
