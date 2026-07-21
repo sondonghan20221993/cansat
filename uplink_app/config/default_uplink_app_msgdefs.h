@@ -17,7 +17,9 @@ typedef enum
     UPLINK_APP_RESULT_REJECT_STATE     = 11,
     UPLINK_APP_RESULT_REJECT_CHECKSUM  = 12,
     UPLINK_APP_RESULT_REJECT_VIEWPOINT = 13,
-    UPLINK_APP_RESULT_DUPLICATE        = 14 /* seq == last accepted: 4x 재전송 슬롯 중복, replay 아님 (BL-01) */
+    UPLINK_APP_RESULT_DUPLICATE        = 14, /* seq == last accepted: 4x 재전송 슬롯 중복, replay 아님 (BL-01) */
+    UPLINK_APP_RESULT_EXECUTED_OK      = 15, /* 대상앱 EXEC_RESULT 회신: 처리 성공 (BL-08) */
+    UPLINK_APP_RESULT_EXECUTED_FAILED  = 16  /* 대상앱 EXEC_RESULT 회신: 처리 실패 (BL-08) */
 } UPLINK_APP_Result_t;
 
 typedef enum

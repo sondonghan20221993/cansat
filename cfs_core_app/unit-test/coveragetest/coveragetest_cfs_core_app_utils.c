@@ -823,6 +823,7 @@ void Test_CFS_CORE_APP_ProcessConfig_AttitudeTimeout(void)
 
     build_config_msg(&Msg, CFS_CORE_APP_CONFIG_SCOPE, CFS_CORE_APP_CONFIG_VERSION,
                      CFS_CORE_APP_PARAM_ATTITUDE_TIMEOUT_MS, 3000U);
+    Msg.SourceSequence = 77; /* BL-08 */
 
     CFS_CORE_APP_ProcessConfigCommand(&Msg);
 
@@ -836,6 +837,10 @@ void Test_CFS_CORE_APP_ProcessConfig_AttitudeTimeout(void)
                       (int32)CFS_CORE_APP_CONFIG_PENDING_IDLE);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.ConfigGeneration, 1);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.CmdCounter, 1);
+    /* BL-08(2026-07-22): EXEC_RESULT 회신 확인 */
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ExecResultTlm.SourceSequence, 77);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ExecResultTlm.SourceApp, (int32)EXEC_RESULT_SOURCE_CFS_CORE);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ExecResultTlm.GenericResult, (int32)EXEC_RESULT_GENERIC_OK);
 }
 
 /* 정상: PublishPeriodMs 변경 */
@@ -863,6 +868,7 @@ void Test_CFS_CORE_APP_ProcessConfig_BadChecksum(void)
 
     build_config_msg(&Msg, CFS_CORE_APP_CONFIG_SCOPE, CFS_CORE_APP_CONFIG_VERSION,
                      CFS_CORE_APP_PARAM_ATTITUDE_TIMEOUT_MS, 3000U);
+    Msg.SourceSequence = 88; /* BL-08 */
 
     /* checksum 임의 변조 */
     Hdr = (CFS_CORE_APP_ConfigPayloadHdr_t *)Msg.Payload;
@@ -878,6 +884,10 @@ void Test_CFS_CORE_APP_ProcessConfig_BadChecksum(void)
                       (int32)CFS_CORE_APP_CONFIG_PENDING_REJECTED);
     /* ActiveConfig 불변 */
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.ActiveConfig.AttitudeTimeoutMs, (int32)OldVal);
+    /* BL-08(2026-07-22): EXEC_RESULT FAILED 회신 확인 */
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ExecResultTlm.SourceSequence, 88);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ExecResultTlm.GenericResult, (int32)EXEC_RESULT_GENERIC_FAILED);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ExecResultTlm.DetailCode, (int32)CFS_CORE_APP_CONFIG_RESULT_BAD_CHECKSUM);
 }
 
 /* 잘못된 scope → REJECTED, ActiveConfig 불변 */
@@ -888,8 +898,10 @@ void Test_CFS_CORE_APP_ProcessConfig_BadScope(void)
 
     build_config_msg(&Msg, 0xFF, CFS_CORE_APP_CONFIG_VERSION,
                      CFS_CORE_APP_PARAM_ATTITUDE_TIMEOUT_MS, 3000U);
+    Msg.SourceSequence = 99; /* BL-08 */
 
     CFS_CORE_APP_Data.ErrCounter = 0;
+    CFS_CORE_APP_Data.ExecResultTlm.SourceSequence = 0; /* 이전 값과 구분되게 초기화 */
     CFS_CORE_APP_ProcessConfigCommand(&Msg);
 
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.ErrCounter, 1);
@@ -899,6 +911,9 @@ void Test_CFS_CORE_APP_ProcessConfig_BadScope(void)
                       (int32)CFS_CORE_APP_CONFIG_PENDING_REJECTED);
     /* ActiveConfig 불변 */
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.ActiveConfig.AttitudeTimeoutMs, (int32)OldTimeout);
+    /* BL-08(2026-07-22): 다른 앱 대상 브로드캐스트라 EXEC_RESULT를 보내면
+     * 안 됨(발행됐다면 SourceSequence가 99로 갱신됐을 것) */
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ExecResultTlm.SourceSequence, 0);
 }
 
 /* 잘못된 version → 거부 */
@@ -2089,6 +2104,7 @@ void Test_CFS_CORE_APP_ProcessRecoveryCommand_RestartBridge(void)
     Msg.RecoveryAction  = CFS_CORE_APP_RECOVERY_ACTION_RESTART_BRIDGE;
     Msg.TargetComponent = 2;
     Msg.RequestToken    = 0xAABBCCDD;
+    Msg.SourceSequence  = 55; /* BL-08 */
 
     CFS_CORE_APP_Data.RecoveryRequestedCount = 0;
     CFS_CORE_APP_Data.CmdCounter             = 0;
@@ -2099,6 +2115,10 @@ void Test_CFS_CORE_APP_ProcessRecoveryCommand_RestartBridge(void)
     UtAssert_INT32_EQ((int)CFS_CORE_APP_Data.RecoveryRequestedCount, 1);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.CmdCounter, 1);
     UtAssert_STUB_COUNT(CFE_ES_RestartApp, 1);
+    /* BL-08(2026-07-22): EXEC_RESULT OK 회신 확인 */
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ExecResultTlm.SourceSequence, 55);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ExecResultTlm.GenericResult, (int32)EXEC_RESULT_GENERIC_OK);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ExecResultTlm.DetailCode, (int32)CFS_CORE_APP_RECOVERY_ACTION_RESTART_BRIDGE);
 }
 
 void Test_CFS_CORE_APP_ProcessRecoveryCommand_RestartBridge_AppNotFound(void)
@@ -2108,6 +2128,7 @@ void Test_CFS_CORE_APP_ProcessRecoveryCommand_RestartBridge_AppNotFound(void)
 
     memset(&Msg, 0, sizeof(Msg));
     Msg.RecoveryAction = CFS_CORE_APP_RECOVERY_ACTION_RESTART_BRIDGE;
+    Msg.SourceSequence = 56; /* BL-08 */
 
     CFS_CORE_APP_Data.RecoveryRequestedCount = 0;
     UT_SetDefaultReturnValue(UT_KEY(CFE_ES_GetAppIDByName), CFE_ES_ERR_NAME_NOT_FOUND);
@@ -2115,6 +2136,9 @@ void Test_CFS_CORE_APP_ProcessRecoveryCommand_RestartBridge_AppNotFound(void)
     CFS_CORE_APP_ProcessRecoveryCommand(&Msg);
 
     UtAssert_STUB_COUNT(CFE_ES_RestartApp, 0);
+    /* BL-08(2026-07-22): 앱을 못 찾았으니 EXEC_RESULT는 FAILED여야 함 */
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ExecResultTlm.SourceSequence, 56);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ExecResultTlm.GenericResult, (int32)EXEC_RESULT_GENERIC_FAILED);
 }
 
 void Test_CFS_CORE_APP_ProcessRecoveryCommand_RestartUplink(void)

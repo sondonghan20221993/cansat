@@ -410,3 +410,27 @@ void UPLINK_APP_ProcessUplink(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
     UPLINK_APP_UpdateStatusTelemetry(0);
 }
 
+/* BL-08(2026-07-22): 대상앱(cfs_core_app/mavlink_bridge_app/lora_tdm_app)의
+ * EXEC_RESULT 회신 처리. SourceSequence가 현재 추적 중인 최신 수락 명령과
+ * 일치할 때만 반영 — 타임아웃 없이 "새 명령이 오면 이전 PENDING/응답은
+ * 자연히 덮어써진다"는 결정(2026-07-22)을 이 상관 검사로 구현. 일치하지
+ * 않으면(오래된 명령에 대한 지연 응답, 또는 순서가 꼬인 응답) 조용히
+ * 무시 — 최신 상태를 stale 데이터로 덮어쓰지 않기 위함. */
+void UPLINK_APP_ProcessExecResult(const UPLINK_APP_ExecResultTlm_t *Msg)
+{
+    if (Msg->SourceSequence != (uint16)UPLINK_APP_Data.LastAcceptedSequence)
+    {
+        return;
+    }
+
+    UPLINK_APP_Data.LastCommandResult =
+        (Msg->GenericResult == 0U) ? UPLINK_APP_RESULT_EXECUTED_OK : UPLINK_APP_RESULT_EXECUTED_FAILED;
+
+    CFE_EVS_SendEvent(UPLINK_APP_PUBLISH_EID, CFE_EVS_EventType_INFORMATION,
+                      "UPLINK_APP: exec result seq=%u source_app=%u class=%u generic=%u detail=%u",
+                      (unsigned int)Msg->SourceSequence, (unsigned int)Msg->SourceApp,
+                      (unsigned int)Msg->CommandClass, (unsigned int)Msg->GenericResult,
+                      (unsigned int)Msg->DetailCode);
+    UPLINK_APP_UpdateStatusTelemetry(0);
+}
+

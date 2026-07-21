@@ -505,6 +505,9 @@ CFE_Status_t LORA_TDM_APP_Init(void)
     CFE_MSG_Init(CFE_MSG_PTR(LORA_TDM_APP_Data.LinkStatusTlm.TelemetryHeader),
                  CFE_SB_ValueToMsgId(LORA_TDM_APP_LINK_STATUS_MID_VALUE),
                  sizeof(LORA_TDM_APP_Data.LinkStatusTlm));
+    CFE_MSG_Init(CFE_MSG_PTR(LORA_TDM_APP_Data.ExecResultTlm.TelemetryHeader),
+                 CFE_SB_ValueToMsgId(LORA_TDM_APP_EXEC_RESULT_MID_VALUE),
+                 sizeof(LORA_TDM_APP_Data.ExecResultTlm));
 
     CFE_EVS_SendEvent(LORA_TDM_APP_INIT_INF_EID, CFE_EVS_EventType_INFORMATION,
                       "LORA_TDM_APP: initialized");

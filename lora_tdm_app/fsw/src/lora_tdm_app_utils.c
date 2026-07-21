@@ -712,6 +712,24 @@ static uint16 ConfigChecksum(const LORA_TDM_APP_ConfigPayloadHdr_t *Hdr, const u
     return Sum;
 }
 
+/* BL-08(2026-07-22): uplink_app에 실행결과 회신 — 공용 EXEC_RESULT_MID.
+ * lora_tdm_app은 CONFIG 결과를 저장하는 필드가 원래 없었으므로(이전엔
+ * ErrCounter만 증가) DetailCode는 파라미터별 세부코드가 아니라 단순
+ * 0=OK/1=FAILED 반복(즉 GenericResult와 동일값)으로 채운다. */
+static void LORA_TDM_APP_PublishExecResult(uint16 SourceSequence, uint8 CommandClass, bool Ok)
+{
+    LORA_TDM_APP_ExecResultTlm_t *Tlm = &LORA_TDM_APP_Data.ExecResultTlm;
+
+    Tlm->SourceSequence = SourceSequence;
+    Tlm->SourceApp      = (uint8)EXEC_RESULT_SOURCE_LORA_TDM;
+    Tlm->CommandClass   = CommandClass;
+    Tlm->GenericResult  = Ok ? (uint8)EXEC_RESULT_GENERIC_OK : (uint8)EXEC_RESULT_GENERIC_FAILED;
+    Tlm->DetailCode     = Tlm->GenericResult;
+
+    CFE_SB_TimeStampMsg(CFE_MSG_PTR(Tlm->TelemetryHeader));
+    CFE_SB_TransmitMsg(CFE_MSG_PTR(Tlm->TelemetryHeader), true);
+}
+
 void LORA_TDM_APP_ProcessConfigCommand(const LORA_TDM_APP_ConfigCmdTlm_t *Msg)
 {
     const LORA_TDM_APP_ConfigPayloadHdr_t *Hdr;
@@ -736,6 +754,7 @@ void LORA_TDM_APP_ProcessConfigCommand(const LORA_TDM_APP_ConfigCmdTlm_t *Msg)
     if (Hdr->ConfigVersion != (uint8)LORA_TDM_APP_CONFIG_VERSION)
     {
         LORA_TDM_APP_Data.ErrCounter++;
+        LORA_TDM_APP_PublishExecResult(Msg->SourceSequence, 1U, false);
         return;
     }
 
@@ -743,6 +762,7 @@ void LORA_TDM_APP_ProcessConfigCommand(const LORA_TDM_APP_ConfigCmdTlm_t *Msg)
         (uint8)(sizeof(*Hdr) + Hdr->ValueLength) > Msg->PayloadLength)
     {
         LORA_TDM_APP_Data.ErrCounter++;
+        LORA_TDM_APP_PublishExecResult(Msg->SourceSequence, 1U, false);
         return;
     }
 
@@ -754,8 +774,11 @@ void LORA_TDM_APP_ProcessConfigCommand(const LORA_TDM_APP_ConfigCmdTlm_t *Msg)
         CFE_EVS_SendEvent(LORA_TDM_APP_CRC_FAIL_EID, CFE_EVS_EventType_ERROR,
                           "LORA_TDM_APP: config checksum mismatch got=0x%04X expected=0x%04X",
                           (unsigned int)Hdr->Checksum, (unsigned int)Expected);
+        LORA_TDM_APP_PublishExecResult(Msg->SourceSequence, 1U, false);
         return;
     }
+
+    bool ConfigOk = false;
 
     memcpy(&Value, ValueBytes, sizeof(Value));
 
@@ -777,12 +800,15 @@ void LORA_TDM_APP_ProcessConfigCommand(const LORA_TDM_APP_ConfigCmdTlm_t *Msg)
             CFE_EVS_SendEvent(LORA_TDM_APP_SET_DL_PROTO_INF_EID, CFE_EVS_EventType_INFORMATION,
                               "LORA_TDM_APP: downlink protocol set to %s (via CONFIG_CMD_MID)",
                               LORA_TDM_APP_Data.UseV2Downlink ? "v2(DL2)" : "v1(text)");
+            ConfigOk = true;
             break;
 
         default:
             LORA_TDM_APP_Data.ErrCounter++;
             break;
     }
+
+    LORA_TDM_APP_PublishExecResult(Msg->SourceSequence, 1U, ConfigOk);
 }
 
 /* ---- Update FC state cache from SB message ---- */

@@ -98,6 +98,7 @@ typedef struct
     /* Telemetry messages */
     LORA_TDM_APP_HkTlm_t         HkTlm;
     LORA_TDM_APP_LinkStatusTlm_t LinkStatusTlm;
+    LORA_TDM_APP_ExecResultTlm_t ExecResultTlm; /* BL-08(2026-07-22) */
 } LORA_TDM_APP_Data_t;
 
 /* Singleton global */

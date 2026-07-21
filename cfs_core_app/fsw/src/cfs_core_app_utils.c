@@ -520,6 +520,25 @@ static uint16 CFS_CORE_APP_ConfigChecksum(const CFS_CORE_APP_ConfigPayloadHdr_t 
     return Sum;
 }
 
+/* BL-08(2026-07-22): uplink_app에 실행결과를 회신 — 공용 EXEC_RESULT_MID.
+ * GenericResult는 uplink_app이 실제로 쓰는 대분류(OK/FAILED)이고, DetailCode는
+ * 이 앱의 원시 결과코드(예: CFS_CORE_APP_CONFIG_RESULT_BAD_VALUE)를 그대로
+ * 실어 진단에만 참고하도록 한다. */
+static void CFS_CORE_APP_PublishExecResult(uint16 SourceSequence, uint8 CommandClass,
+                                            bool Ok, uint8 DetailCode)
+{
+    CFS_CORE_APP_ExecResultTlm_t *Tlm = &CFS_CORE_APP_Data.ExecResultTlm;
+
+    Tlm->SourceSequence = SourceSequence;
+    Tlm->SourceApp      = (uint8)EXEC_RESULT_SOURCE_CFS_CORE;
+    Tlm->CommandClass   = CommandClass;
+    Tlm->GenericResult  = Ok ? (uint8)EXEC_RESULT_GENERIC_OK : (uint8)EXEC_RESULT_GENERIC_FAILED;
+    Tlm->DetailCode     = DetailCode;
+
+    CFE_SB_TimeStampMsg(CFE_MSG_PTR(Tlm->TelemetryHeader));
+    CFE_SB_TransmitMsg(CFE_MSG_PTR(Tlm->TelemetryHeader), true);
+}
+
 void CFS_CORE_APP_ProcessConfigCommand(const CFS_CORE_APP_ConfigCmdTlm_t *Msg)
 {
     const CFS_CORE_APP_ConfigPayloadHdr_t *Hdr;
@@ -535,6 +554,7 @@ void CFS_CORE_APP_ProcessConfigCommand(const CFS_CORE_APP_ConfigCmdTlm_t *Msg)
         CFE_EVS_SendEvent(CFS_CORE_APP_COMMAND_ERR_EID, CFE_EVS_EventType_ERROR,
                           "CFS_CORE_APP: config payload too short len=%u",
                           (unsigned int)Msg->PayloadLength);
+        CFS_CORE_APP_PublishExecResult(Msg->SourceSequence, 1U, false, CFS_CORE_APP_Data.LastConfigResult);
         return;
     }
 
@@ -542,6 +562,11 @@ void CFS_CORE_APP_ProcessConfigCommand(const CFS_CORE_APP_ConfigCmdTlm_t *Msg)
 
     if (Hdr->ConfigScope != CFS_CORE_APP_CONFIG_SCOPE)
     {
+        /* BL-08(2026-07-22): EXEC_RESULT 발행 안 함 — CONFIG_CMD_MID는 3개
+         * 앱이 공유 구독하는 브로드캐스트라 다른 앱 대상 스코프는 항상
+         * 여기 도달함. 여기서 FAILED를 회신하면 실제 대상 앱의 정상 응답과
+         * 경합해 uplink_app 쪽 결과를 오염시킴(스코프 불일치 = "내 명령
+         * 아님", 실패가 아님). */
         CFS_CORE_APP_Data.ErrCounter++;
         CFS_CORE_APP_Data.ConfigPendingState = (uint8)CFS_CORE_APP_CONFIG_PENDING_REJECTED;
         CFS_CORE_APP_Data.LastConfigResult   = (uint8)CFS_CORE_APP_CONFIG_RESULT_BAD_SCOPE;
@@ -553,6 +578,7 @@ void CFS_CORE_APP_ProcessConfigCommand(const CFS_CORE_APP_ConfigCmdTlm_t *Msg)
         CFS_CORE_APP_Data.ErrCounter++;
         CFS_CORE_APP_Data.ConfigPendingState = (uint8)CFS_CORE_APP_CONFIG_PENDING_REJECTED;
         CFS_CORE_APP_Data.LastConfigResult   = (uint8)CFS_CORE_APP_CONFIG_RESULT_BAD_VERSION;
+        CFS_CORE_APP_PublishExecResult(Msg->SourceSequence, 1U, false, CFS_CORE_APP_Data.LastConfigResult);
         return;
     }
 
@@ -562,6 +588,7 @@ void CFS_CORE_APP_ProcessConfigCommand(const CFS_CORE_APP_ConfigCmdTlm_t *Msg)
         CFS_CORE_APP_Data.ErrCounter++;
         CFS_CORE_APP_Data.ConfigPendingState = (uint8)CFS_CORE_APP_CONFIG_PENDING_REJECTED;
         CFS_CORE_APP_Data.LastConfigResult   = (uint8)CFS_CORE_APP_CONFIG_RESULT_BAD_LENGTH;
+        CFS_CORE_APP_PublishExecResult(Msg->SourceSequence, 1U, false, CFS_CORE_APP_Data.LastConfigResult);
         return;
     }
 
@@ -577,6 +604,7 @@ void CFS_CORE_APP_ProcessConfigCommand(const CFS_CORE_APP_ConfigCmdTlm_t *Msg)
             CFE_EVS_SendEvent(CFS_CORE_APP_COMMAND_ERR_EID, CFE_EVS_EventType_ERROR,
                               "CFS_CORE_APP: config checksum mismatch got=0x%04X expected=0x%04X",
                               (unsigned int)Hdr->Checksum, (unsigned int)Expected);
+            CFS_CORE_APP_PublishExecResult(Msg->SourceSequence, 1U, false, CFS_CORE_APP_Data.LastConfigResult);
             return;
         }
     }
@@ -588,6 +616,7 @@ void CFS_CORE_APP_ProcessConfigCommand(const CFS_CORE_APP_ConfigCmdTlm_t *Msg)
         CFS_CORE_APP_Data.ErrCounter++;
         CFS_CORE_APP_Data.ConfigPendingState = (uint8)CFS_CORE_APP_CONFIG_PENDING_REJECTED;
         CFS_CORE_APP_Data.LastConfigResult   = (uint8)CFS_CORE_APP_CONFIG_RESULT_BAD_VALUE;
+        CFS_CORE_APP_PublishExecResult(Msg->SourceSequence, 1U, false, CFS_CORE_APP_Data.LastConfigResult);
         return;
     }
 
@@ -613,6 +642,7 @@ void CFS_CORE_APP_ProcessConfigCommand(const CFS_CORE_APP_ConfigCmdTlm_t *Msg)
             CFS_CORE_APP_Data.ErrCounter++;
             CFS_CORE_APP_Data.ConfigPendingState = (uint8)CFS_CORE_APP_CONFIG_PENDING_REJECTED;
             CFS_CORE_APP_Data.LastConfigResult   = (uint8)CFS_CORE_APP_CONFIG_RESULT_BAD_PARAM;
+            CFS_CORE_APP_PublishExecResult(Msg->SourceSequence, 1U, false, CFS_CORE_APP_Data.LastConfigResult);
             return;
     }
 
@@ -628,6 +658,7 @@ void CFS_CORE_APP_ProcessConfigCommand(const CFS_CORE_APP_ConfigCmdTlm_t *Msg)
         CFS_CORE_APP_Data.ErrCounter++;
         CFS_CORE_APP_Data.ConfigPendingState = (uint8)CFS_CORE_APP_CONFIG_PENDING_REJECTED;
         CFS_CORE_APP_Data.LastConfigResult   = (uint8)CFS_CORE_APP_CONFIG_RESULT_BAD_VALUE;
+        CFS_CORE_APP_PublishExecResult(Msg->SourceSequence, 1U, false, CFS_CORE_APP_Data.LastConfigResult);
         return;
     }
 
@@ -643,6 +674,7 @@ void CFS_CORE_APP_ProcessConfigCommand(const CFS_CORE_APP_ConfigCmdTlm_t *Msg)
                       "CFS_CORE_APP: config activated param=%u value=%lu gen=%lu",
                       (unsigned int)Hdr->ParameterId, (unsigned long)Value,
                       (unsigned long)CFS_CORE_APP_Data.ConfigGeneration);
+    CFS_CORE_APP_PublishExecResult(Msg->SourceSequence, 1U, true, CFS_CORE_APP_Data.LastConfigResult);
 }
 
 void CFS_CORE_APP_ProcessViewpointCommand(const CFS_CORE_APP_ViewpointCmdTlm_t *Msg)
@@ -739,6 +771,8 @@ void CFS_CORE_APP_ServicePrototype(void)
 
 void CFS_CORE_APP_ProcessRecoveryCommand(const CFS_CORE_APP_RecoveryCmdTlm_t *Msg)
 {
+    bool Ok = true; /* BL-08(2026-07-22): EXEC_RESULT GenericResult 근거 */
+
     CFS_CORE_APP_Data.RecoveryRequestedCount++;
     CFS_CORE_APP_Data.SystemHealthTlm.RecoveryRequested = 1;
     CFS_CORE_APP_Data.CmdCounter++;
@@ -772,6 +806,10 @@ void CFS_CORE_APP_ProcessRecoveryCommand(const CFS_CORE_APP_RecoveryCmdTlm_t *Ms
                 CFE_EVS_SendEvent(CFS_CORE_APP_BRIDGE_RESTART_EID, CFE_EVS_EventType_INFORMATION,
                                   "CFS_CORE_APP: bridge restart (ground-triggered)");
             }
+            else
+            {
+                Ok = false;
+            }
             break;
         }
 
@@ -788,6 +826,10 @@ void CFS_CORE_APP_ProcessRecoveryCommand(const CFS_CORE_APP_RecoveryCmdTlm_t *Ms
                 CFE_EVS_SendEvent(CFS_CORE_APP_UPLINK_RESTART_EID, CFE_EVS_EventType_INFORMATION,
                                   "CFS_CORE_APP: uplink restart (ground-triggered)");
             }
+            else
+            {
+                Ok = false;
+            }
             break;
         }
 
@@ -803,6 +845,10 @@ void CFS_CORE_APP_ProcessRecoveryCommand(const CFS_CORE_APP_RecoveryCmdTlm_t *Ms
                 CFE_ES_RestartApp(AppId);
                 CFE_EVS_SendEvent(CFS_CORE_APP_LORA_RESTART_EID, CFE_EVS_EventType_INFORMATION,
                                   "CFS_CORE_APP: lora restart (ground-triggered)");
+            }
+            else
+            {
+                Ok = false;
             }
             break;
         }
@@ -822,11 +868,16 @@ void CFS_CORE_APP_ProcessRecoveryCommand(const CFS_CORE_APP_RecoveryCmdTlm_t *Ms
             break;
 
         default:
+            Ok = false;
             CFE_EVS_SendEvent(CFS_CORE_APP_RECOVERY_CMD_EID, CFE_EVS_EventType_ERROR,
                               "CFS_CORE_APP: recovery cmd UNKNOWN action=%u seq=%u",
                               (unsigned int)Msg->RecoveryAction, (unsigned int)Msg->SourceSequence);
             break;
     }
+
+    /* BL-08: CommandClass=4는 UPLINK_APP_CLASS_RECOVERY(uplink_app_msgdefs.h)와
+     * 값 일치 — cfs_core_app은 그 헤더를 참조하지 않아 매직넘버로 유지 */
+    CFS_CORE_APP_PublishExecResult(Msg->SourceSequence, 4U, Ok, (uint8)Msg->RecoveryAction);
 }
 
 void CFS_CORE_APP_ProcessModeCommand(const CFS_CORE_APP_ModeCmdTlm_t *Msg)

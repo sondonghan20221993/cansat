@@ -109,6 +109,7 @@ typedef struct
     CFS_CORE_APP_ViewpointCache_t  ViewpointCmd;
     CFS_CORE_APP_HkTlm_t           HkTlm;
     CFS_CORE_APP_SystemHealthTlm_t SystemHealthTlm;
+    CFS_CORE_APP_ExecResultTlm_t   ExecResultTlm; /* BL-08(2026-07-22) */
 } CFS_CORE_APP_Data_t;
 
 extern CFS_CORE_APP_Data_t CFS_CORE_APP_Data;

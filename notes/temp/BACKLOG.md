@@ -13,8 +13,10 @@
 
 ## ✅ 요약 — 바로 진행 가능 vs 추후 결정 필요 (2026-07-21)
 
-`BL-08`(실행결과 회신 채널)은 3개 대상 앱의 결과 스키마가 제각각이라
-설계에 시간이 걸림 — **보류**. 종속된 `BL-05`/`BL-11`도 자동 보류.
+`BL-08`(실행결과 회신 채널) **완료(2026-07-22)** — 공용 `EXEC_RESULT_MID`로
+CONFIG(3개 앱 전부)+RECOVERY(cfs_core_app) 배선. `BL-05`도 함께 해소.
+`BL-11`(UFB 라디오 바이트 코드표)은 **별개 사안**으로 확인돼 BL-08 완료와
+무관하게 여전히 미착수 상태로 남음.
 
 ### ▶ 바로 진행 가능 (모호성 없음, 착수만 하면 됨 — 2026-07-21 3차 확정)
 
@@ -60,9 +62,9 @@ BL-19   LORA_TDM_APP_LORA_BAUDRATE(하드코딩 무시) — 삭제 vs 실제 bau
 ### ⏸ 추후 결정 필요 (방향 자체가 미정이거나 후속 논의 필요)
 
 ```
-BL-08   실행결과 회신 채널 — 3개 앱 결과 스키마 통일 방식 미정
-BL-05   BL-08 종속
-BL-11   BL-08 종속
+✅BL-08 실행결과 회신 채널 — 완료(2026-07-22)
+✅BL-05 BL-08과 함께 해소(2026-07-22)
+BL-11   UFB 라디오 바이트 코드표 확정 — BL-08과 별개, 여전히 미착수
 BL-10   VIEWPOINT 캐시 — "활용처 있음"만 정함, 뭘 할지는 미정
 BL-15   5Hz 상향 — "필요하다"만 정함, 실측 전엔 상한 미정(Pi 필요)
 BL-02   RunTx UFB 리셋 유지/롤백 — BL-03 완료(2026-07-22)로 대부분 해소:
@@ -101,7 +103,7 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 | ID | 내용 | 근거 |
 |---|---|---|
 | ~~**BL-04**~~ | ✅ **부분 완료(2026-07-21)**. `LINK_LOST/DEGRADED/RESTORED` 3종은 `UpdateLinkState()`에 `LinkStateInitialized` 플래그로 첫 관측 제외 + 엣지 트리거로 구현(추가 히스테리시스는 기존 다중사이클 임계값으로 충분해 불필요 판단). `PIPE_ERR/SUB_ERR/SB_SEND_ERR` 3종은 **범위 밖으로 미룸** — spec 표기를 ❌ 미구현으로 정정. 회귀 UT 135/135 PASS(신규 5건) | `system_wide_reaudit` F-1 |
-| **BL-05** | ⏸️ **BL-08 보류에 종속** — `mission_app_runtime_spec.md` §18.4.6.4가 "전달 vs 실행 구분 … 완료"라 하지만 `EXECUTED` 결과코드 자체가 없음 | `command_dead_end_audit` F1 |
+| ~~**BL-05**~~ | ✅ **완료(2026-07-22, BL-08과 함께)** — `UPLINK_APP_RESULT_EXECUTED_OK/FAILED`(15/16) 추가, `mission_app_runtime_spec.md` §18.4.6.4의 "전달 vs 실행 구분" 표기가 실제로 사실이 됨 | `command_dead_end_audit` F1 |
 | **BL-06** | stale TODO 주석 2건 — `lora_tdm_app.h:68`("CONFIG 커맨드 미배선"), `lora_tdm_app_utils.h:72`("SysTime 미지원") 둘 다 **실제로는 구현 완료**. 주석만 정정 | `system_wide_reaudit` F-2/F-3 |
 | **BL-07** | `cfs_core_app_command_execution_gap.md` **문서 자체가 낡음** — "MODE 상태 전이 미구현"이라 적혀 있으나 실제로는 구현돼 있음(`cfs_core_app_utils.c:786-829`, 전이 검증 포함). RECOVERY 항목도 부분 진전됨(switch 추가). 문서 갱신 후 이 백로그로 흡수 | 오늘 확인 |
 
@@ -111,10 +113,10 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 
 | ID | 내용 | 근거 | 선행 |
 |---|---|---|---|
-| **BL-08** | ⏸️ **보류(2026-07-21)** — 실행결과(EXECUTED) 회신 채널. `uplink_app`은 "라우팅 성공"까지만 앎. 대상 앱은 자기 결과를 갖고 있으나(`mavlink_bridge_app`의 `LastConfigResult`) **돌아오는 길이 없음**. 파이프/구독 자체는 기존 것에 한 줄만 추가하면 되지만(`uplink_app`은 이미 `CommandPipe` 보유), 3개 대상 앱이 결과를 표현하는 형태가 제각각(2곳은 동일 7종 enum 중복정의, `lora_tdm_app`은 **그 필드 자체가 없음**)이라 공통 스키마 설계가 필요 — 나중에 별도로 | `ground_plan` P0 / `command_dead_end` F1 / T7 | 설계 필요, 범위 큼 |
+| ~~**BL-08**~~ | ✅ **완료(2026-07-22)** — 공용 `EXEC_RESULT_MID`(0x1912, `shared_msgs/exec_result_msg.h`) 신설. `SourceSequence`(원본 seq 반사, 상관키)+`GenericResult`(OK/FAILED, uplink_app이 실제 사용)+`DetailCode`(대상앱 원시코드, 진단용)로 3개 앱의 서로 다른 스키마를 통일하지 않고 대분류로 흡수. `uplink_app`은 공용 MID 1개만 구독(사용자 결정), 타임아웃 없이 최신 수락 seq와 일치할 때만 반영(다음 명령이 오면 자연 무시, 사용자 결정). CONFIG는 3개 앱 전부, RECOVERY는 cfs_core_app만 배선 — ROUTE_UPDATE/MODE/VIEWPOINT/DIAGNOSTIC은 범위 밖. **주의**: CONFIG_CMD_MID는 3앱 공유 브로드캐스트라 scope 불일치(다른 앱 대상) 시 EXEC_RESULT 발행 안 함(발행하면 실제 대상 앱 응답과 경합해 오염). 회귀 UT: uplink_app 4종(10/102/35/108), cfs_core_app_utils(269), mavlink_bridge_app_utils(167), lora_tdm_app_utils(145) 전부 PASS, 총 1069/1069 | `ground_plan` P0 / `command_dead_end` F1 / T7 | 완료 |
 | ~~**BL-09**~~ | ✅ **부분 완료(2026-07-21)**. `RESTART_BRIDGE`가 실제 `CFE_ES_RestartApp()` 호출로 연결됨(기존 자동재시작과 동일 메커니즘 재사용). **신규 `RESTART_UPLINK`(4)/`RESTART_LORA`(5)** enum 추가 + 동일하게 실제 재시작 연결. `PARSER_RESET`/`SERIAL_RECONNECT`는 **여전히 로그만**(mavlink_bridge_app 프로세스 내부 함수라 크로스앱 CMD_MID 신설 필요 — P1-a~d는 별도 작업으로 남음). 회귀 UT 4종(19/7/35/257, 신규 4건) PASS. BL-25(uplinkCLI 도움말)도 같이 정정 | `ground_plan` P1-a~d / `command_dead_end` F2 | 중 |
 | **BL-10** | 🔶 **결정(2026-07-21): 활용처 있음(A안) — 단 "무엇을 할지"는 추후 결정.** `VIEWPOINT_CMD_MID` 캐시를 실제로 소비할 로직(경로계획 연동 등) 설계가 남음. 지금은 방향만 확정, 착수는 보류 | `ground_plan` P2 / `cfs_core_app_command_execution_gap` | 후속설계 필요 |
-| **BL-11** | ⏸️ **BL-08 보류에 종속** — UFB 코드표 전체 확정. 현재 `REJECT_STATE`만 매핑돼 나머지 7종(`FAILED`, `REJECT_CLASS`, `REJECT_LENGTH`, `ROUTE_MISS`, `REJECT_ROUTE`, `REJECT_CHECKSUM`, `REJECT_VIEWPOINT`)은 지상에서 OK와 구분 불가 | T8 / `selfaudit` A-2 | **BL-08** |
+| **BL-11** | UFB 코드표 전체 확정(라디오 다운링크 바이트, `EXEC_RESULT_MID`와는 별개 사안). 현재 `REJECT_STATE`만 매핑돼 나머지 7종(`FAILED`, `REJECT_CLASS`, `REJECT_LENGTH`, `ROUTE_MISS`, `REJECT_ROUTE`, `REJECT_CHECKSUM`, `REJECT_VIEWPOINT`)은 지상에서 OK와 구분 불가 — UFB는 u8 1바이트라 코드 공간도 별도 검토 필요 | T8 / `selfaudit` A-2 | 미착수 |
 
 ---
 

@@ -66,8 +66,15 @@
 | `MAVLINK_BRIDGE_APP_SEND_HK_MID` | `0x18A1` | HK publish 트리거 |
 | `ROUTE_UPDATE_MID` | `0x190B` | FC 웨이포인트 업로드 시작 |
 | `CONFIG_CMD_MID` | `0x190E` | 런타임 config 명령 수신 (`ProcessConfigCommand`) |
+| `EXEC_RESULT_MID` | `0x1912` | (publish) CONFIG 처리 결과를 uplink_app에 회신 — `shared_msgs/exec_result_msg.h`, BL-08(2026-07-22) |
 
 > **1-4 audit 해소**: `CONFIG_CMD_MID 0x190E` 구독은 `mavlink_bridge_app.c:142`에서 확인됨. 본 spec의 구 §2/§4에서 누락되어 있었으나 mission_app_runtime_spec.md §5.1.1의 Subscribe 목록에는 이미 포함되어 있음 (2026-06-17 추가).
+>
+> **EXEC_RESULT 회신 (2026-07-22, BL-08)**: `ProcessConfigCommand`의 모든 종료
+> 지점(성공/BAD_VERSION/BAD_LENGTH/BAD_CHECKSUM/BAD_PARAM/BAD_VALUE)에서
+> `EXEC_RESULT_MID`로 `(SourceSequence, GenericResult, DetailCode)`를 회신한다.
+> **scope 불일치(다른 앱 대상)는 여전히 조용히 무시, EXEC_RESULT도 발행 안 함**
+> — 실제 대상 앱의 정상 응답과 경합하지 않도록.
 
 ## 5. 트리거
 

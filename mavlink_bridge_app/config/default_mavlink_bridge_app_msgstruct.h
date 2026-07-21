@@ -8,6 +8,7 @@
 #include "fc_state_msg.h"
 #include "route_msg.h"
 #include "config_msg.h"
+#include "exec_result_msg.h"
 
 typedef struct
 {
@@ -50,6 +51,8 @@ typedef ROUTE_UPDATE_TLM_t MAVLINK_BRIDGE_APP_RouteUpdateMirror_t;
 
 /* CONFIG_CMD_MID 수신용 (uplink_app의 UPLINK_APP_ConfigCmdTlm_t와 동일 레이아웃) */
 typedef CONFIG_CMD_TLM_t MAVLINK_BRIDGE_APP_ConfigCmdTlm_t;
+
+typedef EXEC_RESULT_TLM_t MAVLINK_BRIDGE_APP_ExecResultTlm_t;
 
 typedef struct
 {

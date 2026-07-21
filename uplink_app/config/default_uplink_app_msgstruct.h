@@ -13,6 +13,7 @@
 #include "uplink_fwd_cmd_msg.h"
 #include "diagnostic_cmd_msg.h"
 #include "recovery_cmd_msg.h"
+#include "exec_result_msg.h"
 #include "mode_cmd_msg.h"
 #include "viewpoint_cmd_msg.h"
 
@@ -42,6 +43,8 @@ typedef struct
 typedef ROUTE_UPDATE_TLM_t UPLINK_APP_RouteUpdateTlm_t;
 
 typedef RECOVERY_CMD_TLM_t UPLINK_APP_RecoveryCmdTlm_t;
+
+typedef EXEC_RESULT_TLM_t UPLINK_APP_ExecResultTlm_t;
 
 typedef struct
 {

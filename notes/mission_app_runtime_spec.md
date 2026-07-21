@@ -1368,15 +1368,33 @@ recovery payload는 최소한 다음 필드를 포함해야 한다.
 - 현재 상태에서 금지된 recovery action
 - 권한 부족
 
-> **구현 상태 (2026-07-14 갱신, 최초 A-3 구현 2026-07-05)**: ~~스텁 수준~~ 완료.
+> **구현 상태 (2026-07-22 갱신, 최초 A-3 구현 2026-07-05)**: 완료.
 > `uplink_app`의 `ForwardRecoveryCommand`는 `Payload[0:8]`을
 > `RecoveryAction`/`TargetComponent`/`ReasonCode`(u16 LE)/`RequestToken`(u32 LE)으로
 > 파싱해 `RECOVERY_CMD_MID(0x190C)`로 전달한다. `cfs_core_app`의
-> `ProcessRecoveryCommand`는 `RecoveryAction`별로 분기(RESET_COUNTER/
-> RESTART_BRIDGE/PARSER_RESET/SERIAL_RECONNECT, 미정의 action은 EVS 오류만
-> 발생) — action 구분 없이 카운터만 리셋하던 예전 동작은 아님. 단위테스트:
-> `A3_unittest_cases.md` A-3.1(5건), `notes/temp/a3_unittest_gap_implementation.md`
-> 참조.
+> `ProcessRecoveryCommand`는 `RecoveryAction` 6종별로 분기 — `RESET_COUNTER`는
+> 카운터 리셋, `RESTART_BRIDGE`/`RESTART_UPLINK`/`RESTART_LORA`(2026-07-21
+> BL-09 추가)는 실제 `CFE_ES_RestartApp()` 호출, `PARSER_RESET`/
+> `SERIAL_RECONNECT`는 여전히 로그만(크로스앱 CMD_MID 신설 필요, 범위 밖),
+> 미정의 action은 EVS 오류. 단위테스트: `A3_unittest_cases.md` A-3.1(5건),
+> `notes/temp/a3_unittest_gap_implementation.md` 참조.
+>
+> **`전달 성공` vs `실행 성공` 구분 (2026-07-22, BL-08 완료)**: 위 §18.4.6.4
+> "출력 계약" 요구사항이 실제로 구현됨. `cfs_core_app`/`mavlink_bridge_app`/
+> `lora_tdm_app` 3개 대상 앱이 명령 처리를 마치면 공용 `EXEC_RESULT_MID`
+> (0x1912, `shared_msgs/exec_result_msg.h`)로 `uplink_app`에 회신 —
+> `SourceSequence`로 원본 지상 명령을 상관시키고, `GenericResult`(OK/FAILED)
+> + `DetailCode`(대상앱 원시 결과코드, 진단 참고용)를 싣는다. `uplink_app`은
+> `UPLINK_APP_RESULT_EXECUTED_OK/FAILED`(15/16)로 `LastCommandResult`를
+> 갱신 — 이전엔 `ROUTED`(전달 성공)까지만 있었음. 타임아웃 없음: 응답의
+> `SourceSequence`가 `uplink_app`이 추적 중인 최신 수락 seq와 일치할 때만
+> 반영하고, 다음 명령이 오면 오래된 응답은 자연히 무시됨. 3개 앱이 각자
+> 다른 세부 결과 스키마(2개는 동일한 7종 `CONFIG_RESULT` enum 중복 보유,
+> 1개는 없었음)를 갖고 있어 스키마 통일 대신 대분류(GenericResult)로
+> 단순화하는 방향으로 설계 — 현재는 CONFIG(3개 앱 전부)와 RECOVERY
+> (`cfs_core_app`만, 해당 클래스가 그 앱에만 있으므로)에 배선됨.
+> ROUTE_UPDATE/MODE/VIEWPOINT/DIAGNOSTIC은 범위 밖(EXEC_RESULT 미발행,
+> `uplink_app` 쪽은 여전히 `ROUTED`까지만 보고) — 후속 작업.
 
 ##### 18.4.6.5 mode command
 

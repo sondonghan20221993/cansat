@@ -86,6 +86,14 @@ CFE_Status_t CFS_CORE_APP_Init(void)
         return Status;
     }
 
+    Status = CFE_MSG_Init(CFE_MSG_PTR(CFS_CORE_APP_Data.ExecResultTlm.TelemetryHeader),
+                          CFE_SB_ValueToMsgId(EXEC_RESULT_MID),
+                          sizeof(CFS_CORE_APP_Data.ExecResultTlm));
+    if (Status != CFE_SUCCESS)
+    {
+        return Status;
+    }
+
     Status = CFE_SB_CreatePipe(&CFS_CORE_APP_Data.CommandPipe, CFS_CORE_APP_PLATFORM_PIPE_DEPTH, CFS_CORE_APP_PLATFORM_PIPE_NAME);
     if (Status != CFE_SUCCESS)
     {

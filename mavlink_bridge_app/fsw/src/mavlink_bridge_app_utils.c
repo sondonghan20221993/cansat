@@ -1783,6 +1783,24 @@ static uint16 MAVLINK_BRIDGE_APP_ConfigChecksum(const MAVLINK_BRIDGE_APP_ConfigP
     return Sum;
 }
 
+/* BL-08(2026-07-22): uplink_app에 실행결과 회신 — 공용 EXEC_RESULT_MID.
+ * GenericResult는 uplink_app이 실제로 쓰는 대분류(OK/FAILED), DetailCode는
+ * 이 앱의 원시 결과코드(진단 참고용). */
+static void MAVLINK_BRIDGE_APP_PublishExecResult(uint16 SourceSequence, uint8 CommandClass,
+                                                  bool Ok, uint8 DetailCode)
+{
+    MAVLINK_BRIDGE_APP_ExecResultTlm_t *Tlm = &MAVLINK_BRIDGE_APP_Data.ExecResultTlm;
+
+    Tlm->SourceSequence = SourceSequence;
+    Tlm->SourceApp      = (uint8)EXEC_RESULT_SOURCE_MAVLINK_BRIDGE;
+    Tlm->CommandClass   = CommandClass;
+    Tlm->GenericResult  = Ok ? (uint8)EXEC_RESULT_GENERIC_OK : (uint8)EXEC_RESULT_GENERIC_FAILED;
+    Tlm->DetailCode     = DetailCode;
+
+    CFE_SB_TimeStampMsg(CFE_MSG_PTR(Tlm->TelemetryHeader));
+    CFE_SB_TransmitMsg(CFE_MSG_PTR(Tlm->TelemetryHeader), true);
+}
+
 void MAVLINK_BRIDGE_APP_ProcessConfigCommand(const MAVLINK_BRIDGE_APP_ConfigCmdTlm_t *Msg)
 {
     const MAVLINK_BRIDGE_APP_ConfigPayloadHdr_t *Hdr;
@@ -1798,6 +1816,7 @@ void MAVLINK_BRIDGE_APP_ProcessConfigCommand(const MAVLINK_BRIDGE_APP_ConfigCmdT
         CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_COMMAND_ERR_EID, CFE_EVS_EventType_ERROR,
                           "MAVLINK_BRIDGE_APP: config payload too short len=%u",
                           (unsigned int)Msg->PayloadLength);
+        MAVLINK_BRIDGE_APP_PublishExecResult(Msg->SourceSequence, 1U, false, MAVLINK_BRIDGE_APP_Data.LastConfigResult);
         return;
     }
 
@@ -1805,7 +1824,8 @@ void MAVLINK_BRIDGE_APP_ProcessConfigCommand(const MAVLINK_BRIDGE_APP_ConfigCmdT
 
     if (Hdr->ConfigScope != MAVLINK_BRIDGE_APP_CONFIG_SCOPE)
     {
-        /* 다른 앱 대상 scope → 조용히 무시 (거부 아님) */
+        /* 다른 앱 대상 scope → 조용히 무시(거부 아님), EXEC_RESULT도
+         * 발행 안 함 — 실제 대상 앱의 응답과 경합 방지 (BL-08) */
         return;
     }
 
@@ -1814,6 +1834,7 @@ void MAVLINK_BRIDGE_APP_ProcessConfigCommand(const MAVLINK_BRIDGE_APP_ConfigCmdT
         MAVLINK_BRIDGE_APP_Data.ErrCounter++;
         MAVLINK_BRIDGE_APP_Data.ConfigPendingState = (uint8)MAVLINK_BRIDGE_CONFIG_PENDING_REJECTED;
         MAVLINK_BRIDGE_APP_Data.LastConfigResult   = (uint8)MAVLINK_BRIDGE_CONFIG_RESULT_BAD_VERSION;
+        MAVLINK_BRIDGE_APP_PublishExecResult(Msg->SourceSequence, 1U, false, MAVLINK_BRIDGE_APP_Data.LastConfigResult);
         return;
     }
 
@@ -1823,6 +1844,7 @@ void MAVLINK_BRIDGE_APP_ProcessConfigCommand(const MAVLINK_BRIDGE_APP_ConfigCmdT
         MAVLINK_BRIDGE_APP_Data.ErrCounter++;
         MAVLINK_BRIDGE_APP_Data.ConfigPendingState = (uint8)MAVLINK_BRIDGE_CONFIG_PENDING_REJECTED;
         MAVLINK_BRIDGE_APP_Data.LastConfigResult   = (uint8)MAVLINK_BRIDGE_CONFIG_RESULT_BAD_LENGTH;
+        MAVLINK_BRIDGE_APP_PublishExecResult(Msg->SourceSequence, 1U, false, MAVLINK_BRIDGE_APP_Data.LastConfigResult);
         return;
     }
 
@@ -1838,6 +1860,7 @@ void MAVLINK_BRIDGE_APP_ProcessConfigCommand(const MAVLINK_BRIDGE_APP_ConfigCmdT
             CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_COMMAND_ERR_EID, CFE_EVS_EventType_ERROR,
                               "MAVLINK_BRIDGE_APP: config checksum mismatch got=0x%04X expected=0x%04X",
                               (unsigned int)Hdr->Checksum, (unsigned int)Expected);
+            MAVLINK_BRIDGE_APP_PublishExecResult(Msg->SourceSequence, 1U, false, MAVLINK_BRIDGE_APP_Data.LastConfigResult);
             return;
         }
     }
@@ -1889,6 +1912,7 @@ void MAVLINK_BRIDGE_APP_ProcessConfigCommand(const MAVLINK_BRIDGE_APP_ConfigCmdT
             MAVLINK_BRIDGE_APP_Data.ErrCounter++;
             MAVLINK_BRIDGE_APP_Data.ConfigPendingState = (uint8)MAVLINK_BRIDGE_CONFIG_PENDING_REJECTED;
             MAVLINK_BRIDGE_APP_Data.LastConfigResult   = (uint8)MAVLINK_BRIDGE_CONFIG_RESULT_BAD_PARAM;
+            MAVLINK_BRIDGE_APP_PublishExecResult(Msg->SourceSequence, 1U, false, MAVLINK_BRIDGE_APP_Data.LastConfigResult);
             return;
     }
 
@@ -1920,12 +1944,14 @@ void MAVLINK_BRIDGE_APP_ProcessConfigCommand(const MAVLINK_BRIDGE_APP_ConfigCmdT
                       "MAVLINK_BRIDGE_APP: config activated param=%u value=%lu gen=%lu",
                       (unsigned int)Hdr->ParameterId, (unsigned long)Value,
                       (unsigned long)MAVLINK_BRIDGE_APP_Data.ConfigGeneration);
+    MAVLINK_BRIDGE_APP_PublishExecResult(Msg->SourceSequence, 1U, true, MAVLINK_BRIDGE_APP_Data.LastConfigResult);
     return;
 
 reject_value:
     MAVLINK_BRIDGE_APP_Data.ErrCounter++;
     MAVLINK_BRIDGE_APP_Data.ConfigPendingState = (uint8)MAVLINK_BRIDGE_CONFIG_PENDING_REJECTED;
     MAVLINK_BRIDGE_APP_Data.LastConfigResult   = (uint8)MAVLINK_BRIDGE_CONFIG_RESULT_BAD_VALUE;
+    MAVLINK_BRIDGE_APP_PublishExecResult(Msg->SourceSequence, 1U, false, MAVLINK_BRIDGE_APP_Data.LastConfigResult);
 }
 
 void MAVLINK_BRIDGE_APP_ReportHousekeeping(void)

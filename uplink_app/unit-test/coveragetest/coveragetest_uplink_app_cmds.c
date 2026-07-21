@@ -133,6 +133,60 @@ void Test_UPLINK_APP_ProcessUplink_AcceptedAfterSequenceWraparound(void)
     UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_ROUTED);
 }
 
+void Test_UPLINK_APP_ProcessExecResult_MatchesLastAccepted_OK(void)
+{
+    UPLINK_APP_ExecResultTlm_t Msg;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.SourceSequence = 42;
+    Msg.SourceApp       = 1;
+    Msg.CommandClass    = UPLINK_APP_CLASS_CONFIG;
+    Msg.GenericResult   = 0; /* EXEC_RESULT_GENERIC_OK */
+    Msg.DetailCode      = 0;
+
+    UPLINK_APP_Data.LastAcceptedSequence = 42;
+    UPLINK_APP_Data.LastCommandResult    = UPLINK_APP_RESULT_ROUTED;
+
+    UPLINK_APP_ProcessExecResult(&Msg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_EXECUTED_OK);
+}
+
+void Test_UPLINK_APP_ProcessExecResult_MatchesLastAccepted_Failed(void)
+{
+    UPLINK_APP_ExecResultTlm_t Msg;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.SourceSequence = 42;
+    Msg.GenericResult   = 1; /* EXEC_RESULT_GENERIC_FAILED */
+
+    UPLINK_APP_Data.LastAcceptedSequence = 42;
+    UPLINK_APP_Data.LastCommandResult    = UPLINK_APP_RESULT_ROUTED;
+
+    UPLINK_APP_ProcessExecResult(&Msg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_EXECUTED_FAILED);
+}
+
+void Test_UPLINK_APP_ProcessExecResult_StaleSequenceIgnored(void)
+{
+    /* BL-08(2026-07-22): 새 명령이 이미 들어와 LastAcceptedSequence가
+     * 앞서갔으면, 오래된 명령에 대한 지연 응답은 무시돼야 함(타임아웃
+     * 없이 "다음 명령으로 덮어쓰기" 정책의 구현) */
+    UPLINK_APP_ExecResultTlm_t Msg;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.SourceSequence = 40; /* 오래된 seq */
+    Msg.GenericResult   = 0;
+
+    UPLINK_APP_Data.LastAcceptedSequence = 42; /* 이미 새 명령 수락됨 */
+    UPLINK_APP_Data.LastCommandResult    = UPLINK_APP_RESULT_ROUTED;
+
+    UPLINK_APP_ProcessExecResult(&Msg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_ROUTED);
+}
+
 void Test_UPLINK_APP_ProcessUplink_Reject(void)
 {
     UPLINK_APP_ProcessUplinkCmd_t TestMsg;
@@ -851,4 +905,7 @@ void UtTest_Setup(void)
     ADD_TEST(UPLINK_APP_ProcessUplink_ForceFlagBypassesDegradedBlock);
     ADD_TEST(UPLINK_APP_ProcessUplink_ForceFlagNoOpWhenNotBlocked);
     ADD_TEST(UPLINK_APP_ProcessUplink_NoForceFlagStillBlockedInDegraded);
+    ADD_TEST(UPLINK_APP_ProcessExecResult_MatchesLastAccepted_OK);
+    ADD_TEST(UPLINK_APP_ProcessExecResult_MatchesLastAccepted_Failed);
+    ADD_TEST(UPLINK_APP_ProcessExecResult_StaleSequenceIgnored);
 }

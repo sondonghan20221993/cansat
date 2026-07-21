@@ -11,6 +11,7 @@
 #define CONFIG_CMD_MID        0x190E
 #define MODE_CMD_MID          0x190F
 #define DIAGNOSTIC_CMD_MID    0x1910
+#define EXEC_RESULT_MID       0x1912 /* BL-08(2026-07-22): 대상앱→uplink_app 실행결과 회신 (공용, shared_msgs/exec_result_msg.h) */
 #define SYSTEM_HEALTH_MID_VALUE 0x1904
 #define BRIDGE_HK_MID_VALUE     0x08A0
 

@@ -10,6 +10,7 @@
 #define VIEWPOINT_CMD_MID       0x190DU
 #define CONFIG_CMD_MID          0x190EU
 #define MODE_CMD_MID            0x190FU
+#define EXEC_RESULT_MID          0x1912U /* BL-08(2026-07-22): 대상앱→uplink_app 실행결과 회신 (공용) */
 
 #endif
 

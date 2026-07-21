@@ -475,6 +475,7 @@ void Test_ProcessConfig_DualBuffer_Activate(void)
     build_mav_config_msg(&Msg, MAVLINK_BRIDGE_APP_CONFIG_SCOPE,
                          MAVLINK_BRIDGE_APP_CONFIG_VERSION,
                          MAVLINK_BRIDGE_PARAM_ATTITUDE_INTERVAL_US, 100000U);
+    Msg.SourceSequence = 33; /* BL-08 */
 
     MAVLINK_BRIDGE_APP_ProcessConfigCommand(&Msg);
 
@@ -490,6 +491,10 @@ void Test_ProcessConfig_DualBuffer_Activate(void)
     UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ConfigGeneration, 1);
     /* 활성화 부작용: StreamRequestPending 세팅 */
     UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.StreamRequestPending, 1);
+    /* BL-08(2026-07-22): EXEC_RESULT OK 회신 확인 */
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ExecResultTlm.SourceSequence, 33);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ExecResultTlm.SourceApp, (int32)EXEC_RESULT_SOURCE_MAVLINK_BRIDGE);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ExecResultTlm.GenericResult, (int32)EXEC_RESULT_GENERIC_OK);
 }
 
 /* 거부 시 ActiveConfig 불변 확인 — pending 버퍼에만 기록되고 버려짐 */
@@ -503,6 +508,7 @@ void Test_ProcessConfig_DualBuffer_Rejected_ActiveUnchanged(void)
                          MAVLINK_BRIDGE_APP_CONFIG_VERSION,
                          MAVLINK_BRIDGE_PARAM_ATTITUDE_INTERVAL_US,
                          MAVLINK_BRIDGE_APP_PARAM_INTERVAL_MAX_US + 1U);
+    Msg.SourceSequence = 34; /* BL-08 */
 
     MAVLINK_BRIDGE_APP_Data.ErrCounter = 0;
     MAVLINK_BRIDGE_APP_ProcessConfigCommand(&Msg);
@@ -516,6 +522,9 @@ void Test_ProcessConfig_DualBuffer_Rejected_ActiveUnchanged(void)
     UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ErrCounter, 1);
     /* StreamRequestPending은 세팅되지 않음 */
     UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.StreamRequestPending, 0);
+    /* BL-08(2026-07-22): EXEC_RESULT FAILED 회신 확인(reject_value 경로) */
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ExecResultTlm.SourceSequence, 34);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ExecResultTlm.GenericResult, (int32)EXEC_RESULT_GENERIC_FAILED);
 }
 
 /* 잘못된 checksum → REJECTED, ActiveConfig 불변 */
@@ -554,12 +563,16 @@ void Test_ProcessConfig_WrongScope_Ignored(void)
     build_mav_config_msg(&Msg, 1U /* cfs_core_app scope */,
                          MAVLINK_BRIDGE_APP_CONFIG_VERSION,
                          MAVLINK_BRIDGE_PARAM_ATTITUDE_INTERVAL_US, 100000U);
+    Msg.SourceSequence = 35; /* BL-08 */
 
     MAVLINK_BRIDGE_APP_Data.ErrCounter = 0;
+    MAVLINK_BRIDGE_APP_Data.ExecResultTlm.SourceSequence = 0; /* 이전 값과 구분 */
     MAVLINK_BRIDGE_APP_ProcessConfigCommand(&Msg);
 
     UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ActiveConfig.AttitudeIntervalUs, (int32)OldVal);
     UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ErrCounter, 0);
+    /* BL-08(2026-07-22): 다른 앱 대상이라 EXEC_RESULT 발행 안 됨 */
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ExecResultTlm.SourceSequence, 0);
 }
 
 /* 잘못된 version → REJECTED */

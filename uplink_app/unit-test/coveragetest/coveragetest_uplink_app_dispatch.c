@@ -85,6 +85,21 @@ void Test_UPLINK_APP_TaskPipe_BridgeHk(void)
     UtAssert_INT32_EQ(UPLINK_APP_Data.FcMissionUploadSuccessCount, 7);
 }
 
+void Test_UPLINK_APP_TaskPipe_ExecResult(void)
+{
+    UPLINK_APP_ExecResultTlm_t Msg;
+    CFE_SB_MsgId_t             MsgId;
+
+    memset(&Msg, 0, sizeof(Msg));
+
+    MsgId = CFE_SB_ValueToMsgId(EXEC_RESULT_MID);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+
+    UPLINK_APP_TaskPipe((CFE_SB_Buffer_t *)&Msg);
+
+    UtAssert_STUB_COUNT(UPLINK_APP_ProcessExecResult, 1);
+}
+
 void Test_UPLINK_APP_TaskPipe_UnknownMid(void)
 {
     CFE_SB_Buffer_t Buffer;
@@ -218,6 +233,7 @@ void UtTest_Setup(void)
     ADD_TEST(UPLINK_APP_TaskPipe_SendHk);
     ADD_TEST(UPLINK_APP_TaskPipe_SystemHealth);
     ADD_TEST(UPLINK_APP_TaskPipe_BridgeHk);
+    ADD_TEST(UPLINK_APP_TaskPipe_ExecResult);
     ADD_TEST(UPLINK_APP_TaskPipe_UnknownMid);
     ADD_TEST(UPLINK_APP_TaskPipe_GetFcnCodeError);
     ADD_TEST(UPLINK_APP_TaskPipe_Noop);

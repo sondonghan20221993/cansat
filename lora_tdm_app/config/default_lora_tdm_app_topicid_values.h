@@ -17,6 +17,7 @@
 #define LORA_TDM_APP_UPLINK_APP_CMD_MID_VALUE        0x18D0
 #define LORA_TDM_APP_UPLINK_STATUS_MID_VALUE         0x190A
 #define LORA_TDM_APP_CONFIG_CMD_MID_VALUE            0x190E
+#define LORA_TDM_APP_EXEC_RESULT_MID_VALUE           0x1912 /* BL-08(2026-07-22): 대상앱→uplink_app 실행결과 회신 (공용) */
 
 /* Own MID values */
 #define LORA_TDM_APP_CMD_MID_VALUE                   0x18E0

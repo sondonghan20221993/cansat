@@ -87,6 +87,7 @@ typedef struct
     MAVLINK_BRIDGE_APP_GpsRawTlm_t    GpsRawTlm;
     MAVLINK_BRIDGE_APP_EkfStatusTlm_t EkfStatusTlm;
     MAVLINK_BRIDGE_APP_SysTimeTlm_t   SysTimeTlm;
+    MAVLINK_BRIDGE_APP_ExecResultTlm_t ExecResultTlm; /* BL-08(2026-07-22) */
 } MAVLINK_BRIDGE_APP_Data_t;
 
 extern MAVLINK_BRIDGE_APP_Data_t MAVLINK_BRIDGE_APP_Data;

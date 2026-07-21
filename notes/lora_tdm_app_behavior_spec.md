@@ -47,6 +47,13 @@
 - Config: `lora_tdm_app/config/default_lora_tdm_app_topicid_values.h` — MID 값
 - Config: `lora_tdm_app/config/default_lora_tdm_app_msgstruct.h` — 메시지 구조체
 - 프로토콜 v2: `notes/lora_protocol_v2_spec.md` — 바이너리 프레임(DL2/UP2/ACK2). **구현·배포됨** (2026-07, `BuildDl2Frame`/`ParseUp2Frame`/`ParseAck2Frame`). CONFIG `PARAM_DOWNLINK_PROTOCOL`(0=v1 텍스트, 1=v2 바이너리)로 런타임 전환. TDM 주기도 Stage 3 값(200ms, §7)으로 전환 완료.
+- **EXEC_RESULT 회신 (2026-07-22, BL-08)**: `LORA_TDM_APP_ProcessConfigCommand`가
+  scope 일치 이후의 모든 종료 지점(성공/BAD_VERSION/BAD_LENGTH/BAD_CHECKSUM/
+  알 수 없는 파라미터)에서 공용 `EXEC_RESULT_MID(0x1912)`로 uplink_app에
+  회신한다. lora_tdm_app은 원래 CONFIG 결과 저장 필드 자체가 없었으므로
+  (성공/실패 외 세부코드 없음) `DetailCode`는 `GenericResult`와 동일값으로
+  채운다 — 다른 두 앱(cfs_core/mavlink_bridge)의 세분화된 원시 결과코드와
+  비교하면 진단 정보가 적음, 후속 개선 여지.
 
 ## 5. 인터페이스
 

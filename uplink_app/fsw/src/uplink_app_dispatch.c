@@ -43,6 +43,12 @@ void UPLINK_APP_TaskPipe(CFE_SB_Buffer_t *SBBufPtr)
         return;
     }
 
+    if (CFE_SB_MsgIdToValue(MsgId) == EXEC_RESULT_MID)
+    {
+        UPLINK_APP_ProcessExecResult((const UPLINK_APP_ExecResultTlm_t *)MsgPtr);
+        return;
+    }
+
     if (CFE_SB_MsgIdToValue(MsgId) != UPLINK_APP_CMD_MID_VALUE)
     {
         UPLINK_APP_Data.ErrCounter++;

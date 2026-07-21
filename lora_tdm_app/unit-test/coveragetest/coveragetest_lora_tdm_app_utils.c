@@ -898,11 +898,16 @@ void Test_ProcessConfigCommand_SetV2(void)
     LORA_TDM_APP_Data.CmdCounter    = 0;
     BuildConfigMsgTest(&Msg, LORA_TDM_APP_CONFIG_SCOPE, LORA_TDM_APP_CONFIG_VERSION,
                        LORA_TDM_APP_PARAM_DOWNLINK_PROTOCOL, 1U);
+    Msg.SourceSequence = 21; /* BL-08 */
 
     LORA_TDM_APP_ProcessConfigCommand(&Msg);
 
     UtAssert_INT32_EQ(LORA_TDM_APP_Data.UseV2Downlink, 1);
     UtAssert_INT32_EQ(LORA_TDM_APP_Data.CmdCounter, 1);
+    /* BL-08(2026-07-22): EXEC_RESULT OK 회신 확인 */
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.ExecResultTlm.SourceSequence, 21);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.ExecResultTlm.SourceApp, (int32)EXEC_RESULT_SOURCE_LORA_TDM);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.ExecResultTlm.GenericResult, (int32)EXEC_RESULT_GENERIC_OK);
 }
 
 void Test_ProcessConfigCommand_DownlinkProtocolOutOfRangeRejected(void)
@@ -915,12 +920,16 @@ void Test_ProcessConfigCommand_DownlinkProtocolOutOfRangeRejected(void)
     LORA_TDM_APP_Data.ErrCounter    = 0;
     BuildConfigMsgTest(&Msg, LORA_TDM_APP_CONFIG_SCOPE, LORA_TDM_APP_CONFIG_VERSION,
                        LORA_TDM_APP_PARAM_DOWNLINK_PROTOCOL, 2U);
+    Msg.SourceSequence = 22; /* BL-08 */
 
     LORA_TDM_APP_ProcessConfigCommand(&Msg);
 
     UtAssert_INT32_EQ(LORA_TDM_APP_Data.UseV2Downlink, 0);
     UtAssert_INT32_EQ(LORA_TDM_APP_Data.CmdCounter, 0);
     UtAssert_INT32_EQ(LORA_TDM_APP_Data.ErrCounter, 1);
+    /* BL-08(2026-07-22): EXEC_RESULT FAILED 회신 확인 */
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.ExecResultTlm.SourceSequence, 22);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.ExecResultTlm.GenericResult, (int32)EXEC_RESULT_GENERIC_FAILED);
 }
 
 void Test_ProcessConfigCommand_WrongScopeIgnoredSilently(void)
@@ -932,11 +941,15 @@ void Test_ProcessConfigCommand_WrongScopeIgnoredSilently(void)
     /* scope=1(cfs_core_app 대상) — lora_tdm_app은 조용히 무시해야 함(에러 아님) */
     BuildConfigMsgTest(&Msg, 1U, LORA_TDM_APP_CONFIG_VERSION,
                        LORA_TDM_APP_PARAM_DOWNLINK_PROTOCOL, 1U);
+    Msg.SourceSequence = 23; /* BL-08 */
+    LORA_TDM_APP_Data.ExecResultTlm.SourceSequence = 0; /* 이전 값과 구분 */
 
     LORA_TDM_APP_ProcessConfigCommand(&Msg);
 
     UtAssert_INT32_EQ(LORA_TDM_APP_Data.UseV2Downlink, 0);
     UtAssert_INT32_EQ(LORA_TDM_APP_Data.ErrCounter, 0);
+    /* BL-08(2026-07-22): 다른 앱 대상이라 EXEC_RESULT 발행 안 됨 */
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.ExecResultTlm.SourceSequence, 0);
 }
 
 void Test_ProcessConfigCommand_BadChecksumRejected(void)

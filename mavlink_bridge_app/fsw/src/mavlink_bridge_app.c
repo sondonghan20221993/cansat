@@ -82,6 +82,14 @@ CFE_Status_t MAVLINK_BRIDGE_APP_Init(void)
         return Status;
     }
 
+    Status = CFE_MSG_Init(CFE_MSG_PTR(MAVLINK_BRIDGE_APP_Data.ExecResultTlm.TelemetryHeader),
+                          CFE_SB_ValueToMsgId(EXEC_RESULT_MID),
+                          sizeof(MAVLINK_BRIDGE_APP_Data.ExecResultTlm));
+    if (Status != CFE_SUCCESS)
+    {
+        return Status;
+    }
+
     Status = CFE_MSG_Init(CFE_MSG_PTR(MAVLINK_BRIDGE_APP_Data.EkfLocalTlm.TelemetryHeader),
                           CFE_SB_ValueToMsgId(FC_EKF_LOCAL_STATE_MID_VALUE),
                           sizeof(MAVLINK_BRIDGE_APP_Data.EkfLocalTlm));

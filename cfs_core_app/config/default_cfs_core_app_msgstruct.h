@@ -12,6 +12,7 @@
 #include "recovery_cmd_msg.h"
 #include "mode_cmd_msg.h"
 #include "viewpoint_cmd_msg.h"
+#include "exec_result_msg.h"
 
 typedef struct
 {
@@ -54,6 +55,8 @@ typedef CONFIG_CMD_TLM_t CFS_CORE_APP_ConfigCmdTlm_t;
 
 /* RECOVERY_CMD_MID 수신용 — shared_msgs 단일 진실 (2026-07 병합) */
 typedef RECOVERY_CMD_TLM_t CFS_CORE_APP_RecoveryCmdTlm_t;
+
+typedef EXEC_RESULT_TLM_t CFS_CORE_APP_ExecResultTlm_t;
 
 /* MODE_CMD_MID 수신용 — shared_msgs 단일 진실 (2026-07 병합) */
 typedef MODE_CMD_TLM_t CFS_CORE_APP_ModeCmdTlm_t;

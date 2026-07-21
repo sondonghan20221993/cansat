@@ -8,6 +8,7 @@
 #include "config_msg.h"
 #include "uplink_fwd_cmd_msg.h"
 #include "diagnostic_cmd_msg.h"
+#include "exec_result_msg.h"
 
 typedef struct
 {
@@ -89,6 +90,8 @@ typedef DIAGNOSTIC_CMD_TLM_t LORA_TDM_APP_DiagnosticCmdTlm_t;
  * (cfs_core_app_msgstruct.h CFS_CORE_APP_ConfigCmdTlm_t와도 동일 — 여러 앱이 같은
  * MID를 구독하고 Payload 내부 scope로 자기 것만 골라 처리). */
 typedef CONFIG_CMD_TLM_t LORA_TDM_APP_ConfigCmdTlm_t;
+
+typedef EXEC_RESULT_TLM_t LORA_TDM_APP_ExecResultTlm_t;
 
 /* config payload 내부 헤더 (openMCT fc_serial_ws_server.py _build_config_payload와 동일 레이아웃) */
 typedef struct

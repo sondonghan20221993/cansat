@@ -107,6 +107,14 @@ CFE_Status_t UPLINK_APP_Init(void)
         return Status;
     }
 
+    /* BL-08(2026-07-22): 대상앱(cfs_core_app/mavlink_bridge_app/lora_tdm_app)이
+     * 명령 처리 완료 후 회신하는 공용 실행결과 채널 */
+    Status = CFE_SB_Subscribe(CFE_SB_ValueToMsgId(EXEC_RESULT_MID), UPLINK_APP_Data.CommandPipe);
+    if (Status != CFE_SUCCESS)
+    {
+        return Status;
+    }
+
     UPLINK_APP_Data.Valid = 1;
     UPLINK_APP_LoadState();
     UPLINK_APP_IncrementBootCount(); /* BL-12(2026-07-21): 복원값(또는 0)에서 +1, 즉시 영속화 */
