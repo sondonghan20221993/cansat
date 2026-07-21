@@ -12,7 +12,7 @@ import unittest
 from unittest.mock import patch, call
 
 from tools.query_fc_mission import build_cfs_command, MAVLINK_BRIDGE_CMD_MID, MISSION_QUERY_CC
-from tools.telemetry_app_e2e_sender import ccsds_primary, MONITOR_MID, SEND_HK_MID
+from legacy.tools.telemetry_app_e2e_sender import ccsds_primary, MONITOR_MID, SEND_HK_MID
 
 
 class BuildCfsCommandTest(unittest.TestCase):
