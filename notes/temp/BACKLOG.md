@@ -34,7 +34,7 @@ BL-03   다운링크에 seq 동봉 (v2/DL2 확정, v1 제외)
   ├─ BL-12 부트카운터
   ├─ BL-13 모듈러 seq 비교
   └─ BL-14 재전송 인덱스(선택)
-BL-09   cfs_core_app RECOVERY 명령 실제 연결 (+BL-25)
+✅BL-09 cfs_core_app RECOVERY 명령 실제 연결 (+BL-25) — 부분 완료(2026-07-21)
 ✅BL-26/27/28  매직넘버 C↔Python 교차검증 테스트 — 완료(2026-07-21, openMCT)
 ```
 
@@ -104,7 +104,7 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 | ID | 내용 | 근거 | 선행 |
 |---|---|---|---|
 | **BL-08** | ⏸️ **보류(2026-07-21)** — 실행결과(EXECUTED) 회신 채널. `uplink_app`은 "라우팅 성공"까지만 앎. 대상 앱은 자기 결과를 갖고 있으나(`mavlink_bridge_app`의 `LastConfigResult`) **돌아오는 길이 없음**. 파이프/구독 자체는 기존 것에 한 줄만 추가하면 되지만(`uplink_app`은 이미 `CommandPipe` 보유), 3개 대상 앱이 결과를 표현하는 형태가 제각각(2곳은 동일 7종 enum 중복정의, `lora_tdm_app`은 **그 필드 자체가 없음**)이라 공통 스키마 설계가 필요 — 나중에 별도로 | `ground_plan` P0 / `command_dead_end` F1 / T7 | 설계 필요, 범위 큼 |
-| **BL-09** | **`cfs_core_app` RECOVERY 명령 실제 연결.** `RESTART_BRIDGE`/`PARSER_RESET`/`SERIAL_RECONNECT`가 로그만 찍음. 대상 기능은 `mavlink_bridge_app`에 이미 존재(`ResetParser()`, `OpenSerial()`/`CloseSerial()`)하나 크로스앱 명령 채널이 없음. **추가로 `RESTART_UPLINK`/`RESTART_LORA`는 enum 자체가 없음**(자동 재시작 로직은 있음) | `ground_plan` P1-a~d / `command_dead_end` F2 | 중 |
+| ~~**BL-09**~~ | ✅ **부분 완료(2026-07-21)**. `RESTART_BRIDGE`가 실제 `CFE_ES_RestartApp()` 호출로 연결됨(기존 자동재시작과 동일 메커니즘 재사용). **신규 `RESTART_UPLINK`(4)/`RESTART_LORA`(5)** enum 추가 + 동일하게 실제 재시작 연결. `PARSER_RESET`/`SERIAL_RECONNECT`는 **여전히 로그만**(mavlink_bridge_app 프로세스 내부 함수라 크로스앱 CMD_MID 신설 필요 — P1-a~d는 별도 작업으로 남음). 회귀 UT 4종(19/7/35/257, 신규 4건) PASS. BL-25(uplinkCLI 도움말)도 같이 정정 | `ground_plan` P1-a~d / `command_dead_end` F2 | 중 |
 | **BL-10** | 🔶 **결정(2026-07-21): 활용처 있음(A안) — 단 "무엇을 할지"는 추후 결정.** `VIEWPOINT_CMD_MID` 캐시를 실제로 소비할 로직(경로계획 연동 등) 설계가 남음. 지금은 방향만 확정, 착수는 보류 | `ground_plan` P2 / `cfs_core_app_command_execution_gap` | 후속설계 필요 |
 | **BL-11** | ⏸️ **BL-08 보류에 종속** — UFB 코드표 전체 확정. 현재 `REJECT_STATE`만 매핑돼 나머지 7종(`FAILED`, `REJECT_CLASS`, `REJECT_LENGTH`, `ROUTE_MISS`, `REJECT_ROUTE`, `REJECT_CHECKSUM`, `REJECT_VIEWPOINT`)은 지상에서 OK와 구분 불가 | T8 / `selfaudit` A-2 | **BL-08** |
 
@@ -141,7 +141,7 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 |---|---|
 | **BL-23** | `_flush_pending_uplink()`가 타이머 없이 **다운링크 수신 시에만** 동작 → 링크 끊기면 큐 명령이 유실되는데 HTTP는 이미 성공 반환. **단, 반이중 슬롯 정렬을 깨지 않아야 함** |
 | **BL-24** | UFB=1 자동 재전송이 **새 seq로 재조립** — 진짜 재전송이 아니라 "같은 내용의 새 명령". 3회 카운트가 원 프레임 기준이 아님. BL-01/BL-13과 함께 볼 것 |
-| **BL-25** | `uplinkCLI` 도움말은 RECOVERY의 `action/target/reason`을 "무시됨"이라 하는데 서버는 실제로 조립·전송·성공로그 → **BL-09와 묶어서** 처리(BL-09는 착수 가능, BL-08 보류와 무관) |
+| ~~**BL-25**~~ | ✅ **완료(2026-07-21, BL-09와 함께)**. `uplinkCLI/plugin.js` 도움말을 실제 동작(byte[0]=action이 cfs_core_app RESTART 3종을 실제로 트리거함)으로 정정 |
 | ~~**BL-26/27/28**~~ | ✅ **완료(2026-07-21, openMCT `c561aa3`)**. `tests/test_fc_serial_ws_server.py`에 형제 디렉터리 C 헤더를 정규식 파싱해 비교하는 교차검증 테스트 4건 추가(`DL2_BASE_LEN`↔`LORA_TDM_APP_DL2_LEN_FIELD`, `PARAM_BOUNDS[cfs_core/mavlink_bridge]`↔C 상수). repo 없는 환경은 skip. 35/35 PASS |
 
 ---

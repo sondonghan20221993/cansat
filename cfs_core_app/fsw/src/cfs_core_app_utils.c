@@ -755,11 +755,57 @@ void CFS_CORE_APP_ProcessRecoveryCommand(const CFS_CORE_APP_RecoveryCmdTlm_t *Ms
             break;
 
         case CFS_CORE_APP_RECOVERY_ACTION_RESTART_BRIDGE:
+        {
+            /* BL-09(2026-07-21): 로그만 찍던 것을 실제 CFE_ES_RestartApp()로
+             * 연결 — cfs_core_app.c의 자동 재시작(bridge timeout)과 동일한
+             * 메커니즘을 지상 명령으로도 즉시 트리거. 자동 재시작의
+             * 인터벌/최대재시도 게이트는 여기 적용하지 않음(명시적 단발
+             * 지상 명령이므로). */
+            CFE_ES_AppId_t AppId;
             CFE_EVS_SendEvent(CFS_CORE_APP_RECOVERY_CMD_EID, CFE_EVS_EventType_INFORMATION,
                               "CFS_CORE_APP: recovery cmd RESTART_BRIDGE seq=%u target=%u reason=%u token=%lu",
                               (unsigned int)Msg->SourceSequence, (unsigned int)Msg->TargetComponent,
                               (unsigned int)Msg->ReasonCode, (unsigned long)Msg->RequestToken);
+            if (CFE_ES_GetAppIDByName(&AppId, CFS_CORE_APP_BRIDGE_APP_NAME) == CFE_SUCCESS)
+            {
+                CFE_ES_RestartApp(AppId);
+                CFE_EVS_SendEvent(CFS_CORE_APP_BRIDGE_RESTART_EID, CFE_EVS_EventType_INFORMATION,
+                                  "CFS_CORE_APP: bridge restart (ground-triggered)");
+            }
             break;
+        }
+
+        case CFS_CORE_APP_RECOVERY_ACTION_RESTART_UPLINK:
+        {
+            CFE_ES_AppId_t AppId;
+            CFE_EVS_SendEvent(CFS_CORE_APP_RECOVERY_CMD_EID, CFE_EVS_EventType_INFORMATION,
+                              "CFS_CORE_APP: recovery cmd RESTART_UPLINK seq=%u target=%u reason=%u token=%lu",
+                              (unsigned int)Msg->SourceSequence, (unsigned int)Msg->TargetComponent,
+                              (unsigned int)Msg->ReasonCode, (unsigned long)Msg->RequestToken);
+            if (CFE_ES_GetAppIDByName(&AppId, CFS_CORE_APP_UPLINK_APP_NAME) == CFE_SUCCESS)
+            {
+                CFE_ES_RestartApp(AppId);
+                CFE_EVS_SendEvent(CFS_CORE_APP_UPLINK_RESTART_EID, CFE_EVS_EventType_INFORMATION,
+                                  "CFS_CORE_APP: uplink restart (ground-triggered)");
+            }
+            break;
+        }
+
+        case CFS_CORE_APP_RECOVERY_ACTION_RESTART_LORA:
+        {
+            CFE_ES_AppId_t AppId;
+            CFE_EVS_SendEvent(CFS_CORE_APP_RECOVERY_CMD_EID, CFE_EVS_EventType_INFORMATION,
+                              "CFS_CORE_APP: recovery cmd RESTART_LORA seq=%u target=%u reason=%u token=%lu",
+                              (unsigned int)Msg->SourceSequence, (unsigned int)Msg->TargetComponent,
+                              (unsigned int)Msg->ReasonCode, (unsigned long)Msg->RequestToken);
+            if (CFE_ES_GetAppIDByName(&AppId, CFS_CORE_APP_LORA_APP_NAME) == CFE_SUCCESS)
+            {
+                CFE_ES_RestartApp(AppId);
+                CFE_EVS_SendEvent(CFS_CORE_APP_LORA_RESTART_EID, CFE_EVS_EventType_INFORMATION,
+                                  "CFS_CORE_APP: lora restart (ground-triggered)");
+            }
+            break;
+        }
 
         case CFS_CORE_APP_RECOVERY_ACTION_PARSER_RESET:
             CFE_EVS_SendEvent(CFS_CORE_APP_RECOVERY_CMD_EID, CFE_EVS_EventType_INFORMATION,

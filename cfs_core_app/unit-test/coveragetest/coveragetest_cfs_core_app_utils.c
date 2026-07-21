@@ -2082,6 +2082,7 @@ void Test_CFS_CORE_APP_ProcessRecoveryCommand_ResetCounter(void)
 
 void Test_CFS_CORE_APP_ProcessRecoveryCommand_RestartBridge(void)
 {
+    /* BL-09(2026-07-21): 이제 실제로 CFE_ES_RestartApp()을 호출해야 함 */
     CFS_CORE_APP_RecoveryCmdTlm_t Msg;
 
     memset(&Msg, 0, sizeof(Msg));
@@ -2091,11 +2092,65 @@ void Test_CFS_CORE_APP_ProcessRecoveryCommand_RestartBridge(void)
 
     CFS_CORE_APP_Data.RecoveryRequestedCount = 0;
     CFS_CORE_APP_Data.CmdCounter             = 0;
+    UT_SetDefaultReturnValue(UT_KEY(CFE_ES_GetAppIDByName), CFE_SUCCESS);
 
     CFS_CORE_APP_ProcessRecoveryCommand(&Msg);
 
     UtAssert_INT32_EQ((int)CFS_CORE_APP_Data.RecoveryRequestedCount, 1);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.CmdCounter, 1);
+    UtAssert_STUB_COUNT(CFE_ES_RestartApp, 1);
+}
+
+void Test_CFS_CORE_APP_ProcessRecoveryCommand_RestartBridge_AppNotFound(void)
+{
+    /* 앱을 못 찾으면 RestartApp을 호출하지 않고 조용히 넘어가야 함(크래시 없음) */
+    CFS_CORE_APP_RecoveryCmdTlm_t Msg;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.RecoveryAction = CFS_CORE_APP_RECOVERY_ACTION_RESTART_BRIDGE;
+
+    CFS_CORE_APP_Data.RecoveryRequestedCount = 0;
+    UT_SetDefaultReturnValue(UT_KEY(CFE_ES_GetAppIDByName), CFE_ES_ERR_NAME_NOT_FOUND);
+
+    CFS_CORE_APP_ProcessRecoveryCommand(&Msg);
+
+    UtAssert_STUB_COUNT(CFE_ES_RestartApp, 0);
+}
+
+void Test_CFS_CORE_APP_ProcessRecoveryCommand_RestartUplink(void)
+{
+    CFS_CORE_APP_RecoveryCmdTlm_t Msg;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.RecoveryAction = CFS_CORE_APP_RECOVERY_ACTION_RESTART_UPLINK;
+
+    CFS_CORE_APP_Data.RecoveryRequestedCount = 0;
+    CFS_CORE_APP_Data.CmdCounter             = 0;
+    UT_SetDefaultReturnValue(UT_KEY(CFE_ES_GetAppIDByName), CFE_SUCCESS);
+
+    CFS_CORE_APP_ProcessRecoveryCommand(&Msg);
+
+    UtAssert_INT32_EQ((int)CFS_CORE_APP_Data.RecoveryRequestedCount, 1);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.CmdCounter, 1);
+    UtAssert_STUB_COUNT(CFE_ES_RestartApp, 1);
+}
+
+void Test_CFS_CORE_APP_ProcessRecoveryCommand_RestartLora(void)
+{
+    CFS_CORE_APP_RecoveryCmdTlm_t Msg;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.RecoveryAction = CFS_CORE_APP_RECOVERY_ACTION_RESTART_LORA;
+
+    CFS_CORE_APP_Data.RecoveryRequestedCount = 0;
+    CFS_CORE_APP_Data.CmdCounter             = 0;
+    UT_SetDefaultReturnValue(UT_KEY(CFE_ES_GetAppIDByName), CFE_SUCCESS);
+
+    CFS_CORE_APP_ProcessRecoveryCommand(&Msg);
+
+    UtAssert_INT32_EQ((int)CFS_CORE_APP_Data.RecoveryRequestedCount, 1);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.CmdCounter, 1);
+    UtAssert_STUB_COUNT(CFE_ES_RestartApp, 1);
 }
 
 void Test_CFS_CORE_APP_ProcessRecoveryCommand_ParserReset(void)
@@ -2298,6 +2353,9 @@ void UtTest_Setup(void)
     ADD_TEST(CFS_CORE_APP_ProcessViewpointCommand);
     ADD_TEST(CFS_CORE_APP_ProcessRecoveryCommand_ResetCounter);
     ADD_TEST(CFS_CORE_APP_ProcessRecoveryCommand_RestartBridge);
+    ADD_TEST(CFS_CORE_APP_ProcessRecoveryCommand_RestartBridge_AppNotFound);
+    ADD_TEST(CFS_CORE_APP_ProcessRecoveryCommand_RestartUplink);
+    ADD_TEST(CFS_CORE_APP_ProcessRecoveryCommand_RestartLora);
     ADD_TEST(CFS_CORE_APP_ProcessRecoveryCommand_ParserReset);
     ADD_TEST(CFS_CORE_APP_ProcessRecoveryCommand_SerialReconnect);
     ADD_TEST(CFS_CORE_APP_ProcessRecoveryCommand_UnknownAction);

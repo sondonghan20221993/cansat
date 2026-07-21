@@ -7,12 +7,14 @@
   신규 설계, `mission_app_runtime_spec.md §18.4.6.4` 정합화)
 - [ ] **P1-a**: `mavlink_bridge_app`에 `PARSER_RESET_CMD`/
   `SERIAL_RECONNECT_CMD` 신설, `cfs_core_app`의 RECOVERY 액션에서 실제 publish
-- [ ] **P1-b**: `RESTART_BRIDGE`를 `ProcessRecoveryCommand()`에서
-  `CFE_ES_RestartApp()`에 직접 연결
-- [ ] **P1-c**: `RecoveryAction` enum에 `RESTART_UPLINK`/`RESTART_LORA`
-  추가 후 각각 `CFE_ES_RestartApp()` 연결(전수조사 신규 발견분)
-- [ ] **P1-d**: 위 5개 액션(RESTART_BRIDGE/UPLINK/LORA, PARSER_RESET,
-  SERIAL_RECONNECT) 회귀 테스트 추가
+  (범위 밖으로 남음, BL-09에서 미착수)
+- [x] **P1-b**: 완료(2026-07-21, BL-09). `RESTART_BRIDGE`를
+  `ProcessRecoveryCommand()`에서 `CFE_ES_RestartApp()`에 직접 연결
+- [x] **P1-c**: 완료(2026-07-21, BL-09). `RecoveryAction` enum에
+  `RESTART_UPLINK`(4)/`RESTART_LORA`(5) 추가 후 각각 `CFE_ES_RestartApp()` 연결
+- [x] **P1-d**: 완료(2026-07-21, BL-09). RESTART_BRIDGE(+AppNotFound
+  실패경로)/RESTART_UPLINK/RESTART_LORA 회귀 테스트 4건 추가, 257/257 PASS.
+  PARSER_RESET/SERIAL_RECONNECT는 동작 변경 없어 기존 테스트 그대로 유효
 - [ ] **P2**: `VIEWPOINT_CMD_MID` 캐시의 실제 활용처 존재 여부 결정 —
   없으면 spec에 "저장만, 활용 미정" 명시로 종결
 - [ ] (참고, 낮은 우선순위) `SaveState()`/`MarkOutputsStale()` 강제
