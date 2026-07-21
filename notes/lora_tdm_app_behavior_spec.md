@@ -286,6 +286,31 @@ pending 결과가 없음(default/idle)"을 구분하지 못하는 구조적 모�
 해소됐으나, 근본적으로 "적용 성공"을 명시적으로 확인하려면 `ROUTED` 감지도
 추가해 `UFB_APPLIED` 같은 별도 코드를 두는 것이 정확하다 — 아직 미착수.
 
+**판정값 지속 정책 (2026-07-21, 레이스 수정)**:
+
+기존엔 `RunTx()`가 다운링크 사이클(5Hz=200ms)마다 매번
+`PendingUplinkFeedback`을 `UFB_OK`로 무조건 리셋했다. `uplink_app`의 처리
+결과(`UPLINK_STATUS_MID`)는 SB 라운드트립 지연 때문에 같은 사이클 안에
+도착하지 못하는 경우가 흔한데, 실측(`mavlink_bridge.attitude_interval_us`
+CONFIG를 DEGRADED 상태에서 전송) 중 이 레이스가 실제로 발생함을 확인:
+
+1. 사이클 N: RX 윈도우에서 명령 수신 → uplink_app으로 포워딩(비동기),
+   포워딩 시점에 `PendingUplinkFeedback = UFB_OK`(잠정값)로 세팅
+2. 사이클 N: `RunTx()`가 아직 결과 도착 전 → OK 그대로 전송, 이후 재차 OK로 리셋
+3. 사이클 N+1: `uplink_app` 응답(`REJECT_STATE`) 도착 → dispatch가
+   `PendingUplinkFeedback = UFB_STATE_BLOCKED`로 세팅
+4. 사이클 N+1: `RunTx()`가 STATE_BLOCKED를 실어 전송 — **직후 곧바로 다시
+   OK로 리셋**
+5. 지상국 GUI는 "명령 전송 후 최초 수신 UFB"만 확정 응답으로 간주하고
+   그 자리에서 대기를 끝내므로(`clearPendingCommand()`), 2번의 잠정 OK
+   프레임을 3번의 진짜 판정보다 먼저 관측하면 오탐(`UFB=0 → "적용됨"`)함
+
+**수정**: `RunTx()`의 무조건 리셋 라인 2곳(v1/v2 분기 각각, `lora_tdm_app.c`)
+제거. 리셋은 새 uplink 명령을 실제로 포워딩하는 시점(`ProcessUpFrame`/
+`ForwardUp2ToUplinkApp`)에만 수행 — 판정값이 **다음 명령이 들어오기 전까지**
+안정적으로 유지되므로, 지상국은 여러 다운링크 사이클에 걸쳐 관측해도 같은
+값을 받게 되어 레이스가 사라짐. 코드/커밋: `073a680`, 회귀 232/232 PASS.
+
 ## 11. 링크 상태 관리
 
 `UpdateLinkState(AppData, NowMs)`:
