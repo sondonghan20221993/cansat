@@ -66,6 +66,14 @@ SET_MESSAGE_INTERVAL 요청을 ack도 반영도 하지 않고 자기 기본 스�
 - [x] 증상 측정 (지상 CSV + Pi EVS 양쪽)
 - [x] 원인 규명 — FC가 SET_MESSAGE_INTERVAL 미ack/미반영, ~1.2Hz 기본 스트림
 - [x] cFS/지상 코드 결함 아님 확인 (페이로드/타깃/재시도/CRC 전부 정상)
-- [ ] FC측 확인 (QGC 대조 — 우리 프레이밍 vs PX4 동작 판별)
-- [ ] 5Hz 자세 필요 여부 미션 요구 확정
-- [ ] (필요시) PX4 파라미터 조정 후 재측정
+- [x] FC측 확인 (2026-07-21) — 후보 A(대역폭 예산 상향)가 정확히 원인이었음.
+      `mavlink status`로 `tx rate mult=0.137` 확인, 57600baud 대역폭 부족으로
+      PX4가 스트림레이트를 자체 스로틀링 중이었던 것. `SER_TEL2_BAUD`
+      921600 상향 + Pi 측 baud 매칭 + (별도 발견된) 파서 STX 재진입 버그
+      수정 후 `tx rate mult=1.000` 달성, ATTITUDE 등 정상 5Hz 수신 확인.
+      상세: `notes/fc_telemetry_rate_1_2hz_duplicate_completed.md`,
+      `notes/mavlink_stx_reentry_parser_bug_completed.md`
+- [x] 5Hz 자세 필요 여부 — 다운링크 자체가 `LORA_TDM_APP_CYCLE_PERIOD_MS=200`
+      (5Hz)로 고정이라 그 이상은 무의미, 현재 5Hz 확보로 충분
+      (후속 검토: `notes/temp/lora_downlink_5hz_cap_2026-07-21.md`)
+- [x] PX4 파라미터 조정 후 재측정 완료 — CRC fail 소멸, 정상 디코딩 확인
