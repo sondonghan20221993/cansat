@@ -175,7 +175,8 @@ Python 디코더 쪽 `test_systime_block` 테스트도 통과 중.
 - [ ] **F-6**: 미사용 상수 정리 — img_app 잔재(`CAMERA_ID_LEN` 등)는
       삭제, `STREAM_REACQUIRE_TIMEOUT_MS`는 원래 의도한 기능이
       누락된 건지 확인 필요(단순 삭제 전 spec 확인)
-- [ ] **F-7**: `uplink_lora_test_status.md`의 stale MID/앱 이름 정정
+- [x] **F-7**: `uplink_lora_test_status.md`의 stale MID/앱 이름 정정
+      완료(2026-07-21, BL-20) — 4곳 표기 수정 + 정정 이력 헤더 추가
       (문서만, 코드 무관)
 
 ## 관련

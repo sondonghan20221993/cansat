@@ -2,6 +2,14 @@
 
 > uplink 명령(지상국 → 드론) LoRa 경로 실시간 검증 기록. §1-9 전 항목 결론 확정
 > (§8.4 EKF 게이트는 옵션 A 채택으로 최종 결정, 실외 재검증만 잔여) — temp에서 승격.
+>
+> **정정(2026-07-21, BL-20)**: 아래 본문의 `lora_fc_downlink_app`은
+> `lora_tdm_app`으로 대체된 앱(`mission_app_runtime_spec.md` 참조)의
+> 옛 이름이며, `UPLINK_RAW_MID=0x1909`는 실제로는 `FC_SYS_TIME_MID`값이고
+> 지상→기체 uplink 포워딩 MID는 `UPLINK_APP_CMD_MID=0x18D0`이 맞음
+> (`uplink_app/config/default_uplink_app_interface_cfg_values.h`). 최초
+> 작성 당시 값이 잘못 기재됐던 것 — 아래 4곳은 표기만 정정, 서술된
+> 시험 경과 자체는 유효.
 
 ## 10. CONFIG 실측 재확인 (2026-07-21)
 
@@ -23,8 +31,8 @@ CONFIG 경로 정상 동작 재확인.
 OpenMCT Uplink CLI
   → fc_serial_ws_server.py (지상, HTTP/api/uplink → LoRa serial TX)
     → LoRa RF
-      → Pi CP2102 (lora_fc_downlink_app 단독 소유)
-        → TDM RX 윈도우에서 "UP,..." 수신 → UPLINK_RAW_MID(0x1909) SB publish
+      → Pi CP2102 (lora_tdm_app 단독 소유)
+        → TDM RX 윈도우에서 "UP,..." 수신 → UPLINK_APP_CMD_MID(0x18D0) SB publish
           → uplink_app 구독 → ParseLoRaFrame → ProcessUplink → 대상앱 라우팅
 ```
 반이중 TDM: Pi RX 윈도우는 downlink TX 직후 **300ms만** 열림.
@@ -34,7 +42,7 @@ OpenMCT Uplink CLI
   `[UP] CONFIG ... queued` → `[UP->slot] (1/4)~(4/4)` 정상 출력. 각 downlink 직후 송신.
 - RECOVERY 경로(이전 세션, 수동 반복 전송): `uplink_app`까지 도달 →
   `UPLINK_APP: command blocked by health state=3 class=4` 확인.
-  → Ground→LoRa→lora_fc_downlink_app→LORA_RAW_MID→uplink_app 경로 자체는 동작.
+  → Ground→LoRa→lora_tdm_app→UPLINK_APP_CMD_MID→uplink_app 경로 자체는 동작.
 - CONFIG 코드 체인: uplink `ForwardConfigCommand` → `CONFIG_CMD_MID(0x190E)` publish
   → mavlink_bridge `ProcessConfigCommand` 적용 + `StreamRequestPending` + EVS
   `config activated ...`. (코드상 정상, 도달+health=0이면 적용됨)
@@ -53,7 +61,7 @@ OpenMCT Uplink CLI
   RX 윈도우 코드가 빈 read에 `break` → 윈도우 열리자마자(uplink 도착 전, RF 왕복 지연) 종료
   → uplink/HB를 영영 못 읽음.
 - 해결(커밋 `cac209f`): 빈 read 시 `break` 대신 `usleep(2ms)` 후 **deadline까지 폴링 유지**.
-  `lora_fc_downlink_app_utils.c` ServiceLoRa RX 윈도우.
+  `lora_tdm_app_utils.c` ServiceLoRa RX 윈도우.
 - 상태: Pi 재빌드 후 재검증 필요.
 
 ### 문제 C — CONFIG "적용" 차단 (정책)
@@ -95,9 +103,9 @@ OpenMCT Uplink CLI
    integration_steps §11/§12 빌드·실행 절차 stale → 실제(cmake + sudo 실행)로 갱신.
 
 ## 7. 관련 위치
-- 드론: `lora_fc_downlink_app_utils.c`(RX 윈도우/ForwardUplinkFrame),
-  `uplink_app_cmds.c`(health-block/ProcessUplink), `uplink_app_dispatch.c`(LORA_RAW_MID),
-  MID `UPLINK_RAW=0x1909` / `CONFIG_CMD=0x190E`.
+- 드론: `lora_tdm_app_utils.c`(RX 윈도우/ForwardUplinkFrame),
+  `uplink_app_cmds.c`(health-block/ProcessUplink), `uplink_app_dispatch.c`(UPLINK_APP_CMD_MID),
+  MID `UPLINK_APP_CMD=0x18D0` / `CONFIG_CMD=0x190E`.
 - 지상: openMCT `fc_serial_ws_server.py`(슬롯정렬+재전송), `openmct_bridge_notes.md`.
 
 ## 8. BRIDGE_TIMEOUT 원인 재조사 (2026-07-09)
