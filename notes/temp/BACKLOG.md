@@ -28,11 +28,14 @@
    BL-20  문서 stale 식별자(MID/앱이름) 정정
    BL-21  fcncode 정의 위치 중복 정리
 
-🟠 결정만 하면 바로 (설계 아님, 판단)
-   BL-04  링크 EID 3종 — 구현 vs spec 표기 낮추기
-   BL-10  VIEWPOINT 캐시 활용처 — 있음/없음 결정
-   BL-15  5Hz 상향 필요성 — 운용 요구 있는지
-   BL-16  downlink_protocol 범위 — 기체 엄격화 vs 지상 완화
+✅ 결정 완료(2026-07-21) — 방향 확정, 착수는 아래 각 그룹으로 이동
+   BL-04  → 구현한다 (즉시 그룹으로 이동, 히스테리시스 설계 필요)
+   BL-10  → 활용처 있음, 단 "무엇을"은 미정 (착수 보류, 재론의 필요)
+   BL-15  → 상향 필요, 단 실측 선행 (BL-32 하드웨어 그룹으로 이관)
+   BL-16  → 기체 엄격화 (즉시 그룹으로 이동)
+
+🔴 즉시(위 결정 반영, 독립·프로토콜 무관) — 실질적으로 착수 1순위 묶음
+   BL-01, BL-04, BL-06, BL-07, BL-16, BL-17, BL-18, BL-19, BL-20, BL-21
 
 🟡 무선 프로토콜 한 번에 묶어서 (v2 확정 반영)
    BL-03  다운링크에 seq 동봉 (v2/DL2, v1은 제외 확정)
@@ -49,11 +52,14 @@
    BL-29, BL-30
 
 🔧 Pi/하드웨어 켜지면
-   BL-22, BL-31~37
+   BL-15(5Hz 실측), BL-22, BL-31~37
+
+⏸️ 착수 보류(방향은 정했으나 후속 설계/논의 필요)
+   BL-10  VIEWPOINT 캐시 — 뭘 할지 미정
 ```
 
-**추천 순서**: `BL-01`(지금 버그) → 나머지 즉시 항목들(소규모, 병렬 가능)
-→ 결정 필요 4개 확정 → `BL-03` 프로토콜 개정 착수.
+**추천 순서**: `BL-01`(지금 버그) → 🔴 즉시 그룹(소규모, 병렬 가능)
+→ `BL-03` 프로토콜 개정 착수 → 🟣 중간 규모.
 
 ---
 
@@ -75,7 +81,7 @@
 
 | ID | 내용 | 근거 |
 |---|---|---|
-| **BL-04** | `lora_tdm_app_behavior_spec.md:381-386`이 **✅(구현됨)로 표기한 EID 6종이 코드에 없음** — `LINK_LOST/DEGRADED/RESTORED`, `PIPE_ERR`, `SUB_ERR`, `SB_SEND_ERR`. 링크 3종은 `UpdateLinkState()`가 전이 감지 없이 매 사이클 무조건 대입해 이벤트 낼 지점 자체가 없음 → **구현하거나 spec 표기를 정정하거나 택일** | `system_wide_reaudit` F-1 |
+| **BL-04** | ✅ **결정(2026-07-21): 구현한다.** `lora_tdm_app_behavior_spec.md:381-386`이 ✅로 표기한 EID 6종(`LINK_LOST/DEGRADED/RESTORED`, `PIPE_ERR`, `SUB_ERR`, `SB_SEND_ERR`)을 실제로 발생시킴. `UpdateLinkState()`에 이전 상태 보존 + 전이 시에만 이벤트, 플래핑 방지(히스테리시스/레이트리밋) 설계 필요(`ambiguity_audit` 참조) | `system_wide_reaudit` F-1 |
 | **BL-05** | ⏸️ **BL-08 보류에 종속** — `mission_app_runtime_spec.md` §18.4.6.4가 "전달 vs 실행 구분 … 완료"라 하지만 `EXECUTED` 결과코드 자체가 없음 | `command_dead_end_audit` F1 |
 | **BL-06** | stale TODO 주석 2건 — `lora_tdm_app.h:68`("CONFIG 커맨드 미배선"), `lora_tdm_app_utils.h:72`("SysTime 미지원") 둘 다 **실제로는 구현 완료**. 주석만 정정 | `system_wide_reaudit` F-2/F-3 |
 | **BL-07** | `cfs_core_app_command_execution_gap.md` **문서 자체가 낡음** — "MODE 상태 전이 미구현"이라 적혀 있으나 실제로는 구현돼 있음(`cfs_core_app_utils.c:786-829`, 전이 검증 포함). RECOVERY 항목도 부분 진전됨(switch 추가). 문서 갱신 후 이 백로그로 흡수 | 오늘 확인 |
@@ -88,7 +94,7 @@
 |---|---|---|---|
 | **BL-08** | ⏸️ **보류(2026-07-21)** — 실행결과(EXECUTED) 회신 채널. `uplink_app`은 "라우팅 성공"까지만 앎. 대상 앱은 자기 결과를 갖고 있으나(`mavlink_bridge_app`의 `LastConfigResult`) **돌아오는 길이 없음**. 파이프/구독 자체는 기존 것에 한 줄만 추가하면 되지만(`uplink_app`은 이미 `CommandPipe` 보유), 3개 대상 앱이 결과를 표현하는 형태가 제각각(2곳은 동일 7종 enum 중복정의, `lora_tdm_app`은 **그 필드 자체가 없음**)이라 공통 스키마 설계가 필요 — 나중에 별도로 | `ground_plan` P0 / `command_dead_end` F1 / T7 | 설계 필요, 범위 큼 |
 | **BL-09** | **`cfs_core_app` RECOVERY 명령 실제 연결.** `RESTART_BRIDGE`/`PARSER_RESET`/`SERIAL_RECONNECT`가 로그만 찍음. 대상 기능은 `mavlink_bridge_app`에 이미 존재(`ResetParser()`, `OpenSerial()`/`CloseSerial()`)하나 크로스앱 명령 채널이 없음. **추가로 `RESTART_UPLINK`/`RESTART_LORA`는 enum 자체가 없음**(자동 재시작 로직은 있음) | `ground_plan` P1-a~d / `command_dead_end` F2 | 중 |
-| **BL-10** | `VIEWPOINT_CMD_MID` 캐시의 **활용처 결정** — 실제 쓸 데가 있는지, 없으면 spec에 "저장만, 활용 미정" 명시로 종결 | `ground_plan` P2 / `cfs_core_app_command_execution_gap` | 소(결정) |
+| **BL-10** | 🔶 **결정(2026-07-21): 활용처 있음(A안) — 단 "무엇을 할지"는 추후 결정.** `VIEWPOINT_CMD_MID` 캐시를 실제로 소비할 로직(경로계획 연동 등) 설계가 남음. 지금은 방향만 확정, 착수는 보류 | `ground_plan` P2 / `cfs_core_app_command_execution_gap` | 후속설계 필요 |
 | **BL-11** | ⏸️ **BL-08 보류에 종속** — UFB 코드표 전체 확정. 현재 `REJECT_STATE`만 매핑돼 나머지 7종(`FAILED`, `REJECT_CLASS`, `REJECT_LENGTH`, `ROUTE_MISS`, `REJECT_ROUTE`, `REJECT_CHECKSUM`, `REJECT_VIEWPOINT`)은 지상에서 OK와 구분 불가 | T8 / `selfaudit` A-2 | **BL-08** |
 
 ---
@@ -100,7 +106,7 @@
 | **BL-12** | **부트 카운터(세션 번호)** 도입 여부. 다운링크 seq 보고만으로는 위조/구분불가/wrap혼동 문제가 남음. 단 **"감소=공격=자동거부"로 만들면 안 됨**(상태파일 유실 시 복구 불가) → "운영자 확인 필요" 상태로 | T5 |
 | **BL-13** | seq 비교를 **모듈러 윈도우**로: `diff=(uint16)(seq-last); 0<diff<0x8000`. 65535 wrap 해소. **uint16/uint32 혼용 주의**(무선은 uint16, 내부는 uint32) | T6 / 문제3 |
 | **BL-14** | **재전송 인덱스**를 `Flags` 여유비트(`bits[5:1]`)에 실을지 — 프레임 크기 증가 없음. 정확성보다 **RF 링크 마진 진단** 목적 | T9 |
-| **BL-15** | **LoRa 다운링크 5Hz 상향 여부.** 200ms는 이미 실측 검증됨(2026-07-14, 손실 0%). **200ms 미만은 미검증** — 운용 요구가 실제 있는지부터 | `lora_downlink_5hz_cap` |
+| **BL-15** | 🔶 **결정(2026-07-21): 상향 필요(A안) — 단 실측이 선행돼야 함.** 200ms는 검증됨(2026-07-14, 손실 0%), 200ms 미만은 미검증. Pi/LoRa 하드웨어로 단계적 실측(runbook Stage 2 방식 재사용) 후 상한 확정 → **BL-32로 이관** | `lora_downlink_5hz_cap` |
 | **BL-16** | ✅ **결정(2026-07-21): 기체 엄격화.** `LORA_TDM_APP_ProcessConfigCommand`/`SetDownlinkProtocol`을 `(Value != 0)` 대신 `Value == 0 or 1`만 수락, 그 외 값은 거부(현재는 CONFIG 결과코드 회신이 없으니 무시+ErrCounter 증가 또는 EVS 에러로). 지상 `PARAM_BOUNDS`의 `(0,1)`은 유지 — 이제 양쪽 일치. v1은 검증 목적 달성, v2가 주력 | `selfaudit` A-4 |
 
 ---
