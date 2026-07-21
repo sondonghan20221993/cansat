@@ -517,7 +517,10 @@ void UPLINK_APP_SaveState(void)
 {
     UPLINK_APP_PersistentState_t State;
     int                          Fd;
+    int                          DirFd;
     char                         TmpPath[sizeof(UPLINK_APP_STATE_FILE_PATH) + 4];
+    char                         DirPath[sizeof(UPLINK_APP_STATE_FILE_PATH)];
+    char                        *Slash;
 
     State.Magic                = UPLINK_APP_STATE_MAGIC;
     State.LastAcceptedSequence = UPLINK_APP_Data.LastAcceptedSequence;
@@ -537,8 +540,29 @@ void UPLINK_APP_SaveState(void)
         return;
     }
 
+    /* rename()이 디스크에 반영됐다는 보장은 파일 fd만 fsync해선 안 됨 —
+     * POSIX상 디렉터리 항목(rename) 자체도 부모 디렉터리 fd를 fsync해야
+     * 정전 시 유실되지 않는다 (BL-18). */
+    fsync(Fd);
     close(Fd);
-    rename(TmpPath, UPLINK_APP_STATE_FILE_PATH);
+
+    if (rename(TmpPath, UPLINK_APP_STATE_FILE_PATH) != 0)
+    {
+        return;
+    }
+
+    snprintf(DirPath, sizeof(DirPath), "%s", UPLINK_APP_STATE_FILE_PATH);
+    Slash = strrchr(DirPath, '/');
+    if (Slash != NULL)
+    {
+        *Slash = '\0';
+        DirFd  = open(DirPath, O_RDONLY);
+        if (DirFd >= 0)
+        {
+            fsync(DirFd);
+            close(DirFd);
+        }
+    }
 }
 
 bool UPLINK_APP_ParseViewpointPayload(const UPLINK_APP_ProcessUplinkCmd_t *Cmd,
