@@ -30,8 +30,8 @@
         존치. LORA_BAUDRATE·STREAM_REACQUIRE는 제외(아래 고민 목록)
 ✅BL-20 문서 stale 식별자(MID/앱이름) 정정 — 완료(2026-07-21)
 ✅BL-21 fcncode 정의 위치 중복 정리 — 완료(2026-07-21)
-BL-03   다운링크에 seq 동봉 (v2/DL2 확정, v1 제외)
-  ├─ BL-12 부트카운터
+✅BL-03 다운링크에 seq+boot_count 동봉 — 완료(2026-07-22, v2/DL2, v1 제외)
+  ├─ ✅BL-12 부트카운터 — 완료(2026-07-22)
   ├─ ✅BL-13 모듈러 seq 비교 — 완료(2026-07-22)
   └─ BL-14 재전송 인덱스(선택)
 ✅BL-09 cfs_core_app RECOVERY 명령 실제 연결 (+BL-25) — 부분 완료(2026-07-21)
@@ -80,7 +80,7 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 |---|---|---|---|
 | ~~**BL-01**~~ | ✅ **완료(2026-07-21)**. `Sequence == LastAccepted`→`UPLINK_APP_RESULT_DUPLICATE(14)`, `< LastAccepted`→기존 `REJECT_SEQUENCE` 유지로 분리. lora_tdm_app은 DUPLICATE를 SEQ_FAIL로 오귀속하지 않음. 로컬 UT 477/477 PASS. 상세: `bl01_duplicate_retransmit_completed_2026-07-21.md` | `uplink_seq_feedback_redesign` T1 | 완료 |
 | **BL-02** | `073a680`(RunTx UFB 리셋 제거) **유지 vs 롤백 판단**. BL-03이 곧 오면 유지, 지연되면 롤백 | 동 T2 / `inferred_decisions_selfaudit` A-1 | 판단 |
-| **BL-03** | **지상국 재시작 시 명령권 상실.** 기체는 `LastAcceptedSequence`를 파일에 영속화하는데 지상 `_SeqCounter`는 재시작마다 1로 리셋 → 이후 모든 명령 거부. 해법: 다운링크에 `ufb_seq` 동봉 → 지상이 그 값 보고 이어받기(자가복구). **결정(2026-07-21): v2(DL2) 기본값 승격, v1은 이 작업 대상에서 제외**(v1은 seq 넣을 필드 자리 자체가 없음 — `ambiguity_audit` 참조) | 동 T3+T4 | 중, 양쪽 + DL2 +2B |
+| ~~**BL-03**~~ | ✅ **완료(2026-07-22)**. DL2 프레임에 `uplink_last_seq(u16)`+`uplink_boot_count(u8)` 3바이트 동봉(기존 47B/55B→50B/58B, SysTime 뒤·CRC 앞). `uplink_app`→`UPLINK_STATUS_MID`(`LastAcceptedSequence`/`BootCount` 신규 필드)→`lora_tdm_app` 캐시→DL2 인코딩. 지상 `_SeqCounter.resync_from_device()`(앞으로만 당김, 자가복구)와 `_BootCountTracker`(모듈러 감소 감지 시 `boot_count_anomaly` 플래그만, 자동거부 없음) 구현. `lora_protocol_v2.py`+`bridge/lora_downlink_decoder.py`(포크본) 동시 갱신. 회귀: C 4종 UT 전부 PASS, Python 190/190 PASS(cfs-telemetry-app) + 55/55(openMCT) | 동 T3+T4 | 완료 |
 
 > BL-03은 BL-04\~BL-06(프로토콜 확장)의 **공통 선행**. 무선 포맷을 여러 번
 > 나눠 바꾸면 지상/기체 버전 호환이 계속 깨지므로 **한 번 열 때 필요한
@@ -114,7 +114,7 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 
 | ID | 내용 | 근거 |
 |---|---|---|
-| ~~**BL-12**~~ | ✅ **기체측 완료(2026-07-22)**. `uplink_app`에 8비트 `BootCount` 추가 — `/cf/uplink_app_state.bin`에 `LastAcceptedSequence`와 함께 영속화, `LoadState()` 직후 `UPLINK_APP_IncrementBootCount()`로 +1(wrap)하고 즉시 재저장. 회귀 UT uplink_app 4종(10/99/33/106) PASS. **다운링크로 실어보내는 부분(DL2 필드 추가, "감소=운영자 확인" 정책 반영)은 BL-03에서 이어감** | T5 |
+| ~~**BL-12**~~ | ✅ **완료(2026-07-22)**. 기체측 영속화(`uplink_app` 8비트 `BootCount`, `/cf/uplink_app_state.bin`) + BL-03에서 DL2 동봉/지상 `_BootCountTracker` anomaly 감지까지 완결 | T5 |
 | ~~**BL-13**~~ | ✅ **완료(2026-07-22)**. `UPLINK_APP_CheckSequence()`를 모듈러 윈도우(`diff=(uint16)(seq-last); diff<0x8000`)로 변경 — 65535 wrap 해소. 회귀 UT 99/99(cmds) PASS | T6 / 문제3 |
 | **BL-14** | **재전송 인덱스**를 `Flags` 여유비트(`bits[5:1]`)에 실을지 — 프레임 크기 증가 없음. 정확성보다 **RF 링크 마진 진단** 목적 | T9 |
 | **BL-15** | 🔶 **결정(2026-07-21): 상향 필요(A안) — 단 실측이 선행돼야 함.** 200ms는 검증됨(2026-07-14, 손실 0%), 200ms 미만은 미검증. Pi/LoRa 하드웨어로 단계적 실측(runbook Stage 2 방식 재사용) 후 상한 확정 → **BL-32로 이관** | `lora_downlink_5hz_cap` |

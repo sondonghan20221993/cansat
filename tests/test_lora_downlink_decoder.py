@@ -14,6 +14,7 @@ import unittest
 from bridge.lora_downlink_decoder import (
     ACK2_MAGIC,
     DL2_BASE_LEN,
+    DL2_TAIL_LEN,
     DL2_FLAG_POS_SATURATED,
     DL2_FLAG_SYSTIME,
     DL2_MAGIC,
@@ -77,11 +78,22 @@ class RoundtripTest(unittest.TestCase):
         utc_us = 1_784_950_123_456_789  # 2026-07 UNIX epoch µs
         out = self._roundtrip(make_frame(sys_time_unix_usec=utc_us))
         self.assertEqual(out.sys_time_unix_usec, utc_us)
-        # 확장 블록 프레임 길이 = 47(sats 포함 기본) + 8
-        self.assertEqual(len(encode_dl2(make_frame(sys_time_unix_usec=utc_us))), 55)
+        # 확장 블록 프레임 길이 = 50(기본, BL-03 꼬리 3B 포함) + 8
+        self.assertEqual(len(encode_dl2(make_frame(sys_time_unix_usec=utc_us))), 58)
 
-    def test_base_frame_is_47_bytes(self):
-        self.assertEqual(len(encode_dl2(make_frame())), 47)  # spec §4 (sats 포함, 2026-07-13)
+    def test_uplink_tail_fields_roundtrip_no_systime(self):
+        out = self._roundtrip(make_frame(uplink_last_seq=4321, uplink_boot_count=200))
+        self.assertEqual(out.uplink_last_seq, 4321)
+        self.assertEqual(out.uplink_boot_count, 200)
+
+    def test_uplink_tail_fields_roundtrip_with_systime(self):
+        out = self._roundtrip(make_frame(sys_time_unix_usec=123456, uplink_last_seq=1, uplink_boot_count=255))
+        self.assertEqual(out.uplink_last_seq, 1)
+        self.assertEqual(out.uplink_boot_count, 255)
+
+    def test_base_frame_is_50_bytes(self):
+        # spec §4 (sats 포함, 2026-07-13) + BL-03 꼬리 필드(uplink_last_seq+boot_count, 2026-07-22)
+        self.assertEqual(len(encode_dl2(make_frame())), 50)
 
     def test_saturation_flag(self):
         out = self._roundtrip(make_frame(flags=DL2_FLAG_POS_SATURATED, x_m=327.67))
@@ -150,9 +162,9 @@ class StreamingTest(unittest.TestCase):
         CRC는 통과하지만 flags/body_len 불일치. decode_dl2()가 struct.error로
         크래시하지 않고 sys_time_unix_usec=None으로 안전 처리해야 함
         (2026-07-14 수정한 크래시 버그의 회귀 방지)."""
-        body = bytearray(DL2_BASE_LEN)
+        body = bytearray(DL2_BASE_LEN + DL2_TAIL_LEN)
         body[0] = DL2_MAGIC
-        body[1] = DL2_BASE_LEN  # SysTime 블록 없는 길이
+        body[1] = DL2_BASE_LEN + DL2_TAIL_LEN  # SysTime 블록 없는 길이(BL-03 꼬리 포함)
         body[4] = DL2_FLAG_SYSTIME  # 그런데 flags는 SysTime 있다고 주장
         frame = bytes(body) + struct.pack("<H", crc16_ccitt(bytes(body)))
 

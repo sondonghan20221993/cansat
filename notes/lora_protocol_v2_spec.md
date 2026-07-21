@@ -56,9 +56,13 @@ FC 상태 + 시스템 헬스를 **하나의 프레임**으로 매 TDM 주기 전
 | 42 | health | u8 | SystemHealthState |
 | 43 | fault | u8 | FaultCode |
 | 44 | linkstate | u8 | LoRa LinkState |
-| 45 | crc | u16 | CRC-16/CCITT |
+| 45 | uplink_last_seq | u16 | 기체가 마지막 수락한 uplink seq (BL-03, 2026-07-22) — 지상 재시작 시 이 값+1부터 재개(자가복구) |
+| 47 | uplink_boot_count | u8 | 기체 부팅 카운터, uint8 wrap (BL-12/BL-03) — 재부팅 감지, 감소 시 지상은 자동거부 대신 "운영자 확인 필요" 플래그만 |
+| 48 | crc | u16 | CRC-16/CCITT |
 
-기본 길이 **47B** (에어타임 ~20ms @2.4KB/s, sats 1바이트 추가로 46B→47B).
+기본 길이 **50B** (에어타임 ~21ms @2.4KB/s). SysTime 확장 포함 시 58B.
+uplink_last_seq/uplink_boot_count는 SysTime 블록(있으면) 뒤, CRC 앞에 항상 붙는다
+("기존 끝에 추가" 결정, 2026-07-22) — SysTime 유무와 무관하게 CRC 직전 3바이트.
 
 ### 4.1 위치 saturation 정책
 
@@ -67,7 +71,8 @@ FC 상태 + 시스템 헬스를 **하나의 프레임**으로 매 TDM 주기 전
 
 ### 4.2 SysTime 확장 블록 (선택)
 
-`flags` bit0 = 1이면 offset 45(=sats 추가로 44→45로 밀림)에 8바이트 블록을 삽입하고 CRC가 그 뒤로 밀린다:
+`flags` bit0 = 1이면 offset 45(=sats 추가로 44→45로 밀림)에 8바이트 블록을 삽입하고
+`uplink_last_seq`/`uplink_boot_count`/CRC가 그만큼 뒤로 밀린다(offset 53/55/56):
 
 | 필드 | 형식 | 의미 |
 | --- | --- | --- |

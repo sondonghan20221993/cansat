@@ -66,6 +66,8 @@ void UPLINK_APP_UpdateStatusTelemetry(uint32 NowMs)
     Tlm->FcMissionResult             = UPLINK_APP_Data.FcMissionResult;
     Tlm->FcMissionUploadState        = UPLINK_APP_Data.FcMissionUploadState;
     Tlm->FcMissionUploadSuccessCount = UPLINK_APP_Data.FcMissionUploadSuccessCount;
+    Tlm->BootCount                   = UPLINK_APP_Data.BootCount;
+    Tlm->LastAcceptedSequence        = (uint16)UPLINK_APP_Data.LastAcceptedSequence;
 
     CFE_SB_TimeStampMsg(CFE_MSG_PTR(Tlm->TelemetryHeader));
     CFE_SB_TransmitMsg(CFE_MSG_PTR(Tlm->TelemetryHeader), true);

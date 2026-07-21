@@ -177,12 +177,15 @@ static int16 ScaleMeterToI16Cm(float MetersVal, bool *Saturated)
 
 /* ---- Build DL2 frame (v2 바이너리 다운링크) — lora_protocol_v2_spec.md §4 ----
  * SysTime 확장 블록(§4.2): FcState.TimeValid면 flags bit0 세우고 TimeUnixUsec
- * 8바이트를 뒤에 덧붙여 총 55B(기본 47B 대신), 아니면 기존과 동일 47B. */
+ * 8바이트를 삽입. BL-03(2026-07-22)로 uplink_last_seq(2B)+boot_count(1B)가
+ * 항상 맨 끝(SysTime 블록 뒤, CRC 앞)에 추가돼 총 길이는 50B(기본) 또는
+ * 58B(SysTime 포함) — 기존 47B/55B에서 +3B. */
 int LORA_TDM_APP_BuildDl2Frame(uint8 *Buf, size_t BufLen, const LORA_TDM_APP_Data_t *AppData)
 {
     uint8  Flags = 0;
     bool   Saturated = false;
     bool   IncludeSysTime;
+    uint8  TailOffset;
     uint8  BodyLen;
     uint16 Crc;
 
@@ -196,7 +199,10 @@ int LORA_TDM_APP_BuildDl2Frame(uint8 *Buf, size_t BufLen, const LORA_TDM_APP_Dat
     {
         IncludeSysTime = false; /* 버퍼 부족 시 SysTime 없이 기본 프레임으로 폴백 */
     }
-    BodyLen = (uint8)(LORA_TDM_APP_DL2_LEN_FIELD + (IncludeSysTime ? LORA_TDM_APP_DL2_SYSTIME_BLOCK_LEN : 0U));
+    /* BL-03: 꼬리 필드(uplink_last_seq/boot_count)는 SysTime 블록(있으면) 뒤,
+     * CRC 앞에 항상 붙는다 — "기존 끝에 추가" 결정. */
+    TailOffset = (uint8)(LORA_TDM_APP_DL2_BASE_LEN + (IncludeSysTime ? LORA_TDM_APP_DL2_SYSTIME_BLOCK_LEN : 0U));
+    BodyLen    = (uint8)(TailOffset + LORA_TDM_APP_DL2_TAIL_LEN);
 
     Buf[0] = (uint8)LORA_TDM_APP_DL2_MAGIC;
     Buf[1] = BodyLen;
@@ -229,8 +235,11 @@ int LORA_TDM_APP_BuildDl2Frame(uint8 *Buf, size_t BufLen, const LORA_TDM_APP_Dat
 
     if (IncludeSysTime)
     {
-        PutU64LE(&Buf[LORA_TDM_APP_DL2_LEN_FIELD], AppData->FcState.TimeUnixUsec);
+        PutU64LE(&Buf[LORA_TDM_APP_DL2_BASE_LEN], AppData->FcState.TimeUnixUsec);
     }
+
+    PutU16LE(&Buf[TailOffset], AppData->UplinkLastAcceptedSequence);
+    Buf[TailOffset + 2] = AppData->UplinkBootCount;
 
     Flags |= Saturated ? 0x02u : 0x00u;
     Flags |= IncludeSysTime ? (uint8)LORA_TDM_APP_DL2_FLAG_SYSTIME : 0x00u;

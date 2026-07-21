@@ -525,6 +525,8 @@ void Test_BuildDl2Frame_Basic(void)
     LORA_TDM_APP_Data.SystemHealth.SystemHealthState = 1;
     LORA_TDM_APP_Data.SystemHealth.FaultCode         = 0;
     LORA_TDM_APP_Data.LinkState                      = 1;
+    LORA_TDM_APP_Data.UplinkLastAcceptedSequence     = 4321; /* BL-03 */
+    LORA_TDM_APP_Data.UplinkBootCount                = 5;    /* BL-03 */
 
     Len = LORA_TDM_APP_BuildDl2Frame(Buf, sizeof(Buf), &LORA_TDM_APP_Data);
 
@@ -546,6 +548,9 @@ void Test_BuildDl2Frame_Basic(void)
     UtAssert_INT32_EQ(Buf[41], 11); /* sats */
     UtAssert_INT32_EQ(Buf[42], 1);  /* health */
     UtAssert_INT32_EQ(Buf[44], 1);  /* linkstate */
+    /* BL-03(2026-07-22): SysTime 없을 때 꼬리 필드는 offset 45(BASE_LEN)부터 */
+    UtAssert_INT32_EQ(GetU16LE(&Buf[LORA_TDM_APP_DL2_BASE_LEN]), 4321);     /* uplink_last_seq */
+    UtAssert_INT32_EQ(Buf[LORA_TDM_APP_DL2_BASE_LEN + 2], 5);               /* boot_count */
 
     ExpectedCrc = LORA_TDM_APP_Crc16(Buf, LORA_TDM_APP_DL2_LEN_FIELD);
     UtAssert_INT32_EQ(GetU16LE(&Buf[LORA_TDM_APP_DL2_LEN_FIELD]), ExpectedCrc);
@@ -591,6 +596,8 @@ void Test_BuildDl2Frame_SysTimeIncluded(void)
     memset(&LORA_TDM_APP_Data, 0, sizeof(LORA_TDM_APP_Data));
     LORA_TDM_APP_Data.FcState.TimeValid    = 1;
     LORA_TDM_APP_Data.FcState.TimeUnixUsec = 1752480000123456ULL;
+    LORA_TDM_APP_Data.UplinkLastAcceptedSequence = 999; /* BL-03 */
+    LORA_TDM_APP_Data.UplinkBootCount            = 7;   /* BL-03 */
 
     Len = LORA_TDM_APP_BuildDl2Frame(Buf, sizeof(Buf), &LORA_TDM_APP_Data);
 
@@ -601,9 +608,13 @@ void Test_BuildDl2Frame_SysTimeIncluded(void)
     Got = 0;
     for (i = 7; i >= 0; i--)
     {
-        Got = (Got << 8) | Buf[LORA_TDM_APP_DL2_LEN_FIELD + (uint8)i];
+        Got = (Got << 8) | Buf[LORA_TDM_APP_DL2_BASE_LEN + (uint8)i];
     }
     UtAssert_True(Got == 1752480000123456ULL, "TimeUnixUsec round-trip");
+
+    /* BL-03: SysTime 있을 때 꼬리 필드는 그 뒤(BASE_LEN+SYSTIME_BLOCK_LEN)부터 */
+    UtAssert_INT32_EQ(GetU16LE(&Buf[LORA_TDM_APP_DL2_BASE_LEN + LORA_TDM_APP_DL2_SYSTIME_BLOCK_LEN]), 999);
+    UtAssert_INT32_EQ(Buf[LORA_TDM_APP_DL2_BASE_LEN + LORA_TDM_APP_DL2_SYSTIME_BLOCK_LEN + 2], 7);
 
     ExpectedCrc = LORA_TDM_APP_Crc16(Buf, LORA_TDM_APP_DL2_LEN_FIELD + LORA_TDM_APP_DL2_SYSTIME_BLOCK_LEN);
     UtAssert_INT32_EQ(GetU16LE(&Buf[LORA_TDM_APP_DL2_LEN_FIELD + LORA_TDM_APP_DL2_SYSTIME_BLOCK_LEN]), ExpectedCrc);

@@ -60,7 +60,12 @@ typedef struct
     uint32 LastAckTimestampMs;
     uint8  PendingUplinkFeedback;
     uint8  LinkStateInitialized; /* BL-04: 첫 관측(부팅 직후)은 전이 이벤트 대상 아님 */
-    uint8  Reserved[1];
+
+    /* BL-03(2026-07-22): UPLINK_STATUS_MID에서 캐시 — DL2 프레임에 동봉해
+     * 지상 자가복구(seq)/재부팅 감지(boot_count)에 사용. uplink_app이
+     * 한 번도 상태를 보고하지 않았으면(부팅 직후) 0으로 유지. */
+    uint16 UplinkLastAcceptedSequence;
+    uint8  UplinkBootCount;
 
     /* Serial fd */
     int    LoRaFd;

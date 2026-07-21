@@ -102,6 +102,11 @@ void LORA_TDM_APP_ProcessCommandPacket(CFE_SB_Buffer_t *SBBufPtr)
     {
         /* Phase 3.3: Update uplink feedback based on uplink_app result (§18.11.1 SEQ_FAIL) */
         const UPLINK_APP_StatusTlm_t *StatusMsg = (const UPLINK_APP_StatusTlm_t *)SBBufPtr;
+
+        /* BL-03(2026-07-22): DL2 프레임 동봉용 캐시 갱신 — 매 수신마다 최신값 유지 */
+        LORA_TDM_APP_Data.UplinkLastAcceptedSequence = StatusMsg->LastAcceptedSequence;
+        LORA_TDM_APP_Data.UplinkBootCount            = StatusMsg->BootCount;
+
         /* UPLINK_APP_RESULT_REJECT_SEQUENCE = 10, REJECT_STATE = 11
          * (default_uplink_app_msgdefs.h). REJECT_STATE covers the health-gate
          * block (fail-safe boot / DEGRADED / RECOVERY / FAILED, §18.10.1) —

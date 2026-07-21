@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent / "legacy" / "bridge"))
 
 from lora_downlink_decoder import crc16_ccitt as crc16_downlink
 from lora_uplink_bridge import crc16_ccitt as crc16_uplink
