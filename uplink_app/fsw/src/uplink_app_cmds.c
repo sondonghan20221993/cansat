@@ -2,14 +2,26 @@
 #include "uplink_app_eventids.h"
 #include "uplink_app_utils.h"
 
-static bool UPLINK_APP_IsSequenceAccepted(uint16 Sequence)
+typedef enum
+{
+    UPLINK_APP_SEQ_NEW,       /* Sequence > LastAcceptedSequence (or bootstrap) */
+    UPLINK_APP_SEQ_DUPLICATE, /* Sequence == LastAcceptedSequence: 4x 재전송 슬롯 중복 */
+    UPLINK_APP_SEQ_REPLAY     /* Sequence < LastAcceptedSequence: 진짜 replay/desync */
+} UPLINK_APP_SeqCheck_t;
+
+static UPLINK_APP_SeqCheck_t UPLINK_APP_CheckSequence(uint16 Sequence)
 {
     if (UPLINK_APP_Data.AcceptedCount == 0U)
     {
-        return true;
+        return UPLINK_APP_SEQ_NEW;
     }
 
-    return (Sequence > UPLINK_APP_Data.LastAcceptedSequence);
+    if (Sequence == UPLINK_APP_Data.LastAcceptedSequence)
+    {
+        return UPLINK_APP_SEQ_DUPLICATE;
+    }
+
+    return (Sequence > UPLINK_APP_Data.LastAcceptedSequence) ? UPLINK_APP_SEQ_NEW : UPLINK_APP_SEQ_REPLAY;
 }
 
 static uint8 UPLINK_APP_GetClassRequiredLevel(uint8 CommandClass)
@@ -66,6 +78,7 @@ void UPLINK_APP_ResetCounters(const UPLINK_APP_ResetCountersCmd_t *Cmd)
     UPLINK_APP_Data.ErrCounter          = 0;
     UPLINK_APP_Data.AcceptedCount       = 0;
     UPLINK_APP_Data.RejectedCount       = 0;
+    UPLINK_APP_Data.DuplicateCount      = 0;
     UPLINK_APP_Data.RoutingFailureCount = 0;
     UPLINK_APP_Data.LastAcceptedSequence = 0;
     UPLINK_APP_Data.LastCommandCode     = 0;
@@ -90,7 +103,24 @@ void UPLINK_APP_ProcessUplink(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
     UPLINK_APP_Data.LastCommandCode  = Cmd->CommandClass;
     UPLINK_APP_Data.LastRxSequence   = Cmd->Sequence;
 
-    if (!UPLINK_APP_IsSequenceAccepted(Cmd->Sequence))
+    UPLINK_APP_SeqCheck_t SeqCheck = UPLINK_APP_CheckSequence(Cmd->Sequence);
+
+    if (SeqCheck == UPLINK_APP_SEQ_DUPLICATE)
+    {
+        /* 지상국이 반이중 타이밍 지터를 견디려고 같은 명령을 4회 연속
+         * 전송하는 설계(§4x 재전송)의 2~4번째 슬롯. replay가 아니라
+         * 이미 수락된 명령의 중복 도착이므로 에러/링크저하로 취급하지
+         * 않는다 (BL-01, notes/temp/uplink_seq_feedback_redesign). */
+        UPLINK_APP_Data.DuplicateCount++;
+        UPLINK_APP_Data.LastCommandResult = UPLINK_APP_RESULT_DUPLICATE;
+        CFE_EVS_SendEvent(UPLINK_APP_DUPLICATE_EID, CFE_EVS_EventType_DEBUG,
+                          "UPLINK_APP: duplicate uplink seq=%u (retransmit slot)",
+                          (unsigned int)Cmd->Sequence);
+        UPLINK_APP_UpdateStatusTelemetry(0);
+        return;
+    }
+
+    if (SeqCheck == UPLINK_APP_SEQ_REPLAY)
     {
         UPLINK_APP_Data.ErrCounter++;
         UPLINK_APP_Data.RejectedCount++;

@@ -70,7 +70,7 @@ void Test_UPLINK_APP_ProcessUplink_RejectSequenceReplay(void)
     TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
     TestMsg.CommandClass  = UPLINK_APP_CLASS_CONFIG;
     TestMsg.PayloadLength = 0;
-    TestMsg.Sequence      = 10;
+    TestMsg.Sequence      = 9; /* < LastAcceptedSequence: 진짜 replay/desync */
 
     UPLINK_APP_Data.AcceptedCount        = 1;
     UPLINK_APP_Data.LastAcceptedSequence = 10;
@@ -81,6 +81,29 @@ void Test_UPLINK_APP_ProcessUplink_RejectSequenceReplay(void)
     UtAssert_INT32_EQ(UPLINK_APP_Data.RejectedCount, 1);
     UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_REJECT_SEQUENCE);
     UtAssert_INT32_EQ(UPLINK_APP_Data.LinkState, UPLINK_APP_LINK_DEGRADED);
+}
+
+void Test_UPLINK_APP_ProcessUplink_DuplicateRetransmit(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_CONFIG;
+    TestMsg.PayloadLength = 0;
+    TestMsg.Sequence      = 10; /* == LastAcceptedSequence: 4x 재전송 슬롯 */
+
+    UPLINK_APP_Data.AcceptedCount        = 1;
+    UPLINK_APP_Data.LastAcceptedSequence = 10;
+    UPLINK_APP_Data.LinkState            = UPLINK_APP_LINK_NOMINAL;
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.ErrCounter, 0);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.RejectedCount, 0);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.DuplicateCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_DUPLICATE);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LinkState, UPLINK_APP_LINK_NOMINAL);
 }
 
 void Test_UPLINK_APP_ProcessUplink_Reject(void)
@@ -771,6 +794,7 @@ void UtTest_Setup(void)
     ADD_TEST(UPLINK_APP_ResetCounters);
     ADD_TEST(UPLINK_APP_ProcessUplink_Accept);
     ADD_TEST(UPLINK_APP_ProcessUplink_RejectSequenceReplay);
+    ADD_TEST(UPLINK_APP_ProcessUplink_DuplicateRetransmit);
     ADD_TEST(UPLINK_APP_ProcessUplink_Reject);
     ADD_TEST(UPLINK_APP_ProcessUplink_RouteMiss);
     ADD_TEST(UPLINK_APP_ProcessUplink_RouteUpdate);

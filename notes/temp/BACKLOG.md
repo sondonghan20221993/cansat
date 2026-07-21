@@ -19,7 +19,7 @@
 ### ▶ 바로 진행 가능 (모호성 없음, 착수만 하면 됨 — 2026-07-21 3차 확정)
 
 ```
-BL-01   재전송 중복 오탐 차단           ← 배포된 코드가 버그, 최우선
+✅BL-01  재전송 중복 오탐 차단           ← 완료(2026-07-21), 코드는 Pi 미배포
 BL-04   링크 EID 3종 구현 (히스테리시스 설계 포함)
 BL-06   stale TODO 주석 2건 정정
 BL-16   downlink_protocol 기체 엄격화(0/1만 수락)
@@ -76,7 +76,7 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 
 | ID | 내용 | 근거 | 규모 |
 |---|---|---|---|
-| **BL-01** | **재전송 중복이 실패로 보고됨.** 지상이 명령을 4슬롯 재전송하는데 2~4번째가 `REJECT_SEQUENCE`가 되고, 오늘 넣은 `04d8f99`+`073a680`이 겹쳐 **성공한 명령이 SEQ_FAIL을 영구 래치**. `Sequence == LastAccepted`(우리 재전송)와 `< LastAccepted`(replay)를 구분해 전자를 별도 코드로 | `uplink_seq_feedback_redesign` T1 | 소, 기체만 |
+| ~~**BL-01**~~ | ✅ **완료(2026-07-21)**. `Sequence == LastAccepted`→`UPLINK_APP_RESULT_DUPLICATE(14)`, `< LastAccepted`→기존 `REJECT_SEQUENCE` 유지로 분리. lora_tdm_app은 DUPLICATE를 SEQ_FAIL로 오귀속하지 않음. 로컬 UT 477/477 PASS. 상세: `bl01_duplicate_retransmit_completed_2026-07-21.md` | `uplink_seq_feedback_redesign` T1 | 완료 |
 | **BL-02** | `073a680`(RunTx UFB 리셋 제거) **유지 vs 롤백 판단**. BL-03이 곧 오면 유지, 지연되면 롤백 | 동 T2 / `inferred_decisions_selfaudit` A-1 | 판단 |
 | **BL-03** | **지상국 재시작 시 명령권 상실.** 기체는 `LastAcceptedSequence`를 파일에 영속화하는데 지상 `_SeqCounter`는 재시작마다 1로 리셋 → 이후 모든 명령 거부. 해법: 다운링크에 `ufb_seq` 동봉 → 지상이 그 값 보고 이어받기(자가복구). **결정(2026-07-21): v2(DL2) 기본값 승격, v1은 이 작업 대상에서 제외**(v1은 seq 넣을 필드 자리 자체가 없음 — `ambiguity_audit` 참조) | 동 T3+T4 | 중, 양쪽 + DL2 +2B |
 

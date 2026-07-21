@@ -114,6 +114,9 @@ void LORA_TDM_APP_ProcessCommandPacket(CFE_SB_Buffer_t *SBBufPtr)
         {
             LORA_TDM_APP_Data.PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_STATE_BLOCKED;
         }
+        /* UPLINK_APP_RESULT_DUPLICATE = 14 (BL-01): 4x 재전송 슬롯의 중복
+         * 도착. replay가 아니므로 SEQ_FAIL로 오귀속하지 않고 무시한다 —
+         * PendingUplinkFeedback은 직전 값(성공 시 OK)을 그대로 유지. */
     }
     else
     {

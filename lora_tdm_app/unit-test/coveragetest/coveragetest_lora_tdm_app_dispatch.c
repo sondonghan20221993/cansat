@@ -221,6 +221,24 @@ void Test_ProcessCommandPacket_UplinkStatus_RejectState(void)
     UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.PendingUplinkFeedback, LORA_TDM_APP_UPLINK_FB_STATE_BLOCKED);
 }
 
+void Test_ProcessCommandPacket_UplinkStatus_Duplicate_NoLatchOverride(void)
+{
+    UPLINK_APP_StatusTlm_t Msg;
+    CFE_SB_MsgId_t          MsgId;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.LastCommandResult = 14U; /* UPLINK_APP_RESULT_DUPLICATE (4x 재전송 슬롯, BL-01) */
+
+    MsgId = CFE_SB_ValueToMsgId(LORA_TDM_APP_UPLINK_STATUS_MID_VALUE);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+
+    LORA_TDM_APP_Data.PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_OK;
+    LORA_TDM_APP_ProcessCommandPacket((CFE_SB_Buffer_t *)&Msg);
+
+    /* 중복 재전송은 SEQ_FAIL로 오귀속되면 안 되고 직전 판정값을 유지 */
+    UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.PendingUplinkFeedback, LORA_TDM_APP_UPLINK_FB_OK);
+}
+
 void Test_ProcessCommandPacket_UplinkStatus_Success(void)
 {
     UPLINK_APP_StatusTlm_t Msg;
@@ -253,5 +271,6 @@ void UtTest_Setup(void)
     ADD_TEST(ProcessCommandPacket_UplinkStatus_RejectSequence);
     ADD_TEST(ProcessCommandPacket_UplinkStatus_Routed_NoFalsePositive);
     ADD_TEST(ProcessCommandPacket_UplinkStatus_RejectState);
+    ADD_TEST(ProcessCommandPacket_UplinkStatus_Duplicate_NoLatchOverride);
     ADD_TEST(ProcessCommandPacket_UplinkStatus_Success);
 }

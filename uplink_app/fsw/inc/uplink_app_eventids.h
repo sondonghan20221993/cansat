@@ -8,6 +8,7 @@
 #define UPLINK_APP_PUBLISH_EID      5
 #define UPLINK_APP_STATE_BLOCK_EID  6
 #define UPLINK_APP_AUTHZ_BLOCK_EID  7
+#define UPLINK_APP_DUPLICATE_EID    8
 
 #endif
 

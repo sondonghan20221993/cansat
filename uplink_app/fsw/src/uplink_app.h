@@ -24,6 +24,7 @@ typedef struct
     uint32                 LastRxTimeMs;
     uint32                 AcceptedCount;
     uint32                 RejectedCount;
+    uint32                 DuplicateCount;
     uint32                 RoutingFailureCount;
     uint32                 LastAcceptedSequence;
     uint16                 LastCommandCode;
