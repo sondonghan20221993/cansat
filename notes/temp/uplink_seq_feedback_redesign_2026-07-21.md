@@ -1,0 +1,234 @@
+# 업링크 seq·피드백 규약 개정 — 문제 정리 및 설계 방향 (2026-07-21)
+
+> **주의**: 이 문서는 "무엇이 문제인지"와 "어느 방향으로 갈지"까지만
+> 정리한 것이며, 구현 착수 전 아래 관련 spec을 반드시 먼저 읽을 것.
+> 특히 반이중 TDM 슬롯 정렬(RX 윈도우 100ms), 4회 재전송 설계,
+> 권한검증/request_token 규약과 충돌하지 않아야 함.
+>
+> 필독: `notes/mission_app_runtime_spec.md` §18.4(프레임/Flags)·§18.10(health
+> gate)·§18.11.1(권한검증), `notes/lora_protocol_v2_spec.md` §4(DL2 포맷)·§7(타이밍),
+> `notes/lora_tdm_app_behavior_spec.md` §10(UFB), `notes/uplink_lora_test_status.md` §4
+
+---
+
+## 발단
+
+오늘 UFB(UplinkFeedback) 관련 버그를 고치다가, 문제의 뿌리가 **개별
+버그가 아니라 "지상이 명령의 처리 결과를 어떻게 확인하는가"라는 규약
+자체의 미비**라는 게 드러남. 서로 얽힌 이슈 5개를 한 곳에 정리.
+
+---
+
+## 확인된 문제
+
+### [긴급-1] 4회 재전송 중복이 "실패"로 보고됨 — 오늘 내 변경이 유발
+
+지상은 좁은 RX 윈도우를 놓치지 않으려 **같은 명령을 4개 슬롯에
+재전송**함(`_UPLINK_RETX = 4`, `fc_serial_ws_server.py:351`).
+설계 의도된 동작이며 `uplink_lora_test_status.md` §4 "문제 A"에 근거 있음.
+
+그런데 `uplink_app`의 중복 판정은:
+```c
+/* uplink_app_cmds.c */
+static bool UPLINK_APP_IsSequenceAccepted(uint16 Sequence)
+{
+    if (UPLINK_APP_Data.AcceptedCount == 0U) return true;
+    return (Sequence > UPLINK_APP_Data.LastAcceptedSequence);
+}
+```
+→ 슬롯 1은 수락, **슬롯 2·3·4는 `REJECT_SEQUENCE(10)`**.
+
+여기에 오늘 내가 넣은 두 변경이 겹침:
+- `04d8f99` — `REJECT_SEQUENCE(10)` → `UFB_SEQ_FAIL(2)` 매핑
+- `073a680` — `RunTx()`의 매 사이클 UFB 리셋 제거
+
+**결과: 정상 성공한 명령이 오히려 `SEQ_FAIL(2)`을 영구 래치함.**
+
+```
+슬롯1  seq N 수락, 라우팅        → ufb=0
+슬롯2  seq N 중복 → REJECT_SEQ   → ufb=2
+슬롯3,4 동일                      → ufb=2
+이후    (리셋 없음)               → ufb=2 무한 유지
+```
+
+오늘 실측에서 안 드러난 건 GUI가 명령 직후 **첫** 패킷만 보고
+끝내서(`armPendingCommand` + 1초 타임아웃) 운 좋게 이전 OK를 읽었기 때문.
+
+→ **"우리 재전송의 중복"은 실패가 아니므로 UFB로 새어나가면 안 됨.**
+
+---
+
+### [긴급-2] 지상국 재시작 시 명령권 상실 (신규 발견, 더 위험)
+
+**기체는 기억하고 지상은 잊는 비대칭:**
+
+| | 저장 위치 | 재시작 시 |
+|---|---|---|
+| 기체 `LastAcceptedSequence` | `/cf/uplink_app_state.bin` (`uplink_app.c:111` Load, `uplink_app_cmds.c:361` Save) | **유지됨** — 게다가 로드 시 `AcceptedCount=1` 강제라 "첫 명령 무조건 통과" 장치도 꺼짐 |
+| 지상 `_SeqCounter._v` | 프로세스 메모리뿐 | **1로 리셋** |
+
+시나리오:
+```
+1. 명령 50회 전송 → 기체가 LastAcceptedSequence=50 저장
+2. 지상국 서버 재시작       ← 오늘 실제로 했던 동작(PARAM_BOUNDS 반영 때문)
+3. 다음 명령 seq=1 → 1 > 50 거짓 → 거부
+4. 기체를 재부팅해도 파일에서 50을 다시 읽음 → 여전히 거부
+```
+
+**비행 중 지상 소프트웨어를 한 번 재시작하면 명령권을 잃음.**
+복구 방법이 (a) 실패할 명령을 50번 태워 카운터를 넘기거나
+(b) 기체에 SSH로 붙어 상태 파일 삭제 — 둘 다 비행 중 불가/부적절.
+
+65535회 wrap보다 **훨씬 자주 발생할 조건**.
+
+---
+
+### [중] 문제 3. seq 65535 wraparound
+
+지상은 `1..65535` 순환 후 **1로 되돌림**
+(`_SeqCounter.next()`: `self._v = (self._v % 0xFFFF) + 1`, 전용 테스트도 있음).
+기체는 엄격한 `>` 비교라 되돌아온 `1`이 영구 거부됨.
+
+`mission_app_runtime_spec.md:1878`에 "wraparound 허용 여부와 허용 시간
+창은 추가 확장 시에만 세분화한다"로 **의도적 유예** 상태이나,
+seq 규칙을 손보는 김에 같이 확정하는 게 맞음.
+
+**부수 발견 — 타입 불일치**:
+- 무선/텔레메트리: `uint16` (`LastCommandSequence`, `LastRxSequence`)
+- 내부/영속 상태: `uint32` (`uplink_app.h:28`, `uplink_app_utils.c:19`)
+
+모듈러 비교를 도입할 때 캐스팅을 잘못하면 조용히 깨질 수 있는 지점.
+
+---
+
+### [중] 문제 4. UFB에 "어느 명령의 결과인지"가 없음 (A-1의 근본 원인)
+
+DL2 프레임의 `ufb`는 **태그 없는 1바이트**
+(`lora_protocol_v2_spec.md:47`). 지상은 "명령 보낸 뒤 처음 온 UFB =
+내 명령의 결과"라고 추측할 수밖에 없음.
+
+**그런데 기체 내부에는 이미 상관 정보가 있음**:
+```c
+/* uplink_app_utils.c:56-57 — UPLINK_STATUS_MID */
+Tlm->LastCommandSequence = UPLINK_APP_Data.LastRxSequence;  /* 어느 명령 */
+Tlm->LastCommandResult   = UPLINK_APP_Data.LastCommandResult; /* 결과 */
+```
+그리고 `lora_tdm_app`이 이미 이걸 구독 중(`lora_tdm_app_dispatch.c:101`).
+
+→ **`lora_tdm_app`이 결과 1바이트만 고르고 seq는 버리는 게 유일한 병목.**
+seq만 같이 내려보내면 지상이 대조 가능해지고, 오늘 씨름한
+"래치 vs 리셋" 논쟁 자체가 소멸함(래치가 남아있든 말든 seq가 다르면
+무시하면 되므로 TTL 같은 것도 불필요).
+
+---
+
+### [중] 문제 5. "라우팅 성공"과 "실제 적용 완료"가 구분 안 됨
+
+`uplink_app`은 **프록시/라우터**이지 설정을 직접 적용하지 않음.
+실제 적용은 대상 앱이 함:
+
+| 단계 | 주체 | 현재 |
+|---|---|---|
+| 프레임 수신/CRC | `lora_tdm_app` | ✅ |
+| 검증+라우팅 | `uplink_app` | ✅ (`ROUTED`) |
+| **실제 적용** | 대상 앱 | ❌ **회신 경로 없음** |
+
+대상 앱은 자기 결과를 갖고 있음 — 예:
+`mavlink_bridge_app`의 `LastConfigResult`(`CONFIG_RESULT_OK` /
+`CONFIG_RESULT_BAD_VALUE`, `mavlink_bridge_app_utils.c:1913,1928`).
+그러나 **`uplink_app`으로 돌아오는 길이 없어** 지상까지 못 옴.
+
+`mission_app_runtime_spec.md` §18.4.6.4가 "전달 vs 실행 구분 … 완료"라고
+쓴 부분이 바로 이것이며, **실제로는 미구현**
+(`command_dead_end_audit_2026-07-21.md` Finding 1과 동일 사안).
+
+---
+
+### [참고] 문제 6. 1개 명령이 최대 12회 전파
+
+지상 GUI는 `UFB=1(CRC_FAIL)`에 대해 최대 3회 자동 재전송하고,
+각 재전송이 다시 4슬롯으로 나감 → **3 × 4 = 12 프레임**.
+현재 `SEQ_FAIL(2)`에는 자동 재전송을 안 하므로(수동 안내) 긴급-1이
+직접 증폭을 유발하진 않으나, 규약 개정 시 재전송 정책을 함께
+점검할 것.
+
+---
+
+## 설계 방향
+
+### 1단계 — 긴급 차단 (프로토콜 변경 없음)
+
+- [ ] **재전송 중복을 실패로 보고하지 않기**
+      `uplink_app`이 `Sequence == LastAcceptedSequence`(우리 재전송)와
+      `Sequence < LastAcceptedSequence`(진짜 replay)를 구분해,
+      전자는 `REJECT_SEQUENCE`가 아닌 별도 결과코드(예: `DUPLICATE`)로.
+      → UFB로 새어나가지 않게 됨
+- [ ] 그때까지 오늘 넣은 `073a680`(리셋 제거)을 유지할지 롤백할지 판단
+      — 2단계가 곧 오면 유지, 지연되면 롤백 검토
+
+### 2단계 — 핵심: 다운링크에 seq 동봉 (문제 2·3·4 동시 해결)
+
+- [ ] DL2 프레임에 `ufb_seq`(2바이트) 추가,
+      `lora_tdm_app`이 `UPLINK_STATUS_MID`의 `LastCommandSequence`를
+      그대로 실음 (기체 내부엔 이미 있는 값이라 추가 수집 불필요)
+- [ ] 지상 GUI가 **seq 대조 후** 판정 → 타이밍/래치 문제 원천 소멸
+- [ ] **같은 필드로 지상 재시작 자가복구**(문제 2 해결):
+      기체가 "나는 seq N까지 받았다"를 상시 내려보내므로, 지상은
+      서버 기동 시 그 값을 보고 `N+1`부터 시작하면 됨
+      → **지상이 파일로 기억할 필요 자체가 없어짐. 새 장비에서 켜도 자동 정합.**
+- [ ] 기체 비교를 모듈러 윈도우로 변경(문제 3):
+      `uint16 diff = (uint16)(seq - last); accept if (diff != 0 && diff < 0x8000)`
+      — uint16/uint32 혼용(문제 3의 타입 불일치) 주의
+- [ ] 프레임 크기 47B → ~49B. `lora_protocol_v2_spec.md` §7 및
+      Stage 2/3 실측 마진(`lora_stage_measurement_runbook.md`) 안에
+      드는지 확인 필요
+
+### 3단계 — 실행 결과(EXECUTED) 회신 (문제 5)
+
+- [ ] 대상 앱 → `uplink_app` 실행결과 회신 MID/메커니즘 신규 설계
+      (현재 `UPLINK_STATUS_MID`는 `uplink_app`→`lora_tdm_app` 단방향)
+- [ ] `UPLINK_APP_RESULT_EXECUTED` 계열 결과코드 추가
+- [ ] `mission_app_runtime_spec.md` §18.4.6.4의 "완료" 표기를 실제와 정합화
+- [ ] UFB 코드표 전체를 이때 한 번에 확정
+      — 현재 `REJECT_STATE`만 매핑돼 있고 나머지 7종
+      (`FAILED`, `REJECT_CLASS`, `REJECT_LENGTH`, `ROUTE_MISS`,
+      `REJECT_ROUTE`, `REJECT_CHECKSUM`, `REJECT_VIEWPOINT`)은
+      지상에서 OK와 구분 불가
+      (`inferred_decisions_selfaudit_2026-07-21.md` A-2)
+
+### 선택 — 재전송 인덱스 명시 (2단계와 함께라면 저비용)
+
+`Flags` 바이트 여유 비트 활용:
+```
+bit:  7  6  5  4  3  2  1  0
+     └AUTH┘  └── 여유 5비트 ──┘ FORCE(0x01)
+```
+`bits[5:1]`이 비어 있어 재전송 인덱스(1~4)는 2비트면 충분,
+**프레임 크기·air time 증가 없음**.
+
+- 이득: 4번 중 몇 번째가 통과했는지 → **RF 링크 마진 진단 지표**
+- 비용: 지상이 4개 프레임을 각각 다르게 생성(현재는 동일 문자열 4회)
+- 정확성 자체는 1단계(ⓑ 기체 추론)로 이미 확보되므로 **급하지 않음**.
+  2단계에서 어차피 양쪽을 손대므로 그때 같이 넣는 것을 권장.
+
+---
+
+## 미결정 사항
+
+- [ ] 1단계만 먼저 할지, 2단계까지 묶어서 설계 후 한 번에 갈지
+- [ ] `073a680`(RunTx 리셋 제거) 유지 vs 롤백
+- [ ] 모듈러 윈도우 크기(half-range `0x8000` vs 더 좁게) —
+      좁을수록 replay 방어는 강하나 정상 desync 복구가 어려워짐
+- [ ] 재전송 인덱스(ⓐ)를 2단계에 포함할지
+- [ ] "인증된 seq 재동기 명령"(모든 어긋남의 최종 탈출구)이 필요한지 —
+      2단계의 자가복구로 대부분 해소되므로 우선순위 낮음.
+      도입 시 seq 검사를 우회해야 하므로 `request_token` 기반 인증 선행 필요
+
+---
+
+## 관련
+- `notes/temp/inferred_decisions_selfaudit_2026-07-21.md` (A-1/A-2 — 오늘 내 변경의 한계)
+- `notes/temp/command_dead_end_audit_2026-07-21.md` (Finding 1 = 문제 5)
+- `notes/temp/ground_controllable_capability_plan_2026-07-21.md` (P0 = 문제 5)
+- `notes/temp/openmct_repo_gap_audit_2026-07-21.md` (openMCT-2 = 재전송 seq 재사용)
+- `notes/temp/system_wide_reaudit_2026-07-21.md`
