@@ -166,7 +166,8 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 
 | ID | 내용 | 근거 |
 |---|---|---|
-| **BL-31** | D-1: 앱 재시작 실측 (`tools/runtime_app_restart_test.sh`) | `testcase_coverage_gap` |
+| **BL-38** | 🔴 **RT-CORE-003 실기 FAIL로 발견(2026-07-22)**: uplink/lora 자동 재시작이 fault 우선순위 else-if 체인 내부에 있어 상위 fault(EKF invalid 등) 지속 시 도달 불가 + 카운터 리셋됨 — GPS 음영에서 앱 자동복구 전면 무력화. **A안 합의(미구현)**: 재시작 로직을 체인에서 분리해 각 `*TimedOut` 기준 독립 실행(FaultCode 보고는 기존 우선순위 유지). spec §11.1 결함 주석 참조 | RT-CORE-003 실측 |
+| **BL-31** | D-1: 앱 재시작 실측 (`tools/runtime_app_restart_test.sh`) — 2026-07-22 1차 시도: 스크립트 앱명 버그(소문자→`UPLINK_APP` 등록명) 수정, CI_LAB 미탑재 발견·추가. uplink_app FAIL → BL-38 결함 발견. 결함 수정 후 재시험 필요 | `testcase_coverage_gap` |
 | **BL-32** | D-2: TDM/LoRa/DL2-SYSTIME 실물 테스트군 | 동 |
 | **BL-33** | D-3: 통합 순차 세션 7단계 | 동 |
 | **BL-34** | `MISSION_ITEM_INT` 경로 실물 FC 검증 (ArduPilot 거부 위험) | `mission_item_int_frame_gap` |

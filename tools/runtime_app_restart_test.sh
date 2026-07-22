@@ -40,10 +40,12 @@ if [[ "$APP" == "uplink_app" ]]; then
     RESTART_EID_NAME="CFS_CORE_APP_UPLINK_RESTART_EID"
     RESTART_EID_NUM=15
     APP_STRLEN=20  # CFE_MISSION_MAX_API_LEN
+    CFE_APP_NAME="UPLINK_APP"   # cFE 등록명(startup.scr 3번째 필드) — 바이너리명 아님 (2026-07-22 실측 수정: 소문자명은 GetAppIDByName 실패 RC=0xC4000002)
 else
     RESTART_EID_NAME="CFS_CORE_APP_LORA_RESTART_EID"
     RESTART_EID_NUM=16
     APP_STRLEN=20
+    CFE_APP_NAME="LORA_TDM_APP"
 fi
 
 if [[ ! -x "$CMD_SEND" ]]; then
@@ -60,7 +62,7 @@ fi
 echo "[1/4] STOP_APP 커맨드 전송: $APP"
 LOG_MARK_TIME="$(date '+%Y-%m-%d %H:%M:%S')"
 "$CMD_SEND" --host="$HOST" --port="$PORT" --pktid="$ES_CMD_MID" --pktfc="$ES_STOP_APP_CC" \
-    --string="${APP_STRLEN}:${APP}"
+    --string="${APP_STRLEN}:${CFE_APP_NAME}"
 
 echo "[2/4] cfs_core_app HK timeout(5s) + 재시작 인터벌(5s) 대기 (여유 4s 포함, 총 14s)"
 sleep 14

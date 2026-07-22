@@ -461,6 +461,20 @@ cFS는 고정된 재시도, 다시 시작 또는 재부팅 타이밍 값을 정�
 재시도 간격은 완료 또는 실패 감지 시간부터 계산됩니다.
 이전 복구 시도.
 
+> 🔴 **실측 발견 결함 (2026-07-22, RT-CORE-003 실기 시험, 미수정)**:
+> 위 표의 uplink/lora 자동 재시작이 **fault 우선순위 체인에 종속**되어
+> 있어 상위 fault가 지속되면 발동하지 않는다.
+> `PublishSystemHealth()`의 판정이 `BridgeTimedOut → EkfTimedOut →
+> LocalTimedOut → AttitudeTimedOut → UplinkTimedOut → LoraTimedOut`
+> 순서의 단일 `else if` 체인이고 재시작 로직이 각 분기 **내부**에 있어서,
+> 예컨대 GPS 음영/실내(`EkfTimedOut` 상시 참) 상황에서는 uplink_app이
+> 죽어도 EKF 분기에서 체인이 끝나 재시작 분기에 도달 불가 — 심지어 EKF
+> 분기가 `UplinkRestartCount=0` 리셋까지 수행. 실기 재현: uplink_app
+> STOP 후 자동 재시작 미발동, `Msg Limit Err(0x1904, UPLINK_CMD)` 지속.
+> **수정 방향(합의됨, 미구현)**: 앱 생존 감시·재시작 시도를 fault
+> 우선순위 체인에서 분리해 각 `*TimedOut` 플래그 기준으로 독립 실행
+> (HealthState/FaultCode 보고는 기존 우선순위 유지). — A안, 2026-07-22.
+
 재시도 횟수는 대상이 유효한 상태로 유지된 후에만 재설정됩니다.
 구성된 안정 기간에 대한 명목 상태.
 
@@ -773,6 +787,14 @@ ConfigChecksum = additive sum (uint16 wrapping):
   - Checksum 일치 → 다음 검증 단계로 진행 (ConfigVersion, PayloadLength 등)
 
 이 두 단계 checksum 검증(lora_tdm_app의 프레임 CRC + 각 app의 payload checksum)으로 SB 메시지 계층까지의 무결성을 보증한다.
+
+> **지상 노출 정책 (2026-07-22 사용자 결정)**: `cfs_core_app`(scope=1)의
+> CONFIG 파라미터 6종(`attitude/local/gps/ekf/bridge_timeout_ms`,
+> `publish_period_ms`)은 전부 헬스판정 튜닝 노브로, 실운용에서 지상이
+> 바꿀 일이 없고 비행 중 timeout 상향은 FC 데이터 끊김을 가리는 위험이
+> 있다. 따라서 **지상 GUI(uplinkGUI) CONFIG scope 드롭다운에서 cfs_core는
+> 제외**한다(openMCT ⑦). 기체측 scope=1 처리·서버 meta·CLI 경로는 벤치
+> 튜닝용으로 유지 — 기능 삭제가 아니라 GUI 노출 제한이다.
 
 ### 13.5 활성화 경계
 
