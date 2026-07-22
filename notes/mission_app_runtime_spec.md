@@ -664,6 +664,38 @@ window 기반 제한과 카운터 재설정의 상호작용 규칙:
 - 저장 빈도는 event-driven update를 기본으로 하며, 고속 sensor sample은 저장 대상이 아니다.
 - 다른 백엔드로 교체하더라도 본 문서의 record integrity field와 reboot recovery contract를 유지해야 한다.
 
+### 12.1 `uplink_app` 영속 상태 구현 (2026-07-22, BL-17/BL-18 — spec에 구체 수치 없어 신규 기록)
+
+`UPLINK_APP_LoadState()`/`SaveState()`(`uplink_app_utils.c`)가 위 일반 원칙을
+`/cf/uplink_app_state.bin`(경로는 `UPLINK_APP_STATE_FILE_PATH`, 테스트 환경에서
+`UPLINK_APP_STATE_FILE_PATH` env var로 주입 가능 — BL-17 커버리지 갭 해소 시
+lora_tdm_app/mavlink_bridge_app의 시리얼 경로 주입과 동일 패턴 적용)에
+구체적으로 구현한다. 이 절의 수치/EID는 spec 원문에 없던 것을 구현 시
+확정해 기록한 것이다.
+
+**레코드 구조** (16바이트, 전부 `uint32`): `Magic`(`0x55504C4BU`="UPLK") /
+`LastAcceptedSequence` / `BootCount` / `Checksum`(`Magic+LastAcceptedSequence+BootCount`
+단순합, 암호학적 강도 아님 — 비트플립 탐지 목적).
+
+**쓰기(atomic write)**: `.tmp` 파일에 쓰고 `fsync()` 후 `rename()`, 이어서 부모
+디렉터리(`/cf`) fd도 `fsync()`(BL-18, 2026-07-21) — POSIX상 rename 자체의
+디렉터리 엔트리 갱신도 정전 시 유실 가능해 디렉터리 fsync 없이는 rename의
+atomic 보장이 불완전하다.
+
+**읽기 시 손상 판정** (BL-17, 2026-07-22, 신규 `UPLINK_APP_STATE_CORRUPT_EID`=9):
+
+| 조건 | 판정 | 이벤트 |
+| --- | --- | --- |
+| `open()` 실패, `errno==ENOENT` | 첫 부팅(정상) | 없음(조용히 기본값) |
+| `open()` 실패, 그 외 errno | 이례적 — 손상과 동일 취급 | `STATE_CORRUPT_EID` ERROR |
+| `read()` 바이트 수 불일치(truncated) | 손상 | `STATE_CORRUPT_EID` ERROR |
+| `Magic` 불일치 | 손상 | `STATE_CORRUPT_EID` ERROR |
+| `Checksum` 불일치 | 손상 | `STATE_CORRUPT_EID` ERROR |
+| 전부 통과 | 복원 성공 | `STARTUP_EID` INFO |
+
+손상 판정 시 전부 기본값(`LastAcceptedSequence=0` 등)으로 폴백하며 크래시하지
+않는다 — "첫 부팅 오탐 없이 진짜 손상만 구분해서 보고"가 이 설계의 목적.
+
 ## 13. 활성/보류 구성 모델
 
 중요한 앱은 별도의 활성 및 보류 구성 버퍼를 유지해야 합니다.
@@ -1374,9 +1406,12 @@ recovery payload는 최소한 다음 필드를 포함해야 한다.
 > 파싱해 `RECOVERY_CMD_MID(0x190C)`로 전달한다. `cfs_core_app`의
 > `ProcessRecoveryCommand`는 `RecoveryAction` 6종별로 분기 — `RESET_COUNTER`는
 > 카운터 리셋, `RESTART_BRIDGE`/`RESTART_UPLINK`/`RESTART_LORA`(2026-07-21
-> BL-09 추가)는 실제 `CFE_ES_RestartApp()` 호출, `PARSER_RESET`/
-> `SERIAL_RECONNECT`는 여전히 로그만(크로스앱 CMD_MID 신설 필요, 범위 밖),
-> 미정의 action은 EVS 오류. 단위테스트: `A3_unittest_cases.md` A-3.1(5건),
+> BL-09 추가)는 실제 `CFE_ES_RestartApp()` 호출, **`PARSER_RESET`/
+> `SERIAL_RECONNECT`도 2026-07-22(P1-a)에 실제 연결 완료** — `mavlink_bridge_app`의
+> 기존 `CMD_MID`(`0x18A0`)를 FcnCode(`PARSER_RESET_CC=3`/`SERIAL_RECONNECT_CC=4`,
+> 신규 값, spec엔 이 숫자가 없었음 — 구현 시 확정)로 재사용해
+> `ResetParser()`/`CloseSerial()+OpenSerial()`을 실제 호출, 미정의 action은
+> EVS 오류. 단위테스트: `A3_unittest_cases.md` A-3.1(5건),
 > `notes/temp/a3_unittest_gap_implementation.md` 참조.
 >
 > **`전달 성공` vs `실행 성공` 구분 (2026-07-22, BL-08 완료)**: 위 §18.4.6.4
@@ -1395,6 +1430,14 @@ recovery payload는 최소한 다음 필드를 포함해야 한다.
 > (`cfs_core_app`만, 해당 클래스가 그 앱에만 있으므로)에 배선됨.
 > ROUTE_UPDATE/MODE/VIEWPOINT/DIAGNOSTIC은 범위 밖(EXEC_RESULT 미발행,
 > `uplink_app` 쪽은 여전히 `ROUTED`까지만 보고) — 후속 작업.
+>
+> **MID/enum 구체값(2026-07-22, 신규 기재 — spec 원문엔 없던 값)**: MID
+> `0x1912`는 기존 표에서 다음 빈 번호로 임의 배정. `EXEC_RESULT_TLM_t.SourceApp`
+> 값은 `EXEC_RESULT_SOURCE_CFS_CORE=1`/`MAVLINK_BRIDGE=2`/`LORA_TDM=3` —
+> CONFIG_CMD_MID의 기존 `ConfigScope` 값(cfs_core=1/mavlink_bridge=2/lora_tdm=3)과
+> 맞춰 배정. `CommandClass` 필드는 uplink_app의 `UPLINK_APP_CLASS_*` 값을
+> 그대로 매직넘버로 씀(cfs_core_app 등은 그 헤더를 참조하지 않아서) — CONFIG=1,
+> RECOVERY=4.
 
 ##### 18.4.6.5 mode command
 

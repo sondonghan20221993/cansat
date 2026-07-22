@@ -451,8 +451,14 @@ else:
 - `LoRaFd`는 초기화 시 `-1`로 설정한다.
 - `RunCycle()` 진입마다 `LoRaFd < 0`이면 `OpenSerial()` 시도.
 - `OpenSerial()` 실패 시 EVS ERROR 이벤트 발행, `LoRaFd = -1` 유지.
-- 성공 시 O_RDWR, 57600 baud, 8N1, no flow control, blocking 모드로 설정.
+- 성공 시 O_RDWR, `LORA_TDM_APP_LORA_BAUDRATE`(57600) baud, 8N1, no flow control, blocking 모드로 설정.
 - `RunTx()`와 `RunRxWindow()`는 `LoRaFd < 0`이면 즉시 반환한다.
+- **BL-19(2026-07-22)**: baudrate는 이전에 `B57600` 하드코딩으로 설정값을
+  무시했음 — `shared_msgs/serial_baud.h`(`SERIAL_BAUD_GetConstant()`)로
+  실제 연결. 이 헤더는 `mavlink_bridge_app`이 원래 갖고 있던 int→`speed_t`
+  lookup(9600~921600 8종)을 두 앱이 공유하도록 이관한 것 — spec에 이 공유
+  설계 자체가 기록된 적 없어 신규 기재. 지원 목록에 없는 값이면
+  `SERIAL_OPEN_ERR_EID`로 경고 후 `B57600`으로 폴백(기존 동작 불변).
 
 ## 17. 설정 상수 <!-- 구 §14 -->
 

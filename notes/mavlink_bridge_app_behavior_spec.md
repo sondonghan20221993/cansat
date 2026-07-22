@@ -221,6 +221,12 @@ x/y는 `int32` (degE7, MISSION_ITEM_INT 표준 인코딩), z는 `float` meters(r
 | `PARAM_INTERVAL_MIN/MAX_US` | 10000 / 10000000 | CONFIG 스트림 간격 파라미터 허용 범위 |
 | `PARAM_MS_MIN/MAX` | 100 / 60000 | CONFIG ms 파라미터 허용 범위 |
 
+**BL-19(2026-07-22, 신규 기재)**: `SERIAL_BAUDRATE`(int→`speed_t` 변환)는 원래
+이 앱 내부 static `GetBaudConstant()`였으나, `lora_tdm_app`도 동일 변환이
+필요해져 `shared_msgs/serial_baud.h`(`SERIAL_BAUD_GetConstant()`)로 이관·공유—
+지원 baud 목록(9600/19200/38400/57600/115200/230400/460800/921600)과 동작은
+불변, 위치만 이동.
+
 ## 9. 실패 및 성공 처리
 
 ### 9.1 실패 처리
