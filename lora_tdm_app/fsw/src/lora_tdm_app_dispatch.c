@@ -119,9 +119,45 @@ void LORA_TDM_APP_ProcessCommandPacket(CFE_SB_Buffer_t *SBBufPtr)
         {
             LORA_TDM_APP_Data.PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_STATE_BLOCKED;
         }
+        /* BL-11(2026-07-22): 나머지 8종 거부 사유 — UFB 전용 독립 번호로
+         * 매핑(uplink_app 내부 UPLINK_APP_RESULT_* 번호와 별개, spec §9.2). */
+        else if (StatusMsg->LastCommandResult == 4U)  /* FAILED */
+        {
+            LORA_TDM_APP_Data.PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_FAILED;
+        }
+        else if (StatusMsg->LastCommandResult == 5U)  /* REJECT_VERSION */
+        {
+            LORA_TDM_APP_Data.PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_REJECT_VERSION;
+        }
+        else if (StatusMsg->LastCommandResult == 6U)  /* REJECT_CLASS */
+        {
+            LORA_TDM_APP_Data.PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_REJECT_CLASS;
+        }
+        else if (StatusMsg->LastCommandResult == 7U)  /* REJECT_LENGTH */
+        {
+            LORA_TDM_APP_Data.PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_REJECT_LENGTH;
+        }
+        else if (StatusMsg->LastCommandResult == 8U)  /* ROUTE_MISS */
+        {
+            LORA_TDM_APP_Data.PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_ROUTE_MISS;
+        }
+        else if (StatusMsg->LastCommandResult == 9U)  /* REJECT_ROUTE */
+        {
+            LORA_TDM_APP_Data.PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_REJECT_ROUTE;
+        }
+        else if (StatusMsg->LastCommandResult == 12U)  /* REJECT_CHECKSUM */
+        {
+            LORA_TDM_APP_Data.PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_REJECT_CHECKSUM;
+        }
+        else if (StatusMsg->LastCommandResult == 13U)  /* REJECT_VIEWPOINT */
+        {
+            LORA_TDM_APP_Data.PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_REJECT_VIEWPOINT;
+        }
         /* UPLINK_APP_RESULT_DUPLICATE = 14 (BL-01): 4x 재전송 슬롯의 중복
          * 도착. replay가 아니므로 SEQ_FAIL로 오귀속하지 않고 무시한다 —
-         * PendingUplinkFeedback은 직전 값(성공 시 OK)을 그대로 유지. */
+         * PendingUplinkFeedback은 직전 값(성공 시 OK)을 그대로 유지.
+         * EXECUTED_OK/EXECUTED_FAILED = 15/16 (BL-08): SB 레벨 실행결과라
+         * UFB(라우팅 단계 판정)와 성격이 달라 매핑 안 함 — 직전 값 유지. */
     }
     else
     {

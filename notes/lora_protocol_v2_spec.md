@@ -44,7 +44,7 @@ FC 상태 + 시스템 헬스를 **하나의 프레임**으로 매 TDM 주기 전
 | 1 | len | u8 | magic부터 CRC 직전까지 길이 (확장 블록 포함) |
 | 2 | seq | u16 | DownlinkSeq (성공마다 +1, wrap 허용) |
 | 4 | flags | u8 | bit0=SysTime 블록 첨부, bit1=위치 saturate 발생, bit2~7 예약(0) |
-| 5 | ufb | u8 | UplinkFeedback (0x00 OK / 0x01 CRC_FAIL / 0x02 SEQ_FAIL / 0x03 STATE_BLOCKED — health gate 차단, 2026-07-21 추가) |
+| 5 | ufb | u8 | UplinkFeedback — 0x00 OK / 0x01 CRC_FAIL / 0x02 SEQ_FAIL / 0x03 STATE_BLOCKED(health gate 차단, 2026-07-21) / 0x04 FAILED / 0x05 REJECT_VERSION / 0x06 REJECT_CLASS / 0x07 REJECT_LENGTH / 0x08 ROUTE_MISS / 0x09 REJECT_ROUTE / 0x0A REJECT_CHECKSUM / 0x0B REJECT_VIEWPOINT (0x04~0x0B는 BL-11, 2026-07-22 추가 — 상세: `lora_tdm_app_behavior_spec.md` §9.2) |
 | 6 | ts | u32 | FC 상태 캐시 TimestampMs (FC boot ms) |
 | 10 | roll, pitch, yaw | i16 ×3 | rad ×10⁴ (±3.2767 rad → ±π 커버) |
 | 16 | x, y, z | i16 ×3 | cm (±327.67m, §4.1 saturation) |

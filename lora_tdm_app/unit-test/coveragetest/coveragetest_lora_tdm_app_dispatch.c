@@ -279,6 +279,69 @@ void Test_ProcessCommandPacket_UplinkStatus_Success(void)
     UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.PendingUplinkFeedback, LORA_TDM_APP_UPLINK_FB_OK);
 }
 
+/* BL-11(2026-07-22): 나머지 8종 거부 사유 UFB 매핑 확인 */
+void Test_ProcessCommandPacket_UplinkStatus_RejectFailedVariants(void)
+{
+    static const struct
+    {
+        uint8 Result;
+        uint8 ExpectedUfb;
+    } Cases[] = {
+        {4U, LORA_TDM_APP_UPLINK_FB_FAILED},           /* FAILED */
+        {5U, LORA_TDM_APP_UPLINK_FB_REJECT_VERSION},   /* REJECT_VERSION */
+        {6U, LORA_TDM_APP_UPLINK_FB_REJECT_CLASS},     /* REJECT_CLASS */
+        {7U, LORA_TDM_APP_UPLINK_FB_REJECT_LENGTH},    /* REJECT_LENGTH */
+        {8U, LORA_TDM_APP_UPLINK_FB_ROUTE_MISS},       /* ROUTE_MISS */
+        {9U, LORA_TDM_APP_UPLINK_FB_REJECT_ROUTE},     /* REJECT_ROUTE */
+        {12U, LORA_TDM_APP_UPLINK_FB_REJECT_CHECKSUM}, /* REJECT_CHECKSUM */
+        {13U, LORA_TDM_APP_UPLINK_FB_REJECT_VIEWPOINT} /* REJECT_VIEWPOINT */
+    };
+    size_t i;
+
+    for (i = 0; i < sizeof(Cases) / sizeof(Cases[0]); i++)
+    {
+        UPLINK_APP_StatusTlm_t Msg;
+        CFE_SB_MsgId_t         MsgId;
+
+        memset(&Msg, 0, sizeof(Msg));
+        Msg.LastCommandResult = Cases[i].Result;
+
+        MsgId = CFE_SB_ValueToMsgId(LORA_TDM_APP_UPLINK_STATUS_MID_VALUE);
+        UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+
+        LORA_TDM_APP_Data.PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_OK;
+        LORA_TDM_APP_ProcessCommandPacket((CFE_SB_Buffer_t *)&Msg);
+
+        UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.PendingUplinkFeedback, Cases[i].ExpectedUfb);
+    }
+}
+
+/* BL-11: EXECUTED_OK/EXECUTED_FAILED(BL-08, 15/16)는 UFB 매핑 범위 밖 —
+ * 직전 값을 그대로 유지해야 함 */
+void Test_ProcessCommandPacket_UplinkStatus_ExecutedResult_NotMapped(void)
+{
+    UPLINK_APP_StatusTlm_t Msg;
+    CFE_SB_MsgId_t          MsgId;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.LastCommandResult = 15U; /* UPLINK_APP_RESULT_EXECUTED_OK */
+
+    MsgId = CFE_SB_ValueToMsgId(LORA_TDM_APP_UPLINK_STATUS_MID_VALUE);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+
+    LORA_TDM_APP_Data.PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_OK;
+    LORA_TDM_APP_ProcessCommandPacket((CFE_SB_Buffer_t *)&Msg);
+
+    UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.PendingUplinkFeedback, LORA_TDM_APP_UPLINK_FB_OK);
+
+    Msg.LastCommandResult = 16U; /* UPLINK_APP_RESULT_EXECUTED_FAILED */
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+    LORA_TDM_APP_Data.PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_SEQ_FAIL;
+    LORA_TDM_APP_ProcessCommandPacket((CFE_SB_Buffer_t *)&Msg);
+
+    UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.PendingUplinkFeedback, LORA_TDM_APP_UPLINK_FB_SEQ_FAIL);
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(VerifyCmdLength);
@@ -296,4 +359,6 @@ void UtTest_Setup(void)
     ADD_TEST(ProcessCommandPacket_UplinkStatus_RejectState);
     ADD_TEST(ProcessCommandPacket_UplinkStatus_Duplicate_NoLatchOverride);
     ADD_TEST(ProcessCommandPacket_UplinkStatus_Success);
+    ADD_TEST(ProcessCommandPacket_UplinkStatus_RejectFailedVariants);
+    ADD_TEST(ProcessCommandPacket_UplinkStatus_ExecutedResult_NotMapped);
 }

@@ -42,7 +42,7 @@ CONFIG(3개 앱 전부)+RECOVERY(cfs_core_app) 배선. `BL-05`도 함께 해소.
 
 **2026-07-22 기준**: 위 목록의 "바로 진행 가능" 항목 **전부 완료** (BL-14 제외,
 명시적으로 선택사항). "고민 필요"(BL-17/19)도 전부 완료. 남은 것은
-"추후 결정 필요"(BL-10/11/15) 뿐 — 전부 사용자 결정 또는 하드웨어(Pi) 필요.
+"추후 결정 필요"(BL-10/15) 뿐 — 전부 사용자 결정 또는 하드웨어(Pi) 필요.
 
 ### 🤔 고민 필요 (별도 기록, 결정 전까지 보류)
 
@@ -64,7 +64,7 @@ CONFIG(3개 앱 전부)+RECOVERY(cfs_core_app) 배선. `BL-05`도 함께 해소.
 ✅BL-08 실행결과 회신 채널 — 완료(2026-07-22)
 ✅BL-05 BL-08과 함께 해소(2026-07-22)
 ✅BL-02 RunTx UFB 리셋 유지 확정 — 완료(2026-07-22)
-BL-11   UFB 라디오 바이트 코드표 확정 — BL-08과 별개, 여전히 미착수
+✅BL-11 UFB 라디오 바이트 코드표 확정 — 완료(2026-07-22)
 BL-10   VIEWPOINT 캐시 — "활용처 있음"만 정함, 뭘 할지는 미정
 BL-15   5Hz 상향 — "필요하다"만 정함, 실측 전엔 상한 미정(Pi 필요)
 ```
@@ -112,7 +112,7 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 | ~~**BL-08**~~ | ✅ **완료(2026-07-22)** — 공용 `EXEC_RESULT_MID`(0x1912, `shared_msgs/exec_result_msg.h`) 신설. `SourceSequence`(원본 seq 반사, 상관키)+`GenericResult`(OK/FAILED, uplink_app이 실제 사용)+`DetailCode`(대상앱 원시코드, 진단용)로 3개 앱의 서로 다른 스키마를 통일하지 않고 대분류로 흡수. `uplink_app`은 공용 MID 1개만 구독(사용자 결정), 타임아웃 없이 최신 수락 seq와 일치할 때만 반영(다음 명령이 오면 자연 무시, 사용자 결정). CONFIG는 3개 앱 전부, RECOVERY는 cfs_core_app만 배선 — ROUTE_UPDATE/MODE/VIEWPOINT/DIAGNOSTIC은 범위 밖. **주의**: CONFIG_CMD_MID는 3앱 공유 브로드캐스트라 scope 불일치(다른 앱 대상) 시 EXEC_RESULT 발행 안 함(발행하면 실제 대상 앱 응답과 경합해 오염). 회귀 UT: uplink_app 4종(10/102/35/108), cfs_core_app_utils(269), mavlink_bridge_app_utils(167), lora_tdm_app_utils(145) 전부 PASS, 총 1069/1069 | `ground_plan` P0 / `command_dead_end` F1 / T7 | 완료 |
 | ~~**BL-09**~~ | ✅ **부분 완료(2026-07-21)**. `RESTART_BRIDGE`가 실제 `CFE_ES_RestartApp()` 호출로 연결됨(기존 자동재시작과 동일 메커니즘 재사용). **신규 `RESTART_UPLINK`(4)/`RESTART_LORA`(5)** enum 추가 + 동일하게 실제 재시작 연결. `PARSER_RESET`/`SERIAL_RECONNECT`는 **여전히 로그만**(mavlink_bridge_app 프로세스 내부 함수라 크로스앱 CMD_MID 신설 필요 — P1-a~d는 별도 작업으로 남음). 회귀 UT 4종(19/7/35/257, 신규 4건) PASS. BL-25(uplinkCLI 도움말)도 같이 정정 | `ground_plan` P1-a~d / `command_dead_end` F2 | 중 |
 | **BL-10** | 🔶 **결정(2026-07-21): 활용처 있음(A안) — 단 "무엇을 할지"는 추후 결정.** `VIEWPOINT_CMD_MID` 캐시를 실제로 소비할 로직(경로계획 연동 등) 설계가 남음. 지금은 방향만 확정, 착수는 보류 | `ground_plan` P2 / `cfs_core_app_command_execution_gap` | 후속설계 필요 |
-| **BL-11** | UFB 코드표 전체 확정(라디오 다운링크 바이트, `EXEC_RESULT_MID`와는 별개 사안). 현재 `REJECT_STATE`만 매핑돼 나머지 7종(`FAILED`, `REJECT_CLASS`, `REJECT_LENGTH`, `ROUTE_MISS`, `REJECT_ROUTE`, `REJECT_CHECKSUM`, `REJECT_VIEWPOINT`)은 지상에서 OK와 구분 불가 — UFB는 u8 1바이트라 코드 공간도 별도 검토 필요 | T8 / `selfaudit` A-2 | 미착수 |
+| ~~**BL-11**~~ | ✅ **완료(2026-07-22)**. UFB 코드표를 4종→12종(`0x00~0x0B`)으로 확장 — uplink_app 내부 결과코드 번호를 그대로 복사하지 않고 UFB 전용 독립 번호로 순차 배정(무선 프로토콜을 SB 내부 enum과 분리). `lora_tdm_app_dispatch.c`에 8개 else-if 분기 추가(`FAILED`/`REJECT_VERSION`/`REJECT_CLASS`/`REJECT_LENGTH`/`ROUTE_MISS`/`REJECT_ROUTE`/`REJECT_CHECKSUM`/`REJECT_VIEWPOINT`). `DUPLICATE`(14)/`EXECUTED_OK`/`EXECUTED_FAILED`(15/16, BL-08)는 의도적으로 매핑 범위 밖(직전 값 유지). spec 3곳 갱신(`lora_tdm_app_behavior_spec.md` §9.2/§17, `lora_protocol_v2_spec.md`). 지상 디코더(openMCT, 별도 repo)는 이번 범위 밖 — 반영 작업 문서만 해당 repo `notes/temp/ufb_code_expansion_2026-07-22.md`에 기록 후 커밋/푸시(`f9e5a35`). 회귀 UT: lora_tdm_app 4종(64/14/145/59, dispatch에 신규 24케이스) 전부 PASS | T8 / `selfaudit` A-2 | 완료 |
 
 ---
 

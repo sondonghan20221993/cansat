@@ -183,7 +183,9 @@ CYCLE_PERIOD_MS = 200 ms   (Stage 3, 5 Hz — 2026-07 전환. Stage 1은 1000 ms
 - `<lat_e7>/<lon_e7>`: 정수 ×10⁷
 - `<alt_mm>`: 정수 (mm)
 - `<fix>`: GPS fix type (unsigned)
-- `<ufb>`: UplinkFeedback — 0x00=OK, 0x01=CRC_FAIL, 0x02=SEQ_FAIL
+- `<ufb>`: UplinkFeedback — `PendingUplinkFeedback`을 그대로 출력하므로 v2와 동일한
+  전체 코드 집합(§9.2 표, 0x00~0x0B) 적용 대상 — v1 문서가 0x03 이후를 누락하고
+  있었던 것 정정(2026-07-22)
 - `<state>/<fault>/<linkstate>`: unsigned 정수
 - `\n`: 줄바꿈 종단
 
@@ -237,10 +239,25 @@ downlink 패킷의 피드백 바이트(UFB)는 가장 최근 uplink 명령의 �
 
 | UFB 코드 | 값 | 의미 | 발생 조건 |
 |---|---|---|---|
-| `UFB_OK` | 0 | 정상 수신 **또는 pending 명령 없음** (아래 "알려진 한계" 참조) | uplink frame CRC/길이 검증 통과 |
-| `UFB_CRC_FAIL` | 1 | CRC 오류 | raw frame CRC mismatch, 길이 오류, framing 오류 |
-| `UFB_SEQ_FAIL` | 2 | 시퀀스 거부 | uplink_app의 `UPLINK_STATUS_MID`에서 `LastCommandResult == REJECT_SEQUENCE` (§18.10.1) |
-| `UFB_STATE_BLOCKED` | 3 | 헬스 게이트 차단 (2026-07-21 추가) | uplink_app의 `UPLINK_STATUS_MID`에서 `LastCommandResult == REJECT_STATE` — fail-safe boot(health 미수신)/DEGRADED/RECOVERY/FAILED 상태에서 허용 안 되는 클래스의 명령이 왔을 때 (§18.10.1) |
+| `UFB_OK` | 0x00 | 정상 수신 **또는 pending 명령 없음** (아래 "알려진 한계" 참조) | uplink frame CRC/길이 검증 통과 |
+| `UFB_CRC_FAIL` | 0x01 | CRC 오류 | raw frame CRC mismatch, 길이 오류, framing 오류 |
+| `UFB_SEQ_FAIL` | 0x02 | 시퀀스 거부 | uplink_app의 `UPLINK_STATUS_MID`에서 `LastCommandResult == REJECT_SEQUENCE`(10) (§18.10.1) |
+| `UFB_STATE_BLOCKED` | 0x03 | 헬스 게이트 차단 (2026-07-21 추가) | uplink_app의 `UPLINK_STATUS_MID`에서 `LastCommandResult == REJECT_STATE`(11) — fail-safe boot(health 미수신)/DEGRADED/RECOVERY/FAILED 상태에서 허용 안 되는 클래스의 명령이 왔을 때 (§18.10.1) |
+| `UFB_FAILED` | 0x04 | 일반 처리 실패 (BL-11, 2026-07-22 추가) | `LastCommandResult == FAILED`(4) |
+| `UFB_REJECT_VERSION` | 0x05 | 프로토콜 버전 불일치 (BL-11) | `LastCommandResult == REJECT_VERSION`(5) |
+| `UFB_REJECT_CLASS` | 0x06 | 알 수 없는 커맨드 클래스 (BL-11) | `LastCommandResult == REJECT_CLASS`(6) |
+| `UFB_REJECT_LENGTH` | 0x07 | 페이로드 길이 불일치 (BL-11) | `LastCommandResult == REJECT_LENGTH`(7) |
+| `UFB_ROUTE_MISS` | 0x08 | 라우팅 대상 없음 (BL-11) | `LastCommandResult == ROUTE_MISS`(8) |
+| `UFB_REJECT_ROUTE` | 0x09 | 라우트 갱신 거부 (BL-11) | `LastCommandResult == REJECT_ROUTE`(9) |
+| `UFB_REJECT_CHECKSUM` | 0x0A | 프록시 명령 체크섬 불일치 (BL-11) | `LastCommandResult == REJECT_CHECKSUM`(12) |
+| `UFB_REJECT_VIEWPOINT` | 0x0B | VIEWPOINT 페이로드 거부 (BL-11) | `LastCommandResult == REJECT_VIEWPOINT`(13) |
+
+**BL-11(2026-07-22) 매핑 범위 밖 — 의도적으로 UFB에 반영 안 함**:
+- `UPLINK_APP_RESULT_REJECT`(2, 범용 REJECT)는 코드 어디서도 실제 할당되지 않는 죽은 값이라 매핑 대상 아님(`git grep` 확인, 2026-07-22)
+- `DUPLICATE`(14)는 기존 정책대로 무시(직전 UFB 값 유지, BL-01 — 4회 재전송 슬롯 중복은 replay가 아니므로 SEQ_FAIL로 오귀속하지 않음)
+- `EXECUTED_OK`/`EXECUTED_FAILED`(15/16, BL-08)는 SB 레벨 "실행 결과" 회신이라 UFB(라우팅 단계 판정)와 성격이 달라 제외 — 필요 시 별도 논의
+
+UFB 값 배정 방식은 uplink_app 내부 `UPLINK_APP_Result_t` 번호를 그대로 복사하지 않고 **UFB 전용 독립 번호 체계**로 순차 배정(0x00부터 이어서 0x0B까지) — 두 프로토콜(SB 내부 vs 무선)을 분리해 uplink_app 내부 enum이 바뀌어도 무선 프로토콜이 흔들리지 않도록 함(2026-07-22 결정).
 
 **구현 정책**:
 
@@ -259,7 +276,14 @@ downlink 패킷의 피드백 바이트(UFB)는 가장 최근 uplink 명령의 �
      지상국 GUI가 `UFB=OK`를 "적용됨"으로 잘못 표시하는 문제 발생(실측으로 발견,
      `mavlink_bridge.attitude_interval_us` 변경 시도가 health_state=1에서 조용히
      거부됐음에도 GUI는 성공으로 표시)
-5. **downlink 게시**: TDM slot에서 피드백 바이트 포함하여 전송
+5. **나머지 8종 거부 사유 감지** (BL-11, 2026-07-22 추가):
+   - 같은 `UPLINK_STATUS_MID` 핸들러에서 `LastCommandResult`가 위 표의
+     `FAILED`/`REJECT_VERSION`/`REJECT_CLASS`/`REJECT_LENGTH`/`ROUTE_MISS`/
+     `REJECT_ROUTE`/`REJECT_CHECKSUM`/`REJECT_VIEWPOINT`(4,5,6,7,8,9,12,13) 중
+     하나면 대응하는 `UFB_*`(0x04~0x0B) 설정
+   - 배경: 이 감지가 없던 동안 이 8가지 거부는 전부 이전 UFB 값이 그대로
+     유지돼(대개 OK) 지상이 실패를 놓쳤음
+6. **downlink 게시**: TDM slot에서 피드백 바이트 포함하여 전송
 
 **신호 흐름**:
 ```
@@ -271,9 +295,14 @@ uplink raw frame (lora_tdm_app RX)
       uplink_app (ProcessUplinkCommand)
       [헬스게이트/시퀀스검증] → UPLINK_STATUS_MID 발행
            ↓ (lora_tdm_app 구독)
-      LastCommandResult = REJECT_SEQUENCE | REJECT_STATE | ROUTED(성공) | ...
+      LastCommandResult = REJECT_SEQUENCE | REJECT_STATE | FAILED | REJECT_VERSION |
+                           REJECT_CLASS | REJECT_LENGTH | ROUTE_MISS | REJECT_ROUTE |
+                           REJECT_CHECKSUM | REJECT_VIEWPOINT | ROUTED(성공) | ...
            ↓
-      PendingUplinkFeedback = UFB_SEQ_FAIL | UFB_STATE_BLOCKED | (변경 없음)
+      PendingUplinkFeedback = UFB_SEQ_FAIL | UFB_STATE_BLOCKED | UFB_FAILED |
+                               UFB_REJECT_VERSION | UFB_REJECT_CLASS | UFB_REJECT_LENGTH |
+                               UFB_ROUTE_MISS | UFB_REJECT_ROUTE | UFB_REJECT_CHECKSUM |
+                               UFB_REJECT_VIEWPOINT | (변경 없음)
            ↓
       downlink TDM slot에서 포함
 ```
@@ -284,6 +313,14 @@ uplink raw frame (lora_tdm_app RX)
 - UFB=SEQ_FAIL: 명령의 sequence가 거부됨 → sequence 재설정 또는 recovery 필요
 - UFB=STATE_BLOCKED: 기체 health_state가 이 명령 클래스를 허용하지 않음 →
   health_state/fault_code 확인 후 재시도 (예: CONFIG는 NOMINAL에서만 통과)
+- UFB=FAILED: 명령 처리 중 일반 실패(구체 사유는 아래 세부코드로 구분 안 됨)
+- UFB=REJECT_VERSION: 프록시 명령 프로토콜 버전 불일치 → 지상국 소프트웨어 버전 확인
+- UFB=REJECT_CLASS: 알 수 없는 커맨드 클래스 → 지상국 명령 정의 확인
+- UFB=REJECT_LENGTH: 페이로드 길이가 클래스별 기대값과 불일치
+- UFB=ROUTE_MISS: 라우팅 테이블에 대상 없음 → route 재구성 필요
+- UFB=REJECT_ROUTE: 라우트 갱신 명령 자체가 거부됨(형식 오류 등)
+- UFB=REJECT_CHECKSUM: 프록시 명령 페이로드 체크섬 불일치 → 재전송 권장
+- UFB=REJECT_VIEWPOINT: VIEWPOINT 명령 페이로드 검증 실패
 
 **알려진 한계 (2026-07-21)**: `UFB_OK`는 "성공적으로 적용됨"과 "현재 보고할
 pending 결과가 없음(default/idle)"을 구분하지 못하는 구조적 모호성이 있다.
@@ -428,6 +465,15 @@ else:
 | `LORA_TDM_APP_UPLINK_FB_OK` | `0` | UplinkFeedback 정상 |
 | `LORA_TDM_APP_UPLINK_FB_CRC_FAIL` | `1` | UplinkFeedback CRC 실패 |
 | `LORA_TDM_APP_UPLINK_FB_SEQ_FAIL` | `2` | UplinkFeedback 시퀀스 실패 — 구현됨 (`UPLINK_STATUS_MID` 구독, `LastCommandResult==10(REJECT_SEQUENCE)` 시 설정, `lora_tdm_app_dispatch.c:105-108`; 2026-07-21 매직넘버 3→10 오류 수정) |
+| `LORA_TDM_APP_UPLINK_FB_STATE_BLOCKED` | `3` | UplinkFeedback 헬스 게이트 차단 (2026-07-21 추가) |
+| `LORA_TDM_APP_UPLINK_FB_FAILED` | `4` | UplinkFeedback 일반 처리 실패 (BL-11, 2026-07-22 추가) |
+| `LORA_TDM_APP_UPLINK_FB_REJECT_VERSION` | `5` | UplinkFeedback 프로토콜 버전 불일치 (BL-11) |
+| `LORA_TDM_APP_UPLINK_FB_REJECT_CLASS` | `6` | UplinkFeedback 알 수 없는 커맨드 클래스 (BL-11) |
+| `LORA_TDM_APP_UPLINK_FB_REJECT_LENGTH` | `7` | UplinkFeedback 페이로드 길이 불일치 (BL-11) |
+| `LORA_TDM_APP_UPLINK_FB_ROUTE_MISS` | `8` | UplinkFeedback 라우팅 대상 없음 (BL-11) |
+| `LORA_TDM_APP_UPLINK_FB_REJECT_ROUTE` | `9` | UplinkFeedback 라우트 갱신 거부 (BL-11) |
+| `LORA_TDM_APP_UPLINK_FB_REJECT_CHECKSUM` | `10` (0x0A) | UplinkFeedback 프록시 명령 체크섬 불일치 (BL-11) |
+| `LORA_TDM_APP_UPLINK_FB_REJECT_VIEWPOINT` | `11` (0x0B) | UplinkFeedback VIEWPOINT 페이로드 거부 (BL-11) |
 | `LORA_TDM_APP_LINK_DISCONNECTED` | `0` | 링크 상태: 단절 |
 | `LORA_TDM_APP_LINK_CONNECTED` | `1` | 링크 상태: 정상 |
 | `LORA_TDM_APP_LINK_DEGRADED` | `2` | 링크 상태: 저하 |

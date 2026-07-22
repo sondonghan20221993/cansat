@@ -18,6 +18,17 @@
 #define LORA_TDM_APP_UPLINK_FB_CRC_FAIL        1
 #define LORA_TDM_APP_UPLINK_FB_SEQ_FAIL        2
 #define LORA_TDM_APP_UPLINK_FB_STATE_BLOCKED   3
+/* BL-11(2026-07-22): UFB 전용 독립 번호 체계로 순차 배정 (uplink_app
+ * 내부 UPLINK_APP_RESULT_* 번호와는 별개 — lora_tdm_app_behavior_spec.md
+ * §9.2 참조) */
+#define LORA_TDM_APP_UPLINK_FB_FAILED            4
+#define LORA_TDM_APP_UPLINK_FB_REJECT_VERSION    5
+#define LORA_TDM_APP_UPLINK_FB_REJECT_CLASS      6
+#define LORA_TDM_APP_UPLINK_FB_REJECT_LENGTH     7
+#define LORA_TDM_APP_UPLINK_FB_ROUTE_MISS        8
+#define LORA_TDM_APP_UPLINK_FB_REJECT_ROUTE      9
+#define LORA_TDM_APP_UPLINK_FB_REJECT_CHECKSUM   10
+#define LORA_TDM_APP_UPLINK_FB_REJECT_VIEWPOINT  11
 
 /* Link state values */
 #define LORA_TDM_APP_LINK_DISCONNECTED         0
