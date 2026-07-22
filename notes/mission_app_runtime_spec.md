@@ -1496,26 +1496,33 @@ diagnostic payload는 최소한 다음 필드를 포함해야 한다.
 > 없음(액션 단위 EVS 요약까지가 현재 범위). 단위테스트: `A3_unittest_cases.md`
 > A-3.3(4건), `notes/temp/a3_unittest_gap_implementation.md` 참조.
 
-##### 18.4.6.7 counter management
+##### 18.4.6.7 counter management (2026-07-22 확정, 구현 전)
 
-counter management payload는 최소한 다음 필드를 포함해야 한다.
+**class code**: `7`. 별도 MID 없이 `LORA_TDM_APP_UPLINK_PROCESS_UPLINK_CC` 프레임 내부 command_class로 식별.
+
+counter management payload:
 
 | 필드 | 형식 | 의미 | 검증 규칙 |
 | --- | --- | --- | --- |
-| `counter_scope` | `uint8` | 대상 앱 또는 전역 범위 | 승인된 범위만 허용 |
-| `counter_action` | `uint8` | reset 또는 동등한 관리 동작 | 승인된 action만 허용 |
-| `confirm_code` | `uint16` 또는 동등한 확인 필드 | 파괴적 관리 동작 확인 | 정책상 요구되면 반드시 일치 |
+| `counter_scope` | `uint8` | 대상 범위. `1`=mavlink_bridge, `2`=cfs_core, `3`=uplink, `4`=lora_tdm | 1~4 외 값 거부 |
+| `counter_action` | `uint8` | `0`=RESET(고정, reset 전용) | 0 외 값 거부(향후 확장 예약) |
+| `request_token` | `uint32` | §18.4.7 표준 request_token 재사용 — 파괴적 동작 확인은 Level 3 공통 규칙(`request_token≠0`)으로 대체, 별도 `confirm_code` 필드 없음 | Level 3 공통 규칙 적용 |
+
+**라우팅**: `cfs_core_app` 경유 왕복(round-trip) 없이 `uplink_app`이 직접 대상 앱으로 전달한다. 근거: `uplink_app`은 이미 `SYSTEM_HEALTH_MID`를 구독해 `CfsHealthState`를 로컬 보유하므로, Level 3 차단 판정에 `cfs_core_app` 왕복이 architecturally 불필요(cFE SB는 순수 비동기라 동기 왕복 자체가 불가능하기도 함). `cfs_core_app`은 검수(권한/스코프 검증)를 맡고, 최종 명령 실행은 `uplink_app`이 대상 앱에 직접 전송한다.
 
 출력 계약:
 
-- 승인된 경우에만 대상 앱 또는 `cfs_core_app` 카운터 관리 인터페이스로 전달한다.
-- 결과는 `UPLINK_STATUS_MID`에 명시적으로 반영되어야 한다.
+- 승인된 경우 `uplink_app`이 `counter_scope`가 가리키는 대상 앱에 기존 `RESET_COUNTERS` CC(각 앱이 이미 보유)를 SB로 직접 전송한다. 새 MID/CC를 대상 앱에 추가하지 않는다.
+- 결과는 `UPLINK_STATUS_MID`의 UFB에 반영한다 — 신규 코드 `0x0C`(COUNTER_MGMT_REJECTED, scope/action 오류 또는 Level 3 차단) 1종 추가. 정상 처리는 기존 `UFB_OK`(0x00) 재사용.
 
 거부 조건:
 
-- 확인 코드 불일치
-- 권한 부족
+- `counter_scope` 1~4 외
+- `counter_action` 0 외
+- Level 3 공통 차단 규칙(`request_token=0`, 시스템 헬스 DEGRADED/RECOVERY/FAILED 등)
 - 최소 보고 시작 상태에서 금지된 범위
+
+> 위 수치(class code 7, scope 1~4, UFB 0x0C)는 spec 원문에 없던 값으로 이번 세션 대화에서 확정. 구현 미착수(코드 없음) — 착수 시 이 섹션을 최종 근거로 삼는다.
 
 #### 18.4.7 Request Token 계약
 
@@ -1575,7 +1582,7 @@ replay 방어는 sequence에 전적으로 의존하며, token 값 유무와 무�
 | recovery command | 대상 앱 또는 `cfs_core_app` | action별 대상 허용 집합 필요 |
 | mode command | `cfs_core_app` 또는 mode authority | 직접 상태 전이 금지 |
 | diagnostic command | 대상 앱 diagnostic interface | 즉시 실행 가능 |
-| counter management | 대상 앱 또는 `cfs_core_app` | destructive action 승인 필요 |
+| counter management | `uplink_app` → 대상 앱 직접 전송(§18.4.6.7) | `cfs_core_app` 왕복 없음, destructive action 승인 필요 |
 
 구현은 `command_class`만으로 모든 라우팅을 고정해서는 안 되며, 필요한 경우 `target_id` 또는 payload 내부 대상 식별자를 함께 사용해야 한다.
 
