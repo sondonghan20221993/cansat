@@ -1815,11 +1815,12 @@ FAILED/RECOVERY 상태 차단은 실비행 안전상 존재 이유가 있음 —
 없이 보낼 때도 이 레벨은 항상 채워야 정상 동작한다(별도 버그 수정, health gate 우회와
 무관하게 필요).
 
-**미해결**: `UPLINK_APP_GetClassRequiredLevel()`의 switch문 case 값이 실제
-`UPLINK_APP_CLASS_*` enum과 불일치하는 것으로 보임(예: case 5="diagnostic"이라
-쓰여있으나 실제 `DIAGNOSTIC=6`, case 7="mode"인데 실제 `MODE=5`, class=7은 enum에
-존재하지 않음) — CONFIG(1)/ROUTE_UPDATE(2)/RECOVERY(4)는 일치해서 위 표엔 영향 없지만,
-VIEWPOINT/MODE/DIAGNOSTIC 권한 레벨은 별도로 재확인 필요(범위 밖, 이슈로만 기록).
+**~~미해결~~ 해결 확인(2026-07-22 재검증)**: `UPLINK_APP_GetClassRequiredLevel()`의
+case 불일치는 이미 수정돼 있음 — `uplink_app_cmds.c:37-56`이 raw 숫자 대신
+`UPLINK_APP_CLASS_*` enum 이름을 직접 사용하도록 재작성됨(NONE=1/CONFIG=2/
+ROUTE_UPDATE=2/VIEWPOINT=2/RECOVERY=3/MODE=3/DIAGNOSTIC=1, §18.10.4의
+MODE/DIAGNOSTIC 스왑 버그 해소 이력이 함수 주석에 기재됨). 이 문단의 이전
+"미해결" 표기는 낡은 것이었음.
 
 #### 18.10.4 UT 실측으로 확인된 DIAGNOSTIC 인증 영구 실패 — §18.10.3 미해결 항목의 실제 파급 (2026-07-14)
 

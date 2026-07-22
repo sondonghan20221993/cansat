@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <termios.h>
 #include <unistd.h>
@@ -480,13 +481,29 @@ bool UPLINK_APP_ForwardDiagnosticCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cm
     return (CFE_SB_TransmitMsg(CFE_MSG_PTR(DiagTlm.TelemetryHeader), true) == CFE_SUCCESS);
 }
 
+/* BL-17(2026-07-22) 커버리지 갭 해소: 테스트 환경(PTY mock 등)에서 상태
+ * 파일 경로를 주입할 수 있도록 env var를 우선 확인한다. 미설정 시 기존
+ * 컴파일타임 경로 사용(실환경 동작 불변) — lora_tdm_app/mavlink_bridge_app의
+ * 시리얼 경로 주입과 동일 패턴. */
+static const char *UPLINK_APP_GetStateFilePath(void)
+{
+    const char *EnvPath = getenv("UPLINK_APP_STATE_FILE_PATH");
+
+    if (EnvPath != NULL && EnvPath[0] != '\0')
+    {
+        return EnvPath;
+    }
+    return UPLINK_APP_STATE_FILE_PATH;
+}
+
 void UPLINK_APP_LoadState(void)
 {
     UPLINK_APP_PersistentState_t State;
     int                          Fd;
     ssize_t                      ReadRc;
+    const char                  *StatePath = UPLINK_APP_GetStateFilePath();
 
-    Fd = open(UPLINK_APP_STATE_FILE_PATH, O_RDONLY);
+    Fd = open(StatePath, O_RDONLY);
     if (Fd < 0)
     {
         /* BL-17(2026-07-22): ENOENT(파일 없음)=첫 부팅, 정상 상태라 조용히
@@ -546,16 +563,17 @@ void UPLINK_APP_SaveState(void)
     UPLINK_APP_PersistentState_t State;
     int                          Fd;
     int                          DirFd;
-    char                         TmpPath[sizeof(UPLINK_APP_STATE_FILE_PATH) + 4];
-    char                         DirPath[sizeof(UPLINK_APP_STATE_FILE_PATH)];
+    char                         TmpPath[256];
+    char                         DirPath[256];
     char                        *Slash;
+    const char                  *StatePath = UPLINK_APP_GetStateFilePath();
 
     State.Magic                = UPLINK_APP_STATE_MAGIC;
     State.LastAcceptedSequence = UPLINK_APP_Data.LastAcceptedSequence;
     State.BootCount            = UPLINK_APP_Data.BootCount;
     State.Checksum             = State.Magic + State.LastAcceptedSequence + State.BootCount;
 
-    snprintf(TmpPath, sizeof(TmpPath), "%s.tmp", UPLINK_APP_STATE_FILE_PATH);
+    snprintf(TmpPath, sizeof(TmpPath), "%s.tmp", StatePath);
 
     Fd = open(TmpPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (Fd < 0)
@@ -575,12 +593,12 @@ void UPLINK_APP_SaveState(void)
     fsync(Fd);
     close(Fd);
 
-    if (rename(TmpPath, UPLINK_APP_STATE_FILE_PATH) != 0)
+    if (rename(TmpPath, StatePath) != 0)
     {
         return;
     }
 
-    snprintf(DirPath, sizeof(DirPath), "%s", UPLINK_APP_STATE_FILE_PATH);
+    snprintf(DirPath, sizeof(DirPath), "%s", StatePath);
     Slash = strrchr(DirPath, '/');
     if (Slash != NULL)
     {

@@ -3,7 +3,10 @@
  ************************************************************************/
 
 #include "uplink_app_coveragetest_common.h"
+#include <fcntl.h>
 #include <math.h>
+#include <stdlib.h>
+#include <unistd.h>
 
 void Test_UPLINK_APP_ValidateProxyCommand(void)
 {
@@ -262,6 +265,108 @@ void Test_UPLINK_APP_LoadState_NoFile(void)
 
     UtAssert_INT32_EQ(UPLINK_APP_Data.AcceptedCount, 0);
     UtAssert_INT32_EQ(UPLINK_APP_Data.LastAcceptedSequence, 0);
+}
+
+/* BL-17(2026-07-22) 커버리지 갭 해소: UPLINK_APP_STATE_FILE_PATH env var
+ * 주입으로 truncated/bad-magic/checksum-mismatch 3개 분기를 /tmp의 실제
+ * 파일로 실행 — 이전엔 /cf가 테스트 환경에 없어 ENOENT 경로만 탈 수 있었음. */
+void Test_UPLINK_APP_LoadState_Truncated(void)
+{
+    const char *Path = "/tmp/uplink_app_ut_state_truncated.bin";
+    int         Fd;
+    uint8       Short[5] = {1, 2, 3, 4, 5};
+
+    setenv("UPLINK_APP_STATE_FILE_PATH", Path, 1);
+    Fd = open(Path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    UtAssert_True(Fd >= 0, "test fixture file created");
+    write(Fd, Short, sizeof(Short));
+    close(Fd);
+
+    UPLINK_APP_Data.AcceptedCount        = 0;
+    UPLINK_APP_Data.LastAcceptedSequence = 0;
+
+    UPLINK_APP_LoadState();
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.AcceptedCount, 0);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastAcceptedSequence, 0);
+
+    unlink(Path);
+    unsetenv("UPLINK_APP_STATE_FILE_PATH");
+}
+
+void Test_UPLINK_APP_LoadState_BadMagic(void)
+{
+    const char *Path = "/tmp/uplink_app_ut_state_badmagic.bin";
+    int         Fd;
+    uint32      Garbage[4] = {0xDEADBEEFU, 1, 2, 3}; /* Magic 필드가 틀림 */
+
+    setenv("UPLINK_APP_STATE_FILE_PATH", Path, 1);
+    Fd = open(Path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    UtAssert_True(Fd >= 0, "test fixture file created");
+    write(Fd, Garbage, sizeof(Garbage));
+    close(Fd);
+
+    UPLINK_APP_Data.AcceptedCount        = 0;
+    UPLINK_APP_Data.LastAcceptedSequence = 0;
+
+    UPLINK_APP_LoadState();
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.AcceptedCount, 0);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastAcceptedSequence, 0);
+
+    unlink(Path);
+    unsetenv("UPLINK_APP_STATE_FILE_PATH");
+}
+
+void Test_UPLINK_APP_LoadState_ChecksumMismatch(void)
+{
+    const char *Path = "/tmp/uplink_app_ut_state_badcrc.bin";
+    int         Fd;
+    /* Magic만 맞고 Checksum은 틀린 레코드(0x55504C4BU = "UPLK", uplink_app_utils.c 기준) */
+    uint32      Rec[4] = {0x55504C4BU, 42U, 3U, 0U /* wrong checksum */};
+
+    setenv("UPLINK_APP_STATE_FILE_PATH", Path, 1);
+    Fd = open(Path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    UtAssert_True(Fd >= 0, "test fixture file created");
+    write(Fd, Rec, sizeof(Rec));
+    close(Fd);
+
+    UPLINK_APP_Data.AcceptedCount        = 0;
+    UPLINK_APP_Data.LastAcceptedSequence = 0;
+
+    UPLINK_APP_LoadState();
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.AcceptedCount, 0);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastAcceptedSequence, 0);
+
+    unlink(Path);
+    unsetenv("UPLINK_APP_STATE_FILE_PATH");
+}
+
+void Test_UPLINK_APP_LoadState_OpenErrorNotEnoent(void)
+{
+    /* ENOENT가 아닌 open() 실패도 손상과 동일하게 취급 — 일반 파일을
+     * 디렉터리처럼 취급해 그 "아래" 경로를 열게 하면 ENOTDIR로 실패 */
+    const char *RegularFile = "/tmp/uplink_app_ut_not_a_dir.bin";
+    const char *BogusPath   = "/tmp/uplink_app_ut_not_a_dir.bin/x";
+    int         Fd;
+
+    Fd = open(RegularFile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    UtAssert_True(Fd >= 0, "test fixture file created");
+    close(Fd);
+
+    setenv("UPLINK_APP_STATE_FILE_PATH", BogusPath, 1);
+
+    UPLINK_APP_Data.AcceptedCount        = 0;
+    UPLINK_APP_Data.LastAcceptedSequence = 0;
+
+    UPLINK_APP_LoadState();
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.AcceptedCount, 0);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastAcceptedSequence, 0);
+
+    unlink(RegularFile);
+    unsetenv("UPLINK_APP_STATE_FILE_PATH");
 }
 
 void Test_UPLINK_APP_SaveState_NoDir(void)
@@ -563,6 +668,10 @@ void UtTest_Setup(void)
     ADD_TEST(UPLINK_APP_ReportHousekeeping);
     ADD_TEST(UPLINK_APP_UpdateStatusTelemetry);
     ADD_TEST(UPLINK_APP_LoadState_NoFile);
+    ADD_TEST(UPLINK_APP_LoadState_Truncated);
+    ADD_TEST(UPLINK_APP_LoadState_BadMagic);
+    ADD_TEST(UPLINK_APP_LoadState_ChecksumMismatch);
+    ADD_TEST(UPLINK_APP_LoadState_OpenErrorNotEnoent);
     ADD_TEST(UPLINK_APP_SaveState_NoDir);
     ADD_TEST(UPLINK_APP_IncrementBootCount_FromZero);
     ADD_TEST(UPLINK_APP_IncrementBootCount_WrapsAt256);
