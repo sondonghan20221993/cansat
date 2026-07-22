@@ -349,6 +349,32 @@ void Test_UPLINK_APP_ProcessUplink_RecoveryForwardFail(void)
     UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_FAILED);
 }
 
+/* BL-14: Flags bits[2:1]=RETX_IDX는 순수 진단 필드 — 어떤 값이 실려도
+ * 수락/거부 판정(auth/health/seq)에 영향이 없어야 한다(§18.4.3.1) */
+void Test_UPLINK_APP_ProcessUplink_RetxIdxBitsDoNotAffectAcceptance(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_RECOVERY;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(3) | (0x3U << 1); /* retx=3(4번째 슬롯) */
+    TestMsg.PayloadLength = 8;
+    TestMsg.Payload[4]    = 1; /* non-zero request_token */
+    TestMsg.Sequence      = 24;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U;
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_CORE);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ForwardRecoveryCommand), true);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.AcceptedCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_ROUTED);
+}
+
 void Test_UPLINK_APP_ProcessUplink_CounterMgmtAccept(void)
 {
     UPLINK_APP_ProcessUplinkCmd_t TestMsg;
@@ -934,6 +960,7 @@ void UtTest_Setup(void)
     ADD_TEST(UPLINK_APP_ProcessUplink_RoutePublishFail);
     ADD_TEST(UPLINK_APP_ProcessUplink_RecoveryAccept);
     ADD_TEST(UPLINK_APP_ProcessUplink_RecoveryForwardFail);
+    ADD_TEST(UPLINK_APP_ProcessUplink_RetxIdxBitsDoNotAffectAcceptance);
     ADD_TEST(UPLINK_APP_ProcessUplink_CounterMgmtAccept);
     ADD_TEST(UPLINK_APP_ProcessUplink_CounterMgmtForwardFail);
     ADD_TEST(UPLINK_APP_ProcessUplink_ViewpointAccept);

@@ -124,9 +124,12 @@ void UPLINK_APP_ProcessUplink(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
          * 않는다 (BL-01, notes/temp/uplink_seq_feedback_redesign). */
         UPLINK_APP_Data.DuplicateCount++;
         UPLINK_APP_Data.LastCommandResult = UPLINK_APP_RESULT_DUPLICATE;
+        /* BL-14: Flags bits[2:1]=RETX_IDX(0~3=슬롯-1) — 몇 번째 재전송
+         * 사본이 중복 도착했는지 진단용으로만 표기(§18.4.3.1) */
         CFE_EVS_SendEvent(UPLINK_APP_DUPLICATE_EID, CFE_EVS_EventType_DEBUG,
-                          "UPLINK_APP: duplicate uplink seq=%u (retransmit slot)",
-                          (unsigned int)Cmd->Sequence);
+                          "UPLINK_APP: duplicate uplink seq=%u retx=%u (retransmit slot)",
+                          (unsigned int)Cmd->Sequence,
+                          (unsigned int)((Cmd->Flags >> 1) & 0x3U));
         UPLINK_APP_UpdateStatusTelemetry(0);
         return;
     }
@@ -423,10 +426,13 @@ void UPLINK_APP_ProcessUplink(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
     UPLINK_APP_Data.LastRouteTarget   = (uint8)RouteTarget;
     UPLINK_APP_Data.LinkState         = UPLINK_APP_LINK_NOMINAL;
 
+    /* BL-14: retx=Flags bits[2:1] — 4x 슬롯 중 몇 번째 사본이 최초 수락됐는지.
+     * 0이면 첫 슬롯에 통과(링크 양호), 클수록 RF 마진 부족 신호(§18.4.3.1). */
     CFE_EVS_SendEvent(UPLINK_APP_PUBLISH_EID, CFE_EVS_EventType_INFORMATION,
-                      "UPLINK_APP: routed uplink class=%u seq=%u target=%u payload_len=%u",
+                      "UPLINK_APP: routed uplink class=%u seq=%u target=%u payload_len=%u retx=%u",
                       (unsigned int)Cmd->CommandClass, (unsigned int)Cmd->Sequence,
-                      (unsigned int)RouteTarget, (unsigned int)Cmd->PayloadLength);
+                      (unsigned int)RouteTarget, (unsigned int)Cmd->PayloadLength,
+                      (unsigned int)((Cmd->Flags >> 1) & 0x3U));
     UPLINK_APP_UpdateStatusTelemetry(0);
 }
 
