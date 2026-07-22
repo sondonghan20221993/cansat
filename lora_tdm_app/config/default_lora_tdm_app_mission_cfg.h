@@ -4,9 +4,11 @@
 #include "lora_tdm_app_interface_cfg.h"
 
 /* TDM timing */
-#define LORA_TDM_APP_CYCLE_PERIOD_MS          200
-#define LORA_TDM_APP_RX_WINDOW_MS             100
-#define LORA_TDM_APP_LINK_LOSS_THRESHOLD      15
+/* BL-15 Stage 4b 실측(2026-07-22): 100ms/50ms/50 — Stage 4a(150ms) PASS 후
+ * 10Hz 시도. 5분 soak 결과로 최종 상한 확정. 실측 완료 전까지 임시값. */
+#define LORA_TDM_APP_CYCLE_PERIOD_MS          100
+#define LORA_TDM_APP_RX_WINDOW_MS             50
+#define LORA_TDM_APP_LINK_LOSS_THRESHOLD      50
 #define LORA_TDM_APP_LINK_TIMEOUT_MS          5000
 
 /* Packet types */
