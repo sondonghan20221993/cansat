@@ -37,9 +37,49 @@ Stage 4b 타이밍(100ms/50ms/50).
 
 ## 남은 순서 (사용자 지시: 기록 후 순서대로 전부 시도)
 
-- [ ] D-1 lora_tdm_app 재시작 실측 — BL-38과 동일 결함 예상(EKF 분기가
-      상위) → FAIL 예상되나 실측 기록 목적으로 실행
-- [ ] D-2: TDM-RT-001~009, RT-LORA-001/004, RT-DL2-SYSTIME-001
+- [x] D-1 lora_tdm_app 재시작 실측(21:06) — **예상대로 FAIL**: STOP 후
+      LORA_RESTART_EID(16) 미발동, BL-38 동일 결함 확증(EKF 분기가 Lora
+      분기보다 상위). cfs.service 수동 복구
+## 🔴 신규 결함 2호 — BL-39: uplink_app 영속 상태가 Pi에서 무동작
+
+RT-DL2-SYSTIME-001 확인 중 CSV `uplink_boot_count`가 재시작 4회+ 후에도
+`1`인 것으로 발견(2026-07-22 21:10).
+
+- 원인: `UPLINK_APP_STATE_FILE_PATH = "/cf/uplink_app_state.bin"`을
+  **POSIX `open()`에 리터럴로** 사용 — `/cf`는 OSAL 가상 경로 관행일 뿐
+  Pi 실파일시스템에 `/cf` 디렉터리 없음(실제는
+  `~/cFS_clean/build/exe/cpu1/cf/`). `SaveState()`는 open 실패 시
+  이벤트 없이 조용히 return → **BootCount/LastAcceptedSequence 영속화
+  전체가 실기에서 한 번도 동작한 적 없음** (BL-12/BL-03 지상 재부팅
+  감지 실질 무효, BL-18 fsync도 무의미했음)
+- 가림 요인: LoadState ENOENT 침묵(BL-17 결정) + SaveState 무이벤트
+- 수정 후보(미결정): ⓐ cfs.service에 `Environment=UPLINK_APP_STATE_FILE_PATH=...`
+  (기존 env 주입 경로 재사용, 코드 무변경) ⓑ 기본 매크로를 상대경로
+  `cf/uplink_app_state.bin`으로(WorkingDirectory 기준) ⓒ OS_OpenCreate
+  (OSAL 가상 경로) 전환 — 제일 정석이나 수정 범위 큼.
+  + SaveState open/write 실패 시 1회성 EVS 경고 추가 검토
+
+## D-2 진행 (2026-07-22)
+
+- [x] TDM-RT-001 (다운링크 주기): ✅ Stage 4b soak가 상회 충족(100ms,
+      5분, 손실 0, seq 단조)
+- [x] TDM-RT-002 (ACK→CONNECTED): ✅ `link restored (→1)` 관측, ACK 흐름 확인
+- [x] TDM-RT-003 (no-ACK→DEGRADED): ✅ 20:33:09 `link degraded (1 -> 2)` 관측
+- [x] TDM-RT-004 (→DISCONNECTED): ✅ 20:58:49 `link lost (1 -> 0)` 관측
+- [x] TDM-RT-005 (ACK 재개→CONNECTED): ✅ 20:59:05 `link restored (0 -> 1)` 관측
+- [x] TDM-RT-006 (UP 프레임→라우팅): ✅ counter/config/recovery 다수
+      `routed uplink` 관측
+- [ ] TDM-RT-007 (CRC 변조→UFB=1): 지상 서버가 유효 프레임만 생성 —
+      변조 주입 도구 필요, 미실행
+- [ ] TDM-RT-008 (RX 윈도우 외 무시): 수동 타이밍 주입 곤란, 미실행
+- [ ] TDM-RT-009 / RT-LORA-001 (USB 분리/미연결 시작): 물리 조작 필요
+      (사용자 손)
+- [x] RT-LORA-004 (링크 전이 EVS): ✅ 위 003~005와 동일 증거로 충족
+- [x] RT-DL2-SYSTIME-001: 🔶 **부분** — v2 전환 후 DL2 수신·디코딩·ACK2
+      정상, `uplink_last_seq=5` 에코(BL-03) 확인. `sys_time_unix_usec`은
+      GPS 없어 빈 값(설계상 정상) — **완전 판정은 실외 GPS 락 필요**.
+      단, 이 과정에서 BL-39 발견
+- [ ] D-3: 통합 순차 세션 7단계 (TEST_CASES.md 1008행)
 - [ ] D-3: 통합 순차 세션 7단계 (TEST_CASES.md 1008행)
 - [ ] BL-22: `init_uart_clock=48000000` 원복 여부
 - [ ] BL-35: ACK seq mismatch 실측(항상 4~6 lag 관측 중 — SF/BW/CR 또는

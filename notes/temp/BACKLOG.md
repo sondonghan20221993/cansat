@@ -166,7 +166,8 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 
 | ID | 내용 | 근거 |
 |---|---|---|
-| **BL-38** | 🔴 **RT-CORE-003 실기 FAIL로 발견(2026-07-22)**: uplink/lora 자동 재시작이 fault 우선순위 else-if 체인 내부에 있어 상위 fault(EKF invalid 등) 지속 시 도달 불가 + 카운터 리셋됨 — GPS 음영에서 앱 자동복구 전면 무력화. **A안 합의(미구현)**: 재시작 로직을 체인에서 분리해 각 `*TimedOut` 기준 독립 실행(FaultCode 보고는 기존 우선순위 유지). spec §11.1 결함 주석 참조 | RT-CORE-003 실측 |
+| **BL-38** | 🔴 **RT-CORE-003 실기 FAIL로 발견(2026-07-22)**: uplink/lora 자동 재시작이 fault 우선순위 else-if 체인 내부에 있어 상위 fault(EKF invalid 등) 지속 시 도달 불가 + 카운터 리셋됨 — GPS 음영에서 앱 자동복구 전면 무력화. RT-CORE-004(lora)도 동일 확증. **A안 합의(미구현)**: 재시작 로직을 체인에서 분리해 각 `*TimedOut` 기준 독립 실행(FaultCode 보고는 기존 우선순위 유지). spec §11.1 결함 주석 참조 | RT-CORE-003/004 실측 |
+| **BL-39** | 🔴 **실기 발견(2026-07-22)**: uplink_app 영속 상태(`/cf/uplink_app_state.bin`)를 POSIX open 리터럴 경로로 사용 — Pi에 `/cf` 없음 → SaveState 조용히 실패, **BootCount/seq 영속화가 실기에서 한 번도 동작 안 함**(BL-12/BL-03 실질 무효). 수정 후보 ⓐ service env 주입 ⓑ 상대경로 ⓒ OSAL 전환 + SaveState 실패 EVS 추가 — 방향 미결정. `runtime_test_session_2026-07-22.md` 참조 | RT-DL2-SYSTIME-001 실측 중 발견 |
 | **BL-31** | D-1: 앱 재시작 실측 (`tools/runtime_app_restart_test.sh`) — 2026-07-22 1차 시도: 스크립트 앱명 버그(소문자→`UPLINK_APP` 등록명) 수정, CI_LAB 미탑재 발견·추가. uplink_app FAIL → BL-38 결함 발견. 결함 수정 후 재시험 필요 | `testcase_coverage_gap` |
 | **BL-32** | D-2: TDM/LoRa/DL2-SYSTIME 실물 테스트군 | 동 |
 | **BL-33** | D-3: 통합 순차 세션 7단계 | 동 |
