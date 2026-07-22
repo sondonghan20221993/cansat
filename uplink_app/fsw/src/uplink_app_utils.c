@@ -489,6 +489,14 @@ void UPLINK_APP_LoadState(void)
     Fd = open(UPLINK_APP_STATE_FILE_PATH, O_RDONLY);
     if (Fd < 0)
     {
+        /* BL-17(2026-07-22): ENOENT(파일 없음)=첫 부팅, 정상 상태라 조용히
+         * 반환한다. 그 외(권한 오류 등)는 이례적이라 상태 손상과 동일하게
+         * 취급해 아래 corrupt 이벤트로 보고한다. */
+        if (errno != ENOENT)
+        {
+            CFE_EVS_SendEvent(UPLINK_APP_STATE_CORRUPT_EID, CFE_EVS_EventType_ERROR,
+                              "UPLINK_APP: state file open failed errno=%d, using defaults", errno);
+        }
         return;
     }
 
@@ -497,14 +505,21 @@ void UPLINK_APP_LoadState(void)
 
     if (ReadRc != (ssize_t)sizeof(State))
     {
+        CFE_EVS_SendEvent(UPLINK_APP_STATE_CORRUPT_EID, CFE_EVS_EventType_ERROR,
+                          "UPLINK_APP: state file truncated (rc=%ld), using defaults", (long)ReadRc);
         return;
     }
     if (State.Magic != UPLINK_APP_STATE_MAGIC)
     {
+        CFE_EVS_SendEvent(UPLINK_APP_STATE_CORRUPT_EID, CFE_EVS_EventType_ERROR,
+                          "UPLINK_APP: state file bad magic (0x%08lX), using defaults",
+                          (unsigned long)State.Magic);
         return;
     }
     if (State.Checksum != (State.Magic + State.LastAcceptedSequence + State.BootCount))
     {
+        CFE_EVS_SendEvent(UPLINK_APP_STATE_CORRUPT_EID, CFE_EVS_EventType_ERROR,
+                          "UPLINK_APP: state file checksum mismatch, using defaults");
         return;
     }
 

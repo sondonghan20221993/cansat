@@ -48,7 +48,7 @@ CONFIG(3개 앱 전부)+RECOVERY(cfs_core_app) 배선. `BL-05`도 함께 해소.
 ### 🤔 고민 필요 (별도 기록, 결정 전까지 보류)
 
 ```
-BL-17   LoadState() 실패 이벤트 — 첫부팅(정상) vs 진짜손상(비정상) 구분 방식
+✅BL-17 LoadState() 실패 이벤트 구분 — 완료(2026-07-22)
 BL-19   LORA_TDM_APP_LORA_BAUDRATE(하드코딩 무시) — 삭제 vs 실제 baud 가변 지원
         STREAM_REACQUIRE_TIMEOUT_MS — 삭제 vs 원래 의도한 재요청 타임아웃 기능 구현
 ```
@@ -136,7 +136,7 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 
 | ID | 내용 | 근거 |
 |---|---|---|
-| **BL-17** | 🤔 **고민 필요(2026-07-21)** — `LoadState()` 실패 경로가 **조용히 `return`만** 함 → 상태파일 손상으로 "아무 seq나 수락" 상태 기동을 지상이 알 수 없음. **막힌 지점**: 첫 부팅(파일 없음=정상)과 진짜 손상(체크섬 불일치=비정상)을 같은 이벤트/심각도로 묶을지 구분할지 미정 — 구분 안 하면 매 최초기동마다 오탐성 에러 로그 | T10 |
+| ~~**BL-17**~~ | ✅ **완료(2026-07-22)**. `UPLINK_APP_LoadState()`에 신규 `UPLINK_APP_STATE_CORRUPT_EID`(9) 추가 — `open()` 실패가 `errno==ENOENT`(파일 없음=첫 부팅)면 기존과 동일하게 조용히 반환, 그 외 open 실패/read truncated/bad magic/checksum mismatch는 전부 ERROR 이벤트로 보고 후 기본값 사용. 첫 부팅 오탐 없이 진짜 손상만 구분해 보고. `/cf`가 테스트 환경에 없어 corrupt 분기 자체는 UT로 직접 검증 불가(기존 `SaveState_NoDir` 테스트와 동일한 제약) — 회귀 4종(10/102/108/35) PASS 확인 | T10 |
 | ~~**BL-18**~~ | ✅ **완료(2026-07-21)**. 파일 fd fsync 후 rename, rename 후 부모 디렉터리(`/cf`) fd도 fsync — POSIX 표준상 rename 자체 유실 방지에 필요. `/cf`가 없는 테스트 환경에선 open 단계에서 조용히 return(기존 동작 유지), 104/104 PASS | T11 |
 | **BL-19** | 🤔 **일부 고민 필요(2026-07-21)** — 죽은 config 상수. `SERIAL_REOPEN_DELAY_MS`/`PROTOCOL_VERSION`/`MAX_PAYLOAD_LENGTH`/img_app 잔재는 삭제로 바로 가능. **`LORA_TDM_APP_LORA_BAUDRATE`**(코드가 `B57600` 하드코딩해 무시)와 **`STREAM_REACQUIRE_TIMEOUT_MS`**(`git log -S`로도 도입 이력이 안 잡힘 — 애초에 미구현 상태로 방치됐을 가능성)만 "삭제 vs 실제 기능 연결" 결정 필요 | `system_wide_reaudit` F-4/F-5/F-6 |
 | ~~**BL-20**~~ | ✅ **완료(2026-07-21)**. `uplink_lora_test_status.md` 상단에 정정 안내 블록 추가 — `lora_fc_downlink_app`은 옛 이름, `UPLINK_RAW_MID=0x1909`는 실제 `FC_SYS_TIME_MID` 값임을 명시 | 동 F-7 |
