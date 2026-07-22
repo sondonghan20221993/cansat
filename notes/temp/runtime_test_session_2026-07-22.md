@@ -138,3 +138,26 @@ GetAppIDByName 스텁 SUCCESS라 못 잡음. 상세 BACKLOG BL-40.
       DIAGNOSTIC까지 **전 명령 전수 실기 검증**을 거친다 — 오늘처럼
       Pi EVS(routed/exec result)와 지상 UFB 양쪽 대조로 판정 (사용자
       지시, 2026-07-22)
+
+## 추가 검토 항목 (2026-07-22 밤, 사용자 제기 — 내일 이후)
+
+- [ ] **권한 검증(§18.11) 설계 재검토**: 지상국이 사실상 master인데
+      지상국 스스로 auth level 비트를 채워 보내는 현 구조가 실질 보안
+      효과가 있는지 애매함(자기 신고식 — 위조 방어 아님, 실수 방지
+      수준). **실제 우주/드론 지상시스템(CCSDS 등)은 어떻게 하는지
+      조사** 후 유지/단순화/강화 방향 논의
+- [ ] **TDM 패킷 구조 시각화**: v1 ASCII 라인 / v2 DL2 바이너리 프레임
+      (seq/boot_count/SysTime 확장블록/UFB 1바이트 포함) 바이트 레이아웃
+      다이어그램화 — 가능하면 지상국(openMCT) 또는 문서에 시각 자료로
+- [ ] **하드웨어 전제 기술 수정**: 문서상 "LR24-F, air rate
+      2.4KB/s(2400 bytes/s), UART 57600bps" 표기 — air rate 단위/값
+      재확인 후 정정 필요(2.4kbps vs 2400bytes/s 혼동 의심, 실측
+      100ms/10Hz 통과와의 정합성도 함께 검증)
+- [ ] **TEST_CASES.md 통합 세션 메모 stale 정정**: "RT-LORA-001(USB
+      런타임 분리)은 serial_reopen_gap 해소 전까지 제외" 문구 —
+      **갭은 이미 해소됨**(2026-07-10 구현, fd close→재오픈 경로 +
+      2026-07-13 UT). 제외 사유 소멸했으므로 통합 세션 단계에 RT-LORA-001
+      재편입하도록 문서 갱신
+- [ ] (참고) mavlink_bridge 기존 기능 확인: FC MISSION 조회
+      (MISSION_QUERY_CC), FC ARMED 상태 감지 — waypoint 조회 설계 시
+      MISSION_QUERY 경로 재사용 가능성 검토
