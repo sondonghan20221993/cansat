@@ -23,7 +23,7 @@ CONFIG(3개 앱 전부)+RECOVERY(cfs_core_app) 배선. `BL-05`도 함께 해소.
 ```
 ✅BL-01  재전송 중복 오탐 차단           ← 완료(2026-07-21), 코드는 Pi 미배포
 ✅BL-04 링크 EID 3종 구현 — 완료(2026-07-21)
-✅BL-06 stale TODO 주석 2건 정정 — 완료(2026-07-21)
+✅BL-06 stale TODO 주석 2건 정정 — 완료 확인(2026-07-22, 이미 제거돼 있었음)
 ✅BL-16 downlink_protocol 기체 엄격화(0/1만 수락) — 완료(2026-07-21)
 ✅BL-18 SaveState() fsync() — 완료(2026-07-21), 파일+부모디렉터리 둘 다
 ✅BL-19' 죽은 config 상수 안전 부분 삭제 — 완료(2026-07-21): SERIAL_REOPEN_DELAY_MS/
@@ -104,8 +104,8 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 |---|---|---|
 | ~~**BL-04**~~ | ✅ **부분 완료(2026-07-21)**. `LINK_LOST/DEGRADED/RESTORED` 3종은 `UpdateLinkState()`에 `LinkStateInitialized` 플래그로 첫 관측 제외 + 엣지 트리거로 구현(추가 히스테리시스는 기존 다중사이클 임계값으로 충분해 불필요 판단). `PIPE_ERR/SUB_ERR/SB_SEND_ERR` 3종은 **범위 밖으로 미룸** — spec 표기를 ❌ 미구현으로 정정. 회귀 UT 135/135 PASS(신규 5건) | `system_wide_reaudit` F-1 |
 | ~~**BL-05**~~ | ✅ **완료(2026-07-22, BL-08과 함께)** — `UPLINK_APP_RESULT_EXECUTED_OK/FAILED`(15/16) 추가, `mission_app_runtime_spec.md` §18.4.6.4의 "전달 vs 실행 구분" 표기가 실제로 사실이 됨 | `command_dead_end_audit` F1 |
-| **BL-06** | stale TODO 주석 2건 — `lora_tdm_app.h:68`("CONFIG 커맨드 미배선"), `lora_tdm_app_utils.h:72`("SysTime 미지원") 둘 다 **실제로는 구현 완료**. 주석만 정정 | `system_wide_reaudit` F-2/F-3 |
-| **BL-07** | `cfs_core_app_command_execution_gap.md` **문서 자체가 낡음** — "MODE 상태 전이 미구현"이라 적혀 있으나 실제로는 구현돼 있음(`cfs_core_app_utils.c:786-829`, 전이 검증 포함). RECOVERY 항목도 부분 진전됨(switch 추가). 문서 갱신 후 이 백로그로 흡수 | 오늘 확인 |
+| ~~**BL-06**~~ | ✅ **완료 확인(2026-07-22)**. 재확인 결과 해당 TODO 주석 2건은 이미 제거되어 있음(`lora_tdm_app.h`/`lora_tdm_app_utils.h`에 "미배선"/"미지원" 문자열 없음) — 별도 작업 불필요 | `system_wide_reaudit` F-2/F-3 |
+| ~~**BL-07**~~ | ✅ **완료(2026-07-22)**. `cfs_core_app_command_execution_gap.md` 갱신 — MODE 상태 전이(`cfs_core_app_utils.c:883`, ENTER/EXIT 허용 조합 검증)와 RECOVERY 필드 구분 처리(BL-09) 둘 다 구현 완료로 정정. 남은 미구현은 VIEWPOINT 실행 로직(BL-10)과 타임스탐프 time base 검증뿐 | 오늘 확인 |
 
 ---
 
@@ -139,7 +139,7 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 | **BL-17** | 🤔 **고민 필요(2026-07-21)** — `LoadState()` 실패 경로가 **조용히 `return`만** 함 → 상태파일 손상으로 "아무 seq나 수락" 상태 기동을 지상이 알 수 없음. **막힌 지점**: 첫 부팅(파일 없음=정상)과 진짜 손상(체크섬 불일치=비정상)을 같은 이벤트/심각도로 묶을지 구분할지 미정 — 구분 안 하면 매 최초기동마다 오탐성 에러 로그 | T10 |
 | ~~**BL-18**~~ | ✅ **완료(2026-07-21)**. 파일 fd fsync 후 rename, rename 후 부모 디렉터리(`/cf`) fd도 fsync — POSIX 표준상 rename 자체 유실 방지에 필요. `/cf`가 없는 테스트 환경에선 open 단계에서 조용히 return(기존 동작 유지), 104/104 PASS | T11 |
 | **BL-19** | 🤔 **일부 고민 필요(2026-07-21)** — 죽은 config 상수. `SERIAL_REOPEN_DELAY_MS`/`PROTOCOL_VERSION`/`MAX_PAYLOAD_LENGTH`/img_app 잔재는 삭제로 바로 가능. **`LORA_TDM_APP_LORA_BAUDRATE`**(코드가 `B57600` 하드코딩해 무시)와 **`STREAM_REACQUIRE_TIMEOUT_MS`**(`git log -S`로도 도입 이력이 안 잡힘 — 애초에 미구현 상태로 방치됐을 가능성)만 "삭제 vs 실제 기능 연결" 결정 필요 | `system_wide_reaudit` F-4/F-5/F-6 |
-| **BL-20** | 문서 stale 식별자 — `uplink_lora_test_status.md`의 `UPLINK_RAW=0x1909`(실제 `0x18D0`, 0x1909는 FC_SYS_TIME), 존재하지 않는 `lora_fc_downlink_app` 참조 4곳 | 동 F-7 |
+| ~~**BL-20**~~ | ✅ **완료(2026-07-21)**. `uplink_lora_test_status.md` 상단에 정정 안내 블록 추가 — `lora_fc_downlink_app`은 옛 이름, `UPLINK_RAW_MID=0x1909`는 실제 `FC_SYS_TIME_MID` 값임을 명시 | 동 F-7 |
 | ~~**BL-21**~~ | ✅ **완료(2026-07-21)**. `config/default_lora_tdm_app_fcncode_values.h`는 어디서도 include 안 되는 죽은 중복본(SET_DOWNLINK_PROTO_CC도 누락)이라 삭제. 실사용은 `fsw/inc/lora_tdm_app_fcncodes.h`(dispatch.c가 이걸 include). 회귀 4종 234/234 PASS | 동 F-6 |
 | **BL-22** | Pi `/boot/firmware/config.txt`의 `init_uart_clock=48000000` — **기각된 가설의 잔재**, 되돌릴지 결정(Pi 전원 필요) | `selfaudit` B-1 |
 
