@@ -42,7 +42,7 @@ CONFIG(3개 앱 전부)+RECOVERY(cfs_core_app) 배선. `BL-05`도 함께 해소.
 
 **2026-07-22 기준**: 위 목록의 "바로 진행 가능" 항목 **전부 완료** (BL-14 제외,
 명시적으로 선택사항). "고민 필요"(BL-17/19)도 전부 완료. 남은 것은
-"추후 결정 필요"(BL-02/10/11/15) 뿐 — 전부 사용자 결정 또는 하드웨어(Pi) 필요.
+"추후 결정 필요"(BL-10/11/15) 뿐 — 전부 사용자 결정 또는 하드웨어(Pi) 필요.
 
 ### 🤔 고민 필요 (별도 기록, 결정 전까지 보류)
 
@@ -63,13 +63,10 @@ CONFIG(3개 앱 전부)+RECOVERY(cfs_core_app) 배선. `BL-05`도 함께 해소.
 ```
 ✅BL-08 실행결과 회신 채널 — 완료(2026-07-22)
 ✅BL-05 BL-08과 함께 해소(2026-07-22)
+✅BL-02 RunTx UFB 리셋 유지 확정 — 완료(2026-07-22)
 BL-11   UFB 라디오 바이트 코드표 확정 — BL-08과 별개, 여전히 미착수
 BL-10   VIEWPOINT 캐시 — "활용처 있음"만 정함, 뭘 할지는 미정
 BL-15   5Hz 상향 — "필요하다"만 정함, 실측 전엔 상한 미정(Pi 필요)
-BL-02   RunTx UFB 리셋 유지/롤백 — BL-03 완료(2026-07-22)로 대부분 해소:
-        DL2에 uplink_last_seq가 실려 지상이 UFB를 "어느 seq까지의 판정인지"
-        간접 상관 가능해짐. 단 UFB 바이트 자체에 seq 태그가 직접 붙은 건
-        아니라 완전 해결은 아님 — 최종 유지/롤백 판단은 보류
 ```
 
 ### 🔧 하드웨어 있어야 착수 가능
@@ -88,7 +85,7 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 | ID | 내용 | 근거 | 규모 |
 |---|---|---|---|
 | ~~**BL-01**~~ | ✅ **완료(2026-07-21)**. `Sequence == LastAccepted`→`UPLINK_APP_RESULT_DUPLICATE(14)`, `< LastAccepted`→기존 `REJECT_SEQUENCE` 유지로 분리. lora_tdm_app은 DUPLICATE를 SEQ_FAIL로 오귀속하지 않음. 로컬 UT 477/477 PASS. 상세: `bl01_duplicate_retransmit_completed_2026-07-21.md` | `uplink_seq_feedback_redesign` T1 | 완료 |
-| **BL-02** | `073a680`(RunTx UFB 리셋 제거) **유지 vs 롤백 판단**. BL-03이 곧 오면 유지, 지연되면 롤백 | 동 T2 / `inferred_decisions_selfaudit` A-1 | 판단 |
+| ~~**BL-02**~~ | ✅ **완료(2026-07-22, 유지 확정)**. `073a680`(RunTx UFB 리셋을 매 TX→명령 포워딩 시점으로 이동)은 실측으로 확인된 진짜 레이스 버그의 수정이라 롤백 사유 없음. BL-03(seq+boot_count 동봉)으로 지상 쪽 상관까지 보강돼 이 설계가 더 힘을 받음. UFB 바이트 자체에 seq가 안 붙는 한계는 BL-02가 아니라 BL-11 영역으로 분리 | 동 T2 / `inferred_decisions_selfaudit` A-1 | 완료 |
 | ~~**BL-03**~~ | ✅ **완료(2026-07-22)**. DL2 프레임에 `uplink_last_seq(u16)`+`uplink_boot_count(u8)` 3바이트 동봉(기존 47B/55B→50B/58B, SysTime 뒤·CRC 앞). `uplink_app`→`UPLINK_STATUS_MID`(`LastAcceptedSequence`/`BootCount` 신규 필드)→`lora_tdm_app` 캐시→DL2 인코딩. 지상 `_SeqCounter.resync_from_device()`(앞으로만 당김, 자가복구)와 `_BootCountTracker`(모듈러 감소 감지 시 `boot_count_anomaly` 플래그만, 자동거부 없음) 구현. `lora_protocol_v2.py`+`bridge/lora_downlink_decoder.py`(포크본) 동시 갱신. 회귀: C 4종 UT 전부 PASS, Python 190/190 PASS(cfs-telemetry-app) + 55/55(openMCT) | 동 T3+T4 | 완료 |
 
 > BL-03은 BL-04\~BL-06(프로토콜 확장)의 **공통 선행**. 무선 포맷을 여러 번
