@@ -1508,7 +1508,7 @@ counter management payload:
 | `counter_action` | `uint8` | `0`=RESET(고정, reset 전용) | 0 외 값 거부(향후 확장 예약) |
 | `request_token` | `uint32` | §18.4.7 표준 request_token 재사용 — 파괴적 동작 확인은 Level 3 공통 규칙(`request_token≠0`)으로 대체, 별도 `confirm_code` 필드 없음 | Level 3 공통 규칙 적용 |
 
-**라우팅**: `cfs_core_app` 경유 왕복(round-trip) 없이 `uplink_app`이 직접 대상 앱으로 전달한다. 근거: `uplink_app`은 이미 `SYSTEM_HEALTH_MID`를 구독해 `CfsHealthState`를 로컬 보유하므로, Level 3 차단 판정에 `cfs_core_app` 왕복이 architecturally 불필요(cFE SB는 순수 비동기라 동기 왕복 자체가 불가능하기도 함). `cfs_core_app`은 검수(권한/스코프 검증)를 맡고, 최종 명령 실행은 `uplink_app`이 대상 앱에 직접 전송한다.
+**라우팅**: `cfs_core_app` 경유 왕복(round-trip) 없이 `uplink_app`이 직접 대상 앱으로 전달한다. 근거: `uplink_app`은 이미 `SYSTEM_HEALTH_MID`를 구독해 `CfsHealthState`를 로컬 보유하고 다른 명령 클래스(RECOVERY/MODE 등)와 동일하게 `IsAuthorized`/health-gate로 검수를 자체 수행하므로, Level 3 차단 판정에 `cfs_core_app` 왕복이 architecturally 불필요(cFE SB는 순수 비동기라 동기 왕복 자체가 불가능하기도 함). 검수와 최종 명령 실행 모두 `uplink_app`이 수행 — `cfs_core_app`은 counter management의 라우팅 경로에 관여하지 않는다(다른 클래스와 동일 패턴).
 
 출력 계약:
 
@@ -1522,7 +1522,7 @@ counter management payload:
 - Level 3 공통 차단 규칙(`request_token=0`, 시스템 헬스 DEGRADED/RECOVERY/FAILED 등)
 - 최소 보고 시작 상태에서 금지된 범위
 
-> 위 수치(class code 7, scope 1~4, UFB 0x0C)는 spec 원문에 없던 값으로 이번 세션 대화에서 확정. 구현 미착수(코드 없음) — 착수 시 이 섹션을 최종 근거로 삼는다.
+> 위 수치(class code 7, scope 1~4, UFB 0x0C)는 spec 원문에 없던 값으로 이번 세션 대화에서 확정. **구현 완료(2026-07-22)**: `uplink_app`에 `UPLINK_APP_CLASS_COUNTER_MGMT=7`/`UPLINK_APP_ForwardCounterMgmtCommand()` 추가 — scope=UPLINK(자신)는 로컬 카운터 직접 초기화, 그 외 3개 앱은 기존 CMD_MID(`0x18A0`/`0x18C0`/`0x18E0`)에 기존 `RESET_COUNTERS_CC=1`을 `CFE_MSG_SetFcnCode`로 얹어 직접 전송(P1-a `CFS_CORE_APP_SendBridgeCtrlCmd`와 동일 패턴, `cfs_core_app` 미경유). `lora_tdm_app` UFB `REJECT_COUNTER=12`(0x0C) 매핑 완료. 단위테스트: uplink_app_utils(120→131), uplink_app_cmds(+4), lora_tdm_app_dispatch(59→61), 전부 통과.
 
 #### 18.4.7 Request Token 계약
 

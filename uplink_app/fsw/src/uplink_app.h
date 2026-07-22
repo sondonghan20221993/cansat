@@ -70,6 +70,7 @@ bool         UPLINK_APP_ForwardViewpointCommand(const UPLINK_APP_ProcessUplinkCm
 bool         UPLINK_APP_ForwardConfigCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd);
 bool         UPLINK_APP_ForwardModeCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd);
 bool         UPLINK_APP_ForwardDiagnosticCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd);
+bool         UPLINK_APP_ForwardCounterMgmtCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd);
 void         UPLINK_APP_LoadState(void);
 void         UPLINK_APP_SaveState(void);
 

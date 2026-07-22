@@ -15,5 +15,14 @@
 #define SYSTEM_HEALTH_MID_VALUE 0x1904
 #define BRIDGE_HK_MID_VALUE     0x08A0
 
+/* counter management(§18.4.6.7, 2026-07-22) 직접 라우팅용 — 대상 앱 CMD_MID 및
+ * 각 앱이 이미 보유한 RESET_COUNTERS CC(전부 1). 새 MID/CC를 대상 앱에
+ * 추가하지 않고, cfs_core_app의 P1-a SendBridgeCtrlCmd와 동일하게
+ * CFE_MSG_SetFcnCode로 기존 CMD_MID에 얹어 보낸다. */
+#define UPLINK_APP_COUNTER_TARGET_MAVLINK_BRIDGE_CMD_MID 0x18A0U
+#define UPLINK_APP_COUNTER_TARGET_CFS_CORE_CMD_MID       0x18C0U
+#define UPLINK_APP_COUNTER_TARGET_LORA_TDM_CMD_MID       0x18E0U
+#define UPLINK_APP_COUNTER_TARGET_RESET_COUNTERS_CC      1U
+
 #endif
 

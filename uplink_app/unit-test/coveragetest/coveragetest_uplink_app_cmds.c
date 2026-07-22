@@ -349,6 +349,56 @@ void Test_UPLINK_APP_ProcessUplink_RecoveryForwardFail(void)
     UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_FAILED);
 }
 
+void Test_UPLINK_APP_ProcessUplink_CounterMgmtAccept(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_COUNTER_MGMT;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(3);
+    TestMsg.PayloadLength = 6;
+    TestMsg.Payload[2]    = 1; /* non-zero request_token (offset 2..5, COUNTER_MGMT) */
+    TestMsg.Sequence      = 22;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U;
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_COUNTER_MGMT);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ForwardCounterMgmtCommand), true);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.AcceptedCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_ROUTED);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastRouteTarget, UPLINK_APP_ROUTE_COUNTER_MGMT);
+}
+
+void Test_UPLINK_APP_ProcessUplink_CounterMgmtForwardFail(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_COUNTER_MGMT;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(3);
+    TestMsg.PayloadLength = 6;
+    TestMsg.Payload[2]    = 1;
+    TestMsg.Sequence      = 23;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U;
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_COUNTER_MGMT);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ForwardCounterMgmtCommand), false);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.ErrCounter, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.RejectedCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_REJECT_COUNTER);
+}
+
 void Test_UPLINK_APP_ProcessUplink_ViewpointAccept(void)
 {
     UPLINK_APP_ProcessUplinkCmd_t TestMsg;
@@ -884,6 +934,8 @@ void UtTest_Setup(void)
     ADD_TEST(UPLINK_APP_ProcessUplink_RoutePublishFail);
     ADD_TEST(UPLINK_APP_ProcessUplink_RecoveryAccept);
     ADD_TEST(UPLINK_APP_ProcessUplink_RecoveryForwardFail);
+    ADD_TEST(UPLINK_APP_ProcessUplink_CounterMgmtAccept);
+    ADD_TEST(UPLINK_APP_ProcessUplink_CounterMgmtForwardFail);
     ADD_TEST(UPLINK_APP_ProcessUplink_ViewpointAccept);
     ADD_TEST(UPLINK_APP_ProcessUplink_ViewpointForwardFail);
     ADD_TEST(UPLINK_APP_ProcessUplink_ViewpointParseReject);

@@ -439,6 +439,58 @@ void Test_UPLINK_APP_ForwardDiagnosticCommand(void)
     UtAssert_BOOL_TRUE(UPLINK_APP_ForwardDiagnosticCommand(&Cmd));
 }
 
+void Test_UPLINK_APP_ForwardCounterMgmtCommand(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t Cmd;
+
+    memset(&Cmd, 0, sizeof(Cmd));
+
+    /* payload too short */
+    Cmd.PayloadLength = 5;
+    UtAssert_BOOL_FALSE(UPLINK_APP_ForwardCounterMgmtCommand(&Cmd));
+
+    /* action != 0 rejected */
+    Cmd.PayloadLength = 6;
+    Cmd.Payload[0]     = UPLINK_APP_COUNTER_SCOPE_UPLINK;
+    Cmd.Payload[1]     = 1;
+    UtAssert_BOOL_FALSE(UPLINK_APP_ForwardCounterMgmtCommand(&Cmd));
+
+    /* scope out of range rejected */
+    Cmd.Payload[0] = 5;
+    Cmd.Payload[1] = 0;
+    UtAssert_BOOL_FALSE(UPLINK_APP_ForwardCounterMgmtCommand(&Cmd));
+
+    /* scope=UPLINK: local reset, no SB traffic */
+    UPLINK_APP_Data.CmdCounter = 7;
+    UPLINK_APP_Data.ErrCounter = 3;
+    Cmd.Payload[0] = UPLINK_APP_COUNTER_SCOPE_UPLINK;
+    UtAssert_BOOL_TRUE(UPLINK_APP_ForwardCounterMgmtCommand(&Cmd));
+    UtAssert_INT32_EQ(UPLINK_APP_Data.CmdCounter, 0);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.ErrCounter, 0);
+
+    /* scope=MAVLINK_BRIDGE: SetFcnCode fail */
+    Cmd.Payload[0] = UPLINK_APP_COUNTER_SCOPE_MAVLINK_BRIDGE;
+    UT_SetDefaultReturnValue(UT_KEY(CFE_MSG_SetFcnCode), -1);
+    UtAssert_BOOL_FALSE(UPLINK_APP_ForwardCounterMgmtCommand(&Cmd));
+
+    /* scope=MAVLINK_BRIDGE: transmit fail */
+    UT_SetDefaultReturnValue(UT_KEY(CFE_MSG_SetFcnCode), CFE_SUCCESS);
+    UT_SetDefaultReturnValue(UT_KEY(CFE_SB_TransmitMsg), -1);
+    UtAssert_BOOL_FALSE(UPLINK_APP_ForwardCounterMgmtCommand(&Cmd));
+
+    /* scope=MAVLINK_BRIDGE: success */
+    UT_SetDefaultReturnValue(UT_KEY(CFE_SB_TransmitMsg), CFE_SUCCESS);
+    UtAssert_BOOL_TRUE(UPLINK_APP_ForwardCounterMgmtCommand(&Cmd));
+
+    /* scope=CFS_CORE: success */
+    Cmd.Payload[0] = UPLINK_APP_COUNTER_SCOPE_CFS_CORE;
+    UtAssert_BOOL_TRUE(UPLINK_APP_ForwardCounterMgmtCommand(&Cmd));
+
+    /* scope=LORA_TDM: success */
+    Cmd.Payload[0] = UPLINK_APP_COUNTER_SCOPE_LORA_TDM;
+    UtAssert_BOOL_TRUE(UPLINK_APP_ForwardCounterMgmtCommand(&Cmd));
+}
+
 void Test_UPLINK_APP_ParseViewpointPayload(void)
 {
     UPLINK_APP_ProcessUplinkCmd_t  Cmd;
@@ -677,6 +729,7 @@ void UtTest_Setup(void)
     ADD_TEST(UPLINK_APP_IncrementBootCount_WrapsAt256);
     ADD_TEST(UPLINK_APP_ForwardModeCommand);
     ADD_TEST(UPLINK_APP_ForwardDiagnosticCommand);
+    ADD_TEST(UPLINK_APP_ForwardCounterMgmtCommand);
     ADD_TEST(UPLINK_APP_ParseViewpointPayload);
     ADD_TEST(UPLINK_APP_ForwardViewpointCommand);
     ADD_TEST(UPLINK_APP_ForwardConfigCommand_ChecksumValid);

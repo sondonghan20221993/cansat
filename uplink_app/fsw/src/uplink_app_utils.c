@@ -145,6 +145,7 @@ bool UPLINK_APP_ValidateProxyCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd, U
         case UPLINK_APP_CLASS_RECOVERY:
         case UPLINK_APP_CLASS_MODE:
         case UPLINK_APP_CLASS_DIAGNOSTIC:
+        case UPLINK_APP_CLASS_COUNTER_MGMT:
             break;
 
         default:
@@ -352,6 +353,64 @@ bool UPLINK_APP_ForwardRecoveryCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
 
     CFE_SB_TimeStampMsg(CFE_MSG_PTR(RecoveryTlm.TelemetryHeader));
     return (CFE_SB_TransmitMsg(CFE_MSG_PTR(RecoveryTlm.TelemetryHeader), true) == CFE_SUCCESS);
+}
+
+/* counter management(§18.4.6.7, 2026-07-22): payload = counter_scope(1) +
+ * counter_action(1) + request_token(4). scope=UPLINK(자신)는 로컬 카운터를
+ * 직접 초기화하고, 그 외는 대상 앱의 기존 CMD_MID에 RESET_COUNTERS CC를
+ * CFE_MSG_SetFcnCode로 얹어 직접 전송한다(cfs_core_app 경유 없음,
+ * P1-a의 CFS_CORE_APP_SendBridgeCtrlCmd와 동일 패턴). */
+bool UPLINK_APP_ForwardCounterMgmtCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
+{
+    uint8              Scope;
+    uint8              Action;
+    CFE_SB_MsgId_t     TargetMid;
+    CFE_MSG_CommandHeader_t CmdHdr;
+
+    if (Cmd->PayloadLength < 6U)
+    {
+        return false;
+    }
+
+    Scope  = Cmd->Payload[0];
+    Action = Cmd->Payload[1];
+
+    if (Action != 0U)
+    {
+        return false;
+    }
+
+    switch (Scope)
+    {
+        case UPLINK_APP_COUNTER_SCOPE_UPLINK:
+            UPLINK_APP_Data.CmdCounter = 0;
+            UPLINK_APP_Data.ErrCounter = 0;
+            return true;
+
+        case UPLINK_APP_COUNTER_SCOPE_MAVLINK_BRIDGE:
+            TargetMid = CFE_SB_ValueToMsgId(UPLINK_APP_COUNTER_TARGET_MAVLINK_BRIDGE_CMD_MID);
+            break;
+
+        case UPLINK_APP_COUNTER_SCOPE_CFS_CORE:
+            TargetMid = CFE_SB_ValueToMsgId(UPLINK_APP_COUNTER_TARGET_CFS_CORE_CMD_MID);
+            break;
+
+        case UPLINK_APP_COUNTER_SCOPE_LORA_TDM:
+            TargetMid = CFE_SB_ValueToMsgId(UPLINK_APP_COUNTER_TARGET_LORA_TDM_CMD_MID);
+            break;
+
+        default:
+            return false;
+    }
+
+    memset(&CmdHdr, 0, sizeof(CmdHdr));
+    CFE_MSG_Init(CFE_MSG_PTR(CmdHdr), TargetMid, sizeof(CmdHdr));
+    if (CFE_MSG_SetFcnCode(CFE_MSG_PTR(CmdHdr), UPLINK_APP_COUNTER_TARGET_RESET_COUNTERS_CC) != CFE_SUCCESS)
+    {
+        return false;
+    }
+
+    return (CFE_SB_TransmitMsg(CFE_MSG_PTR(CmdHdr), true) == CFE_SUCCESS);
 }
 
 static uint16 UPLINK_APP_ConfigChecksum(const UPLINK_APP_ConfigPayloadHdr_t *Hdr,
@@ -700,6 +759,9 @@ UPLINK_APP_RouteTarget_t UPLINK_APP_ResolveRouteTarget(uint8 CommandClass)
 
         case UPLINK_APP_CLASS_DIAGNOSTIC:
             return UPLINK_APP_ROUTE_DOWNLINK;
+
+        case UPLINK_APP_CLASS_COUNTER_MGMT:
+            return UPLINK_APP_ROUTE_COUNTER_MGMT;
 
         default:
             return UPLINK_APP_ROUTE_NONE;

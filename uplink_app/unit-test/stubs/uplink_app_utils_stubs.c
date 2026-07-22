@@ -126,6 +126,14 @@ bool UPLINK_APP_ForwardDiagnosticCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cm
     return UT_GenStub_GetReturnValue(UPLINK_APP_ForwardDiagnosticCommand, bool);
 }
 
+bool UPLINK_APP_ForwardCounterMgmtCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
+{
+    UT_GenStub_SetupReturnBuffer(UPLINK_APP_ForwardCounterMgmtCommand, bool);
+    UT_GenStub_AddParam(UPLINK_APP_ForwardCounterMgmtCommand, const UPLINK_APP_ProcessUplinkCmd_t *, Cmd);
+    UT_GenStub_Execute(UPLINK_APP_ForwardCounterMgmtCommand, Basic, NULL);
+    return UT_GenStub_GetReturnValue(UPLINK_APP_ForwardCounterMgmtCommand, bool);
+}
+
 void UPLINK_APP_LoadState(void)
 {
     UT_GenStub_Execute(UPLINK_APP_LoadState, Basic, NULL);

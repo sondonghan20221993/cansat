@@ -51,6 +51,7 @@ static uint8 UPLINK_APP_GetClassRequiredLevel(uint8 CommandClass)
         case UPLINK_APP_CLASS_RECOVERY:     return 3; /* recovery command */
         case UPLINK_APP_CLASS_MODE:         return 3; /* mode command */
         case UPLINK_APP_CLASS_DIAGNOSTIC:   return 1; /* diagnostic command */
+        case UPLINK_APP_CLASS_COUNTER_MGMT: return 3; /* counter management (§18.4.6.7) */
         default: return 0xFF; /* unknown */
     }
 }
@@ -251,7 +252,11 @@ void UPLINK_APP_ProcessUplink(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
                 request_token = (uint32)Cmd->Payload[2] | ((uint32)Cmd->Payload[3] << 8) |
                                ((uint32)Cmd->Payload[4] << 16) | ((uint32)Cmd->Payload[5] << 24);
             }
-            /* counter management does not use request_token, token stays 0 */
+            else if (Cmd->CommandClass == UPLINK_APP_CLASS_COUNTER_MGMT && Cmd->PayloadLength >= 6U)
+            {
+                request_token = (uint32)Cmd->Payload[2] | ((uint32)Cmd->Payload[3] << 8) |
+                               ((uint32)Cmd->Payload[4] << 16) | ((uint32)Cmd->Payload[5] << 24);
+            }
         }
 
         if (!UPLINK_APP_IsAuthorized(Cmd, request_token))
@@ -389,6 +394,21 @@ void UPLINK_APP_ProcessUplink(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
             UPLINK_APP_Data.LinkState         = UPLINK_APP_LINK_DEGRADED;
             CFE_EVS_SendEvent(UPLINK_APP_COMMAND_ERR_EID, CFE_EVS_EventType_ERROR,
                               "UPLINK_APP: failed to forward diagnostic command seq=%u",
+                              (unsigned int)Cmd->Sequence);
+            UPLINK_APP_UpdateStatusTelemetry(0);
+            return;
+        }
+    }
+    else if (Cmd->CommandClass == UPLINK_APP_CLASS_COUNTER_MGMT)
+    {
+        if (!UPLINK_APP_ForwardCounterMgmtCommand(Cmd))
+        {
+            UPLINK_APP_Data.ErrCounter++;
+            UPLINK_APP_Data.RejectedCount++;
+            UPLINK_APP_Data.LastCommandResult = UPLINK_APP_RESULT_REJECT_COUNTER;
+            UPLINK_APP_Data.LinkState         = UPLINK_APP_LINK_DEGRADED;
+            CFE_EVS_SendEvent(UPLINK_APP_COMMAND_ERR_EID, CFE_EVS_EventType_ERROR,
+                              "UPLINK_APP: failed counter management command seq=%u",
                               (unsigned int)Cmd->Sequence);
             UPLINK_APP_UpdateStatusTelemetry(0);
             return;
