@@ -96,5 +96,45 @@ RT-DL2-SYSTIME-001 확인 중 CSV `uplink_boot_count`가 재시작 4회+ 후에�
       매 사이클 도착하므로 링크 판정(NoAckCount)에는 영향 없음 —
       mismatch 이벤트는 사실상 로그 노이즈. 후속 검토(선택): 허용
       윈도우 도입 또는 이벤트 억제/집계
+## GUI 유도 시험 (2026-07-22 21:17~21:24, 사용자 실조작 + 실시간 모니터)
+
+| # | 시험 | 결과 |
+|---|---|---|
+| 1 | CONFIG force 없이 (mavlink_bridge heartbeat) | ✅ 예상대로 health gate 차단 (seq=6, UFB=3) |
+| 2 | CONFIG force 켜고 | ✅ FORCED THROUGH → routed → exec result OK (seq=7) |
+| 3 | CONFIG lora_tdm downlink_protocol=0 (force) | ✅ "protocol set to v1(text)" + exec OK (seq=9) — force 빼먹은 seq=8 차단도 정상 |
+| 4 | COUNTER scope=lora_tdm (GUI 패널) | ✅ class=7 routed + ResetCounters 실행 (seq=10) |
+| 5 | RECOVERY 드롭다운 PARSER_RESET | ✅ payload 자동구성 → cfs_core → bridge 파서리셋 + exec OK (seq=11) |
+| 6 | RECOVERY RESTART_BRIDGE | ❌ **FAIL → BL-40 발견** (seq=12/13, exec FAILED detail=1) |
+| + | RECOVERY SERIAL_RECONNECT | ✅ bridge 시리얼 재연결 + exec OK (seq=14) — FcnCode 경로라 BL-40 무관 |
+| 7 | ROUTE mission 1wp | ✅ route updated + HK mission_wp=1 (seq=15) |
+
+**전 시험에서 retx=0** — 100ms 타이밍에서도 업링크 첫 슬롯 적중 일관.
+
+## 🔴 신규 결함 3호 — BL-40: 앱 이름 상수 소문자 (RESTART 3종 무동작)
+
+`CFS_CORE_APP_BRIDGE/UPLINK/LORA_APP_NAME`이 소문자 바이너리명 —
+cFE 등록명(대문자, startup.scr)과 불일치 → `GetAppIDByName` 항상 실패
+→ 지상 RESTART_BRIDGE/UPLINK/LORA 전부 exec FAILED. **BL-38을 고쳐도
+자동 재시작이 같은 상수를 써서 어차피 실패했을 2중 결함.** UT는
+GetAppIDByName 스텁 SUCCESS라 못 잡음. 상세 BACKLOG BL-40.
+
+## 내일 할 일 (2026-07-23, 사용자 지시로 이월)
+
+- [ ] **BL-40 수정**: 앱 이름 상수 3개 → 등록명 대문자(`MAVLINK_BRIDGE_APP`/
+      `UPLINK_APP`/`LORA_TDM_APP`) + UT(스텁이라 회귀 영향 없음 예상) +
+      재빌드·Pi 재배포 → RESTART_BRIDGE/UPLINK/LORA 3종 GUI 재시험
 - [ ] (결함 수정 후) BL-38 A안 구현 → RT-CORE-003/004 재시험
 - [ ] BL-39 수정 방향 결정(ⓐ/ⓑ/ⓒ) 후 구현 → BootCount 영속 재검증
+- [ ] **waypoint 조회 기능** spec 정의부터 — 경량(DIAGNOSTIC `ROUTE_SUMMARY`:
+      개수+CRC+갱신시각 1프레임) vs 완전(분할 다운링크 readback) 방향 결정
+- [ ] v2 표준화: 부팅 기본값 v1→v2 변경 여부(`UseV2Downlink` 초기값,
+      코드+spec) — 사용자 "v2로 사용하기로" 언급(2026-07-22), 테스트 종료
+      시 v2 복귀 CONFIG 전송도 잊지 말 것
+- [ ] BL-15 최종값 확정(100ms uncommitted) / CI_LAB startup.scr 원복 여부
+- [ ] **최종 검증(전수)**: 위 수정들이 끝나면 지상국에서 **모든 CONFIG
+      파라미터를 전부 실제로 변경**(mavlink_bridge 7종 + lora_tdm +
+      cfs_core는 CLI/HTTP 경유)하고, RECOVERY 6종·COUNTER 4종·ROUTE·
+      DIAGNOSTIC까지 **전 명령 전수 실기 검증**을 거친다 — 오늘처럼
+      Pi EVS(routed/exec result)와 지상 UFB 양쪽 대조로 판정 (사용자
+      지시, 2026-07-22)
