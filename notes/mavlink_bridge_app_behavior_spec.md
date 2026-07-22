@@ -216,7 +216,6 @@ x/y는 `int32` (degE7, MISSION_ITEM_INT 표준 인코딩), z는 `float` meters(r
 | `HEARTBEAT_INTERVAL_MS` | 1000 | 자체 HEARTBEAT 송신 주기 |
 | `STREAM_REQUEST_RETRY_MS` | 2000 | 스트림 요청 재시도 간격 |
 | `TARGET_DISCOVERY_TIMEOUT_MS` | 10000 | FC sysid lock-in 대기 한도 |
-| `STREAM_REACQUIRE_TIMEOUT_MS` | 5000 | 스트림 재획득 판단 한도 |
 | `SYS_TIME_INTERVAL_US` | 1000000 | SYS_TIME 스트림 요청 간격 (1 Hz, §16) |
 | `CONFIG_VERSION` / `CONFIG_SCOPE` | 1 / 2 | CONFIG 명령 수락 조건 |
 | `PARAM_INTERVAL_MIN/MAX_US` | 10000 / 10000000 | CONFIG 스트림 간격 파라미터 허용 범위 |

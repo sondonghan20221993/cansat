@@ -41,16 +41,15 @@ CONFIG(3개 앱 전부)+RECOVERY(cfs_core_app) 배선. `BL-05`도 함께 해소.
 ```
 
 **2026-07-22 기준**: 위 목록의 "바로 진행 가능" 항목 **전부 완료** (BL-14 제외,
-명시적으로 선택사항). 남은 것은 아래 "고민 필요"(BL-17/19)와
-"추후 결정 필요"(BL-02/05/08/10/11/15) 뿐 — 전부 사용자 결정 또는
-하드웨어(Pi) 필요.
+명시적으로 선택사항). "고민 필요"(BL-17/19)도 전부 완료. 남은 것은
+"추후 결정 필요"(BL-02/10/11/15) 뿐 — 전부 사용자 결정 또는 하드웨어(Pi) 필요.
 
 ### 🤔 고민 필요 (별도 기록, 결정 전까지 보류)
 
 ```
 ✅BL-17 LoadState() 실패 이벤트 구분 — 완료(2026-07-22)
-BL-19   LORA_TDM_APP_LORA_BAUDRATE(하드코딩 무시) — 삭제 vs 실제 baud 가변 지원
-        STREAM_REACQUIRE_TIMEOUT_MS — 삭제 vs 원래 의도한 재요청 타임아웃 기능 구현
+✅BL-19 LORA_TDM_APP_LORA_BAUDRATE 실연결(shared_msgs/serial_baud.h)
+        + STREAM_REACQUIRE_TIMEOUT_MS 삭제 — 완료(2026-07-22)
 ```
 
 **목록에서 제거됨**: `BL-29` — 재확인 결과 **이미 완료 상태**
@@ -138,7 +137,7 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 |---|---|---|
 | ~~**BL-17**~~ | ✅ **완료(2026-07-22)**. `UPLINK_APP_LoadState()`에 신규 `UPLINK_APP_STATE_CORRUPT_EID`(9) 추가 — `open()` 실패가 `errno==ENOENT`(파일 없음=첫 부팅)면 기존과 동일하게 조용히 반환, 그 외 open 실패/read truncated/bad magic/checksum mismatch는 전부 ERROR 이벤트로 보고 후 기본값 사용. 첫 부팅 오탐 없이 진짜 손상만 구분해 보고. `/cf`가 테스트 환경에 없어 corrupt 분기 자체는 UT로 직접 검증 불가(기존 `SaveState_NoDir` 테스트와 동일한 제약) — 회귀 4종(10/102/108/35) PASS 확인 | T10 |
 | ~~**BL-18**~~ | ✅ **완료(2026-07-21)**. 파일 fd fsync 후 rename, rename 후 부모 디렉터리(`/cf`) fd도 fsync — POSIX 표준상 rename 자체 유실 방지에 필요. `/cf`가 없는 테스트 환경에선 open 단계에서 조용히 return(기존 동작 유지), 104/104 PASS | T11 |
-| **BL-19** | 🤔 **일부 고민 필요(2026-07-21)** — 죽은 config 상수. `SERIAL_REOPEN_DELAY_MS`/`PROTOCOL_VERSION`/`MAX_PAYLOAD_LENGTH`/img_app 잔재는 삭제로 바로 가능. **`LORA_TDM_APP_LORA_BAUDRATE`**(코드가 `B57600` 하드코딩해 무시)와 **`STREAM_REACQUIRE_TIMEOUT_MS`**(`git log -S`로도 도입 이력이 안 잡힘 — 애초에 미구현 상태로 방치됐을 가능성)만 "삭제 vs 실제 기능 연결" 결정 필요 | `system_wide_reaudit` F-4/F-5/F-6 |
+| ~~**BL-19**~~ | ✅ **완료(2026-07-22)**. `git log -S`로 원 의도 추적: `LORA_TDM_APP_LORA_BAUDRATE`는 mavlink_bridge_app이 이미 갖고 있던 `GetBaudConstant()`(int→`speed_t` lookup) 패턴을 `shared_msgs/serial_baud.h`(공용, 두 앱이 함께 사용)로 이관해 실제 연결 — `lora_tdm_app.c`의 `B57600` 하드코딩 제거. `STREAM_REACQUIRE_TIMEOUT_MS`는 커밋 `8558793`에서 도입돼 실제 구현(`StreamRefreshNeeded()`)까지 됐다가 5분 뒤 `7c4aac3`에서 저자 본인이 되돌리며 상수만 지우는 걸 빠뜨린 죽은 잔재로 확인 → 삭제. 회귀 UT: mavlink_bridge_app 4종(14/4/167/26), lora_tdm_app 4종(64/14/145/39) 전부 PASS | `system_wide_reaudit` F-4/F-5/F-6 |
 | ~~**BL-20**~~ | ✅ **완료(2026-07-21)**. `uplink_lora_test_status.md` 상단에 정정 안내 블록 추가 — `lora_fc_downlink_app`은 옛 이름, `UPLINK_RAW_MID=0x1909`는 실제 `FC_SYS_TIME_MID` 값임을 명시 | 동 F-7 |
 | ~~**BL-21**~~ | ✅ **완료(2026-07-21)**. `config/default_lora_tdm_app_fcncode_values.h`는 어디서도 include 안 되는 죽은 중복본(SET_DOWNLINK_PROTO_CC도 누락)이라 삭제. 실사용은 `fsw/inc/lora_tdm_app_fcncodes.h`(dispatch.c가 이걸 include). 회귀 4종 234/234 PASS | 동 F-6 |
 | **BL-22** | Pi `/boot/firmware/config.txt`의 `init_uart_clock=48000000` — **기각된 가설의 잔재**, 되돌릴지 결정(Pi 전원 필요) | `selfaudit` B-1 |

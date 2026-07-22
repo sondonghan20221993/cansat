@@ -1,5 +1,6 @@
 #include "mavlink_bridge_app_utils.h"
 #include "mavlink_bridge_app_eventids.h"
+#include "serial_baud.h"
 
 /* Route operation types — must match uplink_app UPLINK_APP_RouteOpType_t */
 #define MAVLINK_BRIDGE_ROUTE_OP_REPLACE 1U
@@ -821,39 +822,6 @@ void MAVLINK_BRIDGE_APP_RequestTelemetryStreams(void)
                       (unsigned int)MAVLINK_BRIDGE_APP_Data.TargetComponentId);
 }
 
-static bool MAVLINK_BRIDGE_APP_GetBaudConstant(uint32 Baudrate, speed_t *BaudConstant)
-{
-    switch (Baudrate)
-    {
-        case 9600:
-            *BaudConstant = B9600;
-            return true;
-        case 19200:
-            *BaudConstant = B19200;
-            return true;
-        case 38400:
-            *BaudConstant = B38400;
-            return true;
-        case 57600:
-            *BaudConstant = B57600;
-            return true;
-        case 115200:
-            *BaudConstant = B115200;
-            return true;
-        case 230400:
-            *BaudConstant = B230400;
-            return true;
-        case 460800:
-            *BaudConstant = B460800;
-            return true;
-        case 921600:
-            *BaudConstant = B921600;
-            return true;
-        default:
-            return false;
-    }
-}
-
 static void MAVLINK_BRIDGE_APP_MarkOutputsStale(void)
 {
     MAVLINK_BRIDGE_APP_Data.AttitudeTlm.Stale  = 1;
@@ -869,7 +837,7 @@ static CFE_Status_t MAVLINK_BRIDGE_APP_OpenSerial(void)
     speed_t        BaudConstant;
     const char    *SerialPath = MAVLINK_BRIDGE_APP_GetSerialPath();
 
-    if (!MAVLINK_BRIDGE_APP_GetBaudConstant(MAVLINK_BRIDGE_APP_SERIAL_BAUDRATE, &BaudConstant))
+    if (!SERIAL_BAUD_GetConstant(MAVLINK_BRIDGE_APP_SERIAL_BAUDRATE, &BaudConstant))
     {
         MAVLINK_BRIDGE_APP_Data.LastErrorCode = MAVLINK_BRIDGE_ERROR_INVALID_VALUE;
         CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_LINK_EID, CFE_EVS_EventType_ERROR,

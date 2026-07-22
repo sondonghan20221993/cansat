@@ -2,6 +2,7 @@
 #include "lora_tdm_app_dispatch.h"
 #include "lora_tdm_app_utils.h"
 #include "lora_tdm_app_eventids.h"
+#include "serial_baud.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -32,9 +33,20 @@ static int OpenSerial(void)
 {
     int            Fd;
     struct termios Tio;
-    speed_t        Baud = B57600;
+    speed_t        Baud;
     int            Flags;
     const char    *SerialPath = GetLoRaSerialPath();
+
+    /* BL-19(2026-07-22): 하드코딩 B57600 대신 설정값(LORA_TDM_APP_LORA_BAUDRATE)을
+     * 실제로 사용. 설정값이 지원 목록에 없으면(오타 등) B57600로 대체해 기존
+     * 동작을 그대로 유지한다. */
+    if (!SERIAL_BAUD_GetConstant(LORA_TDM_APP_LORA_BAUDRATE, &Baud))
+    {
+        CFE_EVS_SendEvent(LORA_TDM_APP_SERIAL_OPEN_ERR_EID, CFE_EVS_EventType_ERROR,
+                          "LORA_TDM_APP: unsupported LORA_BAUDRATE=%u, defaulting to 57600",
+                          (unsigned int)LORA_TDM_APP_LORA_BAUDRATE);
+        Baud = B57600;
+    }
 
     Fd = open(SerialPath, O_RDWR | O_NOCTTY | O_NONBLOCK);
     if (Fd < 0)
