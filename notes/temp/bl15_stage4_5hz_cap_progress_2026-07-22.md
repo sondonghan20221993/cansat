@@ -45,44 +45,47 @@ make DESTDIR=/home/sdh2983/cFS_clean/build install   # 설치(CMAKE_INSTALL_PREF
 
 **판정: PASS** — 150ms(≈6.67Hz)는 실측 근거로 확정 가능.
 
-## Stage 4b (100ms) — 미착수
+## Stage 4b (100ms) — ✅ 완료, PASS (2026-07-22 20:40~20:46)
 
-**제안 설정**: `CYCLE_PERIOD_MS=100`, `RX_WINDOW_MS=50`, `LINK_LOSS_THRESHOLD=50`
-(사용자 확인 대기 중, 아직 반영 안 함)
+**설정**: `CYCLE_PERIOD_MS=100`, `RX_WINDOW_MS=50`, `LINK_LOSS_THRESHOLD=50`
 
-## 조사 필요 — 미해결 (2026-07-22, 중단 시점)
+**실측 결과 (5분 soak, `telemetry_20260722_203627.csv` 재시작 이후 구간)**:
+- 손실 **0.00%** (expected=2991, received=2991, gap 이벤트 0회)
+- 실효 수신율 **9.97 pkt/s** (FC+SH 합산, 이론 10/s)
+- 업링크도 정상: counter management(class 7) 전송 → `retx=0`(첫 슬롯 적중)
+  → `LORA_TDM_APP: ResetCounters command` 실행 확인
+
+**판정: PASS** — 100ms(10Hz)까지 실측 근거로 확정 가능. v1 ASCII 기준.
+
+## 조사 필요 — ✅ 해결됨 (2026-07-22)
 
 지상 CONFIG 명령으로 `lora_tdm.downlink_protocol=1`을 보내 v2(DL2) 전환을
 승인(`[OK] CONFIG accepted seq=1`)했는데도, 이후 Pi 로그(`/tmp/cfs_run.log`)에
 v1 ASCII "ACK,<seq>" 형식의 "ACK seq mismatch" 이벤트가 계속 찍힘.
 
-**확인된 사실**:
-- `UseV2Downlink`는 `lora_tdm_app.c:262`(`RunTx`)의 다운링크 **송신** 포맷만
-  결정 — RX 측 `ProcessRxLine`의 "ACK,<seq>" 파싱은 `UseV2Downlink`와 무관하게
-  항상 동작(`lora_tdm_app_utils.c:565` 부근, 조건문에 `UseV2Downlink` 참조 없음)
-- 즉 v1 ACK 텍스트가 계속 오는 것이, Pi가 여전히 v1으로 송신 중이라서인지
-  아니면 Pi는 v2로 전환했는데 지상이 아직 ACK2(바이너리)로 응답 안 해서인지
-  **미확인** — 사용자가 조사 중단시킴(그 다음 grep 명령 거부)
+**원인 확정 (2026-07-22 실기 재현)**: v2 전환 CONFIG가 **health gate에
+차단되고 있었음**. GPS 없는 실내 환경 → EKF invalid → `CfsHealthState=1
+(DEGRADED)` → §18.10.1 정책이 CONFIG/VIEWPOINT 차단. Pi 로그 증거:
+`UPLINK_APP: command blocked by health state=1 class=1 seq=5`.
+당시 지상의 `[OK] CONFIG accepted`+UFB=0은 "프레임 정상 수신"일 뿐
+"적용됨"이 아니었음(UFB=0의 구조적 한계 — lora_tdm_app_behavior_spec.md
+§10 그대로).
 
-**다음 세션/재개 시 확인할 것**:
-1. `lora_tdm_app_utils.c`에서 `SET_DOWNLINK_PROTO_CC`/`PARAM_DOWNLINK_PROTOCOL`
-   CONFIG 처리 시 `UseV2Downlink ? "v2(DL2)" : "v1(text)"` 이벤트 로그가
-   실제로 v2로 찍혔는지 Pi 로그(`/tmp/cfs_run.log`)에서 확인
-   (`grep -i "v2(DL2)\|downlink_protocol" /tmp/cfs_run.log`)
-2. 지상 `fc_serial_ws_server.py`의 `DownlinkStream`이 실제로 DL2 매직바이트를
-   감지해 ACK2로 응답하는지, 아니면 여전히 v1 파서 경로로 ACK 텍스트를
-   보내고 있는지 지상 로그/코드 확인
-3. "ACK,<seq>" mismatch가 v1/v2 무관하게 원래도 나던 것인지(재시작 직후
-   로그에서도 동일 패턴 관측됨 — v2 전환 명령 보내기 전부터 존재) 여부
-   재확인 — 만약 그렇다면 이 채널 자체가 다운링크 프로토콜과 무관한
-   별개 메커니즘일 가능성
+**해결 확인**: `force:true`(FORCE_FLAG, §18.10.2)로 재전송 →
+`FORCED THROUGH health gate` → `LORA_TDM_APP: downlink protocol set to
+v2(DL2)` 실제 전환 + 지상이 DL2 수신 후 **ACK2**로 응답(Pi 로그에
+"ACK2 seq mismatch" — v2 ACK 채널 동작 증거) — v2 양방향 정상.
+부수 확인: BL-08 EXEC_RESULT 실기 동작(`exec result seq=6 generic=0`).
+
+참고: "ACK seq mismatch"(v1)/"ACK2 seq mismatch"(v2)는 반이중 지연으로
+원래 항상 나는 로그(BL-35 기존 이슈) — 프로토콜 미전환 증거가 아니었음.
 
 ## 상태
 
-- [x] Pi 재배포 (이번 세션 누적 변경사항 전체)
+- [x] Pi 재배포 (이번 세션 누적 변경사항 전체 + counter mgmt/RETX_IDX 실기 검증)
 - [x] Stage 4a (150ms) 실측 — PASS
-- [ ] v2 전환 미반영 의심 건 조사 (위 참고)
-- [ ] Stage 4b (100ms) 실측
-- [ ] 실측 완료 후 `mission_cfg.h`를 최종값(또는 200ms 원복)으로 확정,
-      `lora_stage_measurement_runbook.md`/`lora_downlink_5hz_cap_2026-07-21.md`에
-      결과 반영
+- [x] v2 전환 미반영 의심 건 — 해결(health gate 차단이 원인, FORCE로 전환 확인)
+- [x] Stage 4b (100ms) 실측 — PASS (0% 손실, 9.97pkt/s)
+- [ ] `mission_cfg.h` 최종값 확정(100ms 확정 커밋 vs 더 낮은 주기 추가 실측)
+      — 사용자 결정 대기. 확정 시 `lora_stage_measurement_runbook.md`/
+      `lora_downlink_5hz_cap_2026-07-21.md`에 결과 반영
