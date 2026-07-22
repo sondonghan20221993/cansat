@@ -147,7 +147,7 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 | ID | 내용 |
 |---|---|
 | ~~**BL-23**~~ | ✅ **완료(2026-07-22, openMCT)**. 타이머 기반 강제 송신은 넣지 않음(반이중 슬롯 정렬 유지, 실제 송신은 여전히 다운링크 수신 시에만). 대신 큐 크기 상한(16, 사용자 결정)을 둬 링크 단절 중 계속 쌓이는 걸 방지 — 초과 시 HTTP 에러가 아니라 가장 오래된 항목을 버리고 경고 로그만 남김, 새 명령은 그대로 accept. pytest 57/57 PASS(신규 `UplinkQueueCapTest`) |
-| **BL-24** | UFB=1 자동 재전송이 **새 seq로 재조립** — 진짜 재전송이 아니라 "같은 내용의 새 명령". 3회 카운트가 원 프레임 기준이 아님. BL-01/BL-13과 함께 볼 것 |
+| ~~**BL-24**~~ | ✅ **완료(2026-07-22, openMCT)**. 설계 논의로 실제 위험 확인: 새 seq 재조립은 큐에 남은 원본 사본이 뒤늦게 수락되면 **같은 명령이 이중 실행**되는 경합이 있었음(특히 RECOVERY/ROUTE append에 위험). A안(사용자 결정): 서버가 최근 전송 명령을 seq별 캐시(32개)하고 `/api/uplink/resend`가 같은 seq 그대로 재큐잉 — 원본이 이미 수락됐어도 기체 DUPLICATE(BL-01) 방어로 이중 실행 구조적 불가. uplinkGUI 3종(config/route/recovery) resend 클로저를 새 명령 재호출→resend 엔드포인트 호출로 교체, UFB=1 로그도 "같은 seq=N로 재전송"으로 정정. pytest 60/60 PASS(신규 `ResendEndpointTest` 3건) |
 | ~~**BL-25**~~ | ✅ **완료(2026-07-21, BL-09와 함께)**. `uplinkCLI/plugin.js` 도움말을 실제 동작(byte[0]=action이 cfs_core_app RESTART 3종을 실제로 트리거함)으로 정정 |
 | ~~**BL-26/27/28**~~ | ✅ **완료(2026-07-21, openMCT `c561aa3`)**. `tests/test_fc_serial_ws_server.py`에 형제 디렉터리 C 헤더를 정규식 파싱해 비교하는 교차검증 테스트 4건 추가(`DL2_BASE_LEN`↔`LORA_TDM_APP_DL2_LEN_FIELD`, `PARAM_BOUNDS[cfs_core/mavlink_bridge]`↔C 상수). repo 없는 환경은 skip. 35/35 PASS |
 
