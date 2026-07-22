@@ -124,7 +124,7 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 | ~~**BL-12**~~ | ✅ **완료(2026-07-22)**. 기체측 영속화(`uplink_app` 8비트 `BootCount`, `/cf/uplink_app_state.bin`) + BL-03에서 DL2 동봉/지상 `_BootCountTracker` anomaly 감지까지 완결 | T5 |
 | ~~**BL-13**~~ | ✅ **완료(2026-07-22)**. `UPLINK_APP_CheckSequence()`를 모듈러 윈도우(`diff=(uint16)(seq-last); diff<0x8000`)로 변경 — 65535 wrap 해소. 회귀 UT 99/99(cmds) PASS | T6 / 문제3 |
 | ~~**BL-14**~~ | ✅ **완료(2026-07-22)**. `Flags` `bits[2:1]=RETX_IDX`(0~3=슬롯-1, 0=최초 전송이라 구 프레임 하위호환) 확정 — spec §18.4.3.1 Flags 표에 기록(이때 bit[0] FORCE_FLAG 미반영 stale도 함께 정정). 기체(`uplink_app`): 수락/중복 EVS 이벤트에 `retx=` 표기만(검증 미사용, HK/DL2 변경 없음). 지상(openMCT `fc_serial_ws_server.py`): 큐를 프레임 문자열→구성요소 저장으로 바꿔 슬롯마다 flags+CRC 재조립. 회귀: uplink_app_cmds 110/110, openMCT pytest 56/56(신규 RetxIndexFlushTest 포함) | T9 | 완료 |
-| **BL-15** | 🔶 **결정(2026-07-21): 상향 필요(A안) — 단 실측이 선행돼야 함.** 200ms는 검증됨(2026-07-14, 손실 0%), 200ms 미만은 미검증. Pi/LoRa 하드웨어로 단계적 실측(runbook Stage 2 방식 재사용) 후 상한 확정 → **BL-32로 이관** | `lora_downlink_5hz_cap` |
+| **BL-15** | 🔶 **실측 완료(2026-07-22): Stage 4a(150ms) PASS + Stage 4b(100ms) PASS** — 100ms 5분 soak 손실 0.00%(2991/2991), 9.97pkt/s, 업링크 정상(retx=0). **남은 결정: 최종값 확정**(100ms 확정 커밋 vs 추가 하향 실측) — `mission_cfg.h`는 100ms 실험값으로 uncommitted 상태. `bl15_stage4_5hz_cap_progress_2026-07-22.md` 참조 | `lora_downlink_5hz_cap` |
 | ~~**BL-16**~~ | ✅ **구현 완료(2026-07-21)**. `LORA_TDM_APP_SetDownlinkProtocol`/`ProcessConfigCommand` 둘 다 `Value==0 or 1`만 수락, 그 외는 `ErrCounter++`+신규 EID(`SET_DL_PROTO_ERR_EID=21`)로 거부. 지상 `PARAM_BOUNDS(0,1)`과 대칭 일치. 회귀 UT 4종(64/14/36/125, 신규 2건 포함) PASS | `selfaudit` A-4 |
 
 ---
@@ -138,7 +138,7 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 | ~~**BL-19**~~ | ✅ **완료(2026-07-22)**. `git log -S`로 원 의도 추적: `LORA_TDM_APP_LORA_BAUDRATE`는 mavlink_bridge_app이 이미 갖고 있던 `GetBaudConstant()`(int→`speed_t` lookup) 패턴을 `shared_msgs/serial_baud.h`(공용, 두 앱이 함께 사용)로 이관해 실제 연결 — `lora_tdm_app.c`의 `B57600` 하드코딩 제거. `STREAM_REACQUIRE_TIMEOUT_MS`는 커밋 `8558793`에서 도입돼 실제 구현(`StreamRefreshNeeded()`)까지 됐다가 5분 뒤 `7c4aac3`에서 저자 본인이 되돌리며 상수만 지우는 걸 빠뜨린 죽은 잔재로 확인 → 삭제. 회귀 UT: mavlink_bridge_app 4종(14/4/167/26), lora_tdm_app 4종(64/14/145/39) 전부 PASS | `system_wide_reaudit` F-4/F-5/F-6 |
 | ~~**BL-20**~~ | ✅ **완료(2026-07-21)**. `uplink_lora_test_status.md` 상단에 정정 안내 블록 추가 — `lora_fc_downlink_app`은 옛 이름, `UPLINK_RAW_MID=0x1909`는 실제 `FC_SYS_TIME_MID` 값임을 명시 | 동 F-7 |
 | ~~**BL-21**~~ | ✅ **완료(2026-07-21)**. `config/default_lora_tdm_app_fcncode_values.h`는 어디서도 include 안 되는 죽은 중복본(SET_DOWNLINK_PROTO_CC도 누락)이라 삭제. 실사용은 `fsw/inc/lora_tdm_app_fcncodes.h`(dispatch.c가 이걸 include). 회귀 4종 234/234 PASS | 동 F-6 |
-| **BL-22** | Pi `/boot/firmware/config.txt`의 `init_uart_clock=48000000` — **기각된 가설의 잔재**, 되돌릴지 결정(Pi 전원 필요) | `selfaudit` B-1 |
+| ~~**BL-22**~~ | ✅ **유지 결론(2026-07-22 실측 근거)** — FC가 `/dev/serial0`(PL011 ttyAMA0) **921600** 보레이트 사용 중, PL011 고속 보레이트는 UART 클럭 48MHz 상향이 필요한 구성이라 "기각된 가설의 잔재"가 아니라 현 FC 링크 의존 설정일 가능성 높음. 제거 이득 없음+회귀 위험 → 유지 | `selfaudit` B-1 / 실측 |
 
 ---
 
@@ -169,10 +169,10 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 | **BL-38** | 🔴 **RT-CORE-003 실기 FAIL로 발견(2026-07-22)**: uplink/lora 자동 재시작이 fault 우선순위 else-if 체인 내부에 있어 상위 fault(EKF invalid 등) 지속 시 도달 불가 + 카운터 리셋됨 — GPS 음영에서 앱 자동복구 전면 무력화. RT-CORE-004(lora)도 동일 확증. **A안 합의(미구현)**: 재시작 로직을 체인에서 분리해 각 `*TimedOut` 기준 독립 실행(FaultCode 보고는 기존 우선순위 유지). spec §11.1 결함 주석 참조 | RT-CORE-003/004 실측 |
 | **BL-39** | 🔴 **실기 발견(2026-07-22)**: uplink_app 영속 상태(`/cf/uplink_app_state.bin`)를 POSIX open 리터럴 경로로 사용 — Pi에 `/cf` 없음 → SaveState 조용히 실패, **BootCount/seq 영속화가 실기에서 한 번도 동작 안 함**(BL-12/BL-03 실질 무효). 수정 후보 ⓐ service env 주입 ⓑ 상대경로 ⓒ OSAL 전환 + SaveState 실패 EVS 추가 — 방향 미결정. `runtime_test_session_2026-07-22.md` 참조 | RT-DL2-SYSTIME-001 실측 중 발견 |
 | **BL-31** | D-1: 앱 재시작 실측 (`tools/runtime_app_restart_test.sh`) — 2026-07-22 1차 시도: 스크립트 앱명 버그(소문자→`UPLINK_APP` 등록명) 수정, CI_LAB 미탑재 발견·추가. uplink_app FAIL → BL-38 결함 발견. 결함 수정 후 재시험 필요 | `testcase_coverage_gap` |
-| **BL-32** | D-2: TDM/LoRa/DL2-SYSTIME 실물 테스트군 | 동 |
-| **BL-33** | D-3: 통합 순차 세션 7단계 | 동 |
+| **BL-32** | D-2: TDM/LoRa/DL2-SYSTIME 실물 테스트군 — 🔶 **대부분 완료(2026-07-22)**: TDM-RT-001~006·RT-LORA-004 ✅(로그 증거), RT-DL2-SYSTIME-001 부분(실외 GPS 필요), 잔여=TDM-RT-007(CRC 변조 주입 도구 필요)/008(타이밍 주입 곤란)/009·RT-LORA-001(물리 조작). `runtime_test_session_2026-07-22.md` | 동 |
+| **BL-33** | D-3: 통합 순차 세션 7단계 — ⏸ **현 환경 실행 불가 판정(2026-07-22)**: 사전조건 `health=NOMINAL`이 실내(GPS 없음, fault=3 상시)에서 달성 불가 + 단계 3/4 판정(fault=6/7 전이)은 BL-38 결함으로 관측 불가. **실외 GPS + BL-38 수정 선행** | 동 |
 | **BL-34** | `MISSION_ITEM_INT` 경로 실물 FC 검증 (ArduPilot 거부 위험) | `mission_item_int_frame_gap` |
-| **BL-35** | ACK seq 불일치 실측 (SF/BW/CR 확인 또는 Pi↔GS 타임스탬프 대조) | `pi_flight_build_missing_2026-07-16` |
+| ~~**BL-35**~~ | ✅ **정량 실측 완료(2026-07-22)** — mismatch 18,237건 분석: lag 3~6프레임 집중(평균 4.36), 100ms 주기 기준 **왕복 ~440ms 체계적 파이프라인 지연**(LoRa 양방향 airtime+모듈 버퍼+호스트 처리). 데싱크/유실 아님, 링크 판정(NoAckCount)에 영향 없음 — 이벤트는 사실상 로그 노이즈. 후속(선택): 허용 윈도우/이벤트 집계 | `pi_flight_build_missing` / 실측 |
 | **BL-36** | camera P2(Pi 경유 SSH)/P4(카메라 SD 녹화) 확인 | `camera_phase_verification_gap` |
 | **BL-37** | 실외 GPS 확보 후 `fault_code=3`(EKF_INVALID) 해소 확인 | `uplink_lora_test_status` §8.4 |
 
