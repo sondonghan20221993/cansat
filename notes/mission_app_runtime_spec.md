@@ -1532,7 +1532,7 @@ counter management payload:
 - Level 3 공통 차단 규칙(`request_token=0`, 시스템 헬스 DEGRADED/RECOVERY/FAILED 등)
 - 최소 보고 시작 상태에서 금지된 범위
 
-> 위 수치(class code 7, scope 1~4, UFB 0x0C)는 spec 원문에 없던 값으로 이번 세션 대화에서 확정. **구현 완료(2026-07-22)**: `uplink_app`에 `UPLINK_APP_CLASS_COUNTER_MGMT=7`/`UPLINK_APP_ForwardCounterMgmtCommand()` 추가 — scope=UPLINK(자신)는 로컬 카운터 직접 초기화, 그 외 3개 앱은 기존 CMD_MID(`0x18A0`/`0x18C0`/`0x18E0`)에 기존 `RESET_COUNTERS_CC=1`을 `CFE_MSG_SetFcnCode`로 얹어 직접 전송(P1-a `CFS_CORE_APP_SendBridgeCtrlCmd`와 동일 패턴, `cfs_core_app` 미경유). `lora_tdm_app` UFB `REJECT_COUNTER=12`(0x0C) 매핑 완료. 단위테스트: uplink_app_utils(120→131), uplink_app_cmds(+4), lora_tdm_app_dispatch(59→61), 전부 통과.
+> 위 수치(class code 7, scope 1~4, UFB 0x0C)는 spec 원문에 없던 값으로 이번 세션 대화에서 확정. **구현 완료(2026-07-22)**: `uplink_app`에 `UPLINK_APP_CLASS_COUNTER_MGMT=7`/`UPLINK_APP_ForwardCounterMgmtCommand()` 추가 — scope=UPLINK(자신)는 로컬 카운터 직접 초기화, 그 외 3개 앱은 기존 CMD_MID(`0x18A0`/`0x18C0`/`0x18E0`)에 기존 `RESET_COUNTERS_CC=1`을 `CFE_MSG_SetFcnCode`로 얹어 직접 전송(P1-a `CFS_CORE_APP_SendBridgeCtrlCmd`와 동일 패턴, `cfs_core_app` 미경유). `lora_tdm_app` UFB `REJECT_COUNTER=12`(0x0C) 매핑 완료. 단위테스트: uplink_app_utils(120→131), uplink_app_cmds(+4), lora_tdm_app_dispatch(59→61), 전부 통과. **지상측도 완료(2026-07-22, openMCT `92bd3a6`)**: `/api/uplink/counter` 엔드포인트(payload=scope+action+token(LE), Level 3 token 자동생성) + uplinkCLI `counter <scope>` 명령 + uplinkGUI UFB 0x0C 디코딩(`82a8a82`).
 
 #### 18.4.7 Request Token 계약
 
