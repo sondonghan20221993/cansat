@@ -25,6 +25,16 @@ typedef struct
     CFE_MSG_CommandHeader_t CommandHeader;
 } MAVLINK_BRIDGE_APP_MissionQueryCmd_t;
 
+typedef struct
+{
+    CFE_MSG_CommandHeader_t CommandHeader;
+} MAVLINK_BRIDGE_APP_ParserResetCmd_t;
+
+typedef struct
+{
+    CFE_MSG_CommandHeader_t CommandHeader;
+} MAVLINK_BRIDGE_APP_SerialReconnectCmd_t;
+
 typedef BRIDGE_HK_TLM_t MAVLINK_BRIDGE_APP_HkTlm_t;
 
 typedef FC_EKF_LOCAL_TLM_t  MAVLINK_BRIDGE_APP_EkfLocalTlm_t;

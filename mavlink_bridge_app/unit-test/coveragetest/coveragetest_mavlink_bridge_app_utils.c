@@ -1218,6 +1218,37 @@ void Test_RequestTelemetryStreams_SkippedWhenNoTarget(void)
     UtAssert_True(CapLen <= 0, "no frame written when TargetSystemId==0");
 }
 
+/* ground_controllable_capability_plan P1-a: PARSER_RESET/SERIAL_RECONNECT
+ * cross-app 트리거. Parser/SerialFd 자체는 파일 static이라 직접 관측
+ * 불가 — 관측 가능한 CmdCounter 증가와 크래시 없이 완주하는 것으로 검증
+ * (SerialFd 재오픈은 테스트 환경에 실장치가 없어 open() 실패가 정상). */
+void Test_ProcessParserResetCmd_IncrementsCmdCounter(void)
+{
+    MAVLINK_BRIDGE_APP_ParserResetCmd_t Cmd;
+
+    memset(&Cmd, 0, sizeof(Cmd));
+    MAVLINK_BRIDGE_APP_Data.CmdCounter = 5;
+
+    MAVLINK_BRIDGE_APP_ProcessParserResetCmd(&Cmd);
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.CmdCounter, 6);
+}
+
+void Test_ProcessSerialReconnectCmd_ClosesFdAndIncrementsCmdCounter(void)
+{
+    MAVLINK_BRIDGE_APP_SerialReconnectCmd_t Cmd;
+
+    memset(&Cmd, 0, sizeof(Cmd));
+    MAVLINK_BRIDGE_APP_Data.CmdCounter = 5;
+    MAVLINK_BRIDGE_APP_Data.SerialFd   = -1;
+
+    MAVLINK_BRIDGE_APP_ProcessSerialReconnectCmd(&Cmd);
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.CmdCounter, 6);
+    /* OpenSerial()은 테스트 환경에 실장치가 없어 실패 → SerialFd -1 유지 */
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.SerialFd, -1);
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(UpdateFromHeartbeat_Armed);
@@ -1261,4 +1292,6 @@ void UtTest_Setup(void)
     ADD_TEST(ProcessReceivedByte_StxByteInPayload_NoReentry);
     ADD_TEST(RequestTelemetryStreams_SendsSixStreamRequests);
     ADD_TEST(RequestTelemetryStreams_SkippedWhenNoTarget);
+    ADD_TEST(ProcessParserResetCmd_IncrementsCmdCounter);
+    ADD_TEST(ProcessSerialReconnectCmd_ClosesFdAndIncrementsCmdCounter);
 }

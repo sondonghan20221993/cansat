@@ -97,6 +97,42 @@ void Test_MAVLINK_BRIDGE_APP_TaskPipe_MissionQuery(void)
     UtAssert_STUB_COUNT(MAVLINK_BRIDGE_APP_MissionQuery, 1);
 }
 
+void Test_MAVLINK_BRIDGE_APP_TaskPipe_ParserReset(void)
+{
+    CFE_SB_Buffer_t   Buffer;
+    CFE_SB_MsgId_t    MsgId;
+    CFE_MSG_FcnCode_t FcnCode;
+
+    memset(&Buffer, 0, sizeof(Buffer));
+    MsgId   = CFE_SB_ValueToMsgId(MAVLINK_BRIDGE_APP_CMD_MID_VALUE);
+    FcnCode = MAVLINK_BRIDGE_APP_PARSER_RESET_CC;
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId),    &MsgId,   sizeof(MsgId),   false);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetFcnCode), &FcnCode, sizeof(FcnCode), false);
+
+    MAVLINK_BRIDGE_APP_Data.ErrCounter = 0;
+    MAVLINK_BRIDGE_APP_TaskPipe(&Buffer);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ErrCounter, 0);
+    UtAssert_STUB_COUNT(MAVLINK_BRIDGE_APP_ProcessParserResetCmd, 1);
+}
+
+void Test_MAVLINK_BRIDGE_APP_TaskPipe_SerialReconnect(void)
+{
+    CFE_SB_Buffer_t   Buffer;
+    CFE_SB_MsgId_t    MsgId;
+    CFE_MSG_FcnCode_t FcnCode;
+
+    memset(&Buffer, 0, sizeof(Buffer));
+    MsgId   = CFE_SB_ValueToMsgId(MAVLINK_BRIDGE_APP_CMD_MID_VALUE);
+    FcnCode = MAVLINK_BRIDGE_APP_SERIAL_RECONNECT_CC;
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId),    &MsgId,   sizeof(MsgId),   false);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetFcnCode), &FcnCode, sizeof(FcnCode), false);
+
+    MAVLINK_BRIDGE_APP_Data.ErrCounter = 0;
+    MAVLINK_BRIDGE_APP_TaskPipe(&Buffer);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ErrCounter, 0);
+    UtAssert_STUB_COUNT(MAVLINK_BRIDGE_APP_ProcessSerialReconnectCmd, 1);
+}
+
 void Test_MAVLINK_BRIDGE_APP_TaskPipe_UnknownMid(void)
 {
     CFE_SB_Buffer_t Buffer;
@@ -152,6 +188,8 @@ void UtTest_Setup(void)
     ADD_TEST(MAVLINK_BRIDGE_APP_TaskPipe_Noop);
     ADD_TEST(MAVLINK_BRIDGE_APP_TaskPipe_ResetCounters);
     ADD_TEST(MAVLINK_BRIDGE_APP_TaskPipe_MissionQuery);
+    ADD_TEST(MAVLINK_BRIDGE_APP_TaskPipe_ParserReset);
+    ADD_TEST(MAVLINK_BRIDGE_APP_TaskPipe_SerialReconnect);
     ADD_TEST(MAVLINK_BRIDGE_APP_TaskPipe_UnknownMid);
     ADD_TEST(MAVLINK_BRIDGE_APP_TaskPipe_UnknownCC);
     ADD_TEST(MAVLINK_BRIDGE_APP_TaskPipe_ConfigCmd);

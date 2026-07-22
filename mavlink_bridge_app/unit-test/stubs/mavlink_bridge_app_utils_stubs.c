@@ -44,3 +44,15 @@ void MAVLINK_BRIDGE_APP_MissionQuery(const MAVLINK_BRIDGE_APP_MissionQueryCmd_t 
     UT_GenStub_AddParam(MAVLINK_BRIDGE_APP_MissionQuery, const MAVLINK_BRIDGE_APP_MissionQueryCmd_t *, Cmd);
     UT_GenStub_Execute(MAVLINK_BRIDGE_APP_MissionQuery, Basic, NULL);
 }
+
+void MAVLINK_BRIDGE_APP_ProcessParserResetCmd(const MAVLINK_BRIDGE_APP_ParserResetCmd_t *Cmd)
+{
+    UT_GenStub_AddParam(MAVLINK_BRIDGE_APP_ProcessParserResetCmd, const MAVLINK_BRIDGE_APP_ParserResetCmd_t *, Cmd);
+    UT_GenStub_Execute(MAVLINK_BRIDGE_APP_ProcessParserResetCmd, Basic, NULL);
+}
+
+void MAVLINK_BRIDGE_APP_ProcessSerialReconnectCmd(const MAVLINK_BRIDGE_APP_SerialReconnectCmd_t *Cmd)
+{
+    UT_GenStub_AddParam(MAVLINK_BRIDGE_APP_ProcessSerialReconnectCmd, const MAVLINK_BRIDGE_APP_SerialReconnectCmd_t *, Cmd);
+    UT_GenStub_Execute(MAVLINK_BRIDGE_APP_ProcessSerialReconnectCmd, Basic, NULL);
+}

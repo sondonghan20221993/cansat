@@ -2179,19 +2179,27 @@ void Test_CFS_CORE_APP_ProcessRecoveryCommand_RestartLora(void)
 
 void Test_CFS_CORE_APP_ProcessRecoveryCommand_ParserReset(void)
 {
+    /* P1-a(2026-07-22): 이제 실제로 mavlink_bridge_app CMD_MID로 발행해야 함 */
     CFS_CORE_APP_RecoveryCmdTlm_t Msg;
 
     memset(&Msg, 0, sizeof(Msg));
     Msg.RecoveryAction = CFS_CORE_APP_RECOVERY_ACTION_PARSER_RESET;
     Msg.RequestToken   = 0;
+    Msg.SourceSequence = 57;
 
     CFS_CORE_APP_Data.RecoveryRequestedCount = 0;
     CFS_CORE_APP_Data.CmdCounter             = 0;
+    UT_SetDefaultReturnValue(UT_KEY(CFE_MSG_SetFcnCode), CFE_SUCCESS);
+    UT_SetDefaultReturnValue(UT_KEY(CFE_SB_TransmitMsg), CFE_SUCCESS);
 
     CFS_CORE_APP_ProcessRecoveryCommand(&Msg);
 
     UtAssert_INT32_EQ((int)CFS_CORE_APP_Data.RecoveryRequestedCount, 1);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.CmdCounter, 1);
+    UtAssert_STUB_COUNT(CFE_MSG_SetFcnCode, 1);
+    /* EXEC_RESULT OK 회신 확인 */
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ExecResultTlm.SourceSequence, 57);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ExecResultTlm.GenericResult, (int32)EXEC_RESULT_GENERIC_OK);
 }
 
 void Test_CFS_CORE_APP_ProcessRecoveryCommand_SerialReconnect(void)
@@ -2200,14 +2208,38 @@ void Test_CFS_CORE_APP_ProcessRecoveryCommand_SerialReconnect(void)
 
     memset(&Msg, 0, sizeof(Msg));
     Msg.RecoveryAction = CFS_CORE_APP_RECOVERY_ACTION_SERIAL_RECONNECT;
+    Msg.SourceSequence = 58;
 
     CFS_CORE_APP_Data.RecoveryRequestedCount = 0;
     CFS_CORE_APP_Data.CmdCounter             = 0;
+    UT_SetDefaultReturnValue(UT_KEY(CFE_MSG_SetFcnCode), CFE_SUCCESS);
+    UT_SetDefaultReturnValue(UT_KEY(CFE_SB_TransmitMsg), CFE_SUCCESS);
 
     CFS_CORE_APP_ProcessRecoveryCommand(&Msg);
 
     UtAssert_INT32_EQ((int)CFS_CORE_APP_Data.RecoveryRequestedCount, 1);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.CmdCounter, 1);
+    UtAssert_STUB_COUNT(CFE_MSG_SetFcnCode, 1);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ExecResultTlm.SourceSequence, 58);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ExecResultTlm.GenericResult, (int32)EXEC_RESULT_GENERIC_OK);
+}
+
+void Test_CFS_CORE_APP_ProcessRecoveryCommand_ParserReset_SendFails(void)
+{
+    /* FcnCode 설정 실패 시 mavlink_bridge_app으로 발행 안 되고 FAILED 회신 */
+    CFS_CORE_APP_RecoveryCmdTlm_t Msg;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.RecoveryAction = CFS_CORE_APP_RECOVERY_ACTION_PARSER_RESET;
+    Msg.SourceSequence = 59;
+
+    CFS_CORE_APP_Data.RecoveryRequestedCount = 0;
+    UT_SetDefaultReturnValue(UT_KEY(CFE_MSG_SetFcnCode), -1);
+
+    CFS_CORE_APP_ProcessRecoveryCommand(&Msg);
+
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ExecResultTlm.SourceSequence, 59);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ExecResultTlm.GenericResult, (int32)EXEC_RESULT_GENERIC_FAILED);
 }
 
 void Test_CFS_CORE_APP_ProcessRecoveryCommand_UnknownAction(void)
@@ -2382,6 +2414,7 @@ void UtTest_Setup(void)
     ADD_TEST(CFS_CORE_APP_ProcessRecoveryCommand_RestartLora);
     ADD_TEST(CFS_CORE_APP_ProcessRecoveryCommand_ParserReset);
     ADD_TEST(CFS_CORE_APP_ProcessRecoveryCommand_SerialReconnect);
+    ADD_TEST(CFS_CORE_APP_ProcessRecoveryCommand_ParserReset_SendFails);
     ADD_TEST(CFS_CORE_APP_ProcessRecoveryCommand_UnknownAction);
     ADD_TEST(CFS_CORE_APP_ProcessModeCommand_EnterRecovery);
     ADD_TEST(CFS_CORE_APP_ProcessModeCommand_ExitRecovery);

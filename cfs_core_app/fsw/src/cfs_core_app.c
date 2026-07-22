@@ -94,6 +94,16 @@ CFE_Status_t CFS_CORE_APP_Init(void)
         return Status;
     }
 
+    /* P1-a(2026-07-22): mavlink_bridge_app CMD_MID로 보낼 명령 버퍼 —
+     * FcnCode는 전송 시점(ProcessRecoveryCommand)에 매번 설정 */
+    Status = CFE_MSG_Init(CFE_MSG_PTR(CFS_CORE_APP_Data.BridgeCtrlCmd.CommandHeader),
+                          CFE_SB_ValueToMsgId(MAVLINK_BRIDGE_APP_CMD_MID_VALUE),
+                          sizeof(CFS_CORE_APP_Data.BridgeCtrlCmd));
+    if (Status != CFE_SUCCESS)
+    {
+        return Status;
+    }
+
     Status = CFE_SB_CreatePipe(&CFS_CORE_APP_Data.CommandPipe, CFS_CORE_APP_PLATFORM_PIPE_DEPTH, CFS_CORE_APP_PLATFORM_PIPE_NAME);
     if (Status != CFE_SUCCESS)
     {

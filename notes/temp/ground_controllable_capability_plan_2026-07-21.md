@@ -5,9 +5,11 @@
 - [ ] **P0**: `uplink_app` EXECUTED 상태 왕복 채널 설계+구현
   (`UPLINK_APP_RESULT_EXECUTED` 결과코드, 대상앱→uplink_app 회신 MID
   신규 설계, `mission_app_runtime_spec.md §18.4.6.4` 정합화)
-- [ ] **P1-a**: `mavlink_bridge_app`에 `PARSER_RESET_CMD`/
-  `SERIAL_RECONNECT_CMD` 신설, `cfs_core_app`의 RECOVERY 액션에서 실제 publish
-  (범위 밖으로 남음, BL-09에서 미착수)
+- [x] **P1-a**: 완료(2026-07-22). 신규 MID 대신 `mavlink_bridge_app`의 기존
+  `CMD_MID`를 FcnCode로 재사용(`PARSER_RESET_CC=3`/`SERIAL_RECONNECT_CC=4`).
+  `cfs_core_app`의 RECOVERY 액션에서 `CFS_CORE_APP_SendBridgeCtrlCmd()`로
+  실제 publish. 회귀 UT: cfs_core_app 4종(19/7/269/35), mavlink_bridge_app
+  4종(14/4/170/34) 전부 PASS
 - [x] **P1-b**: 완료(2026-07-21, BL-09). `RESTART_BRIDGE`를
   `ProcessRecoveryCommand()`에서 `CFE_ES_RestartApp()`에 직접 연결
 - [x] **P1-c**: 완료(2026-07-21, BL-09). `RecoveryAction` enum에
@@ -145,12 +147,13 @@ RESTART_LORA를 RecoveryAction enum에 추가하고 cfs_core_app에서
 - [ ] `mission_app_runtime_spec.md` §18.4.6.4 스펙과 실제 구현 정합화
 
 ### P1 — Finding 2: cfs_core_app RECOVERY → 각 앱 크로스앱 연결
-- [ ] `mavlink_bridge_app`에 새 CMD_MID 추가: `PARSER_RESET_CMD`,
-      `SERIAL_RECONNECT_CMD` (또는 기존 RESET 함수코드 재사용 검토)
-      — **범위 밖으로 남음(2026-07-21)**, 아래 3개 완료로 대체 착수하지 않음
-- [ ] `cfs_core_app_utils.c`의 `ProcessRecoveryCommand()`에서
-      `PARSER_RESET`/`SERIAL_RECONNECT` 액션 시 위 MID를 실제로 publish
-      — 상동, 범위 밖
+- [x] 완료(2026-07-22). 새 CMD_MID 신설 대신 `mavlink_bridge_app`의 기존
+      `CMD_MID`(`0x18A0`)를 FcnCode(`PARSER_RESET_CC=3`/`SERIAL_RECONNECT_CC=4`)로
+      재사용해 `MAVLINK_BRIDGE_APP_ProcessParserResetCmd()`/
+      `ProcessSerialReconnectCmd()` 추가 — 실제 `ResetParser()`/
+      `CloseSerial()+OpenSerial()` 호출로 연결
+- [x] 완료(2026-07-22). `cfs_core_app_utils.c`의 `ProcessRecoveryCommand()`에서
+      `CFS_CORE_APP_SendBridgeCtrlCmd()`로 위 MID에 실제 publish
 - [x] 완료(2026-07-21, BL-09). `RESTART_BRIDGE`는 기존 `CFE_ES_RestartApp()` 경로 그대로 재사용,
       ProcessRecoveryCommand에서 직접 호출하도록 연결
 - [x] 완료(2026-07-21, BL-09). **(전수조사 신규)** `RecoveryAction` enum에 `RESTART_UPLINK`/

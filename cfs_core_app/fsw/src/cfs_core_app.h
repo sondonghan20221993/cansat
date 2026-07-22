@@ -65,6 +65,14 @@ typedef struct
     uint32 HoldTimeMs;
 } CFS_CORE_APP_ViewpointCache_t;
 
+/* ground_controllable_capability_plan P1-a(2026-07-22): mavlink_bridge_app의
+ * CMD_MID로 보낼 payload 없는 명령(CommandHeader만) — PARSER_RESET/
+ * SERIAL_RECONNECT 둘 다 이 구조로 충분, FcnCode만 전송 시점에 다르게 설정 */
+typedef struct
+{
+    CFE_MSG_CommandHeader_t CommandHeader;
+} CFS_CORE_APP_BridgeCtrlCmd_t;
+
 typedef struct
 {
     uint8                           CmdCounter;
@@ -110,6 +118,7 @@ typedef struct
     CFS_CORE_APP_HkTlm_t           HkTlm;
     CFS_CORE_APP_SystemHealthTlm_t SystemHealthTlm;
     CFS_CORE_APP_ExecResultTlm_t   ExecResultTlm; /* BL-08(2026-07-22) */
+    CFS_CORE_APP_BridgeCtrlCmd_t   BridgeCtrlCmd; /* P1-a(2026-07-22) */
 } CFS_CORE_APP_Data_t;
 
 extern CFS_CORE_APP_Data_t CFS_CORE_APP_Data;

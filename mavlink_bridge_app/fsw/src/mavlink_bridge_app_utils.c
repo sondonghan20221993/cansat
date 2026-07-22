@@ -921,6 +921,28 @@ static CFE_Status_t MAVLINK_BRIDGE_APP_OpenSerial(void)
     return CFE_SUCCESS;
 }
 
+/* ground_controllable_capability_plan(2026-07-21) P1-a: 지금까지 파싱 에러/
+ * 재연결 타이머로만 자동 트리거되던 두 self-healing 동작을 지상(cfs_core_app
+ * RECOVERY 명령 경유)에서도 수동 트리거할 수 있게 노출. */
+void MAVLINK_BRIDGE_APP_ProcessParserResetCmd(const MAVLINK_BRIDGE_APP_ParserResetCmd_t *Cmd)
+{
+    (void)Cmd;
+    MAVLINK_BRIDGE_APP_ResetParser();
+    MAVLINK_BRIDGE_APP_Data.CmdCounter++;
+    CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_RESET_EID, CFE_EVS_EventType_INFORMATION,
+                      "MAVLINK_BRIDGE_APP: parser reset (ground-triggered via cfs_core_app RECOVERY)");
+}
+
+void MAVLINK_BRIDGE_APP_ProcessSerialReconnectCmd(const MAVLINK_BRIDGE_APP_SerialReconnectCmd_t *Cmd)
+{
+    (void)Cmd;
+    MAVLINK_BRIDGE_APP_CloseSerial();
+    (void)MAVLINK_BRIDGE_APP_OpenSerial();
+    MAVLINK_BRIDGE_APP_Data.CmdCounter++;
+    CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_RESET_EID, CFE_EVS_EventType_INFORMATION,
+                      "MAVLINK_BRIDGE_APP: serial reconnect (ground-triggered via cfs_core_app RECOVERY)");
+}
+
 static void MAVLINK_BRIDGE_APP_PublishAttitude(uint32 BridgeTimestampMs)
 {
     MAVLINK_BRIDGE_APP_AttitudeTlm_t *Tlm;

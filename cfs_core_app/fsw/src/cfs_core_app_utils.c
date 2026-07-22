@@ -539,6 +539,21 @@ static void CFS_CORE_APP_PublishExecResult(uint16 SourceSequence, uint8 CommandC
     CFE_SB_TransmitMsg(CFE_MSG_PTR(Tlm->TelemetryHeader), true);
 }
 
+/* P1-a(2026-07-22): RECOVERY의 PARSER_RESET/SERIAL_RECONNECT를
+ * mavlink_bridge_app의 CMD_MID로 실제 전달 — 신규 MID 대신 그 앱의 기존
+ * CMD_MID를 FcnCode로 구분해 재사용(mavlink_bridge_app 내부 NOOP/
+ * RESET_COUNTERS/MISSION_QUERY와 동일 관례). */
+static bool CFS_CORE_APP_SendBridgeCtrlCmd(uint16 FcnCode)
+{
+    CFS_CORE_APP_BridgeCtrlCmd_t *Cmd = &CFS_CORE_APP_Data.BridgeCtrlCmd;
+
+    if (CFE_MSG_SetFcnCode(CFE_MSG_PTR(Cmd->CommandHeader), FcnCode) != CFE_SUCCESS)
+    {
+        return false;
+    }
+    return (CFE_SB_TransmitMsg(CFE_MSG_PTR(Cmd->CommandHeader), true) == CFE_SUCCESS);
+}
+
 void CFS_CORE_APP_ProcessConfigCommand(const CFS_CORE_APP_ConfigCmdTlm_t *Msg)
 {
     const CFS_CORE_APP_ConfigPayloadHdr_t *Hdr;
@@ -858,6 +873,7 @@ void CFS_CORE_APP_ProcessRecoveryCommand(const CFS_CORE_APP_RecoveryCmdTlm_t *Ms
                               "CFS_CORE_APP: recovery cmd PARSER_RESET seq=%u target=%u reason=%u token=%lu",
                               (unsigned int)Msg->SourceSequence, (unsigned int)Msg->TargetComponent,
                               (unsigned int)Msg->ReasonCode, (unsigned long)Msg->RequestToken);
+            Ok = CFS_CORE_APP_SendBridgeCtrlCmd(MAVLINK_BRIDGE_APP_PARSER_RESET_CC);
             break;
 
         case CFS_CORE_APP_RECOVERY_ACTION_SERIAL_RECONNECT:
@@ -865,6 +881,7 @@ void CFS_CORE_APP_ProcessRecoveryCommand(const CFS_CORE_APP_RecoveryCmdTlm_t *Ms
                               "CFS_CORE_APP: recovery cmd SERIAL_RECONNECT seq=%u target=%u reason=%u token=%lu",
                               (unsigned int)Msg->SourceSequence, (unsigned int)Msg->TargetComponent,
                               (unsigned int)Msg->ReasonCode, (unsigned long)Msg->RequestToken);
+            Ok = CFS_CORE_APP_SendBridgeCtrlCmd(MAVLINK_BRIDGE_APP_SERIAL_RECONNECT_CC);
             break;
 
         default:

@@ -55,6 +55,14 @@ void MAVLINK_BRIDGE_APP_TaskPipe(CFE_SB_Buffer_t *SBBufPtr)
             MAVLINK_BRIDGE_APP_MissionQuery((const MAVLINK_BRIDGE_APP_MissionQueryCmd_t *)SBBufPtr);
             break;
 
+        case MAVLINK_BRIDGE_APP_PARSER_RESET_CC:
+            MAVLINK_BRIDGE_APP_ProcessParserResetCmd((const MAVLINK_BRIDGE_APP_ParserResetCmd_t *)SBBufPtr);
+            break;
+
+        case MAVLINK_BRIDGE_APP_SERIAL_RECONNECT_CC:
+            MAVLINK_BRIDGE_APP_ProcessSerialReconnectCmd((const MAVLINK_BRIDGE_APP_SerialReconnectCmd_t *)SBBufPtr);
+            break;
+
         default:
             MAVLINK_BRIDGE_APP_Data.ErrCounter++;
             CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_COMMAND_ERR_EID, CFE_EVS_EventType_ERROR,
