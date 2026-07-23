@@ -178,6 +178,7 @@ def main() -> int:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=1234)
     parser.add_argument("--sequence", type=int, default=1)
+    parser.add_argument("--auth", type=int, default=2, choices=[0,1,2,3], help="Auth level in Flags[7:6] (ROUTE_UPDATE=2)")
     parser.add_argument("--route-version", type=int, default=1)
     parser.add_argument(
         "--transport",
@@ -200,7 +201,7 @@ def main() -> int:
 
     route_type, waypoints = preset_case(args.case_name)
     route_payload = build_route_payload(route_type, args.route_version, waypoints)
-    proxy_payload = build_process_uplink_payload(args.sequence, route_payload)
+    proxy_payload = build_process_uplink_payload(args.sequence, route_payload, flags=(args.auth << 6))
 
     print(
         f"prepare {args.case_name}: seq={args.sequence} route_type={route_type} "
