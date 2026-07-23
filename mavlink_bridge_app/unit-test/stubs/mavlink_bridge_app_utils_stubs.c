@@ -56,3 +56,13 @@ void MAVLINK_BRIDGE_APP_ProcessSerialReconnectCmd(const MAVLINK_BRIDGE_APP_Seria
     UT_GenStub_AddParam(MAVLINK_BRIDGE_APP_ProcessSerialReconnectCmd, const MAVLINK_BRIDGE_APP_SerialReconnectCmd_t *, Cmd);
     UT_GenStub_Execute(MAVLINK_BRIDGE_APP_ProcessSerialReconnectCmd, Basic, NULL);
 }
+
+void MAVLINK_BRIDGE_APP_LoadState(void)
+{
+    UT_GenStub_Execute(MAVLINK_BRIDGE_APP_LoadState, Basic, NULL);
+}
+
+void MAVLINK_BRIDGE_APP_SaveState(void)
+{
+    UT_GenStub_Execute(MAVLINK_BRIDGE_APP_SaveState, Basic, NULL);
+}

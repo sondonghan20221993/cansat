@@ -37,7 +37,7 @@ CDS 아님). 즉 설계 방향은 맞고, **실제로 무엇을 저장 대상에
 | 임무 상태 | 임무 단계, 활성 cFS 상태, 성능저하/복구/최소보고 항목 | `cfs_core_app`: `LastHealthState`만(`cfs_core_app_state.bin`) |
 | 항해 | 마지막 유효 GPS, 마지막 유효 EKF, 마지막 유효 타임스탬프 | 미구현 |
 | 텔레메트리 | 마지막 링크 상태, 마지막 양호 접촉 시간, 활성 전송 ID | 미구현 |
-| **구성** | 운영자가 수정한 구성 버전 및 검증된 테이블 버전 | **미구현** — CONFIG 명령으로 바꾼 timeout 파라미터들이 재부팅하면 컴파일타임 기본값으로 리셋됨(운영 중 조정한 값 소실) |
+| **구성** | 운영자가 수정한 구성 버전 및 검증된 테이블 버전 | ✅ **구현 완료(2026-07-23, BL-41)** — cfs_core(6필드)/mavlink_bridge(7필드)/lora_tdm(UseV2Downlink) 전부 CONFIG 적용 성공 시 영속화+Init 복원, UT 16/16 green (runtime spec §12.2) |
 | 회복 | 보류 중인 복구 작업, 마지막 복구 결과 | 미구현 |
 | (표에 없음) | **mission route(waypoint) 데이터** — "임무 상태"에 가장 가까우나 spec 표에 명시적 항목 없음 | 미구현(오늘 발견의 직접 원인) |
 
@@ -56,3 +56,13 @@ persistent state 스키마)로 갈지, 앱별로 필요한 것만 개별 추가�
 mission route가 체감 영향이 제일 큼 — CONFIG는 재부팅마다 튜닝값이
 날아가는 게 반복 작업 부담이고, route는 오늘 실측으로 이미 실패
 사례가 나옴.
+
+## 후속 (2026-07-23 같은 날 진행)
+
+위 추천 2건이 그대로 채택되어 설계 확정:
+- CONFIG → `bl41_config_persistence_design_2026-07-23.md` + UT 44개
+  선작성(TDD red, `bl41_config_tdd_session_state_2026-07-23.md`)
+- route → `bl41_route_buffer_design_2026-07-23.md` (파일 영속화 대신
+  FC 진실원본 + RAM 버퍼 + readback으로 방향 전환, 코드/테스트 미착수)
+- 나머지 6범주(부팅/오류 확장, 앱 상태, 하드웨어, 항해, 텔레메트리,
+  회복)는 여전히 미착수 — 이 문서가 계속 추적 원본.

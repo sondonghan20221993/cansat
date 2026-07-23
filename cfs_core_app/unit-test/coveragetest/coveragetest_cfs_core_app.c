@@ -3,6 +3,8 @@
  ************************************************************************/
 
 #include "cfs_core_app_coveragetest_common.h"
+#include <stdlib.h>
+#include <unistd.h>
 
 void Test_CFS_CORE_APP_Init(void)
 {
@@ -103,9 +105,24 @@ void Test_CFS_CORE_APP_Init_DefaultTimeouts(void)
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.ConfigGeneration, 0);
 }
 
+/* BL-41(2026-07-23): Init()이 LoadState()를 호출해 저장된 ActiveConfig를
+ * 실제로 복원하는지 배선 검증 — SaveState로 파일을 만들어 두고 Init 후
+ * 기본값이 아닌 저장값이 로드됐는지 확인 */
+/* BL-41(2026-07-23): Init→LoadState 배선 검증 — 이 테스트러너에서 utils는
+ * stub이므로 값 복원은 utils 테스트(SaveLoadState_RoundTrip)가 담당하고,
+ * 여기서는 Init이 LoadState를 실제로 호출하는지(stub count)만 증명한다. */
+void Test_CFS_CORE_APP_Init_RestoresPersistedConfig(void)
+{
+    UtAssert_INT32_EQ(CFS_CORE_APP_Init(), CFE_SUCCESS);
+
+    UtAssert_True(UT_GetStubCount(UT_KEY(CFS_CORE_APP_LoadState)) == 1,
+                  "Init()이 LoadState()를 정확히 1회 호출");
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(CFS_CORE_APP_Init);
+    ADD_TEST(CFS_CORE_APP_Init_RestoresPersistedConfig);
     ADD_TEST(CFS_CORE_APP_Init_SubscribeError);
     ADD_TEST(CFS_CORE_APP_Init_EVSRegisterError);
     ADD_TEST(CFS_CORE_APP_Init_MsgInitError);

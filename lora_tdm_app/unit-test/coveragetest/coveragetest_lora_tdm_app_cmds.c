@@ -1,4 +1,6 @@
 #include "lora_tdm_app_coveragetest_common.h"
+#include <stdlib.h>
+#include <unistd.h>
 
 void Test_Noop(void)
 {
@@ -51,6 +53,26 @@ void Test_SetDownlinkProtocol_ToV2(void)
     UtAssert_INT32_EQ(LORA_TDM_APP_Data.CmdCounter, 1);
 }
 
+/* BL-41(2026-07-23): CONFIG_CMD_MID 경로만이 아니라 전용 지상 명령
+ * (SET_DL_PROTO_CC) 경로도 UseV2Downlink를 바꾸므로 여기서도 SaveState
+ * 배선이 있어야 재부팅 후 값이 유지된다 — 두 번째 변이 지점 커버 */
+void Test_SetDownlinkProtocol_PersistsOnSuccess(void)
+{
+    LORA_TDM_APP_SetDownlinkProtocolCmd_t TestMsg;
+
+    /* 이 테스트러너에서 utils는 stub — 파일 왕복은 utils 테스트(RoundTrip)가
+     * 담당하고, 여기서는 성공 경로가 SaveState를 호출하는지(stub count)만 증명 */
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.UseV2 = 1;
+    LORA_TDM_APP_Data.UseV2Downlink = 0;
+
+    LORA_TDM_APP_SetDownlinkProtocol(&TestMsg);
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.UseV2Downlink, 1);
+    UtAssert_True(UT_GetStubCount(UT_KEY(LORA_TDM_APP_SaveState)) == 1,
+                  "SetDownlinkProtocol 성공 시 SaveState() 1회 호출");
+}
+
 void Test_SetDownlinkProtocol_BackToV1(void)
 {
     LORA_TDM_APP_SetDownlinkProtocolCmd_t TestMsg;
@@ -88,6 +110,7 @@ void UtTest_Setup(void)
     ADD_TEST(Noop);
     ADD_TEST(ResetCounters);
     ADD_TEST(SetDownlinkProtocol_ToV2);
+    ADD_TEST(SetDownlinkProtocol_PersistsOnSuccess);
     ADD_TEST(SetDownlinkProtocol_BackToV1);
     ADD_TEST(SetDownlinkProtocol_OutOfRangeRejected);
 }

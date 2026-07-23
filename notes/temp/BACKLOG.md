@@ -111,7 +111,7 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 |---|---|---|---|
 | ~~**BL-08**~~ | ✅ **완료(2026-07-22)** — 공용 `EXEC_RESULT_MID`(0x1912, `shared_msgs/exec_result_msg.h`) 신설. `SourceSequence`(원본 seq 반사, 상관키)+`GenericResult`(OK/FAILED, uplink_app이 실제 사용)+`DetailCode`(대상앱 원시코드, 진단용)로 3개 앱의 서로 다른 스키마를 통일하지 않고 대분류로 흡수. `uplink_app`은 공용 MID 1개만 구독(사용자 결정), 타임아웃 없이 최신 수락 seq와 일치할 때만 반영(다음 명령이 오면 자연 무시, 사용자 결정). CONFIG는 3개 앱 전부, RECOVERY는 cfs_core_app만 배선 — ROUTE_UPDATE/MODE/VIEWPOINT/DIAGNOSTIC은 범위 밖. **주의**: CONFIG_CMD_MID는 3앱 공유 브로드캐스트라 scope 불일치(다른 앱 대상) 시 EXEC_RESULT 발행 안 함(발행하면 실제 대상 앱 응답과 경합해 오염). 회귀 UT: uplink_app 4종(10/102/35/108), cfs_core_app_utils(269), mavlink_bridge_app_utils(167), lora_tdm_app_utils(145) 전부 PASS, 총 1069/1069 | `ground_plan` P0 / `command_dead_end` F1 / T7 | 완료 |
 | ~~**BL-09**~~ | ✅ **완료(2026-07-22)**. `RESTART_BRIDGE`/`RESTART_UPLINK`/`RESTART_LORA`는 2026-07-21에 실제 `CFE_ES_RestartApp()` 연결 완료. **`PARSER_RESET`/`SERIAL_RECONNECT`도 2026-07-22에 실제 연결됨**(P1-a) — 신규 MID 대신 `mavlink_bridge_app`의 기존 `CMD_MID`(`0x18A0`)를 FcnCode로 재사용(`PARSER_RESET_CC=3`/`SERIAL_RECONNECT_CC=4`), `CFS_CORE_APP_SendBridgeCtrlCmd()`로 발행 → `mavlink_bridge_app`이 실제 `ResetParser()`/`CloseSerial()+OpenSerial()` 호출. 회귀 UT: cfs_core_app 4종(19/7/277/35), mavlink_bridge_app 4종(14/4/170/34) 전부 PASS. BL-25(uplinkCLI 도움말)도 같이 정정 | `ground_plan` P1-a~d / `command_dead_end` F2 | 완료 |
-| **BL-10** | 🔶 **결정(2026-07-21): 활용처 있음(A안) — 단 "무엇을 할지"는 추후 결정.** `VIEWPOINT_CMD_MID` 캐시를 실제로 소비할 로직(경로계획 연동 등) 설계가 남음. 지금은 방향만 확정, 착수는 보류 | `ground_plan` P2 / `cfs_core_app_command_execution_gap` | 후속설계 필요 |
+| **BL-10** | 🔶 **재확인(2026-07-23): FC 실전송은 이번에도 보류로 재확정.** README상 "viewpoint 수신 후 FC MAVLink 명령 실행"은 명시적 범위 제외(2026-06-08) 상태 그대로 유지 — MAVLink 표준상 `DO_SET_ROI`/`CONDITION_YAW`/`DO_MOUNT_CONTROL`로 기술적으로 가능은 하나(짐벌 있으면 마운트 제어, 없으면 기체 자세만), **실제 짐벌 하드웨어 탑재 여부 미확인** + 이번 세션에서 "추후 고려로 제외" 결정. 대안으로 route와 동일한 "스냅샷 발행"(캐시→`VIEWPOINT_SNAPSHOT_MID` 신규→lora_tdm_app 다운링크, ROUTE_SNAPSHOT_MID 0x1913과 동일 패턴)도 제시됐으나 **미확정** — 다음 논의 필요 대상은 ① 짐벌 유무 확인 ② 확인 후 FC 실행 구현 vs 스냅샷만 발행 선택 | `ground_plan` P2 / `cfs_core_app_command_execution_gap` | 후속설계 필요, 하드웨어(짐벌) 확인 선행 |
 | ~~**BL-11**~~ | ✅ **완료(2026-07-22)**. UFB 코드표를 4종→12종(`0x00~0x0B`)으로 확장 — uplink_app 내부 결과코드 번호를 그대로 복사하지 않고 UFB 전용 독립 번호로 순차 배정(무선 프로토콜을 SB 내부 enum과 분리). `lora_tdm_app_dispatch.c`에 8개 else-if 분기 추가(`FAILED`/`REJECT_VERSION`/`REJECT_CLASS`/`REJECT_LENGTH`/`ROUTE_MISS`/`REJECT_ROUTE`/`REJECT_CHECKSUM`/`REJECT_VIEWPOINT`). `DUPLICATE`(14)/`EXECUTED_OK`/`EXECUTED_FAILED`(15/16, BL-08)는 의도적으로 매핑 범위 밖(직전 값 유지). spec 3곳 갱신(`lora_tdm_app_behavior_spec.md` §9.2/§17, `lora_protocol_v2_spec.md`). 지상 디코더(openMCT, 별도 repo)는 이번 범위 밖 — 반영 작업 문서만 해당 repo `notes/temp/ufb_code_expansion_2026-07-22.md`에 기록 후 커밋/푸시(`f9e5a35`). 회귀 UT: lora_tdm_app 4종(64/14/145/59, dispatch에 신규 24케이스) 전부 PASS | T8 / `selfaudit` A-2 | 완료 |
 | ~~**BL-CTR**~~ | ✅ **완료(2026-07-22)**. spec §18.4.6.7에 없던 counter management 명령 클래스(7)를 이번 세션 대화로 확정 후 구현. `uplink_app`이 `cfs_core_app` 경유 없이 대상 앱(mavlink_bridge/cfs_core/uplink 자신/lora_tdm, scope 1~4)에 직접 라우팅 — scope=uplink은 로컬 카운터 초기화, 나머지는 대상 앱의 기존 `CMD_MID`+`RESET_COUNTERS_CC=1`을 `CFE_MSG_SetFcnCode`로 재사용(신규 MID/CC 없음, P1-a 패턴 재사용). `lora_tdm_app` UFB `REJECT_COUNTER=12`(0x0C) 추가. 근거: `uplink_app`이 이미 `SYSTEM_HEALTH_MID`를 로컬 구독하므로 인가 판단에 cfs_core_app 왕복이 불필요(cFE SB 순수 비동기이기도 함). 회귀 UT: uplink_app_utils(120→131), uplink_app_cmds(+4), lora_tdm_app_dispatch(59→61) 전부 PASS | 2026-07-22 대화 확정 | 완료 |
 
@@ -157,7 +157,7 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 
 | ID | 내용 | 근거 |
 |---|---|---|
-| **BL-29** | A/B 그룹 단위테스트 (하드웨어 불필요, 지금 작성 가능) | `testcase_coverage_gap_2026-07-20` |
+| ~~**BL-29**~~ | ✅ **완료 확인(2026-07-22)**. A/B 그룹(A-1~A-4/B-1) 전부 `[x]` — 상단 요약(2026-07-22)에서 이미 제거 표기됐으나 이 표에 갱신 누락돼 있던 것 정정(2026-07-23) | `testcase_coverage_gap_2026-07-20` |
 | **BL-30** | C-1: WSL x86 cFS 빌드 + pytest PTY fixture + CI_LAB 주입/EVS 관측 헬퍼 (E2E 하네스) | 동 |
 
 ---
@@ -179,7 +179,7 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 
 ---
 
-| **BL-41** | 🔵 **설계 결정 필요(2026-07-23 발견)**: Pi 원인불명 재부팅(하드웨어 리부팅, 커널 로그로 확인)으로 `cfs_core_app`의 `MissionRoute` 캐시(RAM only)가 소실 — waypoint readback 검증 중 `wp_count=0`으로 실측. spec §12는 "하드 부팅/전원 주기에도 검증된 지속 상태는 복원"을 요구하고 저장소 백엔드로 파일시스템(CDS 아님)을 명시하는데, CDS는 이번 재부팅에서 `POWER ON RESET` 판정으로 실제로 초기화됨을 로그로 확인(CDS는 해법 아님). spec §12 후보 8범주(부팅/오류·앱상태·하드웨어상태·임무상태·항해·텔레메트리·구성·회복) 대비 현재 구현은 `LastHealthState`/`BootCount` 등 극히 일부뿐 — **CONFIG 운영 중 조정값**과 **mission route**가 재부팅마다 소실되는 게 실질 영향 큼(추천이지 확정 아님). **구현 보류 — 무엇을 지속 대상에 넣을지 우선순위 정의부터 필요(사용자 지시)**. 부가: Pi journald가 비영구 저장이라 이번 재부팅 원인 자체는 추적 불가했음 → `/var/log/journal` 생성+`systemctl restart systemd-journald`로 영구 저장 전환 완료(재발 시 원인 추적 가능). 상세: `persistent_state_gap_audit_2026-07-23.md` | waypoint readback 실기 검증 중 발견 |
+| **BL-41** | 🔵 **설계 확정(2026-07-23), 구현 미착수(양쪽 다)**. **route 부분**: `cfs_core_app`의 `MissionRoute`를 **파일 지속 대신 FC를 진실원본으로 하는 RAM 전용 버퍼**로 전환 — FC(ArduPilot/PX4)가 미션을 자체 플래시에 영속하므로 Pi 파일 저장은 "사본의 사본"이 돼 이중 원본 문제만 생김. ① FC 링크 CONNECTED 전이 ② ROUTE_UPDATE 업로드 완료 후 ③ MISSION_QUERY_CC 수신 시, 3개 트리거에서 FC 재조회해 캐시 채움(무한 재시도+지수 백오프 1s→5s 상한). MID `0x1914`(가칭 FC_MISSION_READBACK_MID)로 지상국발 ROUTE_UPDATE_MID(0x190B)와 분리. 상세: `bl41_route_buffer_design_2026-07-23.md`. **CONFIG 부분**: cfs_core_app/mavlink_bridge_app/lora_tdm_app 3개 앱의 `ActiveConfig`를 BL-17/18/19와 동일 표준 패턴(매직+체크섬+fsync/rename+ConfigVersion)으로 상태파일에 지속 — CONFIG 적용 성공 시 즉시 저장, 로드 시 range 재검증은 불필요(승격 전 이미 검증됨), ConfigVersion 불일치 시만 전체 폴백. cfs_core_app은 기존 파일에 필드 추가, mavlink_bridge_app/lora_tdm_app은 상태파일 신규 생성. 상세: `bl41_config_persistence_design_2026-07-23.md`. 부가: Pi journald 영구 저장 전환 완료(2026-07-23, 재부팅 원인 추적용) | waypoint readback 실기 검증 중 발견 |
 
 ## 착수 순서 제안
 
@@ -213,15 +213,19 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 아래 문서들의 체크리스트는 여기로 흡수됨. **배경·근거는 원문에 있으므로
 삭제하지 말고 참조용으로 유지**할 것.
 
-- `command_dead_end_audit_2026-07-21.md`
-- `ground_controllable_capability_plan_2026-07-21.md`
-- `openmct_repo_gap_audit_2026-07-21.md`
-- `system_wide_reaudit_2026-07-21.md`
-- `uplink_seq_feedback_redesign_2026-07-21.md` ← T1~T11 상세 설계는 여기 유지
-- `inferred_decisions_selfaudit_2026-07-21.md` ← AI 추론 재검토 근거
-- `cfs_core_app_command_execution_gap.md` ← **BL-07로 갱신 필요**
-- `testcase_coverage_gap_2026-07-20.md`
-- `lora_downlink_5hz_cap_2026-07-21.md`
-- `mission_item_int_frame_gap.md`
-- `camera_phase_verification_gap.md`
-- `pi_flight_build_missing_2026-07-16.md`
+**완료 항목만 있어 `notes/`(temp 밖)로 이관됨(2026-07-23)**:
+- `../command_dead_end_audit_2026-07-21_completed.md`
+- `../openmct_repo_gap_audit_2026-07-21_completed.md`
+- `../system_wide_reaudit_2026-07-21_completed.md`
+- `../uplink_seq_feedback_redesign_2026-07-21_completed.md` ← T1~T11 상세 설계는 여기 유지
+- `../inferred_decisions_selfaudit_2026-07-21_completed.md` ← AI 추론 재검토 근거
+- `../pi_flight_build_missing_2026-07-16_completed.md`
+- `../ambiguity_audit_by_task_2026-07-21_completed.md`
+- `../ambiguity_recheck_immediate_list_2026-07-21_completed.md`
+
+**미해결 항목이 남아 `temp/`에 유지**:
+- `cfs_core_app_command_execution_gap.md` ← **BL-07로 갱신 필요**, BL-10 참조 중
+- `testcase_coverage_gap_2026-07-20.md` ← BL-30 참조 중
+- `lora_downlink_5hz_cap_2026-07-21.md` ← BL-15 참조 중
+- `mission_item_int_frame_gap.md` ← BL-34 참조 중
+- `camera_phase_verification_gap.md` ← BL-36 참조 중

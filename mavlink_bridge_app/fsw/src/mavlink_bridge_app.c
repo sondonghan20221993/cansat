@@ -68,6 +68,9 @@ CFE_Status_t MAVLINK_BRIDGE_APP_Init(void)
     MAVLINK_BRIDGE_APP_Data.PendingConfig  = MAVLINK_BRIDGE_APP_Data.ActiveConfig;
     MAVLINK_BRIDGE_APP_Data.PreviousConfig = MAVLINK_BRIDGE_APP_Data.ActiveConfig;
 
+    /* BL-41(2026-07-23): 기본값 설정 후 저장된 CONFIG 복원(파일 없으면 무동작) */
+    MAVLINK_BRIDGE_APP_LoadState();
+
     Status = CFE_EVS_Register(NULL, 0, CFE_EVS_EventFilter_BINARY);
     if (Status != CFE_SUCCESS)
     {

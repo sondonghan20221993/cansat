@@ -573,13 +573,15 @@ bridge 타임아웃이 최우선 순위를 가지므로, 유효한 bridge HK가 
 
 bridge 앱 외 다른 앱·FC·센서·시리얼 장치에 대한 능동 복구는 구현되어 있지 않다.
 
-### 14.5 헬스 상태 영속화
+### 14.5 헬스 상태·CONFIG 영속화 (BL-41, 2026-07-23 구현)
 
-`HealthState`는 파일에 영속화되어 앱 재시작 후 복원된다.
+`HealthState`와 `ActiveConfig`(6필드)는 파일에 영속화되어 앱 재시작 후 복원된다.
 
-- 저장(`CFS_CORE_APP_SaveState`): `HealthState` 전이 시마다 호출. `{Magic, LastHealthState, Reserved[3], Checksum}` 구조를 `STATE_FILE_PATH.tmp`에 쓴 뒤 `rename()`으로 원자적 교체(`STATE_FILE_PATH = "/cf/cfs_core_app_state.bin"`).
-- 복원(`CFS_CORE_APP_LoadState`): init 끝에서 호출. 파일을 읽어 `Magic == STATE_MAGIC(0xCF5C0A00)` 및 `Checksum == Magic + LastHealthState` 검증 통과 시 `LastHealthState` 복원, `STARTUP_EID`로 보고. 파일 없음/검증 실패 시 무시(초기값 유지).
-- 복원되는 것은 `LastHealthState`뿐이며, 캐시·카운터·config는 영속화하지 않는다.
+- 레코드 구조: `{Magic, LastHealthState, ConfigVersion, Reserved[2], AttitudeTimeoutMs, LocalTimeoutMs, GpsTimeoutMs, EkfTimeoutMs, BridgeTimeoutMs, PublishPeriodMs, Checksum}`. `Checksum = Magic + LastHealthState + ConfigVersion + 6필드 합`.
+- 저장(`CFS_CORE_APP_SaveState`): ① `HealthState` 전이 시, ② CONFIG 적용 성공 시(`ConfigGeneration++` 직후) 호출. `STATE_FILE_PATH.tmp`에 쓰고 `fsync` 후 `rename()`으로 원자적 교체, 이어서 부모 디렉터리 fd도 `fsync`(BL-18 — 정전 시 rename 유실 방지). `STATE_FILE_PATH = "cf/cfs_core_app_state.bin"`(BL-39로 상대경로, runtime spec §12.1 참조), 테스트에선 env var `CFS_CORE_APP_STATE_FILE_PATH`로 경로 주입.
+- 복원(`CFS_CORE_APP_LoadState`): init 끝에서 호출. `Magic == STATE_MAGIC(0xCF5C0A00)`·Checksum·`ConfigVersion == CFS_CORE_APP_CONFIG_VERSION` 검증 통과 시 `LastHealthState` + `ActiveConfig` 6필드 복원, `STARTUP_EID`로 보고.
+- 손상 처리: 파일 없음(ENOENT)만 침묵(첫 부팅 정상), 그 외(truncated/bad magic/checksum 불일치/open 오류)는 `STATE_CORRUPT_EID` ERROR 보고 후 기본값 유지(uplink_app §12.1 표와 동일 정책). `ConfigVersion` 불일치는 구버전 파일로 간주해 range 재검증 없이 전체 기본값 폴백(필드 오해석 방지).
+- 복원값은 range 재검증하지 않는다 — ActiveConfig 승격 전에 이미 검증된 값만 저장되기 때문.
 
 ## 15. HK 동작
 

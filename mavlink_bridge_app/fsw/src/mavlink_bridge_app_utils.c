@@ -1926,6 +1926,7 @@ void MAVLINK_BRIDGE_APP_ProcessConfigCommand(const MAVLINK_BRIDGE_APP_ConfigCmdT
     MAVLINK_BRIDGE_APP_Data.ConfigPendingState = (uint8)MAVLINK_BRIDGE_CONFIG_PENDING_IDLE;
     MAVLINK_BRIDGE_APP_Data.LastConfigResult   = (uint8)MAVLINK_BRIDGE_CONFIG_RESULT_OK;
     MAVLINK_BRIDGE_APP_Data.CmdCounter++;
+    MAVLINK_BRIDGE_APP_SaveState(); /* BL-41(2026-07-23): CONFIG 적용 성공 즉시 영속화 */
 
     /* 활성화 부작용: 다음 ServiceSerial 루프에서 새 interval로 FC 재요청 */
     MAVLINK_BRIDGE_APP_Data.StreamRequestPending = 1;
@@ -1942,6 +1943,157 @@ reject_value:
     MAVLINK_BRIDGE_APP_Data.ConfigPendingState = (uint8)MAVLINK_BRIDGE_CONFIG_PENDING_REJECTED;
     MAVLINK_BRIDGE_APP_Data.LastConfigResult   = (uint8)MAVLINK_BRIDGE_CONFIG_RESULT_BAD_VALUE;
     MAVLINK_BRIDGE_APP_PublishExecResult(Msg->SourceSequence, 1U, false, MAVLINK_BRIDGE_APP_Data.LastConfigResult);
+}
+
+/* -----------------------------------------------------------------------
+ * BL-41(2026-07-23): CONFIG 영속화 — cfs_core_app/uplink_app(BL-17/18)과
+ * 동일한 매직+체크섬+ConfigVersion+원자적 tmp-write→fsync→rename 패턴.
+ * ----------------------------------------------------------------------- */
+
+static const char *MAVLINK_BRIDGE_APP_GetStateFilePath(void)
+{
+    const char *EnvPath = getenv("MAVLINK_BRIDGE_APP_STATE_FILE_PATH");
+
+    if (EnvPath != NULL && EnvPath[0] != '\0')
+    {
+        return EnvPath;
+    }
+    return MAVLINK_BRIDGE_APP_STATE_FILE_PATH;
+}
+
+static uint32 MAVLINK_BRIDGE_APP_ComputeStateChecksum(const MAVLINK_BRIDGE_APP_PersistentState_t *State)
+{
+    return State->Magic + (uint32)State->ConfigVersion +
+           State->ActiveConfig.AttitudeIntervalUs + State->ActiveConfig.LocalPositionIntervalUs +
+           State->ActiveConfig.GlobalPositionIntervalUs + State->ActiveConfig.GpsRawIntervalUs +
+           State->ActiveConfig.EkfStatusIntervalUs + State->ActiveConfig.ReconnectIntervalMs +
+           State->ActiveConfig.HeartbeatIntervalMs;
+}
+
+void MAVLINK_BRIDGE_APP_LoadState(void)
+{
+    MAVLINK_BRIDGE_APP_PersistentState_t State;
+    int                                   Fd;
+    ssize_t                               ReadRc;
+    const char                           *StatePath = MAVLINK_BRIDGE_APP_GetStateFilePath();
+
+    Fd = open(StatePath, O_RDONLY);
+    if (Fd < 0)
+    {
+        if (errno != ENOENT)
+        {
+            CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_STATE_CORRUPT_EID, CFE_EVS_EventType_ERROR,
+                              "MAVLINK_BRIDGE_APP: state file open failed errno=%d, using defaults", errno);
+        }
+        return;
+    }
+
+    ReadRc = read(Fd, &State, sizeof(State));
+    close(Fd);
+
+    if (ReadRc != (ssize_t)sizeof(State))
+    {
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_STATE_CORRUPT_EID, CFE_EVS_EventType_ERROR,
+                          "MAVLINK_BRIDGE_APP: state file truncated (rc=%ld), using defaults", (long)ReadRc);
+        return;
+    }
+    if (State.Magic != MAVLINK_BRIDGE_APP_STATE_MAGIC)
+    {
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_STATE_CORRUPT_EID, CFE_EVS_EventType_ERROR,
+                          "MAVLINK_BRIDGE_APP: state file bad magic (0x%08lX), using defaults",
+                          (unsigned long)State.Magic);
+        return;
+    }
+    if (State.Checksum != MAVLINK_BRIDGE_APP_ComputeStateChecksum(&State))
+    {
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_STATE_CORRUPT_EID, CFE_EVS_EventType_ERROR,
+                          "MAVLINK_BRIDGE_APP: state file checksum mismatch, using defaults");
+        return;
+    }
+    if (State.ConfigVersion != MAVLINK_BRIDGE_APP_CONFIG_VERSION)
+    {
+        /* BL-41: 필드 구조가 바뀐 구버전 파일 — 전체 기본값 폴백 */
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_STATE_CORRUPT_EID, CFE_EVS_EventType_ERROR,
+                          "MAVLINK_BRIDGE_APP: state file config version mismatch (file=%u expected=%u), using defaults",
+                          (unsigned int)State.ConfigVersion, (unsigned int)MAVLINK_BRIDGE_APP_CONFIG_VERSION);
+        return;
+    }
+
+    MAVLINK_BRIDGE_APP_Data.ActiveConfig = State.ActiveConfig;
+
+    CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_STREAM_EID, CFE_EVS_EventType_INFORMATION,
+                      "MAVLINK_BRIDGE_APP: restored config(att=%lu local=%lu global=%lu gps=%lu ekf=%lu reconnect=%lu hb=%lu)",
+                      (unsigned long)State.ActiveConfig.AttitudeIntervalUs,
+                      (unsigned long)State.ActiveConfig.LocalPositionIntervalUs,
+                      (unsigned long)State.ActiveConfig.GlobalPositionIntervalUs,
+                      (unsigned long)State.ActiveConfig.GpsRawIntervalUs,
+                      (unsigned long)State.ActiveConfig.EkfStatusIntervalUs,
+                      (unsigned long)State.ActiveConfig.ReconnectIntervalMs,
+                      (unsigned long)State.ActiveConfig.HeartbeatIntervalMs);
+}
+
+void MAVLINK_BRIDGE_APP_SaveState(void)
+{
+    MAVLINK_BRIDGE_APP_PersistentState_t State;
+    char                                  TmpPath[256];
+    int                                   Fd;
+    const char                           *StatePath = MAVLINK_BRIDGE_APP_GetStateFilePath();
+
+    memset(&State, 0, sizeof(State));
+    State.Magic         = MAVLINK_BRIDGE_APP_STATE_MAGIC;
+    State.ConfigVersion = MAVLINK_BRIDGE_APP_CONFIG_VERSION;
+    State.ActiveConfig  = MAVLINK_BRIDGE_APP_Data.ActiveConfig;
+    State.Checksum      = MAVLINK_BRIDGE_APP_ComputeStateChecksum(&State);
+
+    snprintf(TmpPath, sizeof(TmpPath), "%s.tmp", StatePath);
+
+    Fd = open(TmpPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (Fd < 0)
+    {
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_STATE_SAVE_FAIL_EID, CFE_EVS_EventType_ERROR,
+                          "MAVLINK_BRIDGE_APP: state save open failed path=%s errno=%d", TmpPath, errno);
+        return;
+    }
+
+    if (write(Fd, &State, sizeof(State)) != (ssize_t)sizeof(State))
+    {
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_STATE_SAVE_FAIL_EID, CFE_EVS_EventType_ERROR,
+                          "MAVLINK_BRIDGE_APP: state save write failed path=%s errno=%d", TmpPath, errno);
+        close(Fd);
+        return;
+    }
+
+    /* rename()이 디스크에 반영됐다는 보장은 파일 fd만 fsync해선 안 됨 —
+     * POSIX상 디렉터리 항목(rename) 자체도 부모 디렉터리 fd를 fsync해야
+     * 정전 시 유실되지 않는다 (BL-18). */
+    fsync(Fd);
+    close(Fd);
+
+    if (rename(TmpPath, StatePath) != 0)
+    {
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_STATE_SAVE_FAIL_EID, CFE_EVS_EventType_ERROR,
+                          "MAVLINK_BRIDGE_APP: state save rename failed path=%s errno=%d", StatePath, errno);
+        return;
+    }
+
+    {
+        char  DirPath[256];
+        char *Slash;
+        int   DirFd;
+
+        snprintf(DirPath, sizeof(DirPath), "%s", StatePath);
+        Slash = strrchr(DirPath, '/');
+        if (Slash != NULL)
+        {
+            *Slash = '\0';
+            DirFd  = open(DirPath, O_RDONLY);
+            if (DirFd >= 0)
+            {
+                fsync(DirFd);
+                close(DirFd);
+            }
+        }
+    }
 }
 
 void MAVLINK_BRIDGE_APP_ReportHousekeeping(void)

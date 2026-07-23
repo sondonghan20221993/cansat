@@ -1,5 +1,6 @@
 #include "lora_tdm_app_coveragetest_common.h"
 #include <fcntl.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -299,9 +300,22 @@ void Test_ReportLinkStatus(void)
     UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.LinkStatusTlm.RxCmdCount,     7);
 }
 
+/* BL-41(2026-07-23): Init()이 LoadState()를 호출해 저장된 UseV2Downlink를
+ * 복원하는지 배선 검증 — 이 앱의 첫 영속 상태(TDD red) */
+void Test_Init_RestoresPersistedConfig(void)
+{
+    /* 이 테스트러너에서 utils는 stub — 값 복원은 utils 테스트(RoundTrip)가
+     * 담당하고, 여기서는 Init→LoadState 배선(stub count)만 증명한다. */
+    UtAssert_INT32_EQ(LORA_TDM_APP_Init(), CFE_SUCCESS);
+
+    UtAssert_True(UT_GetStubCount(UT_KEY(LORA_TDM_APP_LoadState)) == 1,
+                  "Init()이 LoadState()를 정확히 1회 호출");
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(Init);
+    ADD_TEST(Init_RestoresPersistedConfig);
     ADD_TEST(Init_SubscribeError);
     ADD_TEST(ReportHousekeeping);
     ADD_TEST(ReportLinkStatus);

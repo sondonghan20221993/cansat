@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -688,6 +689,7 @@ void CFS_CORE_APP_ProcessConfigCommand(const CFS_CORE_APP_ConfigCmdTlm_t *Msg)
     CFS_CORE_APP_Data.ConfigPendingState = (uint8)CFS_CORE_APP_CONFIG_PENDING_IDLE;
     CFS_CORE_APP_Data.LastConfigResult   = (uint8)CFS_CORE_APP_CONFIG_RESULT_OK;
     CFS_CORE_APP_Data.CmdCounter++;
+    CFS_CORE_APP_SaveState(); /* BL-41(2026-07-23): CONFIG 적용 성공 즉시 영속화 */
 
     CFE_EVS_SendEvent(CFS_CORE_APP_STARTUP_EID, CFE_EVS_EventType_INFORMATION,
                       "CFS_CORE_APP: config activated param=%u value=%lu gen=%lu",
@@ -717,15 +719,41 @@ void CFS_CORE_APP_ProcessViewpointCommand(const CFS_CORE_APP_ViewpointCmdTlm_t *
                       (unsigned int)Msg->HoldTimeMs);
 }
 
+/* BL-41(2026-07-23): 테스트 환경에서 상태 파일 경로를 주입할 수 있도록
+ * env var를 우선 확인 — uplink_app(BL-17)과 동일 패턴. */
+static const char *CFS_CORE_APP_GetStateFilePath(void)
+{
+    const char *EnvPath = getenv("CFS_CORE_APP_STATE_FILE_PATH");
+
+    if (EnvPath != NULL && EnvPath[0] != '\0')
+    {
+        return EnvPath;
+    }
+    return CFS_CORE_APP_STATE_FILE_PATH;
+}
+
+static uint32 CFS_CORE_APP_ComputeStateChecksum(const CFS_CORE_APP_PersistentState_t *State)
+{
+    return State->Magic + (uint32)State->LastHealthState + (uint32)State->ConfigVersion +
+           State->AttitudeTimeoutMs + State->LocalTimeoutMs + State->GpsTimeoutMs +
+           State->EkfTimeoutMs + State->BridgeTimeoutMs + State->PublishPeriodMs;
+}
+
 void CFS_CORE_APP_LoadState(void)
 {
     CFS_CORE_APP_PersistentState_t State;
     int                             Fd;
     ssize_t                         ReadRc;
+    const char                     *StatePath = CFS_CORE_APP_GetStateFilePath();
 
-    Fd = open(CFS_CORE_APP_STATE_FILE_PATH, O_RDONLY);
+    Fd = open(StatePath, O_RDONLY);
     if (Fd < 0)
     {
+        if (errno != ENOENT)
+        {
+            CFE_EVS_SendEvent(CFS_CORE_APP_STATE_CORRUPT_EID, CFE_EVS_EventType_ERROR,
+                              "CFS_CORE_APP: state file open failed errno=%d, using defaults", errno);
+        }
         return;
     }
 
@@ -734,38 +762,70 @@ void CFS_CORE_APP_LoadState(void)
 
     if (ReadRc != (ssize_t)sizeof(State))
     {
+        CFE_EVS_SendEvent(CFS_CORE_APP_STATE_CORRUPT_EID, CFE_EVS_EventType_ERROR,
+                          "CFS_CORE_APP: state file truncated (rc=%ld), using defaults", (long)ReadRc);
         return;
     }
     if (State.Magic != CFS_CORE_APP_STATE_MAGIC)
     {
+        CFE_EVS_SendEvent(CFS_CORE_APP_STATE_CORRUPT_EID, CFE_EVS_EventType_ERROR,
+                          "CFS_CORE_APP: state file bad magic (0x%08lX), using defaults",
+                          (unsigned long)State.Magic);
         return;
     }
-    if (State.Checksum != (State.Magic + (uint32)State.LastHealthState))
+    if (State.Checksum != CFS_CORE_APP_ComputeStateChecksum(&State))
     {
+        CFE_EVS_SendEvent(CFS_CORE_APP_STATE_CORRUPT_EID, CFE_EVS_EventType_ERROR,
+                          "CFS_CORE_APP: state file checksum mismatch, using defaults");
+        return;
+    }
+    if (State.ConfigVersion != CFS_CORE_APP_CONFIG_VERSION)
+    {
+        /* BL-41: 필드 구조가 바뀐 구버전 파일 — range 재검증 대신 전체를
+         * 구버전으로 간주해 기본값 폴백(잘못된 필드 오해석 방지). */
+        CFE_EVS_SendEvent(CFS_CORE_APP_STATE_CORRUPT_EID, CFE_EVS_EventType_ERROR,
+                          "CFS_CORE_APP: state file config version mismatch (file=%u expected=%u), using defaults",
+                          (unsigned int)State.ConfigVersion, (unsigned int)CFS_CORE_APP_CONFIG_VERSION);
         return;
     }
 
-    CFS_CORE_APP_Data.LastHealthState = State.LastHealthState;
+    CFS_CORE_APP_Data.LastHealthState             = State.LastHealthState;
+    CFS_CORE_APP_Data.ActiveConfig.AttitudeTimeoutMs = State.AttitudeTimeoutMs;
+    CFS_CORE_APP_Data.ActiveConfig.LocalTimeoutMs    = State.LocalTimeoutMs;
+    CFS_CORE_APP_Data.ActiveConfig.GpsTimeoutMs      = State.GpsTimeoutMs;
+    CFS_CORE_APP_Data.ActiveConfig.EkfTimeoutMs      = State.EkfTimeoutMs;
+    CFS_CORE_APP_Data.ActiveConfig.BridgeTimeoutMs   = State.BridgeTimeoutMs;
+    CFS_CORE_APP_Data.ActiveConfig.PublishPeriodMs   = State.PublishPeriodMs;
 
     CFE_EVS_SendEvent(CFS_CORE_APP_STARTUP_EID, CFE_EVS_EventType_INFORMATION,
-                      "CFS_CORE_APP: restored health state=%u",
-                      (unsigned int)State.LastHealthState);
+                      "CFS_CORE_APP: restored health state=%u config(attitude=%lu local=%lu gps=%lu ekf=%lu bridge=%lu publish=%lu)",
+                      (unsigned int)State.LastHealthState,
+                      (unsigned long)State.AttitudeTimeoutMs, (unsigned long)State.LocalTimeoutMs,
+                      (unsigned long)State.GpsTimeoutMs, (unsigned long)State.EkfTimeoutMs,
+                      (unsigned long)State.BridgeTimeoutMs, (unsigned long)State.PublishPeriodMs);
 }
 
 void CFS_CORE_APP_SaveState(void)
 {
     CFS_CORE_APP_PersistentState_t State;
-    char                            TmpPath[sizeof(CFS_CORE_APP_STATE_FILE_PATH) + 4];
+    char                            TmpPath[256];
     int                             Fd;
+    const char                     *StatePath = CFS_CORE_APP_GetStateFilePath();
 
-    State.Magic           = CFS_CORE_APP_STATE_MAGIC;
-    State.LastHealthState = CFS_CORE_APP_Data.LastHealthState;
-    State.Reserved[0]     = 0;
-    State.Reserved[1]     = 0;
-    State.Reserved[2]     = 0;
-    State.Checksum        = State.Magic + (uint32)State.LastHealthState;
+    State.Magic             = CFS_CORE_APP_STATE_MAGIC;
+    State.LastHealthState   = CFS_CORE_APP_Data.LastHealthState;
+    State.ConfigVersion     = CFS_CORE_APP_CONFIG_VERSION;
+    State.Reserved[0]       = 0;
+    State.Reserved[1]       = 0;
+    State.AttitudeTimeoutMs = CFS_CORE_APP_Data.ActiveConfig.AttitudeTimeoutMs;
+    State.LocalTimeoutMs    = CFS_CORE_APP_Data.ActiveConfig.LocalTimeoutMs;
+    State.GpsTimeoutMs      = CFS_CORE_APP_Data.ActiveConfig.GpsTimeoutMs;
+    State.EkfTimeoutMs      = CFS_CORE_APP_Data.ActiveConfig.EkfTimeoutMs;
+    State.BridgeTimeoutMs   = CFS_CORE_APP_Data.ActiveConfig.BridgeTimeoutMs;
+    State.PublishPeriodMs   = CFS_CORE_APP_Data.ActiveConfig.PublishPeriodMs;
+    State.Checksum          = CFS_CORE_APP_ComputeStateChecksum(&State);
 
-    snprintf(TmpPath, sizeof(TmpPath), "%s.tmp", CFS_CORE_APP_STATE_FILE_PATH);
+    snprintf(TmpPath, sizeof(TmpPath), "%s.tmp", StatePath);
 
     Fd = open(TmpPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (Fd < 0)
@@ -783,12 +843,36 @@ void CFS_CORE_APP_SaveState(void)
         return;
     }
 
+    /* rename()이 디스크에 반영됐다는 보장은 파일 fd만 fsync해선 안 됨 —
+     * POSIX상 디렉터리 항목(rename) 자체도 부모 디렉터리 fd를 fsync해야
+     * 정전 시 유실되지 않는다 (BL-18). */
+    fsync(Fd);
     close(Fd);
-    if (rename(TmpPath, CFS_CORE_APP_STATE_FILE_PATH) != 0)
+    if (rename(TmpPath, StatePath) != 0)
     {
         CFE_EVS_SendEvent(CFS_CORE_APP_STATE_SAVE_FAIL_EID, CFE_EVS_EventType_ERROR,
                           "CFS_CORE_APP: state save rename failed path=%s errno=%d",
-                          CFS_CORE_APP_STATE_FILE_PATH, errno);
+                          StatePath, errno);
+        return;
+    }
+
+    {
+        char  DirPath[256];
+        char *Slash;
+        int   DirFd;
+
+        snprintf(DirPath, sizeof(DirPath), "%s", StatePath);
+        Slash = strrchr(DirPath, '/');
+        if (Slash != NULL)
+        {
+            *Slash = '\0';
+            DirFd  = open(DirPath, O_RDONLY);
+            if (DirFd >= 0)
+            {
+                fsync(DirFd);
+                close(DirFd);
+            }
+        }
     }
 }
 

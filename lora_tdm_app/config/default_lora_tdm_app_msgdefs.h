@@ -17,4 +17,16 @@ typedef enum
 #define LORA_TDM_APP_DIAG_TARGET_LORA_TDM  0U /* 하위호환 기본값(자기 자신) */
 #define LORA_TDM_APP_DIAG_TARGET_CFS_CORE  1U
 
+/* BL-41(2026-07-23): 지속 상태 — 이 앱의 운영 중 변경 가능한 CONFIG는
+ * UseV2Downlink 단일 필드(축소 구현, spec §13.1). cfs_core_app/uplink_app과
+ * 동일한 매직+체크섬+ConfigVersion+원자적 rename 패턴. */
+typedef struct
+{
+    uint32 Magic;
+    uint8  ConfigVersion;
+    uint8  UseV2Downlink;
+    uint8  Reserved[2];
+    uint32 Checksum;
+} LORA_TDM_APP_PersistentState_t;
+
 #endif

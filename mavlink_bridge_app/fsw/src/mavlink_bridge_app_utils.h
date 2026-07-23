@@ -13,6 +13,8 @@ void MAVLINK_BRIDGE_APP_RequestTelemetryStreams(void);
 void MAVLINK_BRIDGE_APP_StartMissionUpload(const MAVLINK_BRIDGE_APP_RouteUpdateMirror_t *Msg);
 void MAVLINK_BRIDGE_APP_MissionQuery(const MAVLINK_BRIDGE_APP_MissionQueryCmd_t *Cmd);
 void MAVLINK_BRIDGE_APP_ProcessConfigCommand(const MAVLINK_BRIDGE_APP_ConfigCmdTlm_t *Msg);
+void MAVLINK_BRIDGE_APP_LoadState(void);
+void MAVLINK_BRIDGE_APP_SaveState(void);
 void MAVLINK_BRIDGE_APP_ProcessParserResetCmd(const MAVLINK_BRIDGE_APP_ParserResetCmd_t *Cmd);
 void MAVLINK_BRIDGE_APP_ProcessSerialReconnectCmd(const MAVLINK_BRIDGE_APP_SerialReconnectCmd_t *Cmd);
 

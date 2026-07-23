@@ -53,4 +53,8 @@
 #define LORA_TDM_APP_CONFIG_VERSION             1U
 #define LORA_TDM_APP_PARAM_DOWNLINK_PROTOCOL    0U /* value: 0=v1, 1=v2(DL2) */
 
+/* BL-41(2026-07-23): CONFIG 영속화 — BL-39 관례에 따라 상대경로 cf/ 사용 */
+#define LORA_TDM_APP_STATE_FILE_PATH "cf/lora_tdm_app_state.bin"
+#define LORA_TDM_APP_STATE_MAGIC     0x10A7D3B0U
+
 #endif

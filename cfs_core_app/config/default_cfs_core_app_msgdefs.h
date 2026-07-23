@@ -64,11 +64,20 @@ typedef enum
     CFS_CORE_APP_ROUTE_SEGMENT_LANDING           = 2
 } CFS_CORE_APP_RouteSegmentType_t;
 
+/* BL-41(2026-07-23): CONFIG 영속화 — ActiveConfig 6필드 + ConfigVersion 추가.
+ * ConfigVersion 불일치 시 전체 기본값 폴백(구버전 파일 오해석 방지). */
 typedef struct
 {
     uint32 Magic;
     uint8  LastHealthState;
-    uint8  Reserved[3];
+    uint8  ConfigVersion;
+    uint8  Reserved[2];
+    uint32 AttitudeTimeoutMs;
+    uint32 LocalTimeoutMs;
+    uint32 GpsTimeoutMs;
+    uint32 EkfTimeoutMs;
+    uint32 BridgeTimeoutMs;
+    uint32 PublishPeriodMs;
     uint32 Checksum;
 } CFS_CORE_APP_PersistentState_t;
 

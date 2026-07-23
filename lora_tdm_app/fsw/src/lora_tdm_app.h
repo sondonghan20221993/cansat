@@ -83,7 +83,9 @@ typedef struct
     /* 다운링크 송신 프로토콜 선택 — 0=v1(ASCII, 기본값), 1=v2(DL2 바이너리).
      * §8 단계적 전환: CONFIG 명령(SET_DOWNLINK_PROTO_CC — lora_tdm_app_cmds.c,
      * CONFIG_CMD_MID의 PARAM_DOWNLINK_PROTOCOL — lora_tdm_app_utils.c)으로
-     * 런타임 전환 가능. 부팅 기본값만 v1(memset(0)). */
+     * 런타임 전환 가능. 부팅 기본값은 v1(memset(0))이나 BL-41(2026-07-23)로
+     * 마지막 설정값이 cf/lora_tdm_app_state.bin에 영속화되어 Init의
+     * LoadState()가 재부팅 후에도 복원한다. */
     uint8  UseV2Downlink;
 
     /* RX line buffer — RX창(RunRxWindow) 호출 경계를 넘어 유지된다.

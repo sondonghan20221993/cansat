@@ -24,4 +24,8 @@
 #define MAVLINK_BRIDGE_APP_PARAM_MS_MIN  100U
 #define MAVLINK_BRIDGE_APP_PARAM_MS_MAX  60000U
 
+/* BL-41(2026-07-23): CONFIG 영속화 — BL-39 관례에 따라 상대경로 cf/ 사용 */
+#define MAVLINK_BRIDGE_APP_STATE_FILE_PATH "cf/mavlink_bridge_app_state.bin"
+#define MAVLINK_BRIDGE_APP_STATE_MAGIC     0x3AB51DE0U
+
 #endif

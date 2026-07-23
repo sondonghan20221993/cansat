@@ -1,4 +1,6 @@
 #include "mavlink_bridge_app_coveragetest_common.h"
+#include <stdlib.h>
+#include <unistd.h>
 
 void Test_MAVLINK_BRIDGE_APP_Init(void)
 {
@@ -76,9 +78,22 @@ void Test_MAVLINK_BRIDGE_APP_Init_Subscribe3Error(void)
     UtAssert_INT32_NEQ(MAVLINK_BRIDGE_APP_Init(), CFE_SUCCESS);
 }
 
+/* BL-41(2026-07-23): Init()이 LoadState()를 호출해 저장된 ActiveConfig를
+ * 복원하는지 배선 검증 — 이 앱은 상태파일 자체가 신규(TDD red) */
+void Test_MAVLINK_BRIDGE_APP_Init_RestoresPersistedConfig(void)
+{
+    /* 이 테스트러너에서 utils는 stub — 값 복원은 utils 테스트(RoundTrip)가
+     * 담당하고, 여기서는 Init→LoadState 배선(stub count)만 증명한다. */
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Init(), CFE_SUCCESS);
+
+    UtAssert_True(UT_GetStubCount(UT_KEY(MAVLINK_BRIDGE_APP_LoadState)) == 1,
+                  "Init()이 LoadState()를 정확히 1회 호출");
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(MAVLINK_BRIDGE_APP_Init);
+    ADD_TEST(MAVLINK_BRIDGE_APP_Init_RestoresPersistedConfig);
     ADD_TEST(MAVLINK_BRIDGE_APP_Init_SubscribeError);
     ADD_TEST(MAVLINK_BRIDGE_APP_Init_EVSRegisterError);
     ADD_TEST(MAVLINK_BRIDGE_APP_Init_MsgInit1Error);

@@ -23,5 +23,7 @@
 #define LORA_TDM_APP_SET_DL_PROTO_INF_EID   20
 #define LORA_TDM_APP_SET_DL_PROTO_ERR_EID   21
 #define LORA_TDM_APP_ROUTE_SNAPSHOT_EID     22 /* waypoint readback(2026-07-23) */
+#define LORA_TDM_APP_STATE_SAVE_FAIL_EID    23 /* BL-41(2026-07-23): SaveState 실패 */
+#define LORA_TDM_APP_STATE_CORRUPT_EID      24 /* BL-41(2026-07-23): 상태 파일 손상 → 기본값 폴백 */
 
 #endif

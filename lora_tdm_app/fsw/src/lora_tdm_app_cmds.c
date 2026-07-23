@@ -1,6 +1,7 @@
 #include "lora_tdm_app_cmds.h"
 #include "lora_tdm_app.h"
 #include "lora_tdm_app_eventids.h"
+#include "lora_tdm_app_utils.h" /* BL-41: SaveState */
 
 CFE_Status_t LORA_TDM_APP_Noop(const LORA_TDM_APP_NoopCmd_t *Msg)
 {
@@ -47,6 +48,7 @@ CFE_Status_t LORA_TDM_APP_SetDownlinkProtocol(const LORA_TDM_APP_SetDownlinkProt
 
     LORA_TDM_APP_Data.UseV2Downlink = (Msg->UseV2 != 0) ? 1 : 0;
     LORA_TDM_APP_Data.CmdCounter++;
+    LORA_TDM_APP_SaveState(); /* BL-41(2026-07-23): 두 번째 변이 지점 — 성공 즉시 영속화 */
 
     CFE_EVS_SendEvent(LORA_TDM_APP_SET_DL_PROTO_INF_EID, CFE_EVS_EventType_INFORMATION,
                       "LORA_TDM_APP: downlink protocol set to %s",

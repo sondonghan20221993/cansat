@@ -706,6 +706,15 @@ window 기반 제한과 카운터 재설정의 상호작용 규칙:
 모든 영구 기록에는 검증을 위한 충분한 무결성 메타데이터가 포함되어야 합니다.
 버전, 크기, CRC/체크섬, 타임스탬프, 생성 카운터 등이 있습니다.
 
+> **구현 편차 명시(2026-07-23)**: 실제 구현된 레코드(§12.1 uplink_app,
+> cfs_core_app, 그리고 BL-41로 구현된 mavlink_bridge/lora_tdm 신규
+> 레코드 — §12.2)는 위 목록 중 **Magic(식별자)·버전(`ConfigVersion`)·체크섬만**
+> 포함하고 크기·타임스탬프·생성 카운터는 생략한다 — 레코드가 고정
+> 크기 단일 구조체(read 바이트 수 검증으로 크기 확인 대체)이고,
+> 타임스탬프/생성 카운터는 현 소비처가 없어서다. uplink_app 구현
+> (BL-17, 2026-07-22) 때부터 수용된 편차이며 새 레코드도 동일 패턴을
+> 따른다. 소비처가 생기면 그때 필드 추가.
+
 현재 기준 저장소 백엔드:
 
 - persistent state는 Raspberry Pi 파일 시스템에 record 단위로 저장한다.
@@ -762,6 +771,28 @@ atomic 보장이 불완전하다.
 손상 판정 시 전부 기본값(`LastAcceptedSequence=0` 등)으로 폴백하며 크래시하지
 않는다 — "첫 부팅 오탐 없이 진짜 손상만 구분해서 보고"가 이 설계의 목적.
 
+### 12.2 CONFIG 영속화 (2026-07-23, BL-41)
+
+§12 표의 "구성(운영자가 수정한 구성 버전)" 범주를 구현 — 운영 중 CONFIG
+명령으로 조정한 파라미터가 재부팅 후에도 유지된다. 3개 앱 모두 §12.1의
+uplink_app 패턴(매직+체크섬+원자적 tmp-write→fsync→rename→부모 디렉터리
+fsync(BL-18), ENOENT만 침묵, 그 외 손상은 `STATE_CORRUPT_EID` ERROR 폴백,
+env var로 테스트 경로 주입)을 그대로 따르고, 추가로 레코드에
+`ConfigVersion`을 포함해 **불일치 시 range 재검증 없이 전체 기본값 폴백**
+한다(구버전 레코드 필드 오해석 방지; 저장값은 ActiveConfig 승격 전 이미
+검증됐으므로 range 재검증 불필요).
+
+| 앱 | 파일 | Magic | 영속 필드 | 저장 시점 |
+| --- | --- | --- | --- | --- |
+| `cfs_core_app` | `cf/cfs_core_app_state.bin` | `0xCF5C0A00` | `LastHealthState` + `ActiveConfig` 6필드 | health 전이 시 + CONFIG 적용 성공 시 |
+| `mavlink_bridge_app` | `cf/mavlink_bridge_app_state.bin` | `0x3AB51DE0` | `ActiveConfig` 7필드 | CONFIG 적용 성공 시 |
+| `lora_tdm_app` | `cf/lora_tdm_app_state.bin` | `0x10A7D3B0` | `UseV2Downlink` 1필드 | CONFIG_CMD_MID 적용 성공 시 **및** 전용 지상 명령 `SET_DL_PROTO_CC` 성공 시(두 변이 지점 모두 배선) |
+
+복원은 각 앱 `Init()`에서 컴파일타임 기본값 설정 직후 `LoadState()` 호출로
+수행(파일 없으면 무동작 = 기본값 유지). 상세: cfs_core는
+`cfs_core_app_behavior_spec.md` §14.5, 설계 이력은
+`notes/temp/bl41_config_persistence_design_2026-07-23.md`.
+
 ## 13. 활성/보류 구성 모델
 
 중요한 앱은 별도의 활성 및 보류 구성 버퍼를 유지해야 합니다.
@@ -791,7 +822,7 @@ atomic 보장이 불완전하다.
 | --- | --- | --- |
 | `cfs_core_app` | **예** | 헬스 분류 임계값, 안정화 타이머, publish 주기 등 런타임 변경 가능 파라미터를 보유한다 |
 | `mavlink_bridge_app` | **예** | FC 스트림 요청 파라미터, 재시도 한도, 타임아웃 임계값 등 런타임 변경 가능 파라미터를 보유한다 |
-| `lora_tdm_app` | **예** | TDM 슬롯 주기, 전송 타임아웃, 활성 MID 목록 등 런타임 변경 가능 파라미터를 보유한다 |
+| `lora_tdm_app` | **예(축소 구현)** | 실구현은 `UseV2Downlink`(다운링크 프로토콜, 0/1) 1개뿐이며 pending/active 이중 버퍼 없이 검증 통과 시 직접 대입한다(`ProcessConfigCommand`). "TDM 슬롯 주기, 전송 타임아웃, 활성 MID 목록"은 애초 후보였으나 미구현 — 파라미터가 늘어나면 그때 이중 버퍼 도입(2026-07-23 실태 반영) |
 | `uplink_app` | **제한적** | `uplink_app` 자체 파라미터(최대 payload 길이, 프로토콜 버전 허용 범위 등)가 필요한 경우에만 로컬 버퍼를 유지한다. 다른 앱 대상 config는 해당 앱 MID로 전달만 수행하며 버퍼를 소유하지 않는다 |
 
 `uplink_app`은 config 명령을 수신하면 다음을 수행한다:

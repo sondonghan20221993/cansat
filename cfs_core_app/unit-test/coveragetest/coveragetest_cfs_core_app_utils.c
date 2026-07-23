@@ -3,6 +3,12 @@
  ************************************************************************/
 
 #include "cfs_core_app_coveragetest_common.h"
+#include <fcntl.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <sys/stat.h>
+#include <sys/resource.h>
+#include <unistd.h>
 
 void Test_CFS_CORE_APP_ReportHousekeeping(void)
 {
@@ -1000,6 +1006,303 @@ void Test_CFS_CORE_APP_SaveState_NoDir(void)
     CFS_CORE_APP_SaveState();
 
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.LastHealthState, (int32)CFS_CORE_APP_HEALTH_DEGRADED);
+}
+
+/* BL-41(2026-07-23): SaveState → LoadState 왕복으로 ActiveConfig(6필드)+
+ * LastHealthState가 그대로 복원되는지 확인 — env var로 /tmp 경로 주입 */
+void Test_CFS_CORE_APP_SaveLoadState_RoundTrip(void)
+{
+    const char *Path = "/tmp/cfs_core_app_ut_state_roundtrip.bin";
+
+    setenv("CFS_CORE_APP_STATE_FILE_PATH", Path, 1);
+
+    CFS_CORE_APP_Data.LastHealthState               = CFS_CORE_APP_HEALTH_RECOVERY;
+    CFS_CORE_APP_Data.ActiveConfig.AttitudeTimeoutMs = 1111;
+    CFS_CORE_APP_Data.ActiveConfig.LocalTimeoutMs    = 2222;
+    CFS_CORE_APP_Data.ActiveConfig.GpsTimeoutMs      = 3333;
+    CFS_CORE_APP_Data.ActiveConfig.EkfTimeoutMs      = 4444;
+    CFS_CORE_APP_Data.ActiveConfig.BridgeTimeoutMs   = 5555;
+    CFS_CORE_APP_Data.ActiveConfig.PublishPeriodMs   = 6666;
+
+    CFS_CORE_APP_SaveState();
+
+    /* 복원 여부를 실제로 확인하려면 메모리 값을 지워야 함 */
+    CFS_CORE_APP_Data.LastHealthState               = CFS_CORE_APP_HEALTH_NOMINAL;
+    CFS_CORE_APP_Data.ActiveConfig.AttitudeTimeoutMs = 0;
+    CFS_CORE_APP_Data.ActiveConfig.LocalTimeoutMs    = 0;
+    CFS_CORE_APP_Data.ActiveConfig.GpsTimeoutMs      = 0;
+    CFS_CORE_APP_Data.ActiveConfig.EkfTimeoutMs      = 0;
+    CFS_CORE_APP_Data.ActiveConfig.BridgeTimeoutMs   = 0;
+    CFS_CORE_APP_Data.ActiveConfig.PublishPeriodMs   = 0;
+
+    CFS_CORE_APP_LoadState();
+
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.LastHealthState, (int32)CFS_CORE_APP_HEALTH_RECOVERY);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ActiveConfig.AttitudeTimeoutMs, 1111);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ActiveConfig.LocalTimeoutMs, 2222);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ActiveConfig.GpsTimeoutMs, 3333);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ActiveConfig.EkfTimeoutMs, 4444);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ActiveConfig.BridgeTimeoutMs, 5555);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ActiveConfig.PublishPeriodMs, 6666);
+
+    unlink(Path);
+    unsetenv("CFS_CORE_APP_STATE_FILE_PATH");
+}
+
+void Test_CFS_CORE_APP_LoadState_Truncated(void)
+{
+    const char *Path = "/tmp/cfs_core_app_ut_state_truncated.bin";
+    int         Fd;
+    uint8       Short[5] = {1, 2, 3, 4, 5};
+
+    setenv("CFS_CORE_APP_STATE_FILE_PATH", Path, 1);
+    Fd = open(Path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    UtAssert_True(Fd >= 0, "test fixture file created");
+    write(Fd, Short, sizeof(Short));
+    close(Fd);
+
+    CFS_CORE_APP_Data.LastHealthState = CFS_CORE_APP_HEALTH_NOMINAL;
+
+    CFS_CORE_APP_LoadState();
+
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.LastHealthState, (int32)CFS_CORE_APP_HEALTH_NOMINAL);
+
+    unlink(Path);
+    unsetenv("CFS_CORE_APP_STATE_FILE_PATH");
+}
+
+void Test_CFS_CORE_APP_LoadState_BadMagic(void)
+{
+    const char *Path = "/tmp/cfs_core_app_ut_state_badmagic.bin";
+    int         Fd;
+    uint32      Garbage[10] = {0xDEADBEEFU, 0};
+
+    setenv("CFS_CORE_APP_STATE_FILE_PATH", Path, 1);
+    Fd = open(Path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    UtAssert_True(Fd >= 0, "test fixture file created");
+    write(Fd, Garbage, sizeof(CFS_CORE_APP_PersistentState_t));
+    close(Fd);
+
+    CFS_CORE_APP_Data.LastHealthState = CFS_CORE_APP_HEALTH_NOMINAL;
+
+    CFS_CORE_APP_LoadState();
+
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.LastHealthState, (int32)CFS_CORE_APP_HEALTH_NOMINAL);
+
+    unlink(Path);
+    unsetenv("CFS_CORE_APP_STATE_FILE_PATH");
+}
+
+/* 매직/체크섬은 맞지만 ConfigVersion만 다른 구버전 파일 → 전체 폴백 */
+void Test_CFS_CORE_APP_LoadState_ConfigVersionMismatch(void)
+{
+    const char                     *Path = "/tmp/cfs_core_app_ut_state_badversion.bin";
+    int                              Fd;
+    CFS_CORE_APP_PersistentState_t  State;
+
+    memset(&State, 0, sizeof(State));
+    State.Magic             = CFS_CORE_APP_STATE_MAGIC;
+    State.LastHealthState   = CFS_CORE_APP_HEALTH_FAILED;
+    State.ConfigVersion     = (uint8)(CFS_CORE_APP_CONFIG_VERSION + 1U); /* 불일치 */
+    State.AttitudeTimeoutMs = 9999;
+    State.Checksum          = State.Magic + (uint32)State.LastHealthState +
+                              (uint32)State.ConfigVersion + State.AttitudeTimeoutMs;
+
+    setenv("CFS_CORE_APP_STATE_FILE_PATH", Path, 1);
+    Fd = open(Path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    UtAssert_True(Fd >= 0, "test fixture file created");
+    write(Fd, &State, sizeof(State));
+    close(Fd);
+
+    CFS_CORE_APP_Data.LastHealthState               = CFS_CORE_APP_HEALTH_NOMINAL;
+    CFS_CORE_APP_Data.ActiveConfig.AttitudeTimeoutMs = 100;
+
+    CFS_CORE_APP_LoadState();
+
+    /* 버전 불일치 → 파일 값 대신 기존(호출 전) 메모리 값 그대로 유지 */
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.LastHealthState, (int32)CFS_CORE_APP_HEALTH_NOMINAL);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ActiveConfig.AttitudeTimeoutMs, 100);
+
+    unlink(Path);
+    unsetenv("CFS_CORE_APP_STATE_FILE_PATH");
+}
+
+void Test_CFS_CORE_APP_LoadState_ChecksumMismatch(void)
+{
+    const char                     *Path = "/tmp/cfs_core_app_ut_state_badcrc.bin";
+    int                              Fd;
+    CFS_CORE_APP_PersistentState_t  State;
+
+    memset(&State, 0, sizeof(State));
+    State.Magic           = CFS_CORE_APP_STATE_MAGIC;
+    State.LastHealthState = CFS_CORE_APP_HEALTH_FAILED;
+    State.ConfigVersion   = CFS_CORE_APP_CONFIG_VERSION;
+    State.Checksum        = 0; /* 틀린 체크섬 */
+
+    setenv("CFS_CORE_APP_STATE_FILE_PATH", Path, 1);
+    Fd = open(Path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    UtAssert_True(Fd >= 0, "test fixture file created");
+    write(Fd, &State, sizeof(State));
+    close(Fd);
+
+    CFS_CORE_APP_Data.LastHealthState = CFS_CORE_APP_HEALTH_NOMINAL;
+
+    CFS_CORE_APP_LoadState();
+
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.LastHealthState, (int32)CFS_CORE_APP_HEALTH_NOMINAL);
+
+    unlink(Path);
+    unsetenv("CFS_CORE_APP_STATE_FILE_PATH");
+}
+
+void Test_CFS_CORE_APP_LoadState_OpenErrorNotEnoent(void)
+{
+    const char *RegularFile = "/tmp/cfs_core_app_ut_not_a_dir.bin";
+    const char *BogusPath   = "/tmp/cfs_core_app_ut_not_a_dir.bin/x";
+    int         Fd;
+
+    Fd = open(RegularFile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    UtAssert_True(Fd >= 0, "test fixture file created");
+    close(Fd);
+
+    setenv("CFS_CORE_APP_STATE_FILE_PATH", BogusPath, 1);
+
+    CFS_CORE_APP_Data.LastHealthState = CFS_CORE_APP_HEALTH_NOMINAL;
+
+    CFS_CORE_APP_LoadState();
+
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.LastHealthState, (int32)CFS_CORE_APP_HEALTH_NOMINAL);
+
+    unlink(RegularFile);
+    unsetenv("CFS_CORE_APP_STATE_FILE_PATH");
+}
+
+/* write() 실패 분기 — RLIMIT_FSIZE로 강제 EFBIG, SIGXFSZ는 무시 처리 */
+void Test_CFS_CORE_APP_SaveState_WriteFail(void)
+{
+    const char   *Path = "/tmp/cfs_core_app_ut_state_writefail.bin";
+    struct rlimit OldLimit, NewLimit;
+    void        (*OldHandler)(int);
+
+    setenv("CFS_CORE_APP_STATE_FILE_PATH", Path, 1);
+
+    getrlimit(RLIMIT_FSIZE, &OldLimit);
+    NewLimit.rlim_cur = 1;
+    NewLimit.rlim_max = OldLimit.rlim_max;
+    setrlimit(RLIMIT_FSIZE, &NewLimit);
+    OldHandler = signal(SIGXFSZ, SIG_IGN);
+
+    CFS_CORE_APP_Data.LastHealthState = CFS_CORE_APP_HEALTH_DEGRADED;
+    CFS_CORE_APP_SaveState();
+
+    signal(SIGXFSZ, OldHandler);
+    setrlimit(RLIMIT_FSIZE, &OldLimit);
+
+    /* write 실패해도 크래시 없이 조용히 리턴 — 파일은 최종본으로 rename 안 됨 */
+    UtAssert_True(access(Path, F_OK) != 0, "write 실패 시 최종 상태파일 생성 안 됨");
+
+    unlink("/tmp/cfs_core_app_ut_state_writefail.bin.tmp");
+    unlink(Path);
+    unsetenv("CFS_CORE_APP_STATE_FILE_PATH");
+}
+
+/* rename() 실패 분기 — 목적지가 이미 디렉터리라 rename()이 EISDIR로 실패 */
+void Test_CFS_CORE_APP_SaveState_RenameFail(void)
+{
+    const char *Path = "/tmp/cfs_core_app_ut_state_renamefail_dir";
+
+    mkdir(Path, 0755);
+    setenv("CFS_CORE_APP_STATE_FILE_PATH", Path, 1);
+
+    CFS_CORE_APP_Data.LastHealthState = CFS_CORE_APP_HEALTH_DEGRADED;
+    CFS_CORE_APP_SaveState();
+
+    /* rename 실패해도 크래시 없음, 목적지는 여전히 디렉터리 그대로 */
+    UtAssert_True(access(Path, F_OK) == 0, "목적지 경로 존재(디렉터리 그대로)");
+
+    unlink("/tmp/cfs_core_app_ut_state_renamefail_dir.tmp");
+    rmdir(Path);
+    unsetenv("CFS_CORE_APP_STATE_FILE_PATH");
+}
+
+/* ProcessConfigCommand가 CONFIG 적용 성공 시 실제로 SaveState()를 호출해
+ * 값을 영속화하는지 배선 자체를 검증 (부수효과를 LoadState로 재확인) */
+void Test_CFS_CORE_APP_ProcessConfigCommand_PersistsOnSuccess(void)
+{
+    const char                  *Path = "/tmp/cfs_core_app_ut_state_configwire.bin";
+    CFS_CORE_APP_ConfigCmdTlm_t  Msg;
+
+    setenv("CFS_CORE_APP_STATE_FILE_PATH", Path, 1);
+    unlink(Path);
+
+    build_config_msg(&Msg, CFS_CORE_APP_CONFIG_SCOPE, CFS_CORE_APP_CONFIG_VERSION,
+                     CFS_CORE_APP_PARAM_ATTITUDE_TIMEOUT_MS, 4242U);
+    Msg.SourceSequence = 1;
+
+    CFS_CORE_APP_ProcessConfigCommand(&Msg);
+
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.LastConfigResult, (int32)CFS_CORE_APP_CONFIG_RESULT_OK);
+
+    /* 메모리 값을 지우고 LoadState로 실제 파일 반영 여부 확인 */
+    CFS_CORE_APP_Data.ActiveConfig.AttitudeTimeoutMs = 0;
+    CFS_CORE_APP_LoadState();
+
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ActiveConfig.AttitudeTimeoutMs, 4242);
+
+    unlink(Path);
+    unsetenv("CFS_CORE_APP_STATE_FILE_PATH");
+}
+
+/* BL-18 패턴(부모 디렉터리 fsync) 대상 — StatePath에 '/'가 없는 경우
+ * (bare filename) 디렉터리 fsync 단계를 건너뛰어야 하며 크래시 없이
+ * 저장은 정상 완료돼야 한다. */
+void Test_CFS_CORE_APP_SaveState_DirFsync_NoSlashInPath(void)
+{
+    const char *Path = "cfs_core_app_ut_bare_state.bin";
+
+    setenv("CFS_CORE_APP_STATE_FILE_PATH", Path, 1);
+    unlink(Path);
+
+    CFS_CORE_APP_Data.LastHealthState = CFS_CORE_APP_HEALTH_DEGRADED;
+    CFS_CORE_APP_SaveState();
+
+    UtAssert_True(access(Path, F_OK) == 0, "슬래시 없는 경로에서도 저장 완료");
+
+    unlink("cfs_core_app_ut_bare_state.bin.tmp");
+    unlink(Path);
+    unsetenv("CFS_CORE_APP_STATE_FILE_PATH");
+}
+
+/* BL-18 패턴 대상 — 부모 디렉터리를 열 수 없어도(fsync 실패) 파일 저장
+ * 자체(rename까지)는 이미 끝난 뒤이므로 크래시 없이 조용히 넘어가야 함.
+ * 디렉터리 권한을 write+exec만 남기고 read 제거(0300)해 open(O_RDONLY)만
+ * 실패하도록 구성 — 파일 생성/rename엔 read 권한이 불필요해 그 전 단계는
+ * 정상 통과한다. */
+void Test_CFS_CORE_APP_SaveState_DirFsync_ParentOpenFail(void)
+{
+    const char *Dir  = "/tmp/cfs_core_app_ut_dirfsync_noread";
+    char        Path[256];
+
+    mkdir(Dir, 0755);
+    chmod(Dir, 0300);
+    snprintf(Path, sizeof(Path), "%s/state.bin", Dir);
+
+    setenv("CFS_CORE_APP_STATE_FILE_PATH", Path, 1);
+
+    CFS_CORE_APP_Data.LastHealthState = CFS_CORE_APP_HEALTH_DEGRADED;
+    CFS_CORE_APP_SaveState();
+
+    chmod(Dir, 0755); /* 정리 위해 read 권한 복구 */
+    UtAssert_True(access(Path, F_OK) == 0, "디렉터리 fsync 실패해도 최종 파일은 저장됨");
+
+    unlink(Path);
+    {
+        char TmpPath[280];
+        snprintf(TmpPath, sizeof(TmpPath), "%s.tmp", Path);
+        unlink(TmpPath);
+    }
+    rmdir(Dir);
+    unsetenv("CFS_CORE_APP_STATE_FILE_PATH");
 }
 
 /* 상태 전이 시 SaveState 자동 호출 확인 */
@@ -2507,6 +2810,17 @@ void UtTest_Setup(void)
     ADD_TEST(CFS_CORE_APP_ProcessConfig_BadLength);
     ADD_TEST(CFS_CORE_APP_LoadState_NoFile);
     ADD_TEST(CFS_CORE_APP_SaveState_NoDir);
+    ADD_TEST(CFS_CORE_APP_SaveLoadState_RoundTrip);
+    ADD_TEST(CFS_CORE_APP_LoadState_Truncated);
+    ADD_TEST(CFS_CORE_APP_LoadState_BadMagic);
+    ADD_TEST(CFS_CORE_APP_LoadState_ConfigVersionMismatch);
+    ADD_TEST(CFS_CORE_APP_LoadState_ChecksumMismatch);
+    ADD_TEST(CFS_CORE_APP_LoadState_OpenErrorNotEnoent);
+    ADD_TEST(CFS_CORE_APP_SaveState_WriteFail);
+    ADD_TEST(CFS_CORE_APP_SaveState_RenameFail);
+    ADD_TEST(CFS_CORE_APP_ProcessConfigCommand_PersistsOnSuccess);
+    ADD_TEST(CFS_CORE_APP_SaveState_DirFsync_NoSlashInPath);
+    ADD_TEST(CFS_CORE_APP_SaveState_DirFsync_ParentOpenFail);
     ADD_TEST(CFS_CORE_APP_SaveState_OnTransition);
     ADD_TEST(CFS_CORE_APP_BridgeRestart_FirstAttempt);
     ADD_TEST(CFS_CORE_APP_BridgeRestart_GetAppIdFail);

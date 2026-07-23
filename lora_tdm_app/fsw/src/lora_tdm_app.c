@@ -430,6 +430,9 @@ CFE_Status_t LORA_TDM_APP_Init(void)
     LORA_TDM_APP_Data.RunStatus = CFE_ES_RunStatus_APP_RUN;
     LORA_TDM_APP_Data.LoRaFd   = -1;
 
+    /* BL-41(2026-07-23): 기본값(memset=v1) 설정 후 저장된 CONFIG 복원(파일 없으면 무동작) */
+    LORA_TDM_APP_LoadState();
+
     Status = CFE_EVS_Register(NULL, 0, 0);
     if (Status != CFE_SUCCESS)
     {

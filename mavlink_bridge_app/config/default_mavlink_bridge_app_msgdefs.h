@@ -84,4 +84,15 @@ typedef struct
     uint32 HeartbeatIntervalMs;
 } MAVLINK_BRIDGE_APP_ConfigParams_t;
 
+/* BL-41(2026-07-23): CONFIG 영속화 — cfs_core_app/uplink_app과 동일한
+ * 매직+체크섬+ConfigVersion+원자적 rename 패턴 (이 앱은 상태파일 신규). */
+typedef struct
+{
+    uint32                            Magic;
+    uint8                             ConfigVersion;
+    uint8                             Reserved[3];
+    MAVLINK_BRIDGE_APP_ConfigParams_t ActiveConfig;
+    uint32                            Checksum;
+} MAVLINK_BRIDGE_APP_PersistentState_t;
+
 #endif

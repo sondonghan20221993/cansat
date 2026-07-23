@@ -5,9 +5,12 @@
 
 #include "cfe_time.h"
 
+#include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 static uint32 UtilsGetTimeMs(void)
 {
@@ -839,6 +842,7 @@ void LORA_TDM_APP_ProcessConfigCommand(const LORA_TDM_APP_ConfigCmdTlm_t *Msg)
             }
             LORA_TDM_APP_Data.UseV2Downlink = (Value != 0U) ? 1U : 0U;
             LORA_TDM_APP_Data.CmdCounter++;
+            LORA_TDM_APP_SaveState(); /* BL-41(2026-07-23): CONFIG 적용 성공 즉시 영속화 */
             CFE_EVS_SendEvent(LORA_TDM_APP_SET_DL_PROTO_INF_EID, CFE_EVS_EventType_INFORMATION,
                               "LORA_TDM_APP: downlink protocol set to %s (via CONFIG_CMD_MID)",
                               LORA_TDM_APP_Data.UseV2Downlink ? "v2(DL2)" : "v1(text)");
@@ -997,4 +1001,146 @@ void LORA_TDM_APP_ProcessRouteSnapshot(const LORA_TDM_APP_RouteSnapshotTlm_t *Ms
     CFE_EVS_SendEvent(LORA_TDM_APP_ROUTE_SNAPSHOT_EID, CFE_EVS_EventType_INFORMATION,
                       "LORA_TDM_APP: route snapshot received wp_count=%u total_pages=%u",
                       (unsigned int)Count, (unsigned int)LORA_TDM_APP_Data.RouteTotalPages);
+}
+
+/* -----------------------------------------------------------------------
+ * BL-41(2026-07-23): CONFIG 영속화 — UseV2Downlink 단일 필드(축소 구현).
+ * cfs_core_app/uplink_app(BL-17/18)과 동일한 매직+체크섬+ConfigVersion+
+ * 원자적 tmp-write→fsync→rename 패턴.
+ * ----------------------------------------------------------------------- */
+
+static const char *LORA_TDM_APP_GetStateFilePath(void)
+{
+    const char *EnvPath = getenv("LORA_TDM_APP_STATE_FILE_PATH");
+
+    if (EnvPath != NULL && EnvPath[0] != '\0')
+    {
+        return EnvPath;
+    }
+    return LORA_TDM_APP_STATE_FILE_PATH;
+}
+
+static uint32 LORA_TDM_APP_ComputeStateChecksum(const LORA_TDM_APP_PersistentState_t *State)
+{
+    return State->Magic + (uint32)State->ConfigVersion + (uint32)State->UseV2Downlink;
+}
+
+void LORA_TDM_APP_LoadState(void)
+{
+    LORA_TDM_APP_PersistentState_t State;
+    int                             Fd;
+    ssize_t                         ReadRc;
+    const char                     *StatePath = LORA_TDM_APP_GetStateFilePath();
+
+    Fd = open(StatePath, O_RDONLY);
+    if (Fd < 0)
+    {
+        if (errno != ENOENT)
+        {
+            CFE_EVS_SendEvent(LORA_TDM_APP_STATE_CORRUPT_EID, CFE_EVS_EventType_ERROR,
+                              "LORA_TDM_APP: state file open failed errno=%d, using defaults", errno);
+        }
+        return;
+    }
+
+    ReadRc = read(Fd, &State, sizeof(State));
+    close(Fd);
+
+    if (ReadRc != (ssize_t)sizeof(State))
+    {
+        CFE_EVS_SendEvent(LORA_TDM_APP_STATE_CORRUPT_EID, CFE_EVS_EventType_ERROR,
+                          "LORA_TDM_APP: state file truncated (rc=%ld), using defaults", (long)ReadRc);
+        return;
+    }
+    if (State.Magic != LORA_TDM_APP_STATE_MAGIC)
+    {
+        CFE_EVS_SendEvent(LORA_TDM_APP_STATE_CORRUPT_EID, CFE_EVS_EventType_ERROR,
+                          "LORA_TDM_APP: state file bad magic (0x%08lX), using defaults",
+                          (unsigned long)State.Magic);
+        return;
+    }
+    if (State.Checksum != LORA_TDM_APP_ComputeStateChecksum(&State))
+    {
+        CFE_EVS_SendEvent(LORA_TDM_APP_STATE_CORRUPT_EID, CFE_EVS_EventType_ERROR,
+                          "LORA_TDM_APP: state file checksum mismatch, using defaults");
+        return;
+    }
+    if (State.ConfigVersion != LORA_TDM_APP_CONFIG_VERSION)
+    {
+        /* BL-41: 필드 구조가 바뀐 구버전 파일 — 전체 기본값 폴백 */
+        CFE_EVS_SendEvent(LORA_TDM_APP_STATE_CORRUPT_EID, CFE_EVS_EventType_ERROR,
+                          "LORA_TDM_APP: state file config version mismatch (file=%u expected=%u), using defaults",
+                          (unsigned int)State.ConfigVersion, (unsigned int)LORA_TDM_APP_CONFIG_VERSION);
+        return;
+    }
+
+    LORA_TDM_APP_Data.UseV2Downlink = (State.UseV2Downlink != 0U) ? 1U : 0U;
+
+    CFE_EVS_SendEvent(LORA_TDM_APP_SET_DL_PROTO_INF_EID, CFE_EVS_EventType_INFORMATION,
+                      "LORA_TDM_APP: restored downlink protocol %s",
+                      LORA_TDM_APP_Data.UseV2Downlink ? "v2(DL2)" : "v1(text)");
+}
+
+void LORA_TDM_APP_SaveState(void)
+{
+    LORA_TDM_APP_PersistentState_t State;
+    char                            TmpPath[256];
+    int                             Fd;
+    const char                     *StatePath = LORA_TDM_APP_GetStateFilePath();
+
+    memset(&State, 0, sizeof(State));
+    State.Magic         = LORA_TDM_APP_STATE_MAGIC;
+    State.ConfigVersion = LORA_TDM_APP_CONFIG_VERSION;
+    State.UseV2Downlink = LORA_TDM_APP_Data.UseV2Downlink;
+    State.Checksum      = LORA_TDM_APP_ComputeStateChecksum(&State);
+
+    snprintf(TmpPath, sizeof(TmpPath), "%s.tmp", StatePath);
+
+    Fd = open(TmpPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (Fd < 0)
+    {
+        CFE_EVS_SendEvent(LORA_TDM_APP_STATE_SAVE_FAIL_EID, CFE_EVS_EventType_ERROR,
+                          "LORA_TDM_APP: state save open failed path=%s errno=%d", TmpPath, errno);
+        return;
+    }
+
+    if (write(Fd, &State, sizeof(State)) != (ssize_t)sizeof(State))
+    {
+        CFE_EVS_SendEvent(LORA_TDM_APP_STATE_SAVE_FAIL_EID, CFE_EVS_EventType_ERROR,
+                          "LORA_TDM_APP: state save write failed path=%s errno=%d", TmpPath, errno);
+        close(Fd);
+        return;
+    }
+
+    /* rename()이 디스크에 반영됐다는 보장은 파일 fd만 fsync해선 안 됨 —
+     * POSIX상 디렉터리 항목(rename) 자체도 부모 디렉터리 fd를 fsync해야
+     * 정전 시 유실되지 않는다 (BL-18). */
+    fsync(Fd);
+    close(Fd);
+
+    if (rename(TmpPath, StatePath) != 0)
+    {
+        CFE_EVS_SendEvent(LORA_TDM_APP_STATE_SAVE_FAIL_EID, CFE_EVS_EventType_ERROR,
+                          "LORA_TDM_APP: state save rename failed path=%s errno=%d", StatePath, errno);
+        return;
+    }
+
+    {
+        char  DirPath[256];
+        char *Slash;
+        int   DirFd;
+
+        snprintf(DirPath, sizeof(DirPath), "%s", StatePath);
+        Slash = strrchr(DirPath, '/');
+        if (Slash != NULL)
+        {
+            *Slash = '\0';
+            DirFd  = open(DirPath, O_RDONLY);
+            if (DirFd >= 0)
+            {
+                fsync(DirFd);
+                close(DirFd);
+            }
+        }
+    }
 }

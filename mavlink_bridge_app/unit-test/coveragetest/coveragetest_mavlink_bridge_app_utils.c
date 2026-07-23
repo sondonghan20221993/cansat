@@ -1,4 +1,10 @@
 #include "mavlink_bridge_app_coveragetest_common.h"
+#include <fcntl.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <sys/resource.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 /* -----------------------------------------------------------------------
  * UpdateFromHeartbeat 테스트
@@ -619,6 +625,294 @@ void Test_ProcessConfig_ReconnectInterval(void)
     UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ActiveConfig.ReconnectIntervalMs, 2000);
     UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.LastConfigResult,
                       (int32)MAVLINK_BRIDGE_CONFIG_RESULT_OK);
+}
+
+/* -----------------------------------------------------------------------
+ * BL-41(2026-07-23): CONFIG 지속 상태(신규 상태파일) — cfs_core_app/
+ * uplink_app과 동일한 매직+체크섬+ConfigVersion+원자적 rename 패턴.
+ * 이 앱은 기존 상태파일이 없어 SaveState/LoadState/PersistentState_t가
+ * 전부 신규 — 테스트가 아직 없는 인터페이스를 요구하는 TDD red 상태.
+ * ----------------------------------------------------------------------- */
+
+void Test_LoadState_NoFile(void)
+{
+    MAVLINK_BRIDGE_APP_Data.ActiveConfig.AttitudeIntervalUs = 500;
+
+    MAVLINK_BRIDGE_APP_LoadState();
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ActiveConfig.AttitudeIntervalUs, 500);
+}
+
+void Test_SaveState_NoDir(void)
+{
+    MAVLINK_BRIDGE_APP_Data.ActiveConfig.AttitudeIntervalUs = 500;
+
+    MAVLINK_BRIDGE_APP_SaveState();
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ActiveConfig.AttitudeIntervalUs, 500);
+}
+
+void Test_SaveLoadState_RoundTrip(void)
+{
+    const char *Path = "/tmp/mavlink_bridge_app_ut_state_roundtrip.bin";
+
+    setenv("MAVLINK_BRIDGE_APP_STATE_FILE_PATH", Path, 1);
+
+    MAVLINK_BRIDGE_APP_Data.ActiveConfig.AttitudeIntervalUs       = 1111;
+    MAVLINK_BRIDGE_APP_Data.ActiveConfig.LocalPositionIntervalUs  = 2222;
+    MAVLINK_BRIDGE_APP_Data.ActiveConfig.GlobalPositionIntervalUs = 3333;
+    MAVLINK_BRIDGE_APP_Data.ActiveConfig.GpsRawIntervalUs         = 4444;
+    MAVLINK_BRIDGE_APP_Data.ActiveConfig.EkfStatusIntervalUs      = 5555;
+    MAVLINK_BRIDGE_APP_Data.ActiveConfig.ReconnectIntervalMs      = 6666;
+    MAVLINK_BRIDGE_APP_Data.ActiveConfig.HeartbeatIntervalMs      = 7777;
+
+    MAVLINK_BRIDGE_APP_SaveState();
+
+    memset(&MAVLINK_BRIDGE_APP_Data.ActiveConfig, 0, sizeof(MAVLINK_BRIDGE_APP_Data.ActiveConfig));
+
+    MAVLINK_BRIDGE_APP_LoadState();
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ActiveConfig.AttitudeIntervalUs, 1111);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ActiveConfig.LocalPositionIntervalUs, 2222);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ActiveConfig.GlobalPositionIntervalUs, 3333);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ActiveConfig.GpsRawIntervalUs, 4444);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ActiveConfig.EkfStatusIntervalUs, 5555);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ActiveConfig.ReconnectIntervalMs, 6666);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ActiveConfig.HeartbeatIntervalMs, 7777);
+
+    unlink(Path);
+    unsetenv("MAVLINK_BRIDGE_APP_STATE_FILE_PATH");
+}
+
+void Test_LoadState_Truncated(void)
+{
+    const char *Path = "/tmp/mavlink_bridge_app_ut_state_truncated.bin";
+    int         Fd;
+    uint8       Short[5] = {1, 2, 3, 4, 5};
+
+    setenv("MAVLINK_BRIDGE_APP_STATE_FILE_PATH", Path, 1);
+    Fd = open(Path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    UtAssert_True(Fd >= 0, "test fixture file created");
+    write(Fd, Short, sizeof(Short));
+    close(Fd);
+
+    MAVLINK_BRIDGE_APP_Data.ActiveConfig.AttitudeIntervalUs = 999;
+
+    MAVLINK_BRIDGE_APP_LoadState();
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ActiveConfig.AttitudeIntervalUs, 999);
+
+    unlink(Path);
+    unsetenv("MAVLINK_BRIDGE_APP_STATE_FILE_PATH");
+}
+
+void Test_LoadState_BadMagic(void)
+{
+    const char *Path = "/tmp/mavlink_bridge_app_ut_state_badmagic.bin";
+    int         Fd;
+    uint32      Garbage[12] = {0xDEADBEEFU, 0};
+
+    setenv("MAVLINK_BRIDGE_APP_STATE_FILE_PATH", Path, 1);
+    Fd = open(Path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    UtAssert_True(Fd >= 0, "test fixture file created");
+    write(Fd, Garbage, sizeof(MAVLINK_BRIDGE_APP_PersistentState_t));
+    close(Fd);
+
+    MAVLINK_BRIDGE_APP_Data.ActiveConfig.AttitudeIntervalUs = 999;
+
+    MAVLINK_BRIDGE_APP_LoadState();
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ActiveConfig.AttitudeIntervalUs, 999);
+
+    unlink(Path);
+    unsetenv("MAVLINK_BRIDGE_APP_STATE_FILE_PATH");
+}
+
+/* 매직/체크섬은 맞지만 ConfigVersion만 다른 구버전 파일 → 전체 폴백 */
+void Test_LoadState_ConfigVersionMismatch(void)
+{
+    const char                         *Path = "/tmp/mavlink_bridge_app_ut_state_badversion.bin";
+    int                                  Fd;
+    MAVLINK_BRIDGE_APP_PersistentState_t State;
+
+    memset(&State, 0, sizeof(State));
+    State.Magic                    = MAVLINK_BRIDGE_APP_STATE_MAGIC;
+    State.ConfigVersion            = (uint8)(MAVLINK_BRIDGE_APP_CONFIG_VERSION + 1U);
+    State.ActiveConfig.AttitudeIntervalUs = 8888;
+    State.Checksum                 = State.Magic + (uint32)State.ConfigVersion +
+                                      State.ActiveConfig.AttitudeIntervalUs;
+
+    setenv("MAVLINK_BRIDGE_APP_STATE_FILE_PATH", Path, 1);
+    Fd = open(Path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    UtAssert_True(Fd >= 0, "test fixture file created");
+    write(Fd, &State, sizeof(State));
+    close(Fd);
+
+    MAVLINK_BRIDGE_APP_Data.ActiveConfig.AttitudeIntervalUs = 100;
+
+    MAVLINK_BRIDGE_APP_LoadState();
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ActiveConfig.AttitudeIntervalUs, 100);
+
+    unlink(Path);
+    unsetenv("MAVLINK_BRIDGE_APP_STATE_FILE_PATH");
+}
+
+void Test_LoadState_ChecksumMismatch(void)
+{
+    const char                         *Path = "/tmp/mavlink_bridge_app_ut_state_badcrc.bin";
+    int                                  Fd;
+    MAVLINK_BRIDGE_APP_PersistentState_t State;
+
+    memset(&State, 0, sizeof(State));
+    State.Magic         = MAVLINK_BRIDGE_APP_STATE_MAGIC;
+    State.ConfigVersion = MAVLINK_BRIDGE_APP_CONFIG_VERSION;
+    State.Checksum      = 0; /* 틀린 체크섬 */
+
+    setenv("MAVLINK_BRIDGE_APP_STATE_FILE_PATH", Path, 1);
+    Fd = open(Path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    UtAssert_True(Fd >= 0, "test fixture file created");
+    write(Fd, &State, sizeof(State));
+    close(Fd);
+
+    MAVLINK_BRIDGE_APP_Data.ActiveConfig.AttitudeIntervalUs = 999;
+
+    MAVLINK_BRIDGE_APP_LoadState();
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ActiveConfig.AttitudeIntervalUs, 999);
+
+    unlink(Path);
+    unsetenv("MAVLINK_BRIDGE_APP_STATE_FILE_PATH");
+}
+
+void Test_LoadState_OpenErrorNotEnoent(void)
+{
+    const char *RegularFile = "/tmp/mavlink_bridge_app_ut_not_a_dir.bin";
+    const char *BogusPath   = "/tmp/mavlink_bridge_app_ut_not_a_dir.bin/x";
+    int         Fd;
+
+    Fd = open(RegularFile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    UtAssert_True(Fd >= 0, "test fixture file created");
+    close(Fd);
+
+    setenv("MAVLINK_BRIDGE_APP_STATE_FILE_PATH", BogusPath, 1);
+
+    MAVLINK_BRIDGE_APP_Data.ActiveConfig.AttitudeIntervalUs = 999;
+
+    MAVLINK_BRIDGE_APP_LoadState();
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ActiveConfig.AttitudeIntervalUs, 999);
+
+    unlink(RegularFile);
+    unsetenv("MAVLINK_BRIDGE_APP_STATE_FILE_PATH");
+}
+
+void Test_SaveState_WriteFail(void)
+{
+    const char   *Path = "/tmp/mavlink_bridge_app_ut_state_writefail.bin";
+    struct rlimit OldLimit, NewLimit;
+    void        (*OldHandler)(int);
+
+    setenv("MAVLINK_BRIDGE_APP_STATE_FILE_PATH", Path, 1);
+
+    getrlimit(RLIMIT_FSIZE, &OldLimit);
+    NewLimit.rlim_cur = 1;
+    NewLimit.rlim_max = OldLimit.rlim_max;
+    setrlimit(RLIMIT_FSIZE, &NewLimit);
+    OldHandler = signal(SIGXFSZ, SIG_IGN);
+
+    MAVLINK_BRIDGE_APP_SaveState();
+
+    signal(SIGXFSZ, OldHandler);
+    setrlimit(RLIMIT_FSIZE, &OldLimit);
+
+    UtAssert_True(access(Path, F_OK) != 0, "write 실패 시 최종 상태파일 생성 안 됨");
+
+    unlink("/tmp/mavlink_bridge_app_ut_state_writefail.bin.tmp");
+    unlink(Path);
+    unsetenv("MAVLINK_BRIDGE_APP_STATE_FILE_PATH");
+}
+
+void Test_SaveState_RenameFail(void)
+{
+    const char *Path = "/tmp/mavlink_bridge_app_ut_state_renamefail_dir";
+
+    mkdir(Path, 0755);
+    setenv("MAVLINK_BRIDGE_APP_STATE_FILE_PATH", Path, 1);
+
+    MAVLINK_BRIDGE_APP_SaveState();
+
+    UtAssert_True(access(Path, F_OK) == 0, "목적지 경로 존재(디렉터리 그대로)");
+
+    unlink("/tmp/mavlink_bridge_app_ut_state_renamefail_dir.tmp");
+    rmdir(Path);
+    unsetenv("MAVLINK_BRIDGE_APP_STATE_FILE_PATH");
+}
+
+void Test_ProcessConfigCommand_PersistsOnSuccess(void)
+{
+    const char                        *Path = "/tmp/mavlink_bridge_app_ut_state_configwire.bin";
+    MAVLINK_BRIDGE_APP_ConfigCmdTlm_t  Msg;
+
+    setenv("MAVLINK_BRIDGE_APP_STATE_FILE_PATH", Path, 1);
+    unlink(Path);
+
+    build_mav_config_msg(&Msg, MAVLINK_BRIDGE_APP_CONFIG_SCOPE, MAVLINK_BRIDGE_APP_CONFIG_VERSION,
+                         MAVLINK_BRIDGE_PARAM_RECONNECT_INTERVAL_MS, 4242U);
+
+    MAVLINK_BRIDGE_APP_ProcessConfigCommand(&Msg);
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.LastConfigResult, (int32)MAVLINK_BRIDGE_CONFIG_RESULT_OK);
+
+    MAVLINK_BRIDGE_APP_Data.ActiveConfig.ReconnectIntervalMs = 0;
+    MAVLINK_BRIDGE_APP_LoadState();
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ActiveConfig.ReconnectIntervalMs, 4242);
+
+    unlink(Path);
+    unsetenv("MAVLINK_BRIDGE_APP_STATE_FILE_PATH");
+}
+
+void Test_SaveState_DirFsync_NoSlashInPath(void)
+{
+    const char *Path = "mavlink_bridge_app_ut_bare_state.bin";
+
+    setenv("MAVLINK_BRIDGE_APP_STATE_FILE_PATH", Path, 1);
+    unlink(Path);
+
+    MAVLINK_BRIDGE_APP_SaveState();
+
+    UtAssert_True(access(Path, F_OK) == 0, "슬래시 없는 경로에서도 저장 완료");
+
+    unlink("mavlink_bridge_app_ut_bare_state.bin.tmp");
+    unlink(Path);
+    unsetenv("MAVLINK_BRIDGE_APP_STATE_FILE_PATH");
+}
+
+void Test_SaveState_DirFsync_ParentOpenFail(void)
+{
+    const char *Dir = "/tmp/mavlink_bridge_app_ut_dirfsync_noread";
+    char        Path[256];
+
+    mkdir(Dir, 0755);
+    chmod(Dir, 0300);
+    snprintf(Path, sizeof(Path), "%s/state.bin", Dir);
+
+    setenv("MAVLINK_BRIDGE_APP_STATE_FILE_PATH", Path, 1);
+
+    MAVLINK_BRIDGE_APP_SaveState();
+
+    chmod(Dir, 0755);
+    UtAssert_True(access(Path, F_OK) == 0, "디렉터리 fsync 실패해도 최종 파일은 저장됨");
+
+    unlink(Path);
+    {
+        char TmpPath[280];
+        snprintf(TmpPath, sizeof(TmpPath), "%s.tmp", Path);
+        unlink(TmpPath);
+    }
+    rmdir(Dir);
+    unsetenv("MAVLINK_BRIDGE_APP_STATE_FILE_PATH");
 }
 
 /* -----------------------------------------------------------------------
@@ -1274,6 +1568,19 @@ void UtTest_Setup(void)
     ADD_TEST(ProcessConfig_BadVersion);
     ADD_TEST(ProcessConfig_BadParam);
     ADD_TEST(ProcessConfig_ReconnectInterval);
+    ADD_TEST(LoadState_NoFile);
+    ADD_TEST(SaveState_NoDir);
+    ADD_TEST(SaveLoadState_RoundTrip);
+    ADD_TEST(LoadState_Truncated);
+    ADD_TEST(LoadState_BadMagic);
+    ADD_TEST(LoadState_ConfigVersionMismatch);
+    ADD_TEST(LoadState_ChecksumMismatch);
+    ADD_TEST(LoadState_OpenErrorNotEnoent);
+    ADD_TEST(SaveState_WriteFail);
+    ADD_TEST(SaveState_RenameFail);
+    ADD_TEST(ProcessConfigCommand_PersistsOnSuccess);
+    ADD_TEST(SaveState_DirFsync_NoSlashInPath);
+    ADD_TEST(SaveState_DirFsync_ParentOpenFail);
     ADD_TEST(ReportHousekeeping);
     ADD_TEST(VerifyCmdLength_Pass);
     ADD_TEST(VerifyCmdLength_Fail);

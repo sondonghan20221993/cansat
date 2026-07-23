@@ -95,3 +95,13 @@ void LORA_TDM_APP_ProcessRouteSnapshot(const LORA_TDM_APP_RouteSnapshotTlm_t *Ms
     UT_GenStub_AddParam(LORA_TDM_APP_ProcessRouteSnapshot, const LORA_TDM_APP_RouteSnapshotTlm_t *, Msg);
     UT_GenStub_Execute(LORA_TDM_APP_ProcessRouteSnapshot, Basic, NULL);
 }
+
+void LORA_TDM_APP_LoadState(void)
+{
+    UT_GenStub_Execute(LORA_TDM_APP_LoadState, Basic, NULL);
+}
+
+void LORA_TDM_APP_SaveState(void)
+{
+    UT_GenStub_Execute(LORA_TDM_APP_SaveState, Basic, NULL);
+}

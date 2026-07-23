@@ -1,6 +1,12 @@
 #include "lora_tdm_app_coveragetest_common.h"
 #include "system_health_msg.h"
 #include "fc_state_msg.h"
+#include <fcntl.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <sys/resource.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 /* ---- Helper: build a valid UP frame dynamically using the CRC function under test ---- */
 static void BuildValidUpFrame(char *Buf, size_t BufLen, uint8 Ver, uint8 Class, uint16 Seq, uint8 Flags,
@@ -1016,6 +1022,289 @@ void Test_ProcessConfigCommand_SetV2(void)
     UtAssert_INT32_EQ(LORA_TDM_APP_Data.ExecResultTlm.GenericResult, (int32)EXEC_RESULT_GENERIC_OK);
 }
 
+/* -----------------------------------------------------------------------
+ * BL-41(2026-07-23): CONFIG 지속 상태 — 이 앱의 첫 영속 상태(UseV2Downlink
+ * 1필드). cfs_core_app/mavlink_bridge_app과 동일 매직+체크섬+ConfigVersion
+ * +원자적 rename 패턴. SaveState/LoadState/PersistentState_t 전부 신규 —
+ * TDD red 상태.
+ * ----------------------------------------------------------------------- */
+
+void Test_LoadState_NoFile(void)
+{
+    LORA_TDM_APP_Data.UseV2Downlink = 0;
+
+    LORA_TDM_APP_LoadState();
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.UseV2Downlink, 0);
+}
+
+void Test_SaveState_NoDir(void)
+{
+    LORA_TDM_APP_Data.UseV2Downlink = 1;
+
+    LORA_TDM_APP_SaveState();
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.UseV2Downlink, 1);
+}
+
+void Test_SaveLoadState_RoundTrip(void)
+{
+    const char *Path = "/tmp/lora_tdm_app_ut_state_roundtrip.bin";
+
+    setenv("LORA_TDM_APP_STATE_FILE_PATH", Path, 1);
+
+    LORA_TDM_APP_Data.UseV2Downlink = 1;
+
+    LORA_TDM_APP_SaveState();
+
+    LORA_TDM_APP_Data.UseV2Downlink = 0;
+
+    LORA_TDM_APP_LoadState();
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.UseV2Downlink, 1);
+
+    unlink(Path);
+    unsetenv("LORA_TDM_APP_STATE_FILE_PATH");
+}
+
+void Test_LoadState_Truncated(void)
+{
+    const char *Path = "/tmp/lora_tdm_app_ut_state_truncated.bin";
+    int         Fd;
+    uint8       Short[5] = {1, 2, 3, 4, 5};
+
+    setenv("LORA_TDM_APP_STATE_FILE_PATH", Path, 1);
+    Fd = open(Path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    UtAssert_True(Fd >= 0, "test fixture file created");
+    write(Fd, Short, sizeof(Short));
+    close(Fd);
+
+    LORA_TDM_APP_Data.UseV2Downlink = 0;
+
+    LORA_TDM_APP_LoadState();
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.UseV2Downlink, 0);
+
+    unlink(Path);
+    unsetenv("LORA_TDM_APP_STATE_FILE_PATH");
+}
+
+void Test_LoadState_BadMagic(void)
+{
+    const char *Path = "/tmp/lora_tdm_app_ut_state_badmagic.bin";
+    int         Fd;
+    uint32      Garbage[6] = {0xDEADBEEFU, 0};
+
+    setenv("LORA_TDM_APP_STATE_FILE_PATH", Path, 1);
+    Fd = open(Path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    UtAssert_True(Fd >= 0, "test fixture file created");
+    write(Fd, Garbage, sizeof(LORA_TDM_APP_PersistentState_t));
+    close(Fd);
+
+    LORA_TDM_APP_Data.UseV2Downlink = 0;
+
+    LORA_TDM_APP_LoadState();
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.UseV2Downlink, 0);
+
+    unlink(Path);
+    unsetenv("LORA_TDM_APP_STATE_FILE_PATH");
+}
+
+/* 매직/체크섬은 맞지만 ConfigVersion만 다른 구버전 파일 → 전체 폴백 */
+void Test_LoadState_ConfigVersionMismatch(void)
+{
+    const char                  *Path = "/tmp/lora_tdm_app_ut_state_badversion.bin";
+    int                          Fd;
+    LORA_TDM_APP_PersistentState_t State;
+
+    memset(&State, 0, sizeof(State));
+    State.Magic          = LORA_TDM_APP_STATE_MAGIC;
+    State.ConfigVersion  = (uint8)(LORA_TDM_APP_CONFIG_VERSION + 1U);
+    State.UseV2Downlink  = 1;
+    State.Checksum       = State.Magic + (uint32)State.ConfigVersion + (uint32)State.UseV2Downlink;
+
+    setenv("LORA_TDM_APP_STATE_FILE_PATH", Path, 1);
+    Fd = open(Path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    UtAssert_True(Fd >= 0, "test fixture file created");
+    write(Fd, &State, sizeof(State));
+    close(Fd);
+
+    LORA_TDM_APP_Data.UseV2Downlink = 0;
+
+    LORA_TDM_APP_LoadState();
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.UseV2Downlink, 0);
+
+    unlink(Path);
+    unsetenv("LORA_TDM_APP_STATE_FILE_PATH");
+}
+
+void Test_LoadState_ChecksumMismatch(void)
+{
+    const char                  *Path = "/tmp/lora_tdm_app_ut_state_badcrc.bin";
+    int                          Fd;
+    LORA_TDM_APP_PersistentState_t State;
+
+    memset(&State, 0, sizeof(State));
+    State.Magic         = LORA_TDM_APP_STATE_MAGIC;
+    State.ConfigVersion = LORA_TDM_APP_CONFIG_VERSION;
+    State.Checksum      = 0; /* 틀린 체크섬 */
+
+    setenv("LORA_TDM_APP_STATE_FILE_PATH", Path, 1);
+    Fd = open(Path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    UtAssert_True(Fd >= 0, "test fixture file created");
+    write(Fd, &State, sizeof(State));
+    close(Fd);
+
+    LORA_TDM_APP_Data.UseV2Downlink = 0;
+
+    LORA_TDM_APP_LoadState();
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.UseV2Downlink, 0);
+
+    unlink(Path);
+    unsetenv("LORA_TDM_APP_STATE_FILE_PATH");
+}
+
+void Test_LoadState_OpenErrorNotEnoent(void)
+{
+    const char *RegularFile = "/tmp/lora_tdm_app_ut_not_a_dir.bin";
+    const char *BogusPath   = "/tmp/lora_tdm_app_ut_not_a_dir.bin/x";
+    int         Fd;
+
+    Fd = open(RegularFile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    UtAssert_True(Fd >= 0, "test fixture file created");
+    close(Fd);
+
+    setenv("LORA_TDM_APP_STATE_FILE_PATH", BogusPath, 1);
+
+    LORA_TDM_APP_Data.UseV2Downlink = 0;
+
+    LORA_TDM_APP_LoadState();
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.UseV2Downlink, 0);
+
+    unlink(RegularFile);
+    unsetenv("LORA_TDM_APP_STATE_FILE_PATH");
+}
+
+void Test_SaveState_WriteFail(void)
+{
+    const char   *Path = "/tmp/lora_tdm_app_ut_state_writefail.bin";
+    struct rlimit OldLimit, NewLimit;
+    void        (*OldHandler)(int);
+
+    setenv("LORA_TDM_APP_STATE_FILE_PATH", Path, 1);
+
+    getrlimit(RLIMIT_FSIZE, &OldLimit);
+    NewLimit.rlim_cur = 1;
+    NewLimit.rlim_max = OldLimit.rlim_max;
+    setrlimit(RLIMIT_FSIZE, &NewLimit);
+    OldHandler = signal(SIGXFSZ, SIG_IGN);
+
+    LORA_TDM_APP_Data.UseV2Downlink = 1;
+    LORA_TDM_APP_SaveState();
+
+    signal(SIGXFSZ, OldHandler);
+    setrlimit(RLIMIT_FSIZE, &OldLimit);
+
+    UtAssert_True(access(Path, F_OK) != 0, "write 실패 시 최종 상태파일 생성 안 됨");
+
+    unlink("/tmp/lora_tdm_app_ut_state_writefail.bin.tmp");
+    unlink(Path);
+    unsetenv("LORA_TDM_APP_STATE_FILE_PATH");
+}
+
+void Test_SaveState_RenameFail(void)
+{
+    const char *Path = "/tmp/lora_tdm_app_ut_state_renamefail_dir";
+
+    mkdir(Path, 0755);
+    setenv("LORA_TDM_APP_STATE_FILE_PATH", Path, 1);
+
+    LORA_TDM_APP_Data.UseV2Downlink = 1;
+    LORA_TDM_APP_SaveState();
+
+    UtAssert_True(access(Path, F_OK) == 0, "목적지 경로 존재(디렉터리 그대로)");
+
+    unlink("/tmp/lora_tdm_app_ut_state_renamefail_dir.tmp");
+    rmdir(Path);
+    unsetenv("LORA_TDM_APP_STATE_FILE_PATH");
+}
+
+/* CONFIG 적용 성공 시 실제로 SaveState()가 호출돼 값이 파일로 영속화되는지
+ * 배선 자체를 검증 */
+void Test_ProcessConfigCommand_PersistsOnSuccess(void)
+{
+    const char                 *Path = "/tmp/lora_tdm_app_ut_state_configwire.bin";
+    LORA_TDM_APP_ConfigCmdTlm_t Msg;
+
+    setenv("LORA_TDM_APP_STATE_FILE_PATH", Path, 1);
+    unlink(Path);
+
+    LORA_TDM_APP_Data.UseV2Downlink = 0;
+    LORA_TDM_APP_Data.CmdCounter    = 0;
+    BuildConfigMsgTest(&Msg, LORA_TDM_APP_CONFIG_SCOPE, LORA_TDM_APP_CONFIG_VERSION,
+                       LORA_TDM_APP_PARAM_DOWNLINK_PROTOCOL, 1U);
+
+    LORA_TDM_APP_ProcessConfigCommand(&Msg);
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.UseV2Downlink, 1);
+
+    LORA_TDM_APP_Data.UseV2Downlink = 0;
+    LORA_TDM_APP_LoadState();
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.UseV2Downlink, 1);
+
+    unlink(Path);
+    unsetenv("LORA_TDM_APP_STATE_FILE_PATH");
+}
+
+void Test_SaveState_DirFsync_NoSlashInPath(void)
+{
+    const char *Path = "lora_tdm_app_ut_bare_state.bin";
+
+    setenv("LORA_TDM_APP_STATE_FILE_PATH", Path, 1);
+    unlink(Path);
+
+    LORA_TDM_APP_Data.UseV2Downlink = 1;
+    LORA_TDM_APP_SaveState();
+
+    UtAssert_True(access(Path, F_OK) == 0, "슬래시 없는 경로에서도 저장 완료");
+
+    unlink("lora_tdm_app_ut_bare_state.bin.tmp");
+    unlink(Path);
+    unsetenv("LORA_TDM_APP_STATE_FILE_PATH");
+}
+
+void Test_SaveState_DirFsync_ParentOpenFail(void)
+{
+    const char *Dir = "/tmp/lora_tdm_app_ut_dirfsync_noread";
+    char        Path[256];
+
+    mkdir(Dir, 0755);
+    chmod(Dir, 0300);
+    snprintf(Path, sizeof(Path), "%s/state.bin", Dir);
+
+    setenv("LORA_TDM_APP_STATE_FILE_PATH", Path, 1);
+
+    LORA_TDM_APP_Data.UseV2Downlink = 1;
+    LORA_TDM_APP_SaveState();
+
+    chmod(Dir, 0755);
+    UtAssert_True(access(Path, F_OK) == 0, "디렉터리 fsync 실패해도 최종 파일은 저장됨");
+
+    unlink(Path);
+    {
+        char TmpPath[280];
+        snprintf(TmpPath, sizeof(TmpPath), "%s.tmp", Path);
+        unlink(TmpPath);
+    }
+    rmdir(Dir);
+    unsetenv("LORA_TDM_APP_STATE_FILE_PATH");
+}
+
 void Test_ProcessConfigCommand_DownlinkProtocolOutOfRangeRejected(void)
 {
     /* BL-16(2026-07-21): 0/1 외 값은 거부(기체 엄격화) */
@@ -1189,6 +1478,19 @@ void UtTest_Setup(void)
     ADD_TEST(ParseUp2Frame_TooShort);
     ADD_TEST(ParseUp2Frame_PayloadLenExceedsBuf);
     ADD_TEST(ProcessConfigCommand_SetV2);
+    ADD_TEST(LoadState_NoFile);
+    ADD_TEST(SaveState_NoDir);
+    ADD_TEST(SaveLoadState_RoundTrip);
+    ADD_TEST(LoadState_Truncated);
+    ADD_TEST(LoadState_BadMagic);
+    ADD_TEST(LoadState_ConfigVersionMismatch);
+    ADD_TEST(LoadState_ChecksumMismatch);
+    ADD_TEST(LoadState_OpenErrorNotEnoent);
+    ADD_TEST(SaveState_WriteFail);
+    ADD_TEST(SaveState_RenameFail);
+    ADD_TEST(ProcessConfigCommand_PersistsOnSuccess);
+    ADD_TEST(SaveState_DirFsync_NoSlashInPath);
+    ADD_TEST(SaveState_DirFsync_ParentOpenFail);
     ADD_TEST(ProcessConfigCommand_DownlinkProtocolOutOfRangeRejected);
     ADD_TEST(ProcessConfigCommand_WrongScopeIgnoredSilently);
     ADD_TEST(ProcessConfigCommand_BadChecksumRejected);

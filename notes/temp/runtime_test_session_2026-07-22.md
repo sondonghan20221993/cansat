@@ -202,6 +202,11 @@ GetAppIDByName 스텁 SUCCESS라 못 잡음. 상세 BACKLOG BL-40.
 - [ ] v2 표준화: 부팅 기본값 v1→v2 변경 여부(`UseV2Downlink` 초기값,
       코드+spec) — 사용자 "v2로 사용하기로" 언급(2026-07-22), 테스트 종료
       시 v2 복귀 CONFIG 전송도 잊지 말 것
+      → **전제 변경(2026-07-23, BL-41)**: `UseV2Downlink` 영속화가
+      설계·테스트 확정(`bl41_config_persistence_design_2026-07-23.md`).
+      구현되면 지상 1회 v2 전환 후 재부팅에도 유지되므로 "재부팅 시
+      v2 복귀 CONFIG 재전송" 불필요해짐. 컴파일타임 기본값 v1→v2 변경
+      여부만 별도 결정 사안으로 남음
 - [ ] BL-15 최종값 확정(100ms uncommitted) / CI_LAB startup.scr 원복 여부
 - [ ] **최종 검증(전수)**: 위 수정들이 끝나면 지상국에서 **모든 CONFIG
       파라미터를 전부 실제로 변경**(mavlink_bridge 7종 + lora_tdm +
