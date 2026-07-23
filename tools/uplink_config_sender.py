@@ -155,6 +155,8 @@ def main() -> int:
     parser.add_argument("--serial-path", default=None, help="Serial port for lora-serial")
     parser.add_argument("--baudrate", type=int, default=57600, help="Serial baudrate")
     parser.add_argument("--list", action="store_true", help="List available parameters and exit")
+    parser.add_argument("--force", action="store_true",
+                        help="Set FORCE flag (0x01) to push through health gate (DEGRADED에서 CONFIG 허용)")
     args = parser.parse_args()
 
     if args.target == "cfs_core":
@@ -184,14 +186,14 @@ def main() -> int:
     )
 
     if args.transport == "udp":
-        uplink_payload = build_process_uplink_payload(args.sequence, config_payload)
+        uplink_payload = build_process_uplink_payload(args.sequence, config_payload, 1 if args.force else 0)
         packet = build_command_packet(UPLINK_APP_PROCESS_UPLINK_CC, uplink_payload)
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
             sock.sendto(packet, (args.host, args.port))
         print(f"sent {len(packet)} bytes to {args.host}:{args.port}")
 
     elif args.transport == "lora-text":
-        frame = build_lora_frame(args.sequence, config_payload)
+        frame = build_lora_frame(args.sequence, config_payload, 1 if args.force else 0)
         print(frame)
 
     else:
