@@ -89,5 +89,19 @@ CI_LAB 줄이 사라짐** → 다시 추가함(영구화하려면 sample_defs �
 | BL-43 루프 감지 | ✅ **PASS** — 빠른 재시작 반복 → `boot loop suspect - 5 consecutive short boots` EVS 발생, boot_count 1→7 영속 누적 확인 |
 | BL-41 CONFIG 적용 | ⏸ **실내 환경 제약** — `command blocked by health state=1`(DEGRADED, EKF fault=3 상시). CONFIG 명령이 health 게이팅에 막혀 실외 NOMINAL 확보 후 검증(BL-33/37과 동일 조건) |
 
-잔여: CONFIG 적용→재부팅 유지 실측(실외), CI_LAB 영구 탑재(sample_defs),
-Pi streak 리셋(현재 suspect 상태로 남음 — 120s 방치 후 재시작 1회면 자연 해소).
+## 3차 세션 (21:55~22:05) — uplink 명령 경로 전체 실측
+
+게이트 실측: FORCE_FLAG(0x01)로 health 게이트 통과 확인(`FORCED THROUGH`),
+이어서 인가 게이트(auth=Flags[7:6], §18.11.1)도 실측 — 센더 2종에
+`--force`/`--auth` 옵션 추가(commit 참조).
+
+| 항목 | 결과 |
+| --- | --- |
+| BL-41 CONFIG 실기 | ✅ **PASS** — FORCE+auth2로 `config activated param=0 value=2500 gen=1` → 서비스 재시작 → `restored ... attitude=2500` 복원 실측. 실외 대기 항목이었으나 FORCE 경로로 실내 완료 |
+| **BL-34** | ✅ **PASS·종결** — route-good-no-gps 업로드 → `mission upload success wp_count=2` (FC가 GLOBAL_RELATIVE_ALT+degE7 인코딩 ACCEPTED). INT 다운로드 방향은 readback으로 기검증 |
+| BL-41 트리거2 | ✅ **PASS** — 업로드 성공 직후 자동 `readback started` → published seq=2 → cfs_core applied wp_count=2 (업로드→재확인 체인 전체 자동) |
+| health/auth 게이트 | ✅ 실측 — DEGRADED에서 CONFIG 차단(§18.10.1) → FORCE 통과 이벤트 → auth 부족 차단(auth=0 required=2) → auth=2로 통과. 게이트 2단이 spec대로 동작 |
+
+잔여: CI_LAB 영구 탑재(sample_defs — install마다 startup.scr 재생성으로 유실),
+RECOVERY/MODE(level 3 + request_token 센더 없음 — GUI 경로로 기검증됨),
+BL-33/37(실외 GPS), Pi streak 자연 해소 대기.

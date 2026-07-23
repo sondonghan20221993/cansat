@@ -172,7 +172,7 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 | **BL-31** | D-1: 앱 재시작 실측 (`tools/runtime_app_restart_test.sh`) — 2026-07-22 1차 시도: 스크립트 앱명 버그(소문자→`UPLINK_APP` 등록명) 수정, CI_LAB 미탑재 발견·추가. uplink_app FAIL → BL-38 결함 발견. 결함 수정 후 재시험 필요 | `testcase_coverage_gap` |
 | **BL-32** | D-2: TDM/LoRa/DL2-SYSTIME 실물 테스트군 — 🔶 **대부분 완료(2026-07-22)**: TDM-RT-001~006·RT-LORA-004 ✅(로그 증거), RT-DL2-SYSTIME-001 부분(실외 GPS 필요), 잔여=TDM-RT-007(CRC 변조 주입 도구 필요)/008(타이밍 주입 곤란)/009·RT-LORA-001(물리 조작). `runtime_test_session_2026-07-22.md` | 동 |
 | **BL-33** | D-3: 통합 순차 세션 7단계 — ⏸ **현 환경 실행 불가 판정(2026-07-22)**: 사전조건 `health=NOMINAL`이 실내(GPS 없음, fault=3 상시)에서 달성 불가 + 단계 3/4 판정(fault=6/7 전이)은 BL-38 결함으로 관측 불가. **실외 GPS + BL-38 수정 선행** | 동 |
-| **BL-34** | `MISSION_ITEM_INT` 경로 실물 FC 검증 (ArduPilot 거부 위험) | `mission_item_int_frame_gap` |
+| ~~**BL-34**~~ | ✅ **완료(2026-07-23 실기)** — route 업로드 실측: FC가 MISSION_ITEM_INT(GLOBAL_RELATIVE_ALT+degE7) 업로드에 `mission upload success` ACCEPTED, INT 다운로드 방향은 BL-41 readback으로 검증(`runtime_test_session_2026-07-23.md` 3차) | `mission_item_int_frame_gap` |
 | ~~**BL-35**~~ | ✅ **정량 실측 완료(2026-07-22)** — mismatch 18,237건 분석: lag 3~6프레임 집중(평균 4.36), 100ms 주기 기준 **왕복 ~440ms 체계적 파이프라인 지연**(LoRa 양방향 airtime+모듈 버퍼+호스트 처리). 데싱크/유실 아님, 링크 판정(NoAckCount)에 영향 없음 — 이벤트는 사실상 로그 노이즈. 후속(선택): 허용 윈도우/이벤트 집계 | `pi_flight_build_missing` / 실측 |
 | **BL-36** | camera P2(Pi 경유 SSH)/P4(카메라 SD 녹화) 확인 | `camera_phase_verification_gap` |
 | **BL-37** | 실외 GPS 확보 후 `fault_code=3`(EKF_INVALID) 해소 확인 | `uplink_lora_test_status` §8.4 |
