@@ -28,6 +28,12 @@ typedef struct
     uint32                 RoutingFailureCount;
     uint32                 LastAcceptedSequence;
     uint8                  BootCount; /* BL-12(2026-07-21): 부팅마다 +1, 8비트 wrap, /cf에 영속 */
+    /* BL-43(2026-07-23): 부팅/오류 영속화 — "생존 마커" 재부팅 루프 감지 (spec §12.3) */
+    uint8                  LastResetReason;  /* 이번 부팅의 PSP reset type */
+    uint8                  SurvivedMark;     /* 이번 세션 120s 생존 여부 (파일 기록값) */
+    uint8                  PrevSurvivedMark; /* 직전 세션 마커 (LoadState 복원) */
+    uint8                  ShortBootStreak;  /* 연속 단명 부팅 횟수 */
+    uint8                  BootLoopSuspect;  /* streak>=임계 → 1 (보고 전용) */
     uint16                 LastCommandCode;
     uint16                 LastRxSequence;
     uint8                  LastCommandResult;

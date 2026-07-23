@@ -821,7 +821,8 @@ env var로 테스트 경로 주입)을 그대로 따르고, 추가로 레코드�
 도달 시 `SurvivedMark=1` 1회 저장. ⓒ `ShortBootStreak >= 5`
 (`UPLINK_APP_BOOT_LOOP_THRESHOLD`)이면 HK에 `BootLoopSuspect=1` 노출 —
 기체 동작 변경 없음(안전모드 등은 미구현, 지상국 판단). 세션당 파일
-쓰기 2회(Init 1 + 생존 확정 1)로 flash 마모 무시 가능.
+쓰기 3회(Init에서 BootCount++ 저장 + 마커0 저장, 생존 확정 시 1회)로
+flash 마모 무시 가능.
 
 HK 노출(신규): `BootLoopSuspect`, `ShortBootStreak`, `LastResetReason`
 (BootCount는 기존 HK/DL2 노출 유지).

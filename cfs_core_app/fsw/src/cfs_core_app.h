@@ -95,6 +95,7 @@ typedef struct
     uint32                      NextUplinkRestartMs;
     uint32                      LoraRestartCount;
     uint32                      NextLoraRestartMs;
+    uint8                       LastFaultCode; /* BL-43(2026-07-23): 마지막 fault 코드 (영속·HK 노출) */
     uint32                      NominalEligibleSince;
     uint32                      RecoveryStartMs;
     uint32                      RecoveryRequestedCount;

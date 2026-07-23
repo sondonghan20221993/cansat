@@ -103,6 +103,11 @@ void CFS_CORE_APP_ReportHousekeeping(void)
             CFS_CORE_APP_Data.LandingRoute.TimestampMs;
     CFS_CORE_APP_Data.HkTlm.RouteUpdateCount = CFS_CORE_APP_Data.MissionRoute.UpdateCount +
                                                CFS_CORE_APP_Data.LandingRoute.UpdateCount;
+    /* BL-43: 앱 상태 보고 필드 */
+    CFS_CORE_APP_Data.HkTlm.BridgeRestartCount = CFS_CORE_APP_Data.BridgeRestartCount;
+    CFS_CORE_APP_Data.HkTlm.UplinkRestartCount = CFS_CORE_APP_Data.UplinkRestartCount;
+    CFS_CORE_APP_Data.HkTlm.LoraRestartCount   = CFS_CORE_APP_Data.LoraRestartCount;
+    CFS_CORE_APP_Data.HkTlm.LastFaultCode      = CFS_CORE_APP_Data.LastFaultCode;
 
     CFE_EVS_SendEvent(CFS_CORE_APP_HK_EID, CFE_EVS_EventType_INFORMATION,
                       "CFS_CORE_APP HK: mission_wp=%u landing_wp=%u route_updates=%lu last_route_ts=%lu",
@@ -237,6 +242,7 @@ static void CFS_CORE_APP_CheckAppRestarts(uint32 NowMs, bool BridgeTimedOut, boo
             {
                 CFE_ES_RestartApp(AppId);
                 CFS_CORE_APP_Data.BridgeRestartCount++;
+                CFS_CORE_APP_SaveState(); /* BL-43: 발행 직후 누계 영속화 */
                 CFS_CORE_APP_Data.NextBridgeRestartMs = NowMs + CFS_CORE_APP_BRIDGE_RESTART_INTERVAL_MS;
                 CFE_EVS_SendEvent(CFS_CORE_APP_BRIDGE_RESTART_EID, CFE_EVS_EventType_INFORMATION,
                                   "CFS_CORE_APP: bridge restart attempt=%u",
@@ -271,6 +277,7 @@ static void CFS_CORE_APP_CheckAppRestarts(uint32 NowMs, bool BridgeTimedOut, boo
             {
                 CFE_ES_RestartApp(AppId);
                 CFS_CORE_APP_Data.UplinkRestartCount++;
+                CFS_CORE_APP_SaveState(); /* BL-43 */
                 CFS_CORE_APP_Data.NextUplinkRestartMs = NowMs + CFS_CORE_APP_UPLINK_RESTART_INTERVAL_MS;
                 CFE_EVS_SendEvent(CFS_CORE_APP_UPLINK_RESTART_EID, CFE_EVS_EventType_INFORMATION,
                                   "CFS_CORE_APP: uplink restart attempt=%u",
@@ -302,6 +309,7 @@ static void CFS_CORE_APP_CheckAppRestarts(uint32 NowMs, bool BridgeTimedOut, boo
             {
                 CFE_ES_RestartApp(AppId);
                 CFS_CORE_APP_Data.LoraRestartCount++;
+                CFS_CORE_APP_SaveState(); /* BL-43 */
                 CFS_CORE_APP_Data.NextLoraRestartMs = NowMs + CFS_CORE_APP_LORA_RESTART_INTERVAL_MS;
                 CFE_EVS_SendEvent(CFS_CORE_APP_LORA_RESTART_EID, CFE_EVS_EventType_INFORMATION,
                                   "CFS_CORE_APP: lora restart attempt=%u",
@@ -510,6 +518,7 @@ void CFS_CORE_APP_UpdateHealth(uint32 NowMs, bool ForcePublish)
                           (unsigned int)Tlm->HealthState,
                           (unsigned int)Tlm->FaultCode);
         CFS_CORE_APP_Data.LastHealthState = Tlm->HealthState;
+        CFS_CORE_APP_Data.LastFaultCode   = Tlm->FaultCode; /* BL-43: 전이 시 동승 */
         CFS_CORE_APP_SaveState();
     }
 
@@ -747,7 +756,9 @@ static uint32 CFS_CORE_APP_ComputeStateChecksum(const CFS_CORE_APP_PersistentSta
 {
     return State->Magic + (uint32)State->LastHealthState + (uint32)State->ConfigVersion +
            State->AttitudeTimeoutMs + State->LocalTimeoutMs + State->GpsTimeoutMs +
-           State->EkfTimeoutMs + State->BridgeTimeoutMs + State->PublishPeriodMs;
+           State->EkfTimeoutMs + State->BridgeTimeoutMs + State->PublishPeriodMs +
+           State->BridgeRestartCount + State->UplinkRestartCount + State->LoraRestartCount +
+           (uint32)State->LastFaultCode;
 }
 
 void CFS_CORE_APP_LoadState(void)
@@ -807,6 +818,11 @@ void CFS_CORE_APP_LoadState(void)
     CFS_CORE_APP_Data.ActiveConfig.EkfTimeoutMs      = State.EkfTimeoutMs;
     CFS_CORE_APP_Data.ActiveConfig.BridgeTimeoutMs   = State.BridgeTimeoutMs;
     CFS_CORE_APP_Data.ActiveConfig.PublishPeriodMs   = State.PublishPeriodMs;
+    /* BL-43: 재시작 누계 + 마지막 fault 복원 (보고 전용) */
+    CFS_CORE_APP_Data.BridgeRestartCount = State.BridgeRestartCount;
+    CFS_CORE_APP_Data.UplinkRestartCount = State.UplinkRestartCount;
+    CFS_CORE_APP_Data.LoraRestartCount   = State.LoraRestartCount;
+    CFS_CORE_APP_Data.LastFaultCode      = State.LastFaultCode;
 
     CFE_EVS_SendEvent(CFS_CORE_APP_STARTUP_EID, CFE_EVS_EventType_INFORMATION,
                       "CFS_CORE_APP: restored health state=%u config(attitude=%lu local=%lu gps=%lu ekf=%lu bridge=%lu publish=%lu)",
@@ -834,6 +850,13 @@ void CFS_CORE_APP_SaveState(void)
     State.EkfTimeoutMs      = CFS_CORE_APP_Data.ActiveConfig.EkfTimeoutMs;
     State.BridgeTimeoutMs   = CFS_CORE_APP_Data.ActiveConfig.BridgeTimeoutMs;
     State.PublishPeriodMs   = CFS_CORE_APP_Data.ActiveConfig.PublishPeriodMs;
+    State.BridgeRestartCount = CFS_CORE_APP_Data.BridgeRestartCount;
+    State.UplinkRestartCount = CFS_CORE_APP_Data.UplinkRestartCount;
+    State.LoraRestartCount   = CFS_CORE_APP_Data.LoraRestartCount;
+    State.LastFaultCode      = CFS_CORE_APP_Data.LastFaultCode;
+    State.Bl43Reserved[0]    = 0;
+    State.Bl43Reserved[1]    = 0;
+    State.Bl43Reserved[2]    = 0;
     State.Checksum          = CFS_CORE_APP_ComputeStateChecksum(&State);
 
     snprintf(TmpPath, sizeof(TmpPath), "%s.tmp", StatePath);
@@ -905,6 +928,7 @@ void CFS_CORE_APP_ProcessRecoveryCommand(const CFS_CORE_APP_RecoveryCmdTlm_t *Ms
         case CFS_CORE_APP_RECOVERY_ACTION_RESET_COUNTER:
             CFS_CORE_APP_Data.RecoveryStartMs    = 0;
             CFS_CORE_APP_Data.BridgeRestartCount = 0;
+            CFS_CORE_APP_SaveState(); /* BL-43: 리셋값 파일 동기화 */
             CFE_EVS_SendEvent(CFS_CORE_APP_RECOVERY_CMD_EID, CFE_EVS_EventType_INFORMATION,
                               "CFS_CORE_APP: recovery cmd RESET_COUNTER seq=%u target=%u reason=%u token=%lu",
                               (unsigned int)Msg->SourceSequence, (unsigned int)Msg->TargetComponent,

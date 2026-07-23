@@ -115,6 +115,9 @@ typedef struct
     uint8                     FcMissionResult;             /* FC MISSION_ACK 결과 (BRIDGE_HK LastUploadResult 캐시) */
     uint8                     FcMissionUploadState;        /* 0=IDLE 1=ACTIVE (BRIDGE_HK 최신 수신 여부 기반) */
     uint8                     BootCount;                   /* BL-03/BL-12: 부팅마다 +1(uint8 wrap), DL2 프레임에 동봉되어 지상 재부팅 감지에 쓰임 */
+    uint8                     BootLoopSuspect;             /* BL-43: 연속 단명 부팅 임계 도달 (보고 전용, 대응은 지상국) */
+    uint8                     ShortBootStreak;             /* BL-43: 연속 단명 부팅 횟수 */
+    uint8                     LastResetReason;             /* BL-43: 이번 부팅의 PSP reset type */
     uint32                    FcMissionUploadSuccessCount; /* BRIDGE_HK MissionUploadSuccessCount 캐시 */
     uint16                    LastAcceptedSequence;        /* BL-03: 지상 자가복구용 — 기체가 다음에 accept할 최소 seq(N+1의 근거), LastCommandSequence(수신시도)와 별개 */
 } UPLINK_APP_StatusTlm_t;

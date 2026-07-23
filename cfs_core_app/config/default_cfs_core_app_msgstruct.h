@@ -37,6 +37,12 @@ typedef struct
     uint32                    LastPublishTimestampMs;
     uint32                    LastRouteUpdateTimestampMs;
     uint32                    RouteUpdateCount;
+    /* BL-43(2026-07-23): 앱 상태 보고 — 재시작 누계(영속) + 마지막 fault (spec §12.3) */
+    uint32                    BridgeRestartCount;
+    uint32                    UplinkRestartCount;
+    uint32                    LoraRestartCount;
+    uint8                     LastFaultCode;
+    uint8                     Bl43Reserved[3];
 } CFS_CORE_APP_HkTlm_t;
 
 typedef INPUT_STATUS_t  CFS_CORE_APP_InputStatus_t;

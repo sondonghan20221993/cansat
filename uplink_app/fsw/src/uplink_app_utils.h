@@ -8,6 +8,8 @@ uint16 UPLINK_APP_ComputeProxyCrc(const UPLINK_APP_ProcessUplinkCmd_t *Cmd);
 void   UPLINK_APP_LoadState(void);
 void   UPLINK_APP_SaveState(void);
 void   UPLINK_APP_IncrementBootCount(void);
+void   UPLINK_APP_ProcessBootMarker(void);   /* BL-43: Init 시 생존 마커 판정+저장 */
+void   UPLINK_APP_CheckBootSurvival(void);   /* BL-43: 주기 훅, 120s 생존 마킹 */
 
 #endif
 

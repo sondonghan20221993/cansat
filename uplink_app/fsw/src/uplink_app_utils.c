@@ -19,8 +19,17 @@ typedef struct
     uint32 Magic;
     uint32 LastAcceptedSequence;
     uint32 BootCount; /* BL-12: 8비트 값만 쓰지만 구조체는 uint32로 통일(다른 필드와 정렬) */
+    /* BL-43(2026-07-23): 부팅/오류 영속화 — spec §12.3 ① */
+    uint8  LastResetReason;
+    uint8  SurvivedMark;
+    uint8  ShortBootStreak;
+    uint8  BootReserved;
     uint32 Checksum;
 } UPLINK_APP_PersistentState_t;
+
+/* BL-43: 생존 마커 파라미터 */
+#define UPLINK_APP_BOOT_SURVIVE_MS      120000U
+#define UPLINK_APP_BOOT_LOOP_THRESHOLD  5U
 
 static uint32 UPLINK_APP_GetTimeMs(void)
 {
@@ -69,6 +78,10 @@ void UPLINK_APP_UpdateStatusTelemetry(uint32 NowMs)
     Tlm->FcMissionUploadSuccessCount = UPLINK_APP_Data.FcMissionUploadSuccessCount;
     Tlm->BootCount                   = UPLINK_APP_Data.BootCount;
     Tlm->LastAcceptedSequence        = (uint16)UPLINK_APP_Data.LastAcceptedSequence;
+    /* BL-43: 부팅/오류 보고 필드 */
+    Tlm->BootLoopSuspect             = UPLINK_APP_Data.BootLoopSuspect;
+    Tlm->ShortBootStreak             = UPLINK_APP_Data.ShortBootStreak;
+    Tlm->LastResetReason             = UPLINK_APP_Data.LastResetReason;
 
     CFE_SB_TimeStampMsg(CFE_MSG_PTR(Tlm->TelemetryHeader));
     CFE_SB_TransmitMsg(CFE_MSG_PTR(Tlm->TelemetryHeader), true);
@@ -592,7 +605,9 @@ void UPLINK_APP_LoadState(void)
                           (unsigned long)State.Magic);
         return;
     }
-    if (State.Checksum != (State.Magic + State.LastAcceptedSequence + State.BootCount))
+    if (State.Checksum != (State.Magic + State.LastAcceptedSequence + State.BootCount +
+                           (uint32)State.LastResetReason + (uint32)State.SurvivedMark +
+                           (uint32)State.ShortBootStreak))
     {
         CFE_EVS_SendEvent(UPLINK_APP_STATE_CORRUPT_EID, CFE_EVS_EventType_ERROR,
                           "UPLINK_APP: state file checksum mismatch, using defaults");
@@ -602,10 +617,67 @@ void UPLINK_APP_LoadState(void)
     UPLINK_APP_Data.LastAcceptedSequence = State.LastAcceptedSequence;
     UPLINK_APP_Data.AcceptedCount        = 1;
     UPLINK_APP_Data.BootCount            = (uint8)State.BootCount;
+    /* BL-43: 직전 세션 마커/streak 복원 (이번 세션 판정 재료) */
+    UPLINK_APP_Data.PrevSurvivedMark     = State.SurvivedMark;
+    UPLINK_APP_Data.ShortBootStreak      = State.ShortBootStreak;
 
     CFE_EVS_SendEvent(UPLINK_APP_STARTUP_EID, CFE_EVS_EventType_INFORMATION,
                       "UPLINK_APP: restored persistent state seq=%lu boot_count=%u",
                       (unsigned long)State.LastAcceptedSequence, (unsigned int)UPLINK_APP_Data.BootCount);
+}
+
+/* BL-43(2026-07-23): Init에서 LoadState() 직후 호출 — 직전 세션 생존 마커로
+ * 연속 단명 부팅(streak)을 판정하고, 이번 세션 마커를 0으로 내려 저장.
+ * streak >= 임계면 BootLoopSuspect=1 (보고 전용 — 동작 변경 없음, 지상국 판단).
+ * 첫 부팅(파일 없음)은 Init 기본값 PrevSurvivedMark=1이라 streak 증가 안 함. */
+void UPLINK_APP_ProcessBootMarker(void)
+{
+    uint32 ResetSubtype = 0;
+
+    UPLINK_APP_Data.LastResetReason = (uint8)CFE_ES_GetResetType(&ResetSubtype);
+
+    if (UPLINK_APP_Data.PrevSurvivedMark == 0U)
+    {
+        if (UPLINK_APP_Data.ShortBootStreak < 255U)
+        {
+            UPLINK_APP_Data.ShortBootStreak++;
+        }
+    }
+    else
+    {
+        UPLINK_APP_Data.ShortBootStreak = 0U;
+    }
+
+    UPLINK_APP_Data.BootLoopSuspect =
+        (UPLINK_APP_Data.ShortBootStreak >= UPLINK_APP_BOOT_LOOP_THRESHOLD) ? 1U : 0U;
+
+    if (UPLINK_APP_Data.BootLoopSuspect != 0U)
+    {
+        CFE_EVS_SendEvent(UPLINK_APP_STARTUP_EID, CFE_EVS_EventType_ERROR,
+                          "UPLINK_APP: boot loop suspect - %u consecutive short boots",
+                          (unsigned int)UPLINK_APP_Data.ShortBootStreak);
+    }
+
+    UPLINK_APP_Data.SurvivedMark = 0U;
+    UPLINK_APP_SaveState();
+}
+
+/* BL-43: 주기 훅 — 가동 120s 도달 시 생존 마커 1을 1회 저장 (멱등) */
+void UPLINK_APP_CheckBootSurvival(void)
+{
+    if (UPLINK_APP_Data.SurvivedMark != 0U)
+    {
+        return;
+    }
+
+    if (UPLINK_APP_GetTimeMs() >= UPLINK_APP_BOOT_SURVIVE_MS)
+    {
+        UPLINK_APP_Data.SurvivedMark = 1U;
+        UPLINK_APP_SaveState();
+        CFE_EVS_SendEvent(UPLINK_APP_STARTUP_EID, CFE_EVS_EventType_INFORMATION,
+                          "UPLINK_APP: boot survival marked (uptime >= %ums)",
+                          (unsigned int)UPLINK_APP_BOOT_SURVIVE_MS);
+    }
 }
 
 void UPLINK_APP_IncrementBootCount(void)
@@ -630,7 +702,13 @@ void UPLINK_APP_SaveState(void)
     State.Magic                = UPLINK_APP_STATE_MAGIC;
     State.LastAcceptedSequence = UPLINK_APP_Data.LastAcceptedSequence;
     State.BootCount            = UPLINK_APP_Data.BootCount;
-    State.Checksum             = State.Magic + State.LastAcceptedSequence + State.BootCount;
+    State.LastResetReason      = UPLINK_APP_Data.LastResetReason;
+    State.SurvivedMark         = UPLINK_APP_Data.SurvivedMark;
+    State.ShortBootStreak      = UPLINK_APP_Data.ShortBootStreak;
+    State.BootReserved         = 0;
+    State.Checksum             = State.Magic + State.LastAcceptedSequence + State.BootCount +
+                                 (uint32)State.LastResetReason + (uint32)State.SurvivedMark +
+                                 (uint32)State.ShortBootStreak;
 
     snprintf(TmpPath, sizeof(TmpPath), "%s.tmp", StatePath);
 
@@ -797,6 +875,8 @@ static uint16 UPLINK_APP_CRC16(const uint8 *Data, uint16 Len)
 void UPLINK_APP_ServicePrototype(void)
 {
     uint32                NowMs;
+
+    UPLINK_APP_CheckBootSurvival(); /* BL-43: 120s 생존 마킹 (멱등, 1회 저장) */
 
     NowMs = UPLINK_APP_GetTimeMs();
     if ((NowMs - UPLINK_APP_Data.LastPublishTimeMs) < UPLINK_APP_PROTOTYPE_PERIOD_MS)

@@ -54,6 +54,8 @@ CFE_Status_t UPLINK_APP_Init(void)
 
     memset(&UPLINK_APP_Data, 0, sizeof(UPLINK_APP_Data));
     UPLINK_APP_Data.RunStatus = CFE_ES_RunStatus_APP_RUN;
+    /* BL-43: 첫 부팅(상태파일 없음)은 "생존" 취급 — streak 오탐 방지 */
+    UPLINK_APP_Data.PrevSurvivedMark = 1;
 
     Status = CFE_EVS_Register(NULL, 0, CFE_EVS_EventFilter_BINARY);
     if (Status != CFE_SUCCESS)
@@ -118,6 +120,7 @@ CFE_Status_t UPLINK_APP_Init(void)
     UPLINK_APP_Data.Valid = 1;
     UPLINK_APP_LoadState();
     UPLINK_APP_IncrementBootCount(); /* BL-12(2026-07-21): 복원값(또는 0)에서 +1, 즉시 영속화 */
+    UPLINK_APP_ProcessBootMarker();  /* BL-43(2026-07-23): 생존 마커 판정 + 마커0 저장 */
 
     CFE_EVS_SendEvent(UPLINK_APP_STARTUP_EID, CFE_EVS_EventType_INFORMATION,
                       "UPLINK_APP Initialized");

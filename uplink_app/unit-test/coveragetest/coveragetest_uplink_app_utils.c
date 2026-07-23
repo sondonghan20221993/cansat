@@ -711,6 +711,191 @@ void Test_UPLINK_APP_ForwardConfigCommand_TransmitFail(void)
     UtAssert_INT32_EQ(UPLINK_APP_Data.LastConfigResult, 1);
 }
 
+/* -----------------------------------------------------------------------
+ * BL-43(2026-07-23): 부팅/오류 영속화 — runtime spec §12.3 ① 계약 검증.
+ * "생존 마커" 재부팅 루프 감지: Init 시 직전 마커 검사+마커0 저장,
+ * 120s 생존 시 마커1 저장(1회), streak>=5 → BootLoopSuspect (보고만).
+ * TDD red 요구 인터페이스: PersistentState_t.{LastResetReason,SurvivedMark,
+ * ShortBootStreak}, Data.{ShortBootStreak,BootLoopSuspect,LastResetReason,
+ * PrevSurvivedMark}, StatusTlm.{BootLoopSuspect,ShortBootStreak,
+ * LastResetReason}, UPLINK_APP_ProcessBootMarker(), UPLINK_APP_CheckBootSurvival()
+ * ----------------------------------------------------------------------- */
+
+/* 픽스처: 지정 마커/streak로 상태 파일 생성 (SaveState 경유 — 레이아웃 결합 회피) */
+static void UT_WriteBootStateFile(const char *Path, uint8 SurvivedMark, uint8 Streak)
+{
+    setenv("UPLINK_APP_STATE_FILE_PATH", Path, 1);
+    UPLINK_APP_Data.LastAcceptedSequence = 0;
+    UPLINK_APP_Data.BootCount            = 1;
+    UPLINK_APP_Data.SurvivedMark         = SurvivedMark;
+    UPLINK_APP_Data.ShortBootStreak      = Streak;
+    UPLINK_APP_SaveState();
+}
+
+/* 직전 마커==0 (단명 세션) → streak 증가 + 마커0 재기록 */
+void Test_UPLINK_APP_ProcessBootMarker_PrevZero_IncrementsStreak(void)
+{
+    const char *Path = "/tmp/uplink_app_ut_bootmarker_zero.bin";
+
+    UT_WriteBootStateFile(Path, 0U, 2U);
+
+    memset(&UPLINK_APP_Data.StatusTlm, 0, sizeof(UPLINK_APP_Data.StatusTlm));
+    UPLINK_APP_Data.ShortBootStreak = 0;
+    UPLINK_APP_Data.PrevSurvivedMark = 1;
+    UPLINK_APP_LoadState();
+    UPLINK_APP_ProcessBootMarker();
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.ShortBootStreak, 3);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.BootLoopSuspect, 0); /* 3 < 5 */
+
+    /* 파일에 마커0 + streak=3이 저장됐는지 재로드로 확인 */
+    UPLINK_APP_Data.ShortBootStreak  = 0;
+    UPLINK_APP_Data.PrevSurvivedMark = 1;
+    UPLINK_APP_LoadState();
+    UtAssert_INT32_EQ(UPLINK_APP_Data.PrevSurvivedMark, 0);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.ShortBootStreak, 3);
+
+    unlink(Path);
+    unsetenv("UPLINK_APP_STATE_FILE_PATH");
+}
+
+/* 직전 마커==1 (정상 생존 세션) → streak 리셋 */
+void Test_UPLINK_APP_ProcessBootMarker_PrevOne_ResetsStreak(void)
+{
+    const char *Path = "/tmp/uplink_app_ut_bootmarker_one.bin";
+
+    UT_WriteBootStateFile(Path, 1U, 4U);
+
+    UPLINK_APP_LoadState();
+    UPLINK_APP_ProcessBootMarker();
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.ShortBootStreak, 0);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.BootLoopSuspect, 0);
+
+    unlink(Path);
+    unsetenv("UPLINK_APP_STATE_FILE_PATH");
+}
+
+/* 파일 없음(첫 부팅) → streak 증가 없음 (오탐 방지) */
+void Test_UPLINK_APP_ProcessBootMarker_NoFile_NoStreak(void)
+{
+    const char *Path = "/tmp/uplink_app_ut_bootmarker_nofile.bin";
+
+    setenv("UPLINK_APP_STATE_FILE_PATH", Path, 1);
+    unlink(Path);
+
+    UPLINK_APP_Data.ShortBootStreak  = 0;
+    UPLINK_APP_Data.PrevSurvivedMark = 1; /* Init 기본값: 첫 부팅은 생존 취급 */
+    UPLINK_APP_LoadState();
+    UPLINK_APP_ProcessBootMarker();
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.ShortBootStreak, 0);
+
+    unlink(Path);
+    unsetenv("UPLINK_APP_STATE_FILE_PATH");
+}
+
+/* streak 5 도달 → BootLoopSuspect=1 (기체 동작 변경은 없음 — 보고 전용) */
+void Test_UPLINK_APP_ProcessBootMarker_LoopSuspectAtThreshold(void)
+{
+    const char *Path = "/tmp/uplink_app_ut_bootmarker_loop.bin";
+
+    UT_WriteBootStateFile(Path, 0U, 4U);
+
+    UPLINK_APP_LoadState();
+    UPLINK_APP_ProcessBootMarker();
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.ShortBootStreak, 5);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.BootLoopSuspect, 1);
+
+    unlink(Path);
+    unsetenv("UPLINK_APP_STATE_FILE_PATH");
+}
+
+/* CFE_ES_GetResetType 결과를 LastResetReason으로 기록 */
+void Test_UPLINK_APP_ProcessBootMarker_RecordsResetReason(void)
+{
+    const char *Path = "/tmp/uplink_app_ut_bootmarker_reason.bin";
+
+    UT_WriteBootStateFile(Path, 1U, 0U);
+
+    UT_SetDefaultReturnValue(UT_KEY(CFE_ES_GetResetType), CFE_PSP_RST_TYPE_POWERON);
+
+    UPLINK_APP_LoadState();
+    UPLINK_APP_ProcessBootMarker();
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastResetReason, CFE_PSP_RST_TYPE_POWERON);
+
+    unlink(Path);
+    unsetenv("UPLINK_APP_STATE_FILE_PATH");
+}
+
+/* 가동 120s 도달 → SurvivedMark=1 저장 (1회만, 두 번째 호출 무동작) */
+void Test_UPLINK_APP_CheckBootSurvival_MarksAt120s(void)
+{
+    const char *Path = "/tmp/uplink_app_ut_survive_120.bin";
+    CFE_TIME_SysTime_t FakeTime;
+
+    UT_WriteBootStateFile(Path, 0U, 0U);
+    UPLINK_APP_Data.SurvivedMark = 0;
+
+    FakeTime.Seconds    = 130; /* 130s > 120s */
+    FakeTime.Subseconds = 0;
+    UT_SetDataBuffer(UT_KEY(CFE_TIME_GetTime), &FakeTime, sizeof(FakeTime), false);
+
+    UPLINK_APP_CheckBootSurvival();
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.SurvivedMark, 1);
+
+    /* 파일 재로드 → 마커1 확인 */
+    UPLINK_APP_Data.PrevSurvivedMark = 0;
+    UPLINK_APP_LoadState();
+    UtAssert_INT32_EQ(UPLINK_APP_Data.PrevSurvivedMark, 1);
+
+    /* 두 번째 호출: 이미 마킹됨 → 무동작(멱등) */
+    UT_SetDataBuffer(UT_KEY(CFE_TIME_GetTime), &FakeTime, sizeof(FakeTime), false);
+    UPLINK_APP_CheckBootSurvival();
+    UtAssert_INT32_EQ(UPLINK_APP_Data.SurvivedMark, 1);
+
+    unlink(Path);
+    unsetenv("UPLINK_APP_STATE_FILE_PATH");
+}
+
+/* 120s 미도달 → 마커 저장 안 함 */
+void Test_UPLINK_APP_CheckBootSurvival_HoldsBefore120s(void)
+{
+    const char *Path = "/tmp/uplink_app_ut_survive_60.bin";
+    CFE_TIME_SysTime_t FakeTime;
+
+    UT_WriteBootStateFile(Path, 0U, 0U);
+    UPLINK_APP_Data.SurvivedMark = 0;
+
+    FakeTime.Seconds    = 60; /* 60s < 120s */
+    FakeTime.Subseconds = 0;
+    UT_SetDataBuffer(UT_KEY(CFE_TIME_GetTime), &FakeTime, sizeof(FakeTime), false);
+
+    UPLINK_APP_CheckBootSurvival();
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.SurvivedMark, 0);
+
+    unlink(Path);
+    unsetenv("UPLINK_APP_STATE_FILE_PATH");
+}
+
+/* STATUS 텔레메트리에 BootLoopSuspect/ShortBootStreak/LastResetReason 노출 */
+void Test_UPLINK_APP_UpdateStatusTelemetry_ExposesBootFields(void)
+{
+    UPLINK_APP_Data.BootLoopSuspect = 1;
+    UPLINK_APP_Data.ShortBootStreak = 5;
+    UPLINK_APP_Data.LastResetReason = 2;
+
+    UPLINK_APP_UpdateStatusTelemetry(1000);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.StatusTlm.BootLoopSuspect, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.StatusTlm.ShortBootStreak, 5);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.StatusTlm.LastResetReason, 2);
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(UPLINK_APP_ValidateProxyCommand);
@@ -727,6 +912,14 @@ void UtTest_Setup(void)
     ADD_TEST(UPLINK_APP_SaveState_NoDir);
     ADD_TEST(UPLINK_APP_IncrementBootCount_FromZero);
     ADD_TEST(UPLINK_APP_IncrementBootCount_WrapsAt256);
+    ADD_TEST(UPLINK_APP_ProcessBootMarker_PrevZero_IncrementsStreak);
+    ADD_TEST(UPLINK_APP_ProcessBootMarker_PrevOne_ResetsStreak);
+    ADD_TEST(UPLINK_APP_ProcessBootMarker_NoFile_NoStreak);
+    ADD_TEST(UPLINK_APP_ProcessBootMarker_LoopSuspectAtThreshold);
+    ADD_TEST(UPLINK_APP_ProcessBootMarker_RecordsResetReason);
+    ADD_TEST(UPLINK_APP_CheckBootSurvival_MarksAt120s);
+    ADD_TEST(UPLINK_APP_CheckBootSurvival_HoldsBefore120s);
+    ADD_TEST(UPLINK_APP_UpdateStatusTelemetry_ExposesBootFields);
     ADD_TEST(UPLINK_APP_ForwardModeCommand);
     ADD_TEST(UPLINK_APP_ForwardDiagnosticCommand);
     ADD_TEST(UPLINK_APP_ForwardCounterMgmtCommand);

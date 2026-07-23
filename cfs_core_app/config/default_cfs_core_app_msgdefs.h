@@ -78,6 +78,12 @@ typedef struct
     uint32 EkfTimeoutMs;
     uint32 BridgeTimeoutMs;
     uint32 PublishPeriodMs;
+    /* BL-43(2026-07-23): 앱 상태 영속화 — 재시작 누계 + 마지막 fault (spec §12.3) */
+    uint32 BridgeRestartCount;
+    uint32 UplinkRestartCount;
+    uint32 LoraRestartCount;
+    uint8  LastFaultCode;
+    uint8  Bl43Reserved[3];
     uint32 Checksum;
 } CFS_CORE_APP_PersistentState_t;
 

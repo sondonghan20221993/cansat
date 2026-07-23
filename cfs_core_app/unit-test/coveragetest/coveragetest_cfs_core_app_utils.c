@@ -1140,7 +1140,7 @@ void Test_CFS_CORE_APP_LoadState_BadMagic(void)
 {
     const char *Path = "/tmp/cfs_core_app_ut_state_badmagic.bin";
     int         Fd;
-    uint32      Garbage[10] = {0xDEADBEEFU, 0};
+    uint32      Garbage[16] = {0xDEADBEEFU, 0}; /* BL-43 확장(52B) 수용 */
 
     setenv("CFS_CORE_APP_STATE_FILE_PATH", Path, 1);
     Fd = open(Path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
@@ -1413,6 +1413,137 @@ void Test_CFS_CORE_APP_SaveState_OnTransition(void)
  * ----------------------------------------------------------------------- */
 
 /* bridge timeout 후 인터벌 경과 시 RestartApp 호출 */
+/* -----------------------------------------------------------------------
+ * BL-43(2026-07-23): 앱 상태 영속화 — runtime spec §12.3 ② 계약 검증.
+ * 재시작 카운터 3종 + LastFaultCode를 상태파일에 저장/복원, HK 노출.
+ * TDD red 요구: PersistentState_t.{BridgeRestartCount,UplinkRestartCount,
+ * LoraRestartCount,LastFaultCode}, HkTlm 동명 4필드.
+ * ----------------------------------------------------------------------- */
+
+/* 재시작 카운터 3종 + LastFaultCode 저장/복원 왕복 */
+void Test_CFS_CORE_APP_SaveLoadState_RestartCounters_RoundTrip(void)
+{
+    const char *Path = "/tmp/cfs_core_app_ut_state_restartcnt.bin";
+
+    setenv("CFS_CORE_APP_STATE_FILE_PATH", Path, 1);
+
+    CFS_CORE_APP_Data.BridgeRestartCount = 11;
+    CFS_CORE_APP_Data.UplinkRestartCount = 22;
+    CFS_CORE_APP_Data.LoraRestartCount   = 33;
+    CFS_CORE_APP_Data.LastFaultCode      = CFS_CORE_APP_FAULT_EKF_INVALID;
+
+    CFS_CORE_APP_SaveState();
+
+    CFS_CORE_APP_Data.BridgeRestartCount = 0;
+    CFS_CORE_APP_Data.UplinkRestartCount = 0;
+    CFS_CORE_APP_Data.LoraRestartCount   = 0;
+    CFS_CORE_APP_Data.LastFaultCode      = 0;
+
+    CFS_CORE_APP_LoadState();
+
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.BridgeRestartCount, 11);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.UplinkRestartCount, 22);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.LoraRestartCount, 33);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.LastFaultCode, (int32)CFS_CORE_APP_FAULT_EKF_INVALID);
+
+    unlink(Path);
+    unsetenv("CFS_CORE_APP_STATE_FILE_PATH");
+}
+
+/* bridge 재시작 발행 직후 카운터가 파일에 영속화됨 (spec §12.3 ⓐ) */
+void Test_CFS_CORE_APP_BridgeRestart_PersistsCounter(void)
+{
+    const char *Path = "/tmp/cfs_core_app_ut_state_bridgewire.bin";
+    uint32      NowMs = 10000;
+
+    setenv("CFS_CORE_APP_STATE_FILE_PATH", Path, 1);
+    unlink(Path);
+
+    CFS_CORE_APP_Data.BridgeState.Received          = true;
+    CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 1000; /* timed out */
+    CFS_CORE_APP_Data.BridgeRestartCount            = 0;
+    CFS_CORE_APP_Data.NextBridgeRestartMs           = NowMs - 1U; /* 인터벌 경과 */
+    UT_SetDefaultReturnValue(UT_KEY(CFE_ES_GetAppIDByName), CFE_SUCCESS);
+
+    CFS_CORE_APP_UpdateHealth(NowMs, true);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.BridgeRestartCount, 1);
+
+    /* 메모리 지우고 파일에서 복원 → 발행 직후 저장됐음 증명 */
+    CFS_CORE_APP_Data.BridgeRestartCount = 0;
+    CFS_CORE_APP_LoadState();
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.BridgeRestartCount, 1);
+
+    unlink(Path);
+    unsetenv("CFS_CORE_APP_STATE_FILE_PATH");
+}
+
+/* RECOVERY RESET_COUNTER → 리셋값이 파일에도 동기화됨 (spec §12.3 ⓑ) */
+void Test_CFS_CORE_APP_ResetCounter_PersistsZero(void)
+{
+    const char                   *Path = "/tmp/cfs_core_app_ut_state_resetwire.bin";
+    CFS_CORE_APP_RecoveryCmdTlm_t Msg;
+
+    setenv("CFS_CORE_APP_STATE_FILE_PATH", Path, 1);
+
+    /* 파일에 카운터 7을 저장해 둠 */
+    CFS_CORE_APP_Data.BridgeRestartCount = 7;
+    CFS_CORE_APP_SaveState();
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.RecoveryAction = CFS_CORE_APP_RECOVERY_ACTION_RESET_COUNTER;
+
+    CFS_CORE_APP_ProcessRecoveryCommand(&Msg);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.BridgeRestartCount, 0);
+
+    /* 파일도 0으로 갱신됐는지 — 7을 다시 넣고 로드해 0이 나와야 함 */
+    CFS_CORE_APP_Data.BridgeRestartCount = 7;
+    CFS_CORE_APP_LoadState();
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.BridgeRestartCount, 0);
+
+    unlink(Path);
+    unsetenv("CFS_CORE_APP_STATE_FILE_PATH");
+}
+
+/* health 전이 시 LastFaultCode가 기존 SaveState에 동승 (spec §12.3 ⓒ) */
+void Test_CFS_CORE_APP_HealthTransition_PersistsFaultCode(void)
+{
+    const char *Path = "/tmp/cfs_core_app_ut_state_faultwire.bin";
+    uint32      NowMs = 10000;
+
+    setenv("CFS_CORE_APP_STATE_FILE_PATH", Path, 1);
+    unlink(Path);
+
+    /* bridge만 타임아웃 → RECOVERY 전이(FAULT_BRIDGE_TIMEOUT) 발생 */
+    CFS_CORE_APP_Data.BridgeState.Received          = true;
+    CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 1000;
+    CFS_CORE_APP_Data.LastHealthState               = CFS_CORE_APP_HEALTH_NOMINAL;
+
+    CFS_CORE_APP_UpdateHealth(NowMs, true);
+
+    CFS_CORE_APP_Data.LastFaultCode = 0;
+    CFS_CORE_APP_LoadState();
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.LastFaultCode, (int32)CFS_CORE_APP_FAULT_BRIDGE_TIMEOUT);
+
+    unlink(Path);
+    unsetenv("CFS_CORE_APP_STATE_FILE_PATH");
+}
+
+/* HK에 재시작 카운터 3종 + LastFaultCode 노출 (spec §12.3 — 종전 RAM 전용) */
+void Test_CFS_CORE_APP_ReportHousekeeping_ExposesRestartCounters(void)
+{
+    CFS_CORE_APP_Data.BridgeRestartCount = 3;
+    CFS_CORE_APP_Data.UplinkRestartCount = 4;
+    CFS_CORE_APP_Data.LoraRestartCount   = 5;
+    CFS_CORE_APP_Data.LastFaultCode      = CFS_CORE_APP_FAULT_LORA_TIMEOUT;
+
+    CFS_CORE_APP_ReportHousekeeping();
+
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.HkTlm.BridgeRestartCount, 3);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.HkTlm.UplinkRestartCount, 4);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.HkTlm.LoraRestartCount, 5);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.HkTlm.LastFaultCode, (int32)CFS_CORE_APP_FAULT_LORA_TIMEOUT);
+}
+
 void Test_CFS_CORE_APP_BridgeRestart_FirstAttempt(void)
 {
     UT_CheckEvent_t Evt;
@@ -2886,6 +3017,11 @@ void UtTest_Setup(void)
     ADD_TEST(CFS_CORE_APP_ProcessConfigCommand_PersistsOnSuccess);
     ADD_TEST(CFS_CORE_APP_SaveState_DirFsync_NoSlashInPath);
     ADD_TEST(CFS_CORE_APP_SaveState_DirFsync_ParentOpenFail);
+    ADD_TEST(CFS_CORE_APP_SaveLoadState_RestartCounters_RoundTrip);
+    ADD_TEST(CFS_CORE_APP_BridgeRestart_PersistsCounter);
+    ADD_TEST(CFS_CORE_APP_ResetCounter_PersistsZero);
+    ADD_TEST(CFS_CORE_APP_HealthTransition_PersistsFaultCode);
+    ADD_TEST(CFS_CORE_APP_ReportHousekeeping_ExposesRestartCounters);
     ADD_TEST(CFS_CORE_APP_SaveState_OnTransition);
     ADD_TEST(CFS_CORE_APP_BridgeRestart_FirstAttempt);
     ADD_TEST(CFS_CORE_APP_BridgeRestart_GetAppIdFail);
