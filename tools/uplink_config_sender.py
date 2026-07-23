@@ -157,6 +157,8 @@ def main() -> int:
     parser.add_argument("--list", action="store_true", help="List available parameters and exit")
     parser.add_argument("--force", action="store_true",
                         help="Set FORCE flag (0x01) to push through health gate (DEGRADED에서 CONFIG 허용)")
+    parser.add_argument("--auth", type=int, default=2, choices=[0, 1, 2, 3],
+                        help="Authorization level in Flags[7:6] (§18.11.1, CONFIG=2, default 2)")
     args = parser.parse_args()
 
     if args.target == "cfs_core":
@@ -186,14 +188,14 @@ def main() -> int:
     )
 
     if args.transport == "udp":
-        uplink_payload = build_process_uplink_payload(args.sequence, config_payload, 1 if args.force else 0)
+        uplink_payload = build_process_uplink_payload(args.sequence, config_payload, (1 if args.force else 0) | (args.auth << 6))
         packet = build_command_packet(UPLINK_APP_PROCESS_UPLINK_CC, uplink_payload)
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
             sock.sendto(packet, (args.host, args.port))
         print(f"sent {len(packet)} bytes to {args.host}:{args.port}")
 
     elif args.transport == "lora-text":
-        frame = build_lora_frame(args.sequence, config_payload, 1 if args.force else 0)
+        frame = build_lora_frame(args.sequence, config_payload, (1 if args.force else 0) | (args.auth << 6))
         print(frame)
 
     else:
