@@ -634,6 +634,7 @@ void UPLINK_APP_ProcessBootMarker(void)
 {
     uint32 ResetSubtype = 0;
 
+    UPLINK_APP_Data.BootStartMs     = UPLINK_APP_GetTimeMs(); /* 상대 uptime 기준점 */
     UPLINK_APP_Data.LastResetReason = (uint8)CFE_ES_GetResetType(&ResetSubtype);
 
     if (UPLINK_APP_Data.PrevSurvivedMark == 0U)
@@ -662,7 +663,9 @@ void UPLINK_APP_ProcessBootMarker(void)
     UPLINK_APP_SaveState();
 }
 
-/* BL-43: 주기 훅 — 가동 120s 도달 시 생존 마커 1을 1회 저장 (멱등) */
+/* BL-43: 주기 훅 — 가동 120s 도달 시 생존 마커 1을 1회 저장 (멱등).
+ * Pi 실기 발견(2026-07-23): CFE_TIME은 부팅 시 0이 아님(대형 mission time) —
+ * 절대 시각이 아니라 Init에서 기록한 BootStartMs 기준 상대 uptime으로 판정. */
 void UPLINK_APP_CheckBootSurvival(void)
 {
     if (UPLINK_APP_Data.SurvivedMark != 0U)
@@ -670,7 +673,7 @@ void UPLINK_APP_CheckBootSurvival(void)
         return;
     }
 
-    if (UPLINK_APP_GetTimeMs() >= UPLINK_APP_BOOT_SURVIVE_MS)
+    if ((UPLINK_APP_GetTimeMs() - UPLINK_APP_Data.BootStartMs) >= UPLINK_APP_BOOT_SURVIVE_MS)
     {
         UPLINK_APP_Data.SurvivedMark = 1U;
         UPLINK_APP_SaveState();

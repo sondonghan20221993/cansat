@@ -882,6 +882,30 @@ void Test_UPLINK_APP_CheckBootSurvival_HoldsBefore120s(void)
     unsetenv("UPLINK_APP_STATE_FILE_PATH");
 }
 
+/* Pi 실기 회귀(2026-07-23): CFE_TIME이 부팅 시 0이 아니어도(대형 mission time)
+ * 절대 시각이 아니라 BootStartMs 기준 상대 uptime으로 판정해야 함 —
+ * 시작 시각 1000s, 현재 1060s(가동 60s) → 마킹되면 안 됨 */
+void Test_UPLINK_APP_CheckBootSurvival_RelativeUptime_NotAbsolute(void)
+{
+    const char *Path = "/tmp/uplink_app_ut_survive_rel.bin";
+    CFE_TIME_SysTime_t FakeTime;
+
+    UT_WriteBootStateFile(Path, 0U, 0U);
+    UPLINK_APP_Data.SurvivedMark = 0;
+    UPLINK_APP_Data.BootStartMs  = 1000000U; /* 앱 시작이 mission time 1000s */
+
+    FakeTime.Seconds    = 1060; /* 절대 시각은 120s를 훨씬 넘지만 가동은 60s */
+    FakeTime.Subseconds = 0;
+    UT_SetDataBuffer(UT_KEY(CFE_TIME_GetTime), &FakeTime, sizeof(FakeTime), false);
+
+    UPLINK_APP_CheckBootSurvival();
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.SurvivedMark, 0);
+
+    unlink(Path);
+    unsetenv("UPLINK_APP_STATE_FILE_PATH");
+}
+
 /* STATUS 텔레메트리에 BootLoopSuspect/ShortBootStreak/LastResetReason 노출 */
 void Test_UPLINK_APP_UpdateStatusTelemetry_ExposesBootFields(void)
 {
@@ -919,6 +943,7 @@ void UtTest_Setup(void)
     ADD_TEST(UPLINK_APP_ProcessBootMarker_RecordsResetReason);
     ADD_TEST(UPLINK_APP_CheckBootSurvival_MarksAt120s);
     ADD_TEST(UPLINK_APP_CheckBootSurvival_HoldsBefore120s);
+    ADD_TEST(UPLINK_APP_CheckBootSurvival_RelativeUptime_NotAbsolute);
     ADD_TEST(UPLINK_APP_UpdateStatusTelemetry_ExposesBootFields);
     ADD_TEST(UPLINK_APP_ForwardModeCommand);
     ADD_TEST(UPLINK_APP_ForwardDiagnosticCommand);

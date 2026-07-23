@@ -34,6 +34,7 @@ typedef struct
     uint8                  PrevSurvivedMark; /* 직전 세션 마커 (LoadState 복원) */
     uint8                  ShortBootStreak;  /* 연속 단명 부팅 횟수 */
     uint8                  BootLoopSuspect;  /* streak>=임계 → 1 (보고 전용) */
+    uint32                 BootStartMs;      /* BL-43: 앱 시작 시각 (상대 uptime 기준점 — Pi에서 CFE_TIME이 0에서 시작 안 함) */
     uint16                 LastCommandCode;
     uint16                 LastRxSequence;
     uint8                  LastCommandResult;
