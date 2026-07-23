@@ -22,5 +22,6 @@
 #define LORA_TDM_APP_DIAGNOSTIC_CMD_EID     19
 #define LORA_TDM_APP_SET_DL_PROTO_INF_EID   20
 #define LORA_TDM_APP_SET_DL_PROTO_ERR_EID   21
+#define LORA_TDM_APP_ROUTE_SNAPSHOT_EID     22 /* waypoint readback(2026-07-23) */
 
 #endif

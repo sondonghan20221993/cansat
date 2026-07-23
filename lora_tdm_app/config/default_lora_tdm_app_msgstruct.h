@@ -9,6 +9,7 @@
 #include "uplink_fwd_cmd_msg.h"
 #include "diagnostic_cmd_msg.h"
 #include "exec_result_msg.h"
+#include "route_snapshot_msg.h"
 
 typedef struct
 {
@@ -92,6 +93,10 @@ typedef DIAGNOSTIC_CMD_TLM_t LORA_TDM_APP_DiagnosticCmdTlm_t;
 typedef CONFIG_CMD_TLM_t LORA_TDM_APP_ConfigCmdTlm_t;
 
 typedef EXEC_RESULT_TLM_t LORA_TDM_APP_ExecResultTlm_t;
+
+/* ROUTE_SNAPSHOT_MID(0x1913) 수신용 — cfs_core_app 발행, waypoint readback
+ * (2026-07-23, spec §4.3) */
+typedef ROUTE_SNAPSHOT_TLM_t LORA_TDM_APP_RouteSnapshotTlm_t;
 
 /* config payload 내부 헤더 (openMCT fc_serial_ws_server.py _build_config_payload와 동일 레이아웃) */
 typedef struct

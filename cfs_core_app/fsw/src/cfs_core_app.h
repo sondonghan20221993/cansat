@@ -119,6 +119,7 @@ typedef struct
     CFS_CORE_APP_SystemHealthTlm_t SystemHealthTlm;
     CFS_CORE_APP_ExecResultTlm_t   ExecResultTlm; /* BL-08(2026-07-22) */
     CFS_CORE_APP_BridgeCtrlCmd_t   BridgeCtrlCmd; /* P1-a(2026-07-22) */
+    CFS_CORE_APP_RouteSnapshotTlm_t RouteSnapshotTlm; /* waypoint readback(2026-07-23) */
 } CFS_CORE_APP_Data_t;
 
 extern CFS_CORE_APP_Data_t CFS_CORE_APP_Data;

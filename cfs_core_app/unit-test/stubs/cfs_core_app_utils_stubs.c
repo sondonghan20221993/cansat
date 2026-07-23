@@ -61,6 +61,12 @@ void CFS_CORE_APP_ProcessModeCommand(const CFS_CORE_APP_ModeCmdTlm_t *Msg)
     UT_GenStub_Execute(CFS_CORE_APP_ProcessModeCommand, Basic, NULL);
 }
 
+void CFS_CORE_APP_ProcessDiagnosticCommand(const CFS_CORE_APP_DiagnosticCmdTlm_t *Msg)
+{
+    UT_GenStub_AddParam(CFS_CORE_APP_ProcessDiagnosticCommand, const CFS_CORE_APP_DiagnosticCmdTlm_t *, Msg);
+    UT_GenStub_Execute(CFS_CORE_APP_ProcessDiagnosticCommand, Basic, NULL);
+}
+
 void CFS_CORE_APP_LoadState(void)
 {
     UT_GenStub_Execute(CFS_CORE_APP_LoadState, Basic, NULL);

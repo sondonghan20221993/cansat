@@ -62,6 +62,12 @@ void CFS_CORE_APP_TaskPipe(CFE_SB_Buffer_t *SBBufPtr)
         return;
     }
 
+    if (CFE_SB_MsgIdToValue(MsgId) == DIAGNOSTIC_CMD_MID)
+    {
+        CFS_CORE_APP_ProcessDiagnosticCommand((const CFS_CORE_APP_DiagnosticCmdTlm_t *)SBBufPtr);
+        return;
+    }
+
     if (CFE_SB_MsgIdToValue(MsgId) != CFS_CORE_APP_CMD_MID_VALUE)
     {
         CFS_CORE_APP_Data.ErrCounter++;

@@ -104,6 +104,15 @@ CFE_Status_t CFS_CORE_APP_Init(void)
         return Status;
     }
 
+    /* waypoint readback(2026-07-23): lora_tdm_app에 route 스냅샷 발행용 */
+    Status = CFE_MSG_Init(CFE_MSG_PTR(CFS_CORE_APP_Data.RouteSnapshotTlm.TelemetryHeader),
+                          CFE_SB_ValueToMsgId(ROUTE_SNAPSHOT_MID),
+                          sizeof(CFS_CORE_APP_Data.RouteSnapshotTlm));
+    if (Status != CFE_SUCCESS)
+    {
+        return Status;
+    }
+
     Status = CFE_SB_CreatePipe(&CFS_CORE_APP_Data.CommandPipe, CFS_CORE_APP_PLATFORM_PIPE_DEPTH, CFS_CORE_APP_PLATFORM_PIPE_NAME);
     if (Status != CFE_SUCCESS)
     {
@@ -189,6 +198,13 @@ CFE_Status_t CFS_CORE_APP_Init(void)
     }
 
     Status = CFE_SB_Subscribe(CFE_SB_ValueToMsgId(MODE_CMD_MID), CFS_CORE_APP_Data.CommandPipe);
+    if (Status != CFE_SUCCESS)
+    {
+        return Status;
+    }
+
+    /* waypoint readback(2026-07-23): lora_tdm_app과 공동구독, DiagTarget으로 구분 */
+    Status = CFE_SB_Subscribe(CFE_SB_ValueToMsgId(DIAGNOSTIC_CMD_MID), CFS_CORE_APP_Data.CommandPipe);
     if (Status != CFE_SUCCESS)
     {
         return Status;

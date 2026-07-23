@@ -13,6 +13,8 @@
 #include "mode_cmd_msg.h"
 #include "viewpoint_cmd_msg.h"
 #include "exec_result_msg.h"
+#include "diagnostic_cmd_msg.h"
+#include "route_snapshot_msg.h"
 
 typedef struct
 {
@@ -63,6 +65,13 @@ typedef MODE_CMD_TLM_t CFS_CORE_APP_ModeCmdTlm_t;
 
 /* VIEWPOINT_CMD_MID 수신용 — shared_msgs 단일 진실 (2026-07 병합) */
 typedef VIEWPOINT_CMD_TLM_t CFS_CORE_APP_ViewpointCmdTlm_t;
+
+/* DIAGNOSTIC_CMD_MID 수신용 — shared_msgs 단일 진실, lora_tdm_app과 공동구독
+ * (waypoint readback, 2026-07-23) */
+typedef DIAGNOSTIC_CMD_TLM_t CFS_CORE_APP_DiagnosticCmdTlm_t;
+
+/* ROUTE_SNAPSHOT_MID 발행용 — waypoint readback(2026-07-23) */
+typedef ROUTE_SNAPSHOT_TLM_t CFS_CORE_APP_RouteSnapshotTlm_t;
 
 /* config payload 내부 헤더 */
 typedef struct

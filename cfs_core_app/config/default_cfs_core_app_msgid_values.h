@@ -11,6 +11,8 @@
 #define CONFIG_CMD_MID          0x190EU
 #define MODE_CMD_MID            0x190FU
 #define EXEC_RESULT_MID          0x1912U /* BL-08(2026-07-22): 대상앱→uplink_app 실행결과 회신 (공용) */
+#define DIAGNOSTIC_CMD_MID       0x1910U /* uplink_app 발행, lora_tdm_app과 공동구독(2026-07-23) */
+#define ROUTE_SNAPSHOT_MID       0x1913U /* waypoint readback(2026-07-23): cfs_core_app→lora_tdm_app */
 
 /* ground_controllable_capability_plan P1-a(2026-07-22): RECOVERY의
  * PARSER_RESET/SERIAL_RECONNECT를 mavlink_bridge_app에 실제 전달하기 위해

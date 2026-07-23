@@ -272,6 +272,22 @@ static void RunTx(void)
                 LORA_TDM_APP_Data.TxCount++;
                 LORA_TDM_APP_Data.LastSentSeq = LORA_TDM_APP_Data.DownlinkSeq;
                 LORA_TDM_APP_Data.DownlinkSeq++;
+
+                /* waypoint readback(2026-07-23): 이번 사이클에 페이지를
+                 * 첨부해 성공 전송했으면 다음 사이클로 진행, 마지막
+                 * 페이지였으면 완료 처리 */
+                if (LORA_TDM_APP_Data.RouteReadbackPending != 0U)
+                {
+                    if (LORA_TDM_APP_Data.RoutePageIndex + 1U >= LORA_TDM_APP_Data.RouteTotalPages)
+                    {
+                        LORA_TDM_APP_Data.RouteReadbackPending = 0U;
+                        LORA_TDM_APP_Data.RoutePageIndex       = 0U;
+                    }
+                    else
+                    {
+                        LORA_TDM_APP_Data.RoutePageIndex++;
+                    }
+                }
                 /* PendingUplinkFeedback은 여기서 리셋하지 않는다 (2026-07-21) —
                  * uplink_app 처리 결과(UPLINK_STATUS_MID)가 SB 라운드트립 지연으로
                  * 이 사이클 안에 도착 못 하면, 확정된 판정(SEQ_FAIL/STATE_BLOCKED)이
@@ -505,6 +521,14 @@ CFE_Status_t LORA_TDM_APP_Init(void)
      * LORA_TDM_APP_CONFIG_SCOPE)로 자기 것만 골라 처리. openMCT UPLINK_CLASS_CONFIG 경로로 도달 가능한
      * 유일한 실제 지상->기체 커맨드 채널. */
     Status = CFE_SB_Subscribe(CFE_SB_ValueToMsgId(LORA_TDM_APP_CONFIG_CMD_MID_VALUE),
+                               LORA_TDM_APP_Data.CommandPipe);
+    if (Status != CFE_SUCCESS)
+    {
+        return Status;
+    }
+
+    /* waypoint readback(2026-07-23): cfs_core_app이 발행하는 route 스냅샷 */
+    Status = CFE_SB_Subscribe(CFE_SB_ValueToMsgId(LORA_TDM_APP_ROUTE_SNAPSHOT_MID_VALUE),
                                LORA_TDM_APP_Data.CommandPipe);
     if (Status != CFE_SUCCESS)
     {

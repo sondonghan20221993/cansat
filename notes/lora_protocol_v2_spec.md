@@ -88,6 +88,62 @@ uplink_last_seq/uplink_boot_count는 SysTime 블록(있으면) 뒤, CRC 앞에 �
 전제였던 `FC_SYS_TIME_MID(0x1909)` SB 발행(§16.3)은 이미 구현 완료 상태였고,
 lora_tdm이 구독하는 부분만 남아있었음 — 이번에 구독 추가로 완결.
 
+### 4.3 waypoint readback 확장 블록 (선택, 2026-07-23 신설)
+
+**배경**: 지상에서 mission route를 업로드(`ROUTE_UPDATE` class)할 수는 있었으나
+기체에 실제로 뭐가 올라가 있는지 회수(readback)할 방법이 없었음(설계 결정
+2026-07-23, `notes/temp/runtime_test_session_2026-07-22.md` "waypoint조회는
+왜 없지" 참조). mission route 상한 16개×12바이트(X/Y/Z float)=192바이트로
+현재 air rate(2.4KB/s)에서 <1초 — 별도 대역폭 상향 불요, 여러 사이클에
+나눠 보내는 페이징만으로 충분.
+
+**트리거**: 기존 `DIAGNOSTIC` 클래스(class=6) 재사용, 신규 MID 없음.
+`DIAGNOSTIC_CMD_TLM_t.DiagTarget`으로 대상 앱 구분(기존엔 미사용 필드,
+lora_tdm_app 단독 구독이라 불필요했으나 cfs_core_app도 구독 대상에
+추가되며 처음 도입):
+
+| DiagTarget | 대상 |
+| --- | --- |
+| 0 (기본값, 하위호환) | `lora_tdm_app` (기존 LINK_STATUS/RX_STATS/TX_STATS) |
+| 1 | `cfs_core_app` (신규) |
+
+`cfs_core_app`의 `DiagAction`(자체 네임스페이스, `CFS_CORE_APP_DiagAction_t`):
+`ROUTE_READBACK_REQUEST = 3`(기존 LOG_LEVEL/LINK_STATUS/CAPTURE_TOGGLE는
+미구현 예약값). 페이로드는 route 종류 지정용 1바이트(현재 mission만
+지원, 값 무시하고 항상 mission 처리 — landing은 향후 확장).
+
+**데이터 흐름**: `cfs_core_app`이 요청 수신 → `MissionRoute` 캐시를
+`ROUTE_SNAPSHOT_MID`(신규, 0x1913, `ROUTE_UPDATE_TLM_t`와 동일 레이아웃
+재사용)로 `lora_tdm_app`에 SB 발행(SB 내부 전송이라 크기 제약 없음,
+192바이트 그대로 1메시지) → `lora_tdm_app`이 로컬 캐시에 저장하고
+페이지 상태(`PageIndex=0`, `TotalPages=ceil(WaypointCount/2)`) 진입 →
+이후 `BuildDl2Frame()` 매 사이클마다 완료 전까지 확장 블록 첨부.
+
+**DL2 확장 블록** (`flags` bit2 = "waypoint 페이지 첨부", 기존 bit0
+SysTime/bit1 saturation과 독립적으로 동시 첨부 가능 — 위치는 **꼬리
+필드(`uplink_last_seq`/`uplink_boot_count`) 뒤, CRC 직전 고정**.
+BL-03에서 확립한 "새 필드는 항상 끝에 추가"(tail 오프셋 불변) 원칙을
+따름 — 최초 설계 시 SysTime과 tail 사이로 잘못 기술했던 것을 구현 중
+정정, 2026-07-23):
+
+| 필드 | 형식 | 의미 |
+| --- | --- | --- |
+| route_type | u8 | `CFS_CORE_APP_ROUTE_SEGMENT_*` (현재 MISSION_EXTENSION=1 고정) |
+| page_index | u8 | 0-base 현재 페이지 |
+| total_pages | u8 | 전체 페이지 수 |
+| waypoints_in_page | u8 | 이 페이지에 실제 담긴 waypoint 수(1 또는 2 — 마지막 페이지 홀수 개수 대응) |
+| waypoint[0] | float×3 | X/Y/Z (12바이트) |
+| waypoint[1] | float×3 | X/Y/Z (12바이트, `waypoints_in_page==1`이면 0으로 패딩) |
+
+총 28바이트/사이클. `page_index`가 `total_pages-1`에 도달하는 사이클을
+마지막으로 자동 종료(기체 쪽 `ReadbackPending=false`). 지상은
+`page_index`로 순서 재조립, `total_pages`로 완료 판정(누락 페이지는
+다음 판정 갱신까지 불완전 상태 유지 — 재시도는 지상이 DIAGNOSTIC 요청
+재전송으로 처리, 별도 재전송 프로토콜 없음 — 단순화).
+
+**미완(후속 검토)**: landing route 지원, 페이지 유실 시 지상 쪽
+불완전 상태 UI 표시, ground 측 GUI 패널(현재는 로그/디코더 레벨만).
+
 ## 5. UP2 — 업링크 명령 프레임 (지상 → 기체)
 
 v1 `UP,<version>,<class>,<seq>,<flags>,<payload_hex>,<crc16>\n`의 바이너리 대체. hex 인코딩 폐지로 payload가 원본 크기 그대로 실린다 (v1 대비 payload 구간 50% 절감).

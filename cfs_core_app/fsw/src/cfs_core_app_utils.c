@@ -1,6 +1,7 @@
 #include "cfs_core_app_utils.h"
 #include "cfs_core_app_eventids.h"
 
+#include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
@@ -203,6 +204,105 @@ void CFS_CORE_APP_ProcessStateMessage(CFE_SB_Buffer_t *SBBufPtr)
     CFS_CORE_APP_UpdateHealth(NowMs, true);
 }
 
+/* BL-38(2026-07-23, A안): 앱 생존 감시·재시작을 fault 우선순위 체인에서
+ * 분리 — 상위 fault(EKF 등)가 지속돼도 uplink/lora 재시작이 독립 발동.
+ * 사이클당 1건 제한(고정 우선순위 bridge>uplink>lora), 무한 재시도(고정
+ * 쿨다운만으로 빈도 제한, MAX_RESTARTS 없음). spec §11.1 참조. */
+static void CFS_CORE_APP_CheckAppRestarts(uint32 NowMs, bool BridgeTimedOut, bool UplinkTimedOut, bool LoraTimedOut)
+{
+    bool RestartIssued = false;
+
+    if (BridgeTimedOut)
+    {
+        if (CFS_CORE_APP_Data.NextBridgeRestartMs == 0)
+        {
+            CFS_CORE_APP_Data.NextBridgeRestartMs = NowMs + CFS_CORE_APP_BRIDGE_RESTART_INTERVAL_MS;
+        }
+        if (NowMs >= CFS_CORE_APP_Data.NextBridgeRestartMs)
+        {
+            CFE_ES_AppId_t AppId;
+            if (CFE_ES_GetAppIDByName(&AppId, CFS_CORE_APP_BRIDGE_APP_NAME) == CFE_SUCCESS)
+            {
+                CFE_ES_RestartApp(AppId);
+                CFS_CORE_APP_Data.BridgeRestartCount++;
+                CFS_CORE_APP_Data.NextBridgeRestartMs = NowMs + CFS_CORE_APP_BRIDGE_RESTART_INTERVAL_MS;
+                CFE_EVS_SendEvent(CFS_CORE_APP_BRIDGE_RESTART_EID, CFE_EVS_EventType_INFORMATION,
+                                  "CFS_CORE_APP: bridge restart attempt=%u",
+                                  (unsigned int)CFS_CORE_APP_Data.BridgeRestartCount);
+                RestartIssued = true;
+            }
+        }
+    }
+    else
+    {
+        CFS_CORE_APP_Data.NextBridgeRestartMs = 0;
+    }
+
+    /* 사이클당 1건 — bridge가 이번 사이클에 실제로 재시작을 발행했을 때만
+     * 하위(uplink/lora)를 건너뛴다. bridge가 fault 지속 중이라도 쿨다운
+     * 대기 중이라 발행이 없었다면 하위로 넘어간다(기아 방지). */
+    if (RestartIssued)
+    {
+        return;
+    }
+
+    if (UplinkTimedOut)
+    {
+        if (CFS_CORE_APP_Data.NextUplinkRestartMs == 0)
+        {
+            CFS_CORE_APP_Data.NextUplinkRestartMs = NowMs + CFS_CORE_APP_UPLINK_RESTART_INTERVAL_MS;
+        }
+        if (NowMs >= CFS_CORE_APP_Data.NextUplinkRestartMs)
+        {
+            CFE_ES_AppId_t AppId;
+            if (CFE_ES_GetAppIDByName(&AppId, CFS_CORE_APP_UPLINK_APP_NAME) == CFE_SUCCESS)
+            {
+                CFE_ES_RestartApp(AppId);
+                CFS_CORE_APP_Data.UplinkRestartCount++;
+                CFS_CORE_APP_Data.NextUplinkRestartMs = NowMs + CFS_CORE_APP_UPLINK_RESTART_INTERVAL_MS;
+                CFE_EVS_SendEvent(CFS_CORE_APP_UPLINK_RESTART_EID, CFE_EVS_EventType_INFORMATION,
+                                  "CFS_CORE_APP: uplink restart attempt=%u",
+                                  (unsigned int)CFS_CORE_APP_Data.UplinkRestartCount);
+                RestartIssued = true;
+            }
+        }
+    }
+    else
+    {
+        CFS_CORE_APP_Data.NextUplinkRestartMs = 0;
+    }
+
+    if (RestartIssued)
+    {
+        return;
+    }
+
+    if (LoraTimedOut)
+    {
+        if (CFS_CORE_APP_Data.NextLoraRestartMs == 0)
+        {
+            CFS_CORE_APP_Data.NextLoraRestartMs = NowMs + CFS_CORE_APP_LORA_RESTART_INTERVAL_MS;
+        }
+        if (NowMs >= CFS_CORE_APP_Data.NextLoraRestartMs)
+        {
+            CFE_ES_AppId_t AppId;
+            if (CFE_ES_GetAppIDByName(&AppId, CFS_CORE_APP_LORA_APP_NAME) == CFE_SUCCESS)
+            {
+                CFE_ES_RestartApp(AppId);
+                CFS_CORE_APP_Data.LoraRestartCount++;
+                CFS_CORE_APP_Data.NextLoraRestartMs = NowMs + CFS_CORE_APP_LORA_RESTART_INTERVAL_MS;
+                CFE_EVS_SendEvent(CFS_CORE_APP_LORA_RESTART_EID, CFE_EVS_EventType_INFORMATION,
+                                  "CFS_CORE_APP: lora restart attempt=%u",
+                                  (unsigned int)CFS_CORE_APP_Data.LoraRestartCount);
+            }
+        }
+    }
+    else
+    {
+        CFS_CORE_APP_Data.NextLoraRestartMs = 0;
+    }
+}
+
 void CFS_CORE_APP_UpdateHealth(uint32 NowMs, bool ForcePublish)
 {
     CFS_CORE_APP_SystemHealthTlm_t *Tlm;
@@ -257,6 +357,9 @@ void CFS_CORE_APP_UpdateHealth(uint32 NowMs, bool ForcePublish)
     LoraTimedOut     = !CFS_CORE_APP_Data.LoraAppState.Received ||
                        (NowMs - CFS_CORE_APP_Data.LoraAppState.LastHkRxMs) > CFS_CORE_APP_LORA_TIMEOUT_MS;
 
+    /* BL-38: 재시작은 보고 체인과 독립 — fault 우선순위와 무관하게 매 사이클 평가 */
+    CFS_CORE_APP_CheckAppRestarts(NowMs, BridgeTimedOut, UplinkTimedOut, LoraTimedOut);
+
     Tlm = &CFS_CORE_APP_Data.SystemHealthTlm;
     CFS_CORE_APP_Data.LastPublishTimeMs = NowMs;
     CFS_CORE_APP_Data.PublishCount++;
@@ -272,30 +375,9 @@ void CFS_CORE_APP_UpdateHealth(uint32 NowMs, bool ForcePublish)
     {
         if (CFS_CORE_APP_Data.RecoveryStartMs == 0)
         {
-            CFS_CORE_APP_Data.RecoveryStartMs     = NowMs;
-            CFS_CORE_APP_Data.NextBridgeRestartMs = NowMs + CFS_CORE_APP_BRIDGE_RESTART_INTERVAL_MS;
+            CFS_CORE_APP_Data.RecoveryStartMs = NowMs;
         }
 
-        /* 재시작 인터벌 경과 + 최대 재시도 미초과 시 bridge app 재시작 시도 */
-        if (NowMs >= CFS_CORE_APP_Data.NextBridgeRestartMs &&
-            CFS_CORE_APP_Data.BridgeRestartCount < CFS_CORE_APP_BRIDGE_MAX_RESTARTS)
-        {
-            CFE_ES_AppId_t AppId;
-            if (CFE_ES_GetAppIDByName(&AppId, CFS_CORE_APP_BRIDGE_APP_NAME) == CFE_SUCCESS)
-            {
-                CFE_ES_RestartApp(AppId);
-                CFS_CORE_APP_Data.BridgeRestartCount++;
-                CFS_CORE_APP_Data.NextBridgeRestartMs = NowMs + CFS_CORE_APP_BRIDGE_RESTART_INTERVAL_MS;
-                CFE_EVS_SendEvent(CFS_CORE_APP_BRIDGE_RESTART_EID, CFE_EVS_EventType_INFORMATION,
-                                  "CFS_CORE_APP: bridge restart attempt=%u",
-                                  (unsigned int)CFS_CORE_APP_Data.BridgeRestartCount);
-            }
-        }
-
-        CFS_CORE_APP_Data.UplinkRestartCount   = 0;
-        CFS_CORE_APP_Data.NextUplinkRestartMs  = 0;
-        CFS_CORE_APP_Data.LoraRestartCount     = 0;
-        CFS_CORE_APP_Data.NextLoraRestartMs    = 0;
         CFS_CORE_APP_Data.NominalEligibleSince = 0;
         Tlm->FaultCode         = CFS_CORE_APP_FAULT_BRIDGE_TIMEOUT;
         Tlm->RecoveryRequested = 1;
@@ -311,12 +393,6 @@ void CFS_CORE_APP_UpdateHealth(uint32 NowMs, bool ForcePublish)
     else if (EkfTimedOut)
     {
         CFS_CORE_APP_Data.RecoveryStartMs      = 0;
-        CFS_CORE_APP_Data.BridgeRestartCount   = 0;
-        CFS_CORE_APP_Data.NextBridgeRestartMs  = 0;
-        CFS_CORE_APP_Data.UplinkRestartCount   = 0;
-        CFS_CORE_APP_Data.NextUplinkRestartMs  = 0;
-        CFS_CORE_APP_Data.LoraRestartCount     = 0;
-        CFS_CORE_APP_Data.NextLoraRestartMs    = 0;
         CFS_CORE_APP_Data.NominalEligibleSince = 0;
         Tlm->HealthState       = CFS_CORE_APP_HEALTH_DEGRADED;
         Tlm->FaultCode         = CFS_CORE_APP_FAULT_EKF_INVALID;
@@ -325,12 +401,6 @@ void CFS_CORE_APP_UpdateHealth(uint32 NowMs, bool ForcePublish)
     else if (LocalTimedOut)
     {
         CFS_CORE_APP_Data.RecoveryStartMs      = 0;
-        CFS_CORE_APP_Data.BridgeRestartCount   = 0;
-        CFS_CORE_APP_Data.NextBridgeRestartMs  = 0;
-        CFS_CORE_APP_Data.UplinkRestartCount   = 0;
-        CFS_CORE_APP_Data.NextUplinkRestartMs  = 0;
-        CFS_CORE_APP_Data.LoraRestartCount     = 0;
-        CFS_CORE_APP_Data.NextLoraRestartMs    = 0;
         CFS_CORE_APP_Data.NominalEligibleSince = 0;
         Tlm->HealthState       = CFS_CORE_APP_HEALTH_DEGRADED;
         Tlm->FaultCode         = CFS_CORE_APP_FAULT_LOCAL_TIMEOUT;
@@ -339,12 +409,6 @@ void CFS_CORE_APP_UpdateHealth(uint32 NowMs, bool ForcePublish)
     else if (AttitudeTimedOut)
     {
         CFS_CORE_APP_Data.RecoveryStartMs      = 0;
-        CFS_CORE_APP_Data.BridgeRestartCount   = 0;
-        CFS_CORE_APP_Data.NextBridgeRestartMs  = 0;
-        CFS_CORE_APP_Data.UplinkRestartCount   = 0;
-        CFS_CORE_APP_Data.NextUplinkRestartMs  = 0;
-        CFS_CORE_APP_Data.LoraRestartCount     = 0;
-        CFS_CORE_APP_Data.NextLoraRestartMs    = 0;
         CFS_CORE_APP_Data.NominalEligibleSince = 0;
         Tlm->HealthState       = CFS_CORE_APP_HEALTH_DEGRADED;
         Tlm->FaultCode         = CFS_CORE_APP_FAULT_ATTITUDE_TIMEOUT;
@@ -352,31 +416,7 @@ void CFS_CORE_APP_UpdateHealth(uint32 NowMs, bool ForcePublish)
     }
     else if (UplinkTimedOut)
     {
-        /* 재시작 인터벌 경과 + 최대 재시도 미초과 시 uplink_app 재시작 시도 (bridge와 동일 패턴) */
-        if (CFS_CORE_APP_Data.NextUplinkRestartMs == 0)
-        {
-            CFS_CORE_APP_Data.NextUplinkRestartMs = NowMs + CFS_CORE_APP_UPLINK_RESTART_INTERVAL_MS;
-        }
-        if (NowMs >= CFS_CORE_APP_Data.NextUplinkRestartMs &&
-            CFS_CORE_APP_Data.UplinkRestartCount < CFS_CORE_APP_UPLINK_MAX_RESTARTS)
-        {
-            CFE_ES_AppId_t AppId;
-            if (CFE_ES_GetAppIDByName(&AppId, CFS_CORE_APP_UPLINK_APP_NAME) == CFE_SUCCESS)
-            {
-                CFE_ES_RestartApp(AppId);
-                CFS_CORE_APP_Data.UplinkRestartCount++;
-                CFS_CORE_APP_Data.NextUplinkRestartMs = NowMs + CFS_CORE_APP_UPLINK_RESTART_INTERVAL_MS;
-                CFE_EVS_SendEvent(CFS_CORE_APP_UPLINK_RESTART_EID, CFE_EVS_EventType_INFORMATION,
-                                  "CFS_CORE_APP: uplink restart attempt=%u",
-                                  (unsigned int)CFS_CORE_APP_Data.UplinkRestartCount);
-            }
-        }
-
         CFS_CORE_APP_Data.RecoveryStartMs      = 0;
-        CFS_CORE_APP_Data.BridgeRestartCount   = 0;
-        CFS_CORE_APP_Data.NextBridgeRestartMs  = 0;
-        CFS_CORE_APP_Data.LoraRestartCount     = 0;
-        CFS_CORE_APP_Data.NextLoraRestartMs    = 0;
         CFS_CORE_APP_Data.NominalEligibleSince = 0;
         Tlm->HealthState       = CFS_CORE_APP_HEALTH_DEGRADED;
         Tlm->FaultCode         = CFS_CORE_APP_FAULT_UPLINK_TIMEOUT;
@@ -384,31 +424,7 @@ void CFS_CORE_APP_UpdateHealth(uint32 NowMs, bool ForcePublish)
     }
     else if (LoraTimedOut)
     {
-        /* 재시작 인터벌 경과 + 최대 재시도 미초과 시 lora_tdm_app 재시작 시도 (bridge와 동일 패턴) */
-        if (CFS_CORE_APP_Data.NextLoraRestartMs == 0)
-        {
-            CFS_CORE_APP_Data.NextLoraRestartMs = NowMs + CFS_CORE_APP_LORA_RESTART_INTERVAL_MS;
-        }
-        if (NowMs >= CFS_CORE_APP_Data.NextLoraRestartMs &&
-            CFS_CORE_APP_Data.LoraRestartCount < CFS_CORE_APP_LORA_MAX_RESTARTS)
-        {
-            CFE_ES_AppId_t AppId;
-            if (CFE_ES_GetAppIDByName(&AppId, CFS_CORE_APP_LORA_APP_NAME) == CFE_SUCCESS)
-            {
-                CFE_ES_RestartApp(AppId);
-                CFS_CORE_APP_Data.LoraRestartCount++;
-                CFS_CORE_APP_Data.NextLoraRestartMs = NowMs + CFS_CORE_APP_LORA_RESTART_INTERVAL_MS;
-                CFE_EVS_SendEvent(CFS_CORE_APP_LORA_RESTART_EID, CFE_EVS_EventType_INFORMATION,
-                                  "CFS_CORE_APP: lora restart attempt=%u",
-                                  (unsigned int)CFS_CORE_APP_Data.LoraRestartCount);
-            }
-        }
-
         CFS_CORE_APP_Data.RecoveryStartMs      = 0;
-        CFS_CORE_APP_Data.BridgeRestartCount   = 0;
-        CFS_CORE_APP_Data.NextBridgeRestartMs  = 0;
-        CFS_CORE_APP_Data.UplinkRestartCount   = 0;
-        CFS_CORE_APP_Data.NextUplinkRestartMs  = 0;
         CFS_CORE_APP_Data.NominalEligibleSince = 0;
         Tlm->HealthState       = CFS_CORE_APP_HEALTH_DEGRADED;
         Tlm->FaultCode         = CFS_CORE_APP_FAULT_LORA_TIMEOUT;
@@ -420,12 +436,6 @@ void CFS_CORE_APP_UpdateHealth(uint32 NowMs, bool ForcePublish)
     {
         /* Already nominal: stay nominal immediately, no timer needed */
         CFS_CORE_APP_Data.RecoveryStartMs      = 0;
-        CFS_CORE_APP_Data.BridgeRestartCount   = 0;
-        CFS_CORE_APP_Data.NextBridgeRestartMs  = 0;
-        CFS_CORE_APP_Data.UplinkRestartCount   = 0;
-        CFS_CORE_APP_Data.NextUplinkRestartMs  = 0;
-        CFS_CORE_APP_Data.LoraRestartCount     = 0;
-        CFS_CORE_APP_Data.NextLoraRestartMs    = 0;
         CFS_CORE_APP_Data.NominalEligibleSince = 0;
         Tlm->HealthState       = CFS_CORE_APP_HEALTH_NOMINAL;
         Tlm->FaultCode         = CFS_CORE_APP_FAULT_NONE;
@@ -434,13 +444,7 @@ void CFS_CORE_APP_UpdateHealth(uint32 NowMs, bool ForcePublish)
     else
     {
         /* Recovering from non-nominal: require 10 s of consecutive clear conditions */
-        CFS_CORE_APP_Data.RecoveryStartMs     = 0;
-        CFS_CORE_APP_Data.BridgeRestartCount  = 0;
-        CFS_CORE_APP_Data.NextBridgeRestartMs = 0;
-        CFS_CORE_APP_Data.UplinkRestartCount  = 0;
-        CFS_CORE_APP_Data.NextUplinkRestartMs = 0;
-        CFS_CORE_APP_Data.LoraRestartCount    = 0;
-        CFS_CORE_APP_Data.NextLoraRestartMs   = 0;
+        CFS_CORE_APP_Data.RecoveryStartMs = 0;
         if (CFS_CORE_APP_Data.NominalEligibleSince == 0)
         {
             CFS_CORE_APP_Data.NominalEligibleSince = NowMs;
@@ -766,17 +770,26 @@ void CFS_CORE_APP_SaveState(void)
     Fd = open(TmpPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (Fd < 0)
     {
+        CFE_EVS_SendEvent(CFS_CORE_APP_STATE_SAVE_FAIL_EID, CFE_EVS_EventType_ERROR,
+                          "CFS_CORE_APP: state save open failed path=%s errno=%d", TmpPath, errno);
         return;
     }
 
     if (write(Fd, &State, sizeof(State)) != (ssize_t)sizeof(State))
     {
+        CFE_EVS_SendEvent(CFS_CORE_APP_STATE_SAVE_FAIL_EID, CFE_EVS_EventType_ERROR,
+                          "CFS_CORE_APP: state save write failed path=%s errno=%d", TmpPath, errno);
         close(Fd);
         return;
     }
 
     close(Fd);
-    rename(TmpPath, CFS_CORE_APP_STATE_FILE_PATH);
+    if (rename(TmpPath, CFS_CORE_APP_STATE_FILE_PATH) != 0)
+    {
+        CFE_EVS_SendEvent(CFS_CORE_APP_STATE_SAVE_FAIL_EID, CFE_EVS_EventType_ERROR,
+                          "CFS_CORE_APP: state save rename failed path=%s errno=%d",
+                          CFS_CORE_APP_STATE_FILE_PATH, errno);
+    }
 }
 
 void CFS_CORE_APP_ServicePrototype(void)
@@ -940,5 +953,49 @@ void CFS_CORE_APP_ProcessModeCommand(const CFS_CORE_APP_ModeCmdTlm_t *Msg)
                           (unsigned int)Msg->SourceSequence, (unsigned int)Msg->ModeAction,
                           (unsigned int)Msg->RequestedState, (unsigned int)CFS_CORE_APP_Data.CurrentModeState);
     }
+}
+
+/* waypoint readback(2026-07-23): DIAGNOSTIC_CMD_MID을 lora_tdm_app과
+ * 공동구독 — DiagTarget으로 대상 구분(자기 것 아니면 조용히 무시,
+ * lora_tdm_app의 LINK_STATUS 등은 여기서 다루지 않음). ROUTE_READBACK_REQUEST
+ * 수신 시 MissionRoute 캐시를 ROUTE_SNAPSHOT_MID로 lora_tdm_app에 발행
+ * (SB 내부 전송이라 192바이트 그대로 1메시지, 크기 제약 없음). 실제
+ * 페이징·다운링크는 lora_tdm_app이 담당(spec §4.3). */
+void CFS_CORE_APP_ProcessDiagnosticCommand(const CFS_CORE_APP_DiagnosticCmdTlm_t *Msg)
+{
+    CFS_CORE_APP_RouteSnapshotTlm_t *Snapshot;
+
+    if (Msg->DiagTarget != CFS_CORE_APP_DIAG_TARGET_CFS_CORE)
+    {
+        return;
+    }
+
+    if (Msg->DiagAction != CFS_CORE_APP_DIAG_ACTION_ROUTE_READBACK_REQUEST)
+    {
+        CFE_EVS_SendEvent(CFS_CORE_APP_ROUTE_READBACK_EID, CFE_EVS_EventType_ERROR,
+                          "CFS_CORE_APP: diag UNKNOWN action=%u seq=%u",
+                          (unsigned int)Msg->DiagAction, (unsigned int)Msg->SourceSequence);
+        return;
+    }
+
+    CFS_CORE_APP_Data.CmdCounter++;
+
+    Snapshot = &CFS_CORE_APP_Data.RouteSnapshotTlm;
+    Snapshot->Seq            = CFS_CORE_APP_Data.MissionRoute.UpdateCount;
+    Snapshot->TimestampMs    = CFS_CORE_APP_Data.MissionRoute.TimestampMs;
+    Snapshot->SourceSequence = Msg->SourceSequence;
+    Snapshot->RouteType      = CFS_CORE_APP_ROUTE_SEGMENT_MISSION_EXTENSION;
+    Snapshot->RouteVersion   = CFS_CORE_APP_Data.MissionRoute.RouteVersion;
+    Snapshot->WaypointCount  = CFS_CORE_APP_Data.MissionRoute.WaypointCount;
+    Snapshot->Reserved       = 0;
+    memcpy(Snapshot->Waypoints, CFS_CORE_APP_Data.MissionRoute.Waypoints, sizeof(Snapshot->Waypoints));
+
+    CFE_EVS_SendEvent(CFS_CORE_APP_ROUTE_READBACK_EID, CFE_EVS_EventType_INFORMATION,
+                      "CFS_CORE_APP: route readback requested seq=%u wp_count=%u token=%lu",
+                      (unsigned int)Msg->SourceSequence, (unsigned int)Snapshot->WaypointCount,
+                      (unsigned long)Msg->RequestToken);
+
+    CFE_SB_TimeStampMsg(CFE_MSG_PTR(Snapshot->TelemetryHeader));
+    CFE_SB_TransmitMsg(CFE_MSG_PTR(Snapshot->TelemetryHeader), true);
 }
 

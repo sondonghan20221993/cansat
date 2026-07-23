@@ -353,3 +353,21 @@ mission_app-test
 | ✅ 권한검증/fail-safe | A.1~A.4, B.1/B.2 — `uplink_app_cmds_ut_auth_gate_failures.md`(커밋 `740521d`)에서 기 구현 |
 | ✅ 회귀 확인 | 관련 5개 스위트 전부 PASS, 실패 없음 (로컬 `~/verify-build`) |
 | ⏳ Pi 배포 | 코드 변경 없음(테스트만 추가) — 배포 항목 아님 |
+
+---
+
+## BL-38 CheckAppRestarts() UT 케이스 (2026-07-23 설계, 구현 시 작성)
+
+대상: `cfs_core_app_utils.c` 신설 `CheckAppRestarts()` + 순수화된 `PublishSystemHealth()`
+
+| ID | 케이스 | 검증 |
+|---|---|---|
+| BL38-UT-1 | EKF fault 참 + UplinkTimedOut 참 | 재시작 발동됨(체인 비종속) — BL-38 핵심 회귀 |
+| BL38-UT-2 | 3개 앱 동시 타임아웃 | 1사이클에 RestartApp 1회만, 대상=bridge(우선순위) |
+| BL38-UT-3 | 스킵된 앱 다음 사이클 처리 | UT-2 후속 사이클(bridge 쿨다운 중)에서 uplink 발행 |
+| BL38-UT-4 | 쿨다운 미경과 | NextRestartMs 도래 전 재발행 없음 |
+| BL38-UT-5 | attempt 4회째 발행 | 구 MAX(3) 초과에도 계속 발행(무한 재시도) |
+| BL38-UT-6 | HK 재시도 카운터 | 발행 시마다 단조 증가, 타 앱 fault로 리셋되지 않음(구 EKF 리셋 버그 회귀) |
+| BL38-UT-7 | GetAppIDByName 실패 | 카운터 미증가 + 쿨다운은 진행(에러 무한루프 아님) — 동작 정의는 구현 시 확정 |
+| BL38-UT-8 | FaultCode 보고 불변 | EKF+uplink 동시 fault 시 FaultCode=3, UplinkStatus.TimedOut=1 병행 |
+| BL38-UT-9 | 전 앱 정상 | 재시작 미발동, 카운터 불변 |

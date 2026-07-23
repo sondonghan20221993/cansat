@@ -76,5 +76,6 @@ int LORA_TDM_APP_BuildDl2Frame(uint8 *Buf, size_t BufLen, const LORA_TDM_APP_Dat
 
 /* Process DIAGNOSTIC_CMD_MID from uplink_app */
 void LORA_TDM_APP_ProcessDiagnosticCommand(CFE_SB_Buffer_t *SBBufPtr);
+void LORA_TDM_APP_ProcessRouteSnapshot(const LORA_TDM_APP_RouteSnapshotTlm_t *Msg);
 
 #endif

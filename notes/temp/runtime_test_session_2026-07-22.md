@@ -59,6 +59,31 @@ RT-DL2-SYSTIME-001 확인 중 CSV `uplink_boot_count`가 재시작 4회+ 후에�
   (OSAL 가상 경로) 전환 — 제일 정석이나 수정 범위 큼.
   + SaveState open/write 실패 시 1회성 EVS 경고 추가 검토
 
+**직접 원인 재확인(2026-07-23, Pi 재연결 후 실측)**: 당초 "권한 부족"
+가설은 **틀림** — `systemctl show cfs.service`로 확인한 결과
+`User=root`로 실행 중. 실제 원인은 단순히 `/cf`가 파일시스템 루트에
+**존재하지 않아 `ENOENT`** (부모 디렉터리 자체가 없어 open() 실패,
+권한과 무관). `WorkingDirectory=/home/sdh2983/cFS_clean/build/exe/cpu1`
+아래 `cf/` 디렉터리가 이미 존재하며(`sdh2983` 소유) `EEPROM.DAT`·
+`cfe_es_startup.scr` 등 실제 cFS 런타임 파일이 거기 있음 — 이것이
+진짜 작동 중인 "cf" 위치. 그 안에 `uplink_app_state.bin`(또는 `.tmp`)
+**전무** 확인 — SaveState 무동작 실물 확증. **범위 확대**:
+`cfs_core_app_state.bin`도 동일 패턴(`CFS_CORE_APP_STATE_FILE_PATH
+"/cf/cfs_core_app_state.bin"`)이라 **cfs_core_app도 동일 결함**
+(uplink 단독이 아님). `systemctl show -p Environment`도 확인 →
+비어있음(ⓐ env var 미주입 상태). **ⓑ(상대경로 `cf/...`)가 이미
+사용 중인 실경로와 정확히 일치** — ⓑ + SaveState 실패 시 EVS 경고로
+확정.
+
+**구현 완료(2026-07-23)**: uplink_app/cfs_core_app 둘 다
+`STATE_FILE_PATH`를 절대경로→상대경로(`cf/...`)로 변경. SaveState의
+open/write/rename 3개 실패 지점 전부에 ERROR EVS(errno 포함) 추가 —
+uplink `UPLINK_APP_STATE_SAVE_FAIL_EID`(10), cfs_core
+`CFS_CORE_APP_STATE_SAVE_FAIL_EID`(17) 신규. spec §12.1에 BL-39
+결함/수정 주석 반영. UT 8/8(uplink_app 4개 스위트+cfs_core_app 2개
+스위트) PASS. **미완**: Pi 재배포 후 boot_count 실측 증가 확인은
+최종 검증 때 일괄(사용자 지시).
+
 ## D-2 진행 (2026-07-22)
 
 - [x] TDM-RT-001 (다운링크 주기): ✅ Stage 4b soak가 상회 충족(100ms,
@@ -121,13 +146,59 @@ GetAppIDByName 스텁 SUCCESS라 못 잡음. 상세 BACKLOG BL-40.
 
 ## 내일 할 일 (2026-07-23, 사용자 지시로 이월)
 
-- [ ] **BL-40 수정**: 앱 이름 상수 3개 → 등록명 대문자(`MAVLINK_BRIDGE_APP`/
-      `UPLINK_APP`/`LORA_TDM_APP`) + UT(스텁이라 회귀 영향 없음 예상) +
-      재빌드·Pi 재배포 → RESTART_BRIDGE/UPLINK/LORA 3종 GUI 재시험
-- [ ] (결함 수정 후) BL-38 A안 구현 → RT-CORE-003/004 재시험
-- [ ] BL-39 수정 방향 결정(ⓐ/ⓑ/ⓒ) 후 구현 → BootCount 영속 재검증
-- [ ] **waypoint 조회 기능** spec 정의부터 — 경량(DIAGNOSTIC `ROUTE_SUMMARY`:
-      개수+CRC+갱신시각 1프레임) vs 완전(분할 다운링크 readback) 방향 결정
+- [x] **BL-40 수정 (코드, 2026-07-23)**: 앱 이름 상수 3개 → 등록명 대문자
+      완료, UT 4/4 PASS. Pi 재배포 + RESTART 3종 GUI 재시험은 최종 검증
+      때 일괄(Pi 미연결, 사용자 지시)
+- [ ] (결함 수정 후) BL-38 구현 → RT-CORE-003/004 재시험.
+      **설계 확정(2026-07-23 대화)**: A안(재시작 로직을 fault 체인에서
+      분리, 각 *TimedOut 독립 검사) + ⓑ ExceptionAction 병행(startup.scr
+      7번째 필드 RESTART — 크래시는 ES가 즉시, 소프트 장애는 cfs_core가).
+      대안 비교 결과: ⓐ 체인 재정렬=가림 대상만 이동(기각),
+      ⓒ HS 앱 도입=4-app 규모에 과함(기각), ⓓ systemd 전체 재시작=과잉
+      복구(기각). **세부 설계 최종 확정(2026-07-23, 정본은 spec §11.1)**:
+      1) 구조 = a-1 별도 함수 `CheckAppRestarts()` 분리, else-if 체인은
+         FaultCode/HealthState 보고 전용으로 순수화
+      2) 사이클당 재시작 1건, 고정 우선순위 bridge > uplink > lora
+      3) **무한 재시도(MAX_RESTARTS 제거)** — 운용 ≤5분이라 3회 소진 후
+         방치 = 실질 기능 상실(특히 uplink는 지상 수동 복구 경로도 자기
+         경유). 고정 쿨다운 5초가 빈도 상한. 지수 백오프(짧은 운용에서
+         복구만 지연)·우선순위 스왑·타이브레이크(복잡도 대비 이득 없음,
+         사이클 1초≪쿨다운 5초라 기아 불가)는 논의 후 기각
+      4) 재시도 횟수는 HK 카운터 노출만(관측용) — 카운터 리셋 개념 소멸
+      5) ⓑ ExceptionAction — **정정(2026-07-23)**: cFE 정의 재확인 결과
+         `0=앱만 재시작`/`Non-Zero=프로세서 전체 리셋`으로 대화 중 설명이
+         반대였음. 4개 앱 전부 이미 `0` → **수정 불필요, 이미 적용 중**
+         (cfs_core 자신도 포함)
+      6) FaultCode 보고 불변 — 최상위 1개 의미 유지, 동시 fault는 기존
+         개별 상태 필드로 관측 가능(비트마스크 전환 기각)
+      → **설계 전 항목 확정 완료, 구현 착수 가능**
+
+      **구현 완료(2026-07-23)**: `cfs_core_app_utils.c`에
+      `CFS_CORE_APP_CheckAppRestarts()` 신설 — fault 체인과 독립 호출,
+      사이클당 1건, 고정 우선순위 bridge>uplink>lora, `RestartIssued`
+      플래그로 "실제 발행했을 때만" 하위를 건너뛰게 구현(쿨다운 중인
+      상위 fault가 계속되면 하위로 폴스루 — UT가 최초 구현에서 이
+      기아 버그를 실제로 잡아냄, 수정함). `PublishSystemHealth`
+      else-if 체인은 보고 전용으로 순수화. `MAX_RESTARTS` 제거(무한
+      재시도), 재시도 카운터는 복구 후에도 보존(관측용, 리셋 없음).
+      UT 9개 추가/수정: BL38-UT-1(EKF fault 중 uplink 재시작 회귀 재현,
+      어제 실측 FAIL의 정확한 재현) 등. `coverage-` 전체 99/99 PASS.
+      **정정 1건**: startup.scr `ExceptionAction` 필드는 실제로
+      `0=앱만 재시작`(cFE 공식 정의, 대화 중 반대로 설명한 것은 오류)
+      — 4개 앱 전부 이미 `0`이라 **수정 불필요**, spec §11.1에 정정
+      반영.
+      **미완**: Pi 재배포 + RT-CORE-003/004/005~011 실기 재시험은
+      최종 검증 때 일괄(사용자 지시).
+- [x] **BL-39 원인 확정 + 수정 완료(2026-07-23)**: Pi 재연결 직접 실측 —
+      권한 가설 오류 정정(User=root), 실제 원인 `/cf` 부재로 ENOENT.
+      ⓑ(상대경로) 채택, cfs_core_app도 동일 결함 확인해 함께 수정.
+      SaveState 실패 EVS 3종 추가(uplink EID10/cfs_core EID17). UT 8/8
+      PASS. Pi 재배포 후 BootCount 실측 재검증은 최종 검증 때 일괄
+- [ ] **waypoint 조회 기능** — **방향 확정(2026-07-23): a-2(전체
+      readback)**. 대역폭 검토 결과 최대 16 waypoint×12바이트=192바이트,
+      현재 air rate(2.4KB/s) 기준 <1초로 충분(air rate 상향 불필요,
+      최종검증 이후로 연기). DL2 확장 블록(SysTime 블록과 동일 패턴)으로
+      여러 사이클에 분할 다운링크하는 방식 — **세부 프레임 설계 착수 필요**
 - [ ] v2 표준화: 부팅 기본값 v1→v2 변경 여부(`UseV2Downlink` 초기값,
       코드+spec) — 사용자 "v2로 사용하기로" 언급(2026-07-22), 테스트 종료
       시 v2 복귀 CONFIG 전송도 잊지 말 것
@@ -149,10 +220,22 @@ GetAppIDByName 스텁 SUCCESS라 못 잡음. 상세 BACKLOG BL-40.
 - [ ] **TDM 패킷 구조 시각화**: v1 ASCII 라인 / v2 DL2 바이너리 프레임
       (seq/boot_count/SysTime 확장블록/UFB 1바이트 포함) 바이트 레이아웃
       다이어그램화 — 가능하면 지상국(openMCT) 또는 문서에 시각 자료로
-- [ ] **하드웨어 전제 기술 수정**: 문서상 "LR24-F, air rate
-      2.4KB/s(2400 bytes/s), UART 57600bps" 표기 — air rate 단위/값
-      재확인 후 정정 필요(2.4kbps vs 2400bytes/s 혼동 의심, 실측
-      100ms/10Hz 통과와의 정합성도 함께 검증)
+- [x] **하드웨어 전제 기술 수정 — 재검토 결과 정정 불필요(2026-07-23)**:
+      사용자가 제조사(micoair.com) 공식 상품설명 제공 — "air rate
+      2.4KB/s(2400 bytes/s)"는 매뉴얼의 "2.4K Byte/s(기본값)"와 정확히
+      일치, 단위 혼동 아니었음(원래 표기가 맞음). 상세는
+      `lr24f_module_spec_2026-07-23.md` 참조.
+      **신규 발견**: air rate가 실제로 **2.4K/4K/8K/20K Byte/s 중
+      선택 가능**(부품 교체 불요, 모듈 설정) — 최대 8.3배 상향 여지.
+      UART도 921600까지 지원(현재 57600).
+      **결정(2026-07-23)**: waypoint readback(a-2) 대역폭 계산 결과
+      16개 waypoint(mission route 상한, `CFS_CORE_APP_ROUTE_MAX_WAYPOINTS`)
+      × 12바이트(X/Y/Z float) = 192바이트, 현재 air rate 기준 <1초 —
+      **a-2에 air rate 상향이 불필요함이 확인됨**. 단점(도달거리/안정성
+      저하, BL-15 Stage 4b 타이밍 재튜닝 필요, 2.4GHz 간섭 여지,
+      양단 동시설정 실패 시 무선 복구 불가, 최종검증 직전 시점 리스크)
+      대비 지금 이득 없어 **최종 전수 검증 이후로 연기**. a-2는 현재
+      air rate 기준으로 설계 진행
 - [ ] **TEST_CASES.md 통합 세션 메모 stale 정정**: "RT-LORA-001(USB
       런타임 분리)은 serial_reopen_gap 해소 전까지 제외" 문구 —
       **갭은 이미 해소됨**(2026-07-10 구현, fd close→재오픈 경로 +

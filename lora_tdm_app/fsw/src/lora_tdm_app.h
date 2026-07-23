@@ -6,6 +6,7 @@
 #include "lora_tdm_app_eventids.h"
 #include "lora_tdm_app_mission_cfg.h"
 #include "lora_tdm_app_topicid_values.h"
+#include "route_msg.h"
 
 /* FC state cache — updated from SB messages */
 typedef struct
@@ -66,6 +67,15 @@ typedef struct
      * 한 번도 상태를 보고하지 않았으면(부팅 직후) 0으로 유지. */
     uint16 UplinkLastAcceptedSequence;
     uint8  UplinkBootCount;
+
+    /* waypoint readback(2026-07-23, spec §4.3) — ROUTE_SNAPSHOT_MID로
+     * cfs_core_app에서 수신한 mission route를 페이지 단위로 DL2에 첨부 */
+    uint8            RouteReadbackPending;
+    uint8            RouteType;
+    uint8            RouteWaypointCount;
+    uint8            RoutePageIndex;
+    uint8            RouteTotalPages;
+    ROUTE_WAYPOINT_t RouteWaypoints[ROUTE_MAX_WAYPOINTS];
 
     /* Serial fd */
     int    LoRaFd;

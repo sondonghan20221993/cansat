@@ -1097,14 +1097,14 @@ void Test_CFS_CORE_APP_BridgeRestart_GetAppIdFail(void)
     UtAssert_STUB_COUNT(CFE_ES_RestartApp, 0);
 }
 
-/* 최대 재시도 초과 시 더 이상 재시작 안 함 */
-void Test_CFS_CORE_APP_BridgeRestart_MaxReached(void)
+/* BL-38(2026-07-23): 무한 재시도 확정 — MAX_RESTARTS 제거, attempt=4 이상도 계속 발행 */
+void Test_CFS_CORE_APP_BridgeRestart_InfiniteRetry(void)
 {
     uint32 NowMs = 10000;
 
     CFS_CORE_APP_Data.BridgeState.Received          = true;
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 1000;
-    CFS_CORE_APP_Data.BridgeRestartCount            = CFS_CORE_APP_BRIDGE_MAX_RESTARTS; /* 이미 최대치 */
+    CFS_CORE_APP_Data.BridgeRestartCount            = 5; /* 이전 세션 5회 시도 누적 */
     CFS_CORE_APP_Data.RecoveryStartMs               = NowMs - CFS_CORE_APP_BRIDGE_RESTART_INTERVAL_MS - 1U;
     CFS_CORE_APP_Data.NextBridgeRestartMs           = NowMs - 1U;
 
@@ -1112,13 +1112,13 @@ void Test_CFS_CORE_APP_BridgeRestart_MaxReached(void)
 
     CFS_CORE_APP_UpdateHealth(NowMs, true);
 
-    /* 최대치 초과 → RestartApp 미호출 */
-    UtAssert_STUB_COUNT(CFE_ES_RestartApp, 0);
-    UtAssert_INT32_EQ(CFS_CORE_APP_Data.BridgeRestartCount, (int32)CFS_CORE_APP_BRIDGE_MAX_RESTARTS);
+    /* 과거 시도 횟수와 무관하게 계속 재시작 발행, 카운터 단조 증가 */
+    UtAssert_STUB_COUNT(CFE_ES_RestartApp, 1);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.BridgeRestartCount, 6);
 }
 
-/* bridge 복구 시 재시작 카운터 리셋 */
-void Test_CFS_CORE_APP_BridgeRestart_ResetOnRecovery(void)
+/* bridge 복구 시 쿨다운 타이머만 리셋, 재시도 카운터는 보존(관측용, 리셋 개념 소멸) */
+void Test_CFS_CORE_APP_BridgeRestart_CooldownClearOnRecovery(void)
 {
     uint32 NowMs = 20000;
 
@@ -1139,15 +1139,15 @@ void Test_CFS_CORE_APP_BridgeRestart_ResetOnRecovery(void)
     CFS_CORE_APP_Data.EkfState.Valid                 = 1;
     CFS_CORE_APP_Data.LastHealthState                = CFS_CORE_APP_HEALTH_NOMINAL;
 
-    /* 재시작 카운터가 남아 있었음 */
+    /* 재시작 카운터가 남아 있었음 — 복구 후에도 보존되어야 함(관측용) */
     CFS_CORE_APP_Data.BridgeRestartCount  = 2;
     CFS_CORE_APP_Data.NextBridgeRestartMs = NowMs + 1000;
     CFS_CORE_APP_Data.RecoveryStartMs     = NowMs - 1000;
 
     CFS_CORE_APP_UpdateHealth(NowMs, true);
 
-    /* 복구 후 카운터 리셋 */
-    UtAssert_INT32_EQ(CFS_CORE_APP_Data.BridgeRestartCount,  0);
+    /* 쿨다운 타이머만 리셋(다음 장애 시 새 인터벌 시작), 카운터는 보존 */
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.BridgeRestartCount,  2);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.NextBridgeRestartMs, 0);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.RecoveryStartMs,     0);
 }
@@ -1172,6 +1172,92 @@ static void SetHealthyExceptUplinkLora(uint32 NowMs)
     CFS_CORE_APP_Data.AttitudeState.Received        = true;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs     = NowMs;
     CFS_CORE_APP_Data.AttitudeState.Valid           = 1;
+}
+
+/* BL38-UT-1(2026-07-23): BL-38 핵심 회귀 — EKF fault(상위) 지속 중에도
+ * uplink 재시작이 독립 발동해야 한다. 어제 실기(RT-CORE-003)에서 실측된
+ * FAIL을 재현: 실내(GPS 없음)라 EkfTimedOut 상시 참인 상황. */
+void Test_CFS_CORE_APP_UplinkRestart_DuringEkfFault(void)
+{
+    UT_CheckEvent_t Evt;
+    uint32          NowMs = 10000;
+
+    CFS_CORE_APP_Data.BridgeState.Received          = true;
+    CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = NowMs;
+    /* EKF 고의로 무효(fault=3 EKF_INVALID) — 상위 fault 지속 상태 재현 */
+    CFS_CORE_APP_Data.EkfState.Received  = true;
+    CFS_CORE_APP_Data.EkfState.TimestampMs = NowMs;
+    CFS_CORE_APP_Data.EkfState.Valid       = 0;
+    CFS_CORE_APP_Data.LocalState.Received  = true;
+    CFS_CORE_APP_Data.LocalState.TimestampMs = NowMs;
+    CFS_CORE_APP_Data.LocalState.Valid     = 1;
+    CFS_CORE_APP_Data.AttitudeState.Received  = true;
+    CFS_CORE_APP_Data.AttitudeState.TimestampMs = NowMs;
+    CFS_CORE_APP_Data.AttitudeState.Valid  = 1;
+    CFS_CORE_APP_Data.UplinkAppState.Received   = true;
+    CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs = 1000; /* uplink timed out */
+    CFS_CORE_APP_Data.LoraAppState.Received     = true;
+    CFS_CORE_APP_Data.LoraAppState.LastHkRxMs   = NowMs;
+    CFS_CORE_APP_Data.UplinkRestartCount        = 0;
+    CFS_CORE_APP_Data.NextUplinkRestartMs       = NowMs - 1U; /* 쿨다운 이미 경과 */
+
+    UT_SetDefaultReturnValue(UT_KEY(CFE_ES_GetAppIDByName), CFE_SUCCESS);
+    UT_CHECKEVENT_SETUP(&Evt, CFS_CORE_APP_UPLINK_RESTART_EID, NULL);
+
+    CFS_CORE_APP_UpdateHealth(NowMs, true);
+
+    /* 재시작은 발동(체인 비종속) */
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.UplinkRestartCount, 1);
+    UtAssert_INT32_EQ(Evt.MatchCount, 1);
+    UtAssert_STUB_COUNT(CFE_ES_RestartApp, 1);
+    /* 그러나 보고되는 FaultCode는 여전히 상위(EKF)=3 — 보고 체인 불변(확정 6번) */
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.FaultCode, CFS_CORE_APP_FAULT_EKF_INVALID);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.UplinkStatus.TimedOut, 1);
+}
+
+/* BL38-UT-2/3(2026-07-23): 동시 다중 사망 시 사이클당 1건만, 우선순위 bridge>uplink>lora.
+ * 스킵된 앱은 다음 사이클(별도 UpdateHealth 호출)에서 처리된다. */
+void Test_CFS_CORE_APP_CheckAppRestarts_OnePerCyclePriority(void)
+{
+    uint32 NowMs = 10000;
+
+    CFS_CORE_APP_Data.BridgeState.Received          = true;
+    CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 1000; /* bridge timed out */
+    CFS_CORE_APP_Data.EkfState.Received    = true;
+    CFS_CORE_APP_Data.EkfState.TimestampMs = NowMs;
+    CFS_CORE_APP_Data.EkfState.Valid       = 1;
+    CFS_CORE_APP_Data.LocalState.Received  = true;
+    CFS_CORE_APP_Data.LocalState.TimestampMs = NowMs;
+    CFS_CORE_APP_Data.LocalState.Valid     = 1;
+    CFS_CORE_APP_Data.AttitudeState.Received  = true;
+    CFS_CORE_APP_Data.AttitudeState.TimestampMs = NowMs;
+    CFS_CORE_APP_Data.AttitudeState.Valid  = 1;
+    CFS_CORE_APP_Data.UplinkAppState.Received   = true;
+    CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs = 1000; /* uplink도 timed out */
+    CFS_CORE_APP_Data.LoraAppState.Received     = true;
+    CFS_CORE_APP_Data.LoraAppState.LastHkRxMs   = NowMs;
+    CFS_CORE_APP_Data.NextBridgeRestartMs = NowMs - 1U;
+    CFS_CORE_APP_Data.NextUplinkRestartMs = NowMs - 1U;
+
+    UT_SetDefaultReturnValue(UT_KEY(CFE_ES_GetAppIDByName), CFE_SUCCESS);
+
+    /* 사이클 1: bridge만 재시작(우선순위 1위), uplink는 스킵 */
+    CFS_CORE_APP_UpdateHealth(NowMs, true);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.BridgeRestartCount, 1);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.UplinkRestartCount, 0);
+    UtAssert_STUB_COUNT(CFE_ES_RestartApp, 1);
+
+    /* 사이클 2: bridge는 쿨다운(5초), uplink 쿨다운은 그대로 경과 상태 → uplink 재시작 */
+    NowMs += 1000;
+    CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 1000; /* 여전히 timed out */
+    CFS_CORE_APP_Data.EkfState.TimestampMs    = NowMs;
+    CFS_CORE_APP_Data.LocalState.TimestampMs  = NowMs;
+    CFS_CORE_APP_Data.AttitudeState.TimestampMs = NowMs;
+    CFS_CORE_APP_Data.NextUplinkRestartMs = NowMs - 1U;
+    CFS_CORE_APP_UpdateHealth(NowMs, true);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.BridgeRestartCount, 1); /* 쿨다운 중이라 불변 */
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.UplinkRestartCount, 1);
+    UtAssert_STUB_COUNT(CFE_ES_RestartApp, 2);
 }
 
 /* uplink timeout 후 인터벌 경과 시 RestartApp 호출 */
@@ -1208,8 +1294,8 @@ void Test_CFS_CORE_APP_UplinkRestart_FirstAttempt(void)
     UtAssert_STUB_COUNT(CFE_ES_RestartApp, 1);
 }
 
-/* 최대 재시도 초과 시 uplink_app 더 이상 재시작 안 함 */
-void Test_CFS_CORE_APP_UplinkRestart_MaxReached(void)
+/* BL-38(2026-07-23): 무한 재시도 — uplink도 과거 시도 횟수와 무관하게 계속 발행 */
+void Test_CFS_CORE_APP_UplinkRestart_InfiniteRetry(void)
 {
     uint32 NowMs = 10000;
 
@@ -1218,19 +1304,19 @@ void Test_CFS_CORE_APP_UplinkRestart_MaxReached(void)
     CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs = 1000;
     CFS_CORE_APP_Data.LoraAppState.Received     = true;
     CFS_CORE_APP_Data.LoraAppState.LastHkRxMs   = NowMs;
-    CFS_CORE_APP_Data.UplinkRestartCount        = CFS_CORE_APP_UPLINK_MAX_RESTARTS;
+    CFS_CORE_APP_Data.UplinkRestartCount        = 5;
     CFS_CORE_APP_Data.NextUplinkRestartMs       = NowMs - 1U;
 
     UT_SetDefaultReturnValue(UT_KEY(CFE_ES_GetAppIDByName), CFE_SUCCESS);
 
     CFS_CORE_APP_UpdateHealth(NowMs, true);
 
-    UtAssert_STUB_COUNT(CFE_ES_RestartApp, 0);
-    UtAssert_INT32_EQ(CFS_CORE_APP_Data.UplinkRestartCount, (int32)CFS_CORE_APP_UPLINK_MAX_RESTARTS);
+    UtAssert_STUB_COUNT(CFE_ES_RestartApp, 1);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.UplinkRestartCount, 6);
 }
 
-/* uplink 복구 시 재시작 카운터 리셋 */
-void Test_CFS_CORE_APP_UplinkRestart_ResetOnRecovery(void)
+/* uplink 복구 시 쿨다운 타이머만 리셋, 카운터는 보존 */
+void Test_CFS_CORE_APP_UplinkRestart_CooldownClearOnRecovery(void)
 {
     uint32 NowMs = 20000;
 
@@ -1259,7 +1345,7 @@ void Test_CFS_CORE_APP_UplinkRestart_ResetOnRecovery(void)
 
     CFS_CORE_APP_UpdateHealth(NowMs, true);
 
-    UtAssert_INT32_EQ(CFS_CORE_APP_Data.UplinkRestartCount,  0);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.UplinkRestartCount,  2);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.NextUplinkRestartMs, 0);
 }
 
@@ -1295,8 +1381,8 @@ void Test_CFS_CORE_APP_LoraRestart_FirstAttempt(void)
     UtAssert_STUB_COUNT(CFE_ES_RestartApp, 1);
 }
 
-/* 최대 재시도 초과 시 lora_tdm_app 더 이상 재시작 안 함 */
-void Test_CFS_CORE_APP_LoraRestart_MaxReached(void)
+/* BL-38(2026-07-23): 무한 재시도 — lora도 과거 시도 횟수와 무관하게 계속 발행 */
+void Test_CFS_CORE_APP_LoraRestart_InfiniteRetry(void)
 {
     uint32 NowMs = 10000;
 
@@ -1305,15 +1391,15 @@ void Test_CFS_CORE_APP_LoraRestart_MaxReached(void)
     CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs = NowMs;
     CFS_CORE_APP_Data.LoraAppState.Received   = true;
     CFS_CORE_APP_Data.LoraAppState.LastHkRxMs = 1000;
-    CFS_CORE_APP_Data.LoraRestartCount        = CFS_CORE_APP_LORA_MAX_RESTARTS;
+    CFS_CORE_APP_Data.LoraRestartCount        = 5;
     CFS_CORE_APP_Data.NextLoraRestartMs       = NowMs - 1U;
 
     UT_SetDefaultReturnValue(UT_KEY(CFE_ES_GetAppIDByName), CFE_SUCCESS);
 
     CFS_CORE_APP_UpdateHealth(NowMs, true);
 
-    UtAssert_STUB_COUNT(CFE_ES_RestartApp, 0);
-    UtAssert_INT32_EQ(CFS_CORE_APP_Data.LoraRestartCount, (int32)CFS_CORE_APP_LORA_MAX_RESTARTS);
+    UtAssert_STUB_COUNT(CFE_ES_RestartApp, 1);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.LoraRestartCount, 6);
 }
 
 /* GetAppIDByName 실패 시 lora_tdm_app 재시작 카운터 증가 없음 (Bridge/Uplink와 동일 패턴, 2026-07-20 보강) */
@@ -1339,8 +1425,8 @@ void Test_CFS_CORE_APP_LoraRestart_GetAppIdFail(void)
     UtAssert_STUB_COUNT(CFE_ES_RestartApp, 0);
 }
 
-/* lora_tdm_app 복구 시 재시작 카운터 리셋 (Bridge/Uplink와 동일 패턴, 2026-07-20 보강) */
-void Test_CFS_CORE_APP_LoraRestart_ResetOnRecovery(void)
+/* lora_tdm_app 복구 시 쿨다운 타이머만 리셋, 카운터는 보존 (Bridge/Uplink와 동일 패턴) */
+void Test_CFS_CORE_APP_LoraRestart_CooldownClearOnRecovery(void)
 {
     uint32 NowMs = 20000;
 
@@ -1369,7 +1455,7 @@ void Test_CFS_CORE_APP_LoraRestart_ResetOnRecovery(void)
 
     CFS_CORE_APP_UpdateHealth(NowMs, true);
 
-    UtAssert_INT32_EQ(CFS_CORE_APP_Data.LoraRestartCount,  0);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.LoraRestartCount,  2);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.NextLoraRestartMs, 0);
 }
 
@@ -2333,6 +2419,66 @@ void Test_CFS_CORE_APP_ProcessModeCommand_UnknownState(void)
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.CmdCounter, 1);
 }
 
+/* waypoint readback(2026-07-23, spec §4.3) */
+
+void Test_CFS_CORE_APP_ProcessDiagnosticCommand_RouteReadback(void)
+{
+    CFS_CORE_APP_DiagnosticCmdTlm_t Msg;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.DiagTarget     = CFS_CORE_APP_DIAG_TARGET_CFS_CORE;
+    Msg.DiagAction     = CFS_CORE_APP_DIAG_ACTION_ROUTE_READBACK_REQUEST;
+    Msg.SourceSequence = 42;
+    Msg.RequestToken   = 0xABCD;
+
+    memset(&CFS_CORE_APP_Data, 0, sizeof(CFS_CORE_APP_Data));
+    CFS_CORE_APP_Data.MissionRoute.WaypointCount = 3;
+    CFS_CORE_APP_Data.MissionRoute.Waypoints[0].X = 1.0f;
+    CFS_CORE_APP_Data.MissionRoute.Waypoints[1].Y = 2.0f;
+    CFS_CORE_APP_Data.MissionRoute.Waypoints[2].Z = 3.0f;
+
+    CFS_CORE_APP_ProcessDiagnosticCommand(&Msg);
+
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.CmdCounter, 1);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.RouteSnapshotTlm.WaypointCount, 3);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.RouteSnapshotTlm.RouteType,
+                      (int32)CFS_CORE_APP_ROUTE_SEGMENT_MISSION_EXTENSION);
+    UtAssert_True(CFS_CORE_APP_Data.RouteSnapshotTlm.Waypoints[0].X == 1.0f, "waypoint 0 X 복사됨");
+    UtAssert_True(CFS_CORE_APP_Data.RouteSnapshotTlm.Waypoints[2].Z == 3.0f, "waypoint 2 Z 복사됨");
+}
+
+/* DiagTarget이 자기(cfs_core) 대상이 아니면(lora_tdm 대상 등) 조용히 무시 */
+void Test_CFS_CORE_APP_ProcessDiagnosticCommand_TargetNotSelf_Ignored(void)
+{
+    CFS_CORE_APP_DiagnosticCmdTlm_t Msg;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.DiagTarget = CFS_CORE_APP_DIAG_TARGET_LORA_TDM;
+    Msg.DiagAction = CFS_CORE_APP_DIAG_ACTION_ROUTE_READBACK_REQUEST;
+
+    memset(&CFS_CORE_APP_Data, 0, sizeof(CFS_CORE_APP_Data));
+
+    CFS_CORE_APP_ProcessDiagnosticCommand(&Msg);
+
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.CmdCounter, 0);
+}
+
+/* 대상은 맞지만 미지원 DiagAction이면 에러 이벤트만, 카운터 불변 */
+void Test_CFS_CORE_APP_ProcessDiagnosticCommand_UnknownAction(void)
+{
+    CFS_CORE_APP_DiagnosticCmdTlm_t Msg;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.DiagTarget = CFS_CORE_APP_DIAG_TARGET_CFS_CORE;
+    Msg.DiagAction = 0xFFU;
+
+    memset(&CFS_CORE_APP_Data, 0, sizeof(CFS_CORE_APP_Data));
+
+    CFS_CORE_APP_ProcessDiagnosticCommand(&Msg);
+
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.CmdCounter, 0);
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(CFS_CORE_APP_ReportHousekeeping);
@@ -2364,15 +2510,17 @@ void UtTest_Setup(void)
     ADD_TEST(CFS_CORE_APP_SaveState_OnTransition);
     ADD_TEST(CFS_CORE_APP_BridgeRestart_FirstAttempt);
     ADD_TEST(CFS_CORE_APP_BridgeRestart_GetAppIdFail);
-    ADD_TEST(CFS_CORE_APP_BridgeRestart_MaxReached);
-    ADD_TEST(CFS_CORE_APP_BridgeRestart_ResetOnRecovery);
+    ADD_TEST(CFS_CORE_APP_BridgeRestart_InfiniteRetry);
+    ADD_TEST(CFS_CORE_APP_BridgeRestart_CooldownClearOnRecovery);
+    ADD_TEST(CFS_CORE_APP_UplinkRestart_DuringEkfFault);
+    ADD_TEST(CFS_CORE_APP_CheckAppRestarts_OnePerCyclePriority);
     ADD_TEST(CFS_CORE_APP_UplinkRestart_FirstAttempt);
-    ADD_TEST(CFS_CORE_APP_UplinkRestart_MaxReached);
-    ADD_TEST(CFS_CORE_APP_UplinkRestart_ResetOnRecovery);
+    ADD_TEST(CFS_CORE_APP_UplinkRestart_InfiniteRetry);
+    ADD_TEST(CFS_CORE_APP_UplinkRestart_CooldownClearOnRecovery);
     ADD_TEST(CFS_CORE_APP_LoraRestart_FirstAttempt);
-    ADD_TEST(CFS_CORE_APP_LoraRestart_MaxReached);
+    ADD_TEST(CFS_CORE_APP_LoraRestart_InfiniteRetry);
     ADD_TEST(CFS_CORE_APP_LoraRestart_GetAppIdFail);
-    ADD_TEST(CFS_CORE_APP_LoraRestart_ResetOnRecovery);
+    ADD_TEST(CFS_CORE_APP_LoraRestart_CooldownClearOnRecovery);
     ADD_TEST(CFS_CORE_APP_UpdateHealth_GPS_Timeout);
     ADD_TEST(CFS_CORE_APP_UpdateHealth_RecoveryToNominal);
     ADD_TEST(CFS_CORE_APP_TimestampCheck_GPS_Rejected);
@@ -2420,4 +2568,7 @@ void UtTest_Setup(void)
     ADD_TEST(CFS_CORE_APP_ProcessModeCommand_ExitRecovery);
     ADD_TEST(CFS_CORE_APP_ProcessModeCommand_InvalidTransition);
     ADD_TEST(CFS_CORE_APP_ProcessModeCommand_UnknownState);
+    ADD_TEST(CFS_CORE_APP_ProcessDiagnosticCommand_RouteReadback);
+    ADD_TEST(CFS_CORE_APP_ProcessDiagnosticCommand_TargetNotSelf_Ignored);
+    ADD_TEST(CFS_CORE_APP_ProcessDiagnosticCommand_UnknownAction);
 }

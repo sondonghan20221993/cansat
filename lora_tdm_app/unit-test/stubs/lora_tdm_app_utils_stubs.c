@@ -89,3 +89,9 @@ void LORA_TDM_APP_ProcessDiagnosticCommand(CFE_SB_Buffer_t *SBBufPtr)
     UT_GenStub_AddParam(LORA_TDM_APP_ProcessDiagnosticCommand, CFE_SB_Buffer_t *, SBBufPtr);
     UT_GenStub_Execute(LORA_TDM_APP_ProcessDiagnosticCommand, Basic, NULL);
 }
+
+void LORA_TDM_APP_ProcessRouteSnapshot(const LORA_TDM_APP_RouteSnapshotTlm_t *Msg)
+{
+    UT_GenStub_AddParam(LORA_TDM_APP_ProcessRouteSnapshot, const LORA_TDM_APP_RouteSnapshotTlm_t *, Msg);
+    UT_GenStub_Execute(LORA_TDM_APP_ProcessRouteSnapshot, Basic, NULL);
+}

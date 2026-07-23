@@ -142,6 +142,15 @@ static void PutU64LE(uint8 *P, uint64 V)
     PutU32LE(&P[4], (uint32)((V >> 32) & 0xFFFFFFFFu));
 }
 
+/* waypoint readback(2026-07-23): IEEE754 float를 비트 패턴 그대로 LE 4바이트로 —
+ * memcpy로 strict-aliasing 위반 없이 비트 추출 후 기존 PutU32LE로 바이트 순서 고정 */
+static void PutFloatLE(uint8 *P, float V)
+{
+    uint32 Bits;
+    memcpy(&Bits, &V, sizeof(Bits));
+    PutU32LE(P, Bits);
+}
+
 /* rad -> i16(rad*1e4), 범위 방어적 clamp (스펙상 각도 saturation 플래그는 정의 안 함) */
 static int16 ScaleRadToI16(float Rad)
 {
@@ -185,7 +194,9 @@ int LORA_TDM_APP_BuildDl2Frame(uint8 *Buf, size_t BufLen, const LORA_TDM_APP_Dat
     uint8  Flags = 0;
     bool   Saturated = false;
     bool   IncludeSysTime;
+    bool   IncludeWaypoints;
     uint8  TailOffset;
+    uint8  WaypointOffset;
     uint8  BodyLen;
     uint16 Crc;
 
@@ -202,7 +213,16 @@ int LORA_TDM_APP_BuildDl2Frame(uint8 *Buf, size_t BufLen, const LORA_TDM_APP_Dat
     /* BL-03: 꼬리 필드(uplink_last_seq/boot_count)는 SysTime 블록(있으면) 뒤,
      * CRC 앞에 항상 붙는다 — "기존 끝에 추가" 결정. */
     TailOffset = (uint8)(LORA_TDM_APP_DL2_BASE_LEN + (IncludeSysTime ? LORA_TDM_APP_DL2_SYSTIME_BLOCK_LEN : 0U));
-    BodyLen    = (uint8)(TailOffset + LORA_TDM_APP_DL2_TAIL_LEN);
+
+    /* waypoint readback(2026-07-23, spec §4.3): 꼬리 필드 뒤·CRC 앞에 페이지
+     * 블록 첨부 — SysTime과 독립적으로 동시 첨부 가능 (버퍼 부족 시 생략) */
+    IncludeWaypoints = (AppData->RouteReadbackPending != 0U);
+    WaypointOffset   = (uint8)(TailOffset + LORA_TDM_APP_DL2_TAIL_LEN);
+    if (IncludeWaypoints && BufLen < (size_t)(WaypointOffset + LORA_TDM_APP_DL2_WAYPOINT_BLOCK_LEN + 2U))
+    {
+        IncludeWaypoints = false;
+    }
+    BodyLen = (uint8)(WaypointOffset + (IncludeWaypoints ? LORA_TDM_APP_DL2_WAYPOINT_BLOCK_LEN : 0U));
 
     Buf[0] = (uint8)LORA_TDM_APP_DL2_MAGIC;
     Buf[1] = BodyLen;
@@ -241,8 +261,30 @@ int LORA_TDM_APP_BuildDl2Frame(uint8 *Buf, size_t BufLen, const LORA_TDM_APP_Dat
     PutU16LE(&Buf[TailOffset], AppData->UplinkLastAcceptedSequence);
     Buf[TailOffset + 2] = AppData->UplinkBootCount;
 
+    if (IncludeWaypoints)
+    {
+        uint8 PageIndex  = AppData->RoutePageIndex;
+        uint8 StartIdx   = (uint8)(PageIndex * LORA_TDM_APP_DL2_WAYPOINTS_PER_PAGE);
+        uint8 Remaining  = (uint8)(AppData->RouteWaypointCount - StartIdx);
+        uint8 InPage     = (Remaining < LORA_TDM_APP_DL2_WAYPOINTS_PER_PAGE) ?
+                            Remaining : (uint8)LORA_TDM_APP_DL2_WAYPOINTS_PER_PAGE;
+
+        Buf[WaypointOffset]     = AppData->RouteType;
+        Buf[WaypointOffset + 1] = PageIndex;
+        Buf[WaypointOffset + 2] = AppData->RouteTotalPages;
+        Buf[WaypointOffset + 3] = InPage;
+
+        PutFloatLE(&Buf[WaypointOffset + 4],  (InPage >= 1U) ? AppData->RouteWaypoints[StartIdx].X : 0.0f);
+        PutFloatLE(&Buf[WaypointOffset + 8],  (InPage >= 1U) ? AppData->RouteWaypoints[StartIdx].Y : 0.0f);
+        PutFloatLE(&Buf[WaypointOffset + 12], (InPage >= 1U) ? AppData->RouteWaypoints[StartIdx].Z : 0.0f);
+        PutFloatLE(&Buf[WaypointOffset + 16], (InPage >= 2U) ? AppData->RouteWaypoints[StartIdx + 1U].X : 0.0f);
+        PutFloatLE(&Buf[WaypointOffset + 20], (InPage >= 2U) ? AppData->RouteWaypoints[StartIdx + 1U].Y : 0.0f);
+        PutFloatLE(&Buf[WaypointOffset + 24], (InPage >= 2U) ? AppData->RouteWaypoints[StartIdx + 1U].Z : 0.0f);
+    }
+
     Flags |= Saturated ? 0x02u : 0x00u;
-    Flags |= IncludeSysTime ? (uint8)LORA_TDM_APP_DL2_FLAG_SYSTIME : 0x00u;
+    Flags |= IncludeSysTime  ? (uint8)LORA_TDM_APP_DL2_FLAG_SYSTIME  : 0x00u;
+    Flags |= IncludeWaypoints ? (uint8)LORA_TDM_APP_DL2_FLAG_WAYPOINT : 0x00u;
     Buf[4] = Flags;
 
     Crc = LORA_TDM_APP_Crc16(Buf, BodyLen);
@@ -885,6 +927,13 @@ void LORA_TDM_APP_ProcessDiagnosticCommand(CFE_SB_Buffer_t *SBBufPtr)
 {
     const LORA_TDM_APP_DiagnosticCmdTlm_t *Msg = (const LORA_TDM_APP_DiagnosticCmdTlm_t *)SBBufPtr;
 
+    /* waypoint readback(2026-07-23): DIAGNOSTIC_CMD_MID을 cfs_core_app과
+     * 공동구독하게 되며 DiagTarget으로 대상 구분 — 자기 것 아니면 조용히 무시 */
+    if (Msg->DiagTarget != LORA_TDM_APP_DIAG_TARGET_LORA_TDM)
+    {
+        return;
+    }
+
     LORA_TDM_APP_Data.CmdCounter++;
 
     switch (Msg->DiagAction)
@@ -922,4 +971,30 @@ void LORA_TDM_APP_ProcessDiagnosticCommand(CFE_SB_Buffer_t *SBBufPtr)
                               (unsigned int)Msg->DiagAction, (unsigned int)Msg->SourceSequence);
             break;
     }
+}
+
+/* waypoint readback(2026-07-23, spec §4.3): cfs_core_app이 ROUTE_SNAPSHOT_MID로
+ * 발행한 mission route를 로컬 캐시에 저장하고 페이징 상태 초기화.
+ * 실제 첨부는 BuildDl2Frame()이 매 사이클 RouteReadbackPending을 보고 수행. */
+void LORA_TDM_APP_ProcessRouteSnapshot(const LORA_TDM_APP_RouteSnapshotTlm_t *Msg)
+{
+    uint8 Count = Msg->WaypointCount;
+
+    if (Count > ROUTE_MAX_WAYPOINTS)
+    {
+        Count = ROUTE_MAX_WAYPOINTS;
+    }
+
+    LORA_TDM_APP_Data.RouteType           = Msg->RouteType;
+    LORA_TDM_APP_Data.RouteWaypointCount  = Count;
+    memcpy(LORA_TDM_APP_Data.RouteWaypoints, Msg->Waypoints, sizeof(ROUTE_WAYPOINT_t) * Count);
+
+    LORA_TDM_APP_Data.RoutePageIndex  = 0;
+    LORA_TDM_APP_Data.RouteTotalPages = (Count == 0U) ? 0U :
+        (uint8)((Count + LORA_TDM_APP_DL2_WAYPOINTS_PER_PAGE - 1U) / LORA_TDM_APP_DL2_WAYPOINTS_PER_PAGE);
+    LORA_TDM_APP_Data.RouteReadbackPending = (LORA_TDM_APP_Data.RouteTotalPages > 0U) ? 1U : 0U;
+
+    CFE_EVS_SendEvent(LORA_TDM_APP_ROUTE_SNAPSHOT_EID, CFE_EVS_EventType_INFORMATION,
+                      "LORA_TDM_APP: route snapshot received wp_count=%u total_pages=%u",
+                      (unsigned int)Count, (unsigned int)LORA_TDM_APP_Data.RouteTotalPages);
 }

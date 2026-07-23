@@ -637,11 +637,15 @@ void UPLINK_APP_SaveState(void)
     Fd = open(TmpPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (Fd < 0)
     {
+        CFE_EVS_SendEvent(UPLINK_APP_STATE_SAVE_FAIL_EID, CFE_EVS_EventType_ERROR,
+                          "UPLINK_APP: state save open failed path=%s errno=%d", TmpPath, errno);
         return;
     }
 
     if (write(Fd, &State, sizeof(State)) != (ssize_t)sizeof(State))
     {
+        CFE_EVS_SendEvent(UPLINK_APP_STATE_SAVE_FAIL_EID, CFE_EVS_EventType_ERROR,
+                          "UPLINK_APP: state save write failed path=%s errno=%d", TmpPath, errno);
         close(Fd);
         return;
     }
@@ -654,6 +658,8 @@ void UPLINK_APP_SaveState(void)
 
     if (rename(TmpPath, StatePath) != 0)
     {
+        CFE_EVS_SendEvent(UPLINK_APP_STATE_SAVE_FAIL_EID, CFE_EVS_EventType_ERROR,
+                          "UPLINK_APP: state save rename failed path=%s errno=%d", StatePath, errno);
         return;
     }
 

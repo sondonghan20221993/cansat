@@ -94,6 +94,10 @@ void LORA_TDM_APP_ProcessCommandPacket(CFE_SB_Buffer_t *SBBufPtr)
     {
         LORA_TDM_APP_ProcessDiagnosticCommand(SBBufPtr);
     }
+    else if (CFE_SB_MsgId_Equal(MsgId, CFE_SB_ValueToMsgId(LORA_TDM_APP_ROUTE_SNAPSHOT_MID_VALUE)))
+    {
+        LORA_TDM_APP_ProcessRouteSnapshot((const LORA_TDM_APP_RouteSnapshotTlm_t *)SBBufPtr);
+    }
     else if (CFE_SB_MsgId_Equal(MsgId, CFE_SB_ValueToMsgId(LORA_TDM_APP_CONFIG_CMD_MID_VALUE)))
     {
         LORA_TDM_APP_ProcessConfigCommand((const LORA_TDM_APP_ConfigCmdTlm_t *)SBBufPtr);

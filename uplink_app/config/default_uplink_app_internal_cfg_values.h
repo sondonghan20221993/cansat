@@ -7,7 +7,12 @@
 #define UPLINK_APP_PROTOTYPE_PERIOD_MS  1000
 #define UPLINK_APP_PROTOCOL_VERSION     1
 #define UPLINK_APP_MAX_PAYLOAD_LENGTH   196
-#define UPLINK_APP_STATE_FILE_PATH      "/cf/uplink_app_state.bin"
+/* BL-39(2026-07-23): 절대경로 "/cf/..."는 raw POSIX open()에서 OSAL 가상
+ * 경로 매핑을 거치지 않아 Pi 실파일시스템에 없는 "/cf"를 그대로 찾다
+ * ENOENT로 실패했다(SaveState 무동작, 실측 확인). 상대경로로 바꿔
+ * cfs.service의 WorkingDirectory(~/cFS_clean/build/exe/cpu1) 기준
+ * cf/ — EEPROM.DAT 등이 이미 쓰는 실제 경로와 일치시킨다. */
+#define UPLINK_APP_STATE_FILE_PATH      "cf/uplink_app_state.bin"
 
 #define UPLINK_APP_VIEWPOINT_VERSION    1
 #define UPLINK_APP_VIEWPOINT_MAX_TYPE   2   /* 0=absolute 1=relative 2=track */

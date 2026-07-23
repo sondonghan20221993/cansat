@@ -471,9 +471,44 @@ cFS는 고정된 재시도, 다시 시작 또는 재부팅 타이밍 값을 정�
 > 죽어도 EKF 분기에서 체인이 끝나 재시작 분기에 도달 불가 — 심지어 EKF
 > 분기가 `UplinkRestartCount=0` 리셋까지 수행. 실기 재현: uplink_app
 > STOP 후 자동 재시작 미발동, `Msg Limit Err(0x1904, UPLINK_CMD)` 지속.
-> **수정 방향(합의됨, 미구현)**: 앱 생존 감시·재시작 시도를 fault
-> 우선순위 체인에서 분리해 각 `*TimedOut` 플래그 기준으로 독립 실행
-> (HealthState/FaultCode 보고는 기존 우선순위 유지). — A안, 2026-07-22.
+> **수정 설계 확정 (2026-07-23 합의, 미구현)** — A안(분리):
+>
+> 1. **구조**: 재시작 로직을 `PublishSystemHealth()`에서 제거하고 별도
+>    함수 `CheckAppRestarts()`로 분리, 매 사이클 독립 호출.
+>    `PublishSystemHealth()`의 else-if 체인은 **FaultCode/HealthState
+>    보고 전용**으로 순수화(기존 우선순위 의미 불변). 타임아웃 플래그
+>    계산은 1회 수행 후 두 함수가 공유.
+> 2. **사이클당 재시작 1건 제한**: Bridge/Uplink/Lora 타임아웃을 각각
+>    독립 검사하되 발행은 사이클당 1건, 고정 우선순위
+>    `bridge > uplink > lora`. 스킵된 앱은 다음 사이클에 차례가 오며,
+>    발행한 앱만 쿨다운에 들어가므로 기아(starvation) 없음
+>    (사이클 1초 ≪ 쿨다운 5초 전제).
+> 3. **무한 재시도, 포기 없음**: `*_MAX_RESTARTS` 한도 제거. 근거 —
+>    운용 시간이 짧아(≤5분) 소진 후 방치가 실질적 기능 상실이고, 특히
+>    uplink_app은 지상 RESTART 명령 경로 자체가 uplink 경유라 자동
+>    재시도가 유일한 복구 수단. 고정 쿨다운 5초
+>    (`*_RESTART_INTERVAL_MS`)가 빈도 상한(지수 백오프는 짧은 운용
+>    시간에 복구만 늦춰 기각, 우선순위 스왑/타이브레이크는 복잡도 대비
+>    이득 없어 기각).
+> 4. **재시도 횟수는 HK 카운터로 노출만**(관측용, 제한 아님). EKF 등
+>    무관 fault 분기가 타 앱 재시작 카운터를 리셋하던 버그는 분리로
+>    자연 소멸.
+> 5. **병행책 ⓑ (확정, 2026-07-23 정정)**: `mission_defs/cpu1_cfe_es_startup.scr`
+>    8번째 필드(Exception Action)의 실제 cFE 정의를 재확인한 결과
+>    `0 = 앱만 재시작`, `Non-Zero = 프로세서 전체 리셋`으로, **당초
+>    대화 중 "0=프로세서 리셋"이라 설명한 것은 오류였다** — 정반대.
+>    4개 앱 전부 이미 `0`으로 설정되어 있어 **크래시 시 앱만 재시작이
+>    이미 적용 중** — startup.scr 수정 불필요, 코드 변경 없음.
+>    소프트 장애(hang/STOP/HK 중단)는 cfs_core의 HK 타임아웃 감시가
+>    담당 — 상호 사각 보완 관계는 그대로 유효. **cfs_core_app 자체도
+>    이미 `0`**(감시자 크래시 시에도 ES가 자동으로 cfs_core만 재시작).
+>    한계: cfs_core 자신의 hang은 양쪽 다 못 잡음(기존 표의 ⚪ 외부
+>    감시 영역, systemd watchdog은 별도 논점).
+> 6. **FaultCode 보고 불변 (확정)**: HK `FaultCode`는 기존 우선순위
+>    체인의 "최상위 1개" 의미 유지. 동시 다발 fault는 이미 HK의 개별
+>    상태 필드(`UplinkStatus.TimedOut` 등)로 지상에서 관측 가능하므로
+>    비트마스크 전환(다운링크 프로토콜·지상 디코더 연쇄 수정)은 불필요
+>    — 기각.
 
 재시도 횟수는 대상이 유효한 상태로 유지된 후에만 재설정됩니다.
 구성된 안정 기간에 대한 명목 상태.
@@ -681,11 +716,28 @@ window 기반 제한과 카운터 재설정의 상호작용 규칙:
 ### 12.1 `uplink_app` 영속 상태 구현 (2026-07-22, BL-17/BL-18 — spec에 구체 수치 없어 신규 기록)
 
 `UPLINK_APP_LoadState()`/`SaveState()`(`uplink_app_utils.c`)가 위 일반 원칙을
-`/cf/uplink_app_state.bin`(경로는 `UPLINK_APP_STATE_FILE_PATH`, 테스트 환경에서
+`cf/uplink_app_state.bin`(경로는 `UPLINK_APP_STATE_FILE_PATH`, 테스트 환경에서
 `UPLINK_APP_STATE_FILE_PATH` env var로 주입 가능 — BL-17 커버리지 갭 해소 시
 lora_tdm_app/mavlink_bridge_app의 시리얼 경로 주입과 동일 패턴 적용)에
 구체적으로 구현한다. 이 절의 수치/EID는 spec 원문에 없던 것을 구현 시
 확정해 기록한 것이다.
+
+> 🔴→✅ **BL-39 (2026-07-22 발견, 2026-07-23 수정)**: 원래 경로가
+> 절대경로 `/cf/uplink_app_state.bin`이었으나, raw POSIX `open()`은
+> cFE OSAL의 가상 경로 매핑을 거치지 않아 Pi 실파일시스템에 없는
+> `/cf`를 그대로 찾다 `ENOENT`로 실패 — **영속화가 실기에서 한 번도
+> 동작한 적 없었음**(BL-12/BL-03 실질 무효, Pi 재연결 직접 확인:
+> `/cf` 부재, `cfs.service`는 `User=root`라 권한 문제 아님).
+> `cfs_core_app_state.bin`(`CFS_CORE_APP_STATE_FILE_PATH`,
+> `cfs_core_app_utils.c`의 `SaveState()`/`LoadState()`, health 전이
+> 시 저장 — 이 spec엔 별도 절 없이 §11.1 재시작 로직과 같은 파일에
+> 구현됨)도 동일 절대경로 패턴이라 동일 결함, 동일 수정 적용.
+> **수정**: 상대경로 `cf/...`로 변경 — `cfs.service`의
+> `WorkingDirectory=~/cFS_clean/build/exe/cpu1` 기준 `cf/`가
+> `EEPROM.DAT` 등이 이미 쓰는 실경로와 일치. SaveState의 open/write/
+> rename 3개 실패 지점 전부에 `UPLINK_APP_STATE_SAVE_FAIL_EID`(10)
+> ERROR 이벤트(errno 포함) 추가 — 종전엔 실패해도 침묵이라 발견이
+> 늦어졌음. Pi 재검증(부팅 카운트 실측 증가 확인)은 최종 검증 때 일괄.
 
 **레코드 구조** (16바이트, 전부 `uint32`): `Magic`(`0x55504C4BU`="UPLK") /
 `LastAcceptedSequence` / `BootCount` / `Checksum`(`Magic+LastAcceptedSequence+BootCount`

@@ -45,10 +45,17 @@ typedef enum
 
 typedef enum
 {
-    CFS_CORE_APP_DIAG_ACTION_LOG_LEVEL     = 0,
-    CFS_CORE_APP_DIAG_ACTION_LINK_STATUS   = 1,
-    CFS_CORE_APP_DIAG_ACTION_CAPTURE_TOGGLE = 2
+    CFS_CORE_APP_DIAG_ACTION_LOG_LEVEL          = 0,
+    CFS_CORE_APP_DIAG_ACTION_LINK_STATUS        = 1,
+    CFS_CORE_APP_DIAG_ACTION_CAPTURE_TOGGLE     = 2,
+    CFS_CORE_APP_DIAG_ACTION_ROUTE_READBACK_REQUEST = 3 /* waypoint readback(2026-07-23) */
 } CFS_CORE_APP_DiagAction_t;
+
+/* DIAGNOSTIC_CMD_TLM_t.DiagTarget 값 — lora_tdm_app 단독 구독이던 시절엔
+ * 미사용이었고, cfs_core_app이 구독 대상에 추가되며 도입(2026-07-23).
+ * lora_tdm_app/config에도 동일 값으로 독립 재선언(공유 헤더 없음 관례). */
+#define CFS_CORE_APP_DIAG_TARGET_LORA_TDM  0U /* 하위호환 기본값 */
+#define CFS_CORE_APP_DIAG_TARGET_CFS_CORE  1U
 
 typedef enum
 {

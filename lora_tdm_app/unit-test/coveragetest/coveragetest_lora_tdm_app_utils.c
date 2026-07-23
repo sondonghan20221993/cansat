@@ -601,7 +601,10 @@ void Test_BuildDl2Frame_SysTimeIncluded(void)
 
     Len = LORA_TDM_APP_BuildDl2Frame(Buf, sizeof(Buf), &LORA_TDM_APP_Data);
 
-    UtAssert_INT32_EQ(Len, (int)LORA_TDM_APP_DL2_MAX_FRAME_LEN);
+    /* waypoint readback(2026-07-23): RouteReadbackPending=0(memset)이라
+     * waypoint 블록은 미첨부 — DL2_MAX_FRAME_LEN은 이제 SysTime+waypoint
+     * 둘 다 포함한 진짜 최대값이라 이 케이스(SysTime만)의 기대 길이는 별도 계산 */
+    UtAssert_INT32_EQ(Len, (int)(LORA_TDM_APP_DL2_FRAME_LEN + LORA_TDM_APP_DL2_SYSTIME_BLOCK_LEN));
     UtAssert_INT32_EQ(Buf[1], (int)(LORA_TDM_APP_DL2_LEN_FIELD + LORA_TDM_APP_DL2_SYSTIME_BLOCK_LEN));
     UtAssert_True((Buf[4] & LORA_TDM_APP_DL2_FLAG_SYSTIME) != 0, "flags bit0 set");
 
@@ -652,6 +655,109 @@ void Test_BuildDl2Frame_SysTimeValid_BufferOnlyBaseSize_Fallback(void)
     UtAssert_INT32_EQ(Len, (int)LORA_TDM_APP_DL2_FRAME_LEN);
     UtAssert_INT32_EQ(Buf[1], (int)LORA_TDM_APP_DL2_LEN_FIELD);
     UtAssert_True((Buf[4] & LORA_TDM_APP_DL2_FLAG_SYSTIME) == 0, "buffer 부족 시 SysTime 생략");
+}
+
+/* ---- waypoint readback(2026-07-23, spec §4.3) ---- */
+
+/* RouteReadbackPending=1이면 flags bit2 세우고 꼬리 필드 뒤에 28B 페이지 블록 첨부 */
+void Test_BuildDl2Frame_WaypointPageIncluded(void)
+{
+    uint8  Buf[LORA_TDM_APP_DL2_MAX_FRAME_LEN];
+    int    Len;
+    uint8  Offset;
+
+    memset(&LORA_TDM_APP_Data, 0, sizeof(LORA_TDM_APP_Data));
+    LORA_TDM_APP_Data.RouteReadbackPending = 1;
+    LORA_TDM_APP_Data.RouteType            = 1;
+    LORA_TDM_APP_Data.RouteWaypointCount   = 3;
+    LORA_TDM_APP_Data.RouteTotalPages      = 2;
+    LORA_TDM_APP_Data.RoutePageIndex       = 0;
+    LORA_TDM_APP_Data.RouteWaypoints[0].X  = 1.5f;
+    LORA_TDM_APP_Data.RouteWaypoints[0].Y  = 2.5f;
+    LORA_TDM_APP_Data.RouteWaypoints[0].Z  = 3.5f;
+    LORA_TDM_APP_Data.RouteWaypoints[1].X  = 4.5f;
+    LORA_TDM_APP_Data.RouteWaypoints[1].Y  = 5.5f;
+    LORA_TDM_APP_Data.RouteWaypoints[1].Z  = 6.5f;
+
+    Len = LORA_TDM_APP_BuildDl2Frame(Buf, sizeof(Buf), &LORA_TDM_APP_Data);
+
+    UtAssert_INT32_EQ(Len, (int)(LORA_TDM_APP_DL2_FRAME_LEN + LORA_TDM_APP_DL2_WAYPOINT_BLOCK_LEN));
+    UtAssert_True((Buf[4] & LORA_TDM_APP_DL2_FLAG_WAYPOINT) != 0, "flags bit2 set");
+
+    Offset = LORA_TDM_APP_DL2_BASE_LEN + LORA_TDM_APP_DL2_TAIL_LEN;
+    UtAssert_INT32_EQ(Buf[Offset], 1);      /* route_type */
+    UtAssert_INT32_EQ(Buf[Offset + 1], 0);  /* page_index */
+    UtAssert_INT32_EQ(Buf[Offset + 2], 2);  /* total_pages */
+    UtAssert_INT32_EQ(Buf[Offset + 3], 2);  /* waypoints_in_page (풀 페이지) */
+}
+
+/* 마지막 페이지가 홀수개일 때 waypoints_in_page=1, 두번째 슬롯은 0 패딩 */
+void Test_BuildDl2Frame_WaypointPageLastOdd(void)
+{
+    uint8 Buf[LORA_TDM_APP_DL2_MAX_FRAME_LEN];
+    int   Len;
+    uint8 Offset;
+
+    memset(&LORA_TDM_APP_Data, 0, sizeof(LORA_TDM_APP_Data));
+    LORA_TDM_APP_Data.RouteReadbackPending = 1;
+    LORA_TDM_APP_Data.RouteWaypointCount   = 3;
+    LORA_TDM_APP_Data.RouteTotalPages      = 2;
+    LORA_TDM_APP_Data.RoutePageIndex       = 1; /* 마지막 페이지, waypoint[2] 하나만 */
+    LORA_TDM_APP_Data.RouteWaypoints[2].X  = 9.0f;
+
+    Len = LORA_TDM_APP_BuildDl2Frame(Buf, sizeof(Buf), &LORA_TDM_APP_Data);
+    UtAssert_True(Len > 0, "빌드 성공");
+
+    Offset = LORA_TDM_APP_DL2_BASE_LEN + LORA_TDM_APP_DL2_TAIL_LEN;
+    UtAssert_INT32_EQ(Buf[Offset + 1], 1);  /* page_index */
+    UtAssert_INT32_EQ(Buf[Offset + 3], 1);  /* waypoints_in_page — 마지막 홀수 */
+}
+
+/* RouteReadbackPending=0(기본)이면 flags bit2 미설정, 블록 미첨부 — 회귀 확인 */
+void Test_BuildDl2Frame_NoWaypointPending_Excluded(void)
+{
+    uint8 Buf[LORA_TDM_APP_DL2_MAX_FRAME_LEN];
+    int   Len;
+
+    memset(&LORA_TDM_APP_Data, 0, sizeof(LORA_TDM_APP_Data));
+
+    Len = LORA_TDM_APP_BuildDl2Frame(Buf, sizeof(Buf), &LORA_TDM_APP_Data);
+
+    UtAssert_INT32_EQ(Len, (int)LORA_TDM_APP_DL2_FRAME_LEN);
+    UtAssert_True((Buf[4] & LORA_TDM_APP_DL2_FLAG_WAYPOINT) == 0, "flags bit2 not set");
+}
+
+/* ProcessRouteSnapshot: 16개 waypoint 수신 → 8페이지 산정, pending=1 */
+void Test_ProcessRouteSnapshot_FullMission(void)
+{
+    LORA_TDM_APP_RouteSnapshotTlm_t Msg;
+
+    memset(&LORA_TDM_APP_Data, 0, sizeof(LORA_TDM_APP_Data));
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.RouteType     = 1;
+    Msg.WaypointCount = 16;
+
+    LORA_TDM_APP_ProcessRouteSnapshot(&Msg);
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.RouteWaypointCount, 16);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.RouteTotalPages, 8);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.RoutePageIndex, 0);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.RouteReadbackPending, 1);
+}
+
+/* ProcessRouteSnapshot: waypoint 0개(빈 route) → pending=0(무한 대기 방지) */
+void Test_ProcessRouteSnapshot_Empty(void)
+{
+    LORA_TDM_APP_RouteSnapshotTlm_t Msg;
+
+    memset(&LORA_TDM_APP_Data, 0, sizeof(LORA_TDM_APP_Data));
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.WaypointCount = 0;
+
+    LORA_TDM_APP_ProcessRouteSnapshot(&Msg);
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.RouteTotalPages, 0);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.RouteReadbackPending, 0);
 }
 
 /* ---- UpdateCacheFromMsg: FC_SYS_TIME_MID ---- */
@@ -1041,6 +1147,21 @@ void Test_ProcessDiagnosticCommand_UnknownAction(void)
     UtAssert_INT32_EQ(LORA_TDM_APP_Data.CmdCounter, 1);
 }
 
+/* waypoint readback(2026-07-23): DiagTarget=CFS_CORE(다른 앱 대상)면 조용히 무시,
+ * CmdCounter 불변 — DiagTarget 필터 회귀 확인 */
+void Test_ProcessDiagnosticCommand_TargetNotSelf_Ignored(void)
+{
+    LORA_TDM_APP_DiagnosticCmdTlm_t Msg;
+
+    BuildDiagnosticMsg(&Msg, LORA_TDM_APP_DIAG_ACTION_LINK_STATUS);
+    Msg.DiagTarget = LORA_TDM_APP_DIAG_TARGET_CFS_CORE;
+    LORA_TDM_APP_Data.CmdCounter = 0;
+
+    LORA_TDM_APP_ProcessDiagnosticCommand((CFE_SB_Buffer_t *)&Msg);
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.CmdCounter, 0);
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(Crc16_KnownVector);
@@ -1050,6 +1171,11 @@ void UtTest_Setup(void)
     ADD_TEST(BuildDl2Frame_SysTimeIncluded);
     ADD_TEST(BuildDl2Frame_SysTimeNotValid_Excluded);
     ADD_TEST(BuildDl2Frame_SysTimeValid_BufferOnlyBaseSize_Fallback);
+    ADD_TEST(BuildDl2Frame_WaypointPageIncluded);
+    ADD_TEST(BuildDl2Frame_WaypointPageLastOdd);
+    ADD_TEST(BuildDl2Frame_NoWaypointPending_Excluded);
+    ADD_TEST(ProcessRouteSnapshot_FullMission);
+    ADD_TEST(ProcessRouteSnapshot_Empty);
     ADD_TEST(UpdateCacheFromMsg_SysTime);
     ADD_TEST(ParseAck2Frame_Valid);
     ADD_TEST(ParseAck2Frame_WrongMagic);
@@ -1098,4 +1224,5 @@ void UtTest_Setup(void)
     ADD_TEST(ProcessDiagnosticCommand_RxStats);
     ADD_TEST(ProcessDiagnosticCommand_TxStats);
     ADD_TEST(ProcessDiagnosticCommand_UnknownAction);
+    ADD_TEST(ProcessDiagnosticCommand_TargetNotSelf_Ignored);
 }

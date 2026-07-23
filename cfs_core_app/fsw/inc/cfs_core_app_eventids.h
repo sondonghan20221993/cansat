@@ -17,6 +17,8 @@
 #define CFS_CORE_APP_MODE_CMD_EID         14
 #define CFS_CORE_APP_UPLINK_RESTART_EID   15
 #define CFS_CORE_APP_LORA_RESTART_EID     16
+#define CFS_CORE_APP_STATE_SAVE_FAIL_EID  17 /* BL-39(2026-07-23): SaveState 실패 */
+#define CFS_CORE_APP_ROUTE_READBACK_EID   18 /* waypoint readback(2026-07-23) */
 
 #endif
 
