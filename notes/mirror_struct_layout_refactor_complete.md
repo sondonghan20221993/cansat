@@ -351,7 +351,7 @@ typedef FC_GPS_RAW_TLM_t    MAVLINK_BRIDGE_APP_GpsRawTlm_t;
 typedef FC_EKF_STATUS_TLM_t MAVLINK_BRIDGE_APP_EkfStatusTlm_t;
 ```
 
-### ❌ 미완료 부분
+### ~~❌ 미완료 부분~~ → ✅ 해소 확인(2026-07-23): `default_cfs_core_app_msgstruct.h`에 `fc_state_msg.h` include 존재, FC 미러 typedef 사용 중 — 아래는 당시 기록
 
 **cfs_core_app (수신측 1)**
 ```

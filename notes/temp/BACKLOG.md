@@ -124,7 +124,7 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 | ~~**BL-12**~~ | ✅ **완료(2026-07-22)**. 기체측 영속화(`uplink_app` 8비트 `BootCount`, `/cf/uplink_app_state.bin`) + BL-03에서 DL2 동봉/지상 `_BootCountTracker` anomaly 감지까지 완결 | T5 |
 | ~~**BL-13**~~ | ✅ **완료(2026-07-22)**. `UPLINK_APP_CheckSequence()`를 모듈러 윈도우(`diff=(uint16)(seq-last); diff<0x8000`)로 변경 — 65535 wrap 해소. 회귀 UT 99/99(cmds) PASS | T6 / 문제3 |
 | ~~**BL-14**~~ | ✅ **완료(2026-07-22)**. `Flags` `bits[2:1]=RETX_IDX`(0~3=슬롯-1, 0=최초 전송이라 구 프레임 하위호환) 확정 — spec §18.4.3.1 Flags 표에 기록(이때 bit[0] FORCE_FLAG 미반영 stale도 함께 정정). 기체(`uplink_app`): 수락/중복 EVS 이벤트에 `retx=` 표기만(검증 미사용, HK/DL2 변경 없음). 지상(openMCT `fc_serial_ws_server.py`): 큐를 프레임 문자열→구성요소 저장으로 바꿔 슬롯마다 flags+CRC 재조립. 회귀: uplink_app_cmds 110/110, openMCT pytest 56/56(신규 RetxIndexFlushTest 포함) | T9 | 완료 |
-| **BL-15** | 🔶 **실측 완료(2026-07-22): Stage 4a(150ms) PASS + Stage 4b(100ms) PASS** — 100ms 5분 soak 손실 0.00%(2991/2991), 9.97pkt/s, 업링크 정상(retx=0). **남은 결정: 최종값 확정**(100ms 확정 커밋 vs 추가 하향 실측) — `mission_cfg.h`는 100ms 실험값으로 uncommitted 상태. `bl15_stage4_5hz_cap_progress_2026-07-22.md` 참조 | `lora_downlink_5hz_cap` |
+| **BL-15** | 🔶 **실측 완료(2026-07-22): Stage 4a(150ms)·4b(100ms) 둘 다 PASS** (100ms 손실 0.00%, 9.97pkt/s). **⚠️ 남은 결정: 최종 주기 확정** — `mission_cfg.h`가 실험값 100ms/RX 50/임계 50 **그대로 커밋돼 현재 배포본이 10Hz로 운용 중**(2026-07-23 확인). ① 100ms 확정 승인 or ② 200ms(5Hz) 원복 결정 필요. 부속 검토: 사이클=RX윈도우×2 구조의 마진(100ms 사이클에 RX 50ms — 실측상 문제 없었으나 마진 0 아님 재확인), CONFIG 파라미터화는 운용 요구 생기면(죽은 설정 방지). 실측 상세: `../bl15_stage4_5hz_cap_progress_2026-07-22_completed.md`, `../lora_downlink_5hz_cap_2026-07-21_completed.md` | 이관됨(2026-07-23) |
 | ~~**BL-16**~~ | ✅ **구현 완료(2026-07-21)**. `LORA_TDM_APP_SetDownlinkProtocol`/`ProcessConfigCommand` 둘 다 `Value==0 or 1`만 수락, 그 외는 `ErrCounter++`+신규 EID(`SET_DL_PROTO_ERR_EID=21`)로 거부. 지상 `PARAM_BOUNDS(0,1)`과 대칭 일치. 회귀 UT 4종(64/14/36/125, 신규 2건 포함) PASS | `selfaudit` A-4 |
 
 ---
@@ -181,6 +181,11 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 
 | **BL-41** | 🔶 **CONFIG·route 양쪽 구현 완료(2026-07-23), Pi 실기 검증만 잔여**. **route 부분 ✅**: SDD(spec 선정의 — mavlink spec §10 재정의, runtime spec §5.1.1/§17.1 0x1914, cfs_core spec §16 2채널) → TDD(15개 red→green). `FC_MISSION_READBACK_MID(0x1914)` 신설, 트리거 3종(CONNECTED 전이/업로드 완료/MISSION_QUERY) 공통 다운로드 상태머신, lat/lon→로컬 역변환 버퍼링, 완료 시 게시→cfs_core `MissionRoute` 캐시 갱신(RAM 전용), timeout 지수 백오프(1→2→4→5s) 무한 재시도. dispatch 화이트리스트 누락 갭 발견·수정+테스트. 전체 회귀 16/16 PASS. 상세: `bl41_route_buffer_design_2026-07-23.md`. **CONFIG 부분 ✅**: TDD(테스트 44개 선작성 red → green 구현) 완료 — cfs_core(기존 파일에 ConfigVersion+ActiveConfig 6필드 추가, STATE_CORRUPT_EID 19, BL-18 부모 dir fsync 추가), mavlink_bridge(신규, Magic 0x3AB51DE0, 7필드, EID 14·15), lora_tdm(신규, Magic 0x10A7D3B0, UseV2Downlink, EID 23·24, CONFIG_CMD_MID+SET_DL_PROTO_CC 양쪽 배선). coverage 16/16 PASS(`~/cFS_clean/build-ut`), spec 정합(runtime spec §12.2 신설, cfs_core spec §14.5 본문화). 커밋 `c33357c`. **Pi 실기 검증 잔여**(CONFIG 전송→재부팅→값 유지). 상세: `bl41_config_persistence_design_2026-07-23.md`, `bl41_config_tdd_session_state_2026-07-23.md`. **route 부분(미착수)**: `cfs_core_app`의 `MissionRoute`를 **파일 지속 대신 FC를 진실원본으로 하는 RAM 전용 버퍼**로 전환 — FC(ArduPilot/PX4)가 미션을 자체 플래시에 영속하므로 Pi 파일 저장은 "사본의 사본"이 돼 이중 원본 문제만 생김. ① FC 링크 CONNECTED 전이 ② ROUTE_UPDATE 업로드 완료 후 ③ MISSION_QUERY_CC 수신 시, 3개 트리거에서 FC 재조회해 캐시 채움(무한 재시도+지수 백오프 1s→5s 상한). MID `0x1914`(가칭 FC_MISSION_READBACK_MID)로 지상국발 ROUTE_UPDATE_MID(0x190B)와 분리. 상세: `bl41_route_buffer_design_2026-07-23.md`. 부가: Pi journald 영구 저장 전환 완료(2026-07-23, 재부팅 원인 추적용) | waypoint readback 실기 검증 중 발견 |
 | **BL-43** | 🔶 **구현 완료(2026-07-23, SDD→TDD), Pi 실기 검증 잔여**. UT 13개(uplink 8 + cfs_core 5) red 선작성 → green, 전체 회귀 16/16 PASS. uplink 상태파일 확장(LastResetReason/SurvivedMark/ShortBootStreak, 세션당 쓰기 3회), STATUS tlm 3필드 추가; cfs_core 상태파일 확장(재시작 카운터 3종+LastFaultCode), HK 4필드 추가, 저장 배선 3종(RestartApp 직후/RESET_COUNTER/health 전이). 기존 파일 마이그레이션: 크기 불일치→corrupt 폴백(1회 카운터 리셋 수용). 설계(원안): 영속화 6범주 처분에서 채택된 2건: **① uplink_app 부팅/오류** — LastResetReason + 재부팅 루프 감지("생존 마커" 방식: Init 시 SurvivedMark=0 저장, 120s 생존 시 1 저장, 직전 마커 0이면 ShortBootStreak++, ≥5면 HK BootLoopSuspect=1 — 시계 불필요, 세션당 쓰기 2회, 보고만/대응은 지상국). **② cfs_core_app 앱 상태** — 재시작 카운터 3종+LastFaultCode 영속화 + HK 신규 노출(BL-38 당시 "HK 노출"은 미구현이었음 확인). 제외 4범주(HW/항해/텔레메트리/회복) 사유는 `persistent_state_gap_audit_2026-07-23.md` 결정 표 | 영속화 갭 감사 후속 |
+| **BL-44** | **route update 2-pass GPS 능동 보정 — 착수 여부 결정 대기** (2026-07-23 등재). 설계는 `mission_app_runtime_spec.md` §18.4.6.2.1에 확정돼 있음(2랩 상태머신, 최소자승 원 피팅, LOITER_UNLIM 호버링, 실패 시 원본 폴백). 코드 0%. 착수 전 결정: ① 담당 앱(원 피팅·상태머신을 cfs_core vs uplink), ② 착수 순서(제안: 원 피팅 수학→lap1 수집→상태머신→재업로드). 스코핑: `../route_2pass_gps_correction_scoping_2026-07-22_completed.md` | 스코핑 문서 이관됨 |
+| **BL-45** | **v2(DL2) 컴파일타임 기본값 v1→v2 변경 여부** — BL-41 CONFIG 영속화로 "지상 1회 전환 후 재부팅 유지"는 해결됨. 남은 것은 `UseV2Downlink` 초기값(memset 0=v1)을 v2로 바꿀지의 정책 결정뿐(코드 1곳+spec). 사용자 "v2로 사용하기로" 언급(2026-07-22) 있었으나 미확정 | `runtime_test_session_2026-07-22` |
+| **BL-46** | **§18.11 권한 검증 구조 재검토** — 지상국이 auth level 비트를 스스로 채워 보내는 자기신고식(위조 방어 아님, 실수 방지 수준). 실제 우주/드론 지상시스템(CCSDS 등) 사례 조사 후 유지/단순화/강화 결정. 2026-07-23 실기로 게이트 자체는 spec대로 동작 확인됨(auth=0 차단→auth=2 통과) | 동 |
+| **BL-47** | **TDM 패킷 구조 시각화** — v1 ASCII / v2 DL2(seq/boot_count/SysTime 블록/waypoint 페이지 블록/UFB) 바이트 레이아웃 다이어그램 (openMCT 또는 문서) | 동 |
+| **BL-48** | **최종 전수 실기 검증** (사용자 지시 2026-07-22): 전 CONFIG 파라미터(mavlink 7종+lora+cfs_core 6종) + RECOVERY 6종 + COUNTER 4종 + ROUTE + DIAGNOSTIC 전 명령, Pi EVS와 지상 UFB 양쪽 대조. 2026-07-23 부분 수행(CONFIG 1종/ROUTE/readback 체인) — 전수는 잔여. 부속: TEST_CASES.md RT-LORA-001 제외 문구 stale 정정(재편입), 0x1913 readback 파이프라인(DIAGNOSTIC→DL2 페이지→지상 재조립) 실기 왕복, uplinkGUI DIAGNOSTIC 버튼 | 동 / `runtime_test_session_2026-07-23` |
 | **BL-42** | **타임스탬프 time base 검증 미구현** (2026-07-23 등재 — `cfs_core_app_command_execution_gap.md`에서 "백로그 미등재"로 추적 누락돼 있던 것). cfs_core spec §7의 타임스탬프 유효성 중 미래 타임스탬프 거부(`> NowMs + 5000ms`)만 구현돼 있고, 타임스탬프의 **기준/출처(time base) 유효성**(FC 부팅 기준 ms인지, SYSTEM_TIME 동기화 여부에 따른 해석 차이 등)은 검사 없음. 우선순위 낮음 — 현 파이프라인은 단일 time base(FC TimestampMs) 가정이 실측상 유지되고 있음 | `cfs_core_app_command_execution_gap` §4 |
 
 ## 착수 순서 제안
@@ -227,10 +232,17 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 
 **미해결 항목이 남아 `temp/`에 유지**:
 - `testcase_coverage_gap_2026-07-20.md` ← BL-30 참조 중
-- `lora_downlink_5hz_cap_2026-07-21.md` ← BL-15 참조 중
 - `camera_phase_verification_gap.md` ← BL-36 참조 중
+- `runtime_test_session_2026-07-23.md` ← BL-48(0x1913 왕복 등) 참조 중
 
 **2026-07-23 이관됨** (잔여 항목은 BACKLOG가 계속 추적):
+- `../bl41_route_buffer_design_2026-07-23_completed.md` ← 구현+실기 PASS
+- `../persistent_state_gap_audit_2026-07-23_completed.md` ← 전 범주 처분 완료(채택분 BL-41/43 구현·실기 완료)
+- `../bl15_stage4_5hz_cap_progress_2026-07-22_completed.md` ← 잔여 결정은 BL-15
+- `../lora_downlink_5hz_cap_2026-07-21_completed.md` ← 동
+- `../route_2pass_gps_correction_scoping_2026-07-22_completed.md` ← 잔여는 BL-44
+- `../ground_controllable_capability_plan_2026-07-21_completed.md` ← 잔여 P2는 BL-10
+- `../runtime_test_session_2026-07-22_completed.md` ← 잔여는 BL-45~48
 - `../cfs_core_app_command_execution_gap_completed.md` ← 잔여는 BL-10/BL-42
 - `../mission_item_int_frame_gap_completed.md` ← 잔여는 BL-34(실물 FC 검증)
 - `../parser_reset_serial_reconnect_progress_2026-07-22_completed.md`

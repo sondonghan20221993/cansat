@@ -60,7 +60,8 @@
 #### 3.1 fail-open 부팅 구간 제거 (우선: 중)
 **구조 영향**: ❌ 없음 — uplink_app_cmds.c 로직만
 
-**현황**: boot 직후 SYSTEM_HEALTH_MID 수신 전 health-block 미작동 (fail-open)
+**현황**: ~~boot 직후 SYSTEM_HEALTH_MID 수신 전 health-block 미작동 (fail-open)~~
+→ ✅ **완료** (하단 상태표 3.1 참조 — 이 절의 서술은 착수 전 기준, stale 정정 2026-07-23)
 
 **개선**:
 - Option A (즉시): boot → `CfsHealthReceived=0` (이미 그렇게 됨), 명시적으로 "첫 health까지 차단" 정책 추가
@@ -73,7 +74,9 @@
 #### 3.2 권한 검증 추가 (우선: 상)
 **구조 영향**: ⚠️ Flags 필드 또는 새 헤더 필드 (이미 Reserve 공간 있음)
 
-**현황**: spec §17.5의 권한 레벨 1~3이 미구현. 같은 네트워크 누구든 route update 전송 가능.
+**현황**: ~~spec §17.5의 권한 레벨 1~3이 미구현~~ → ✅ **완료** (§18.11로 구현,
+2026-07-23 실기 검증까지 됨 — auth=0 차단→auth=2 통과 실측. 이 절의 서술은
+착수 전 기준, stale 정정 2026-07-23). 구조 재검토(자기신고식 한계)는 BL-46.
 
 **범위**:
 - Flags 또는 보안 헤더에 권한 수준 인코딩 (or token 기반)
