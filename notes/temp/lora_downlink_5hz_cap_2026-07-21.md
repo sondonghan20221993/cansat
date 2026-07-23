@@ -44,11 +44,15 @@
 ## 검토 필요 사항 (미착수)
 
 - [ ] 5Hz보다 빠른 값(예: 100ms/10Hz)이 실제로 필요한지 운용 요구 확인
-- [ ] 필요 시 200ms 미만 구간 단계적 실측 (runbook Stage 2 방식 재사용:
-      150ms→100ms, 각 5분 soak, 손실률/RX p95/LinkState 확인)
+- [x] ~~필요 시 200ms 미만 구간 단계적 실측~~ — ✅ **완료(2026-07-22)**:
+      Stage 4a(150ms)·4b(100ms) 둘 다 실측 PASS —
+      `bl15_stage4_5hz_cap_progress_2026-07-22.md` 참조. 이 문서의
+      "실측이 먼저" 전제는 충족됨 → 남은 결정은 운용 요구 + CONFIG
+      파라미터화 여부뿐
 - [ ] `LORA_TDM_APP_RX_WINDOW_MS=100`(RX 윈도우)이 더 짧은 사이클에서도
       안전한지 — 사이클 자체가 100ms면 RX 윈도우와 정확히 같아져 마진 없음,
-      윈도우도 함께 줄여야 할 가능성 큼
+      윈도우도 함께 줄여야 할 가능성 큼 (Stage 4b가 100ms PASS였으므로
+      실측상 문제는 없었으나 마진 0 구조 자체는 여전히 검토 대상)
 
 ## 관련
 - `lora_tdm_app/config/default_lora_tdm_app_mission_cfg.h`

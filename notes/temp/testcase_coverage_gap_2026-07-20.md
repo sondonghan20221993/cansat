@@ -44,8 +44,12 @@ TEST_CASES.md 기준, 코드 공개 함수 전수 ↔ 테스트 함수 전수 �
 
 ## C. E2E(B) 하네스 구축 — 별도 규모 작업 (미착수)
 
-- [ ] C-1. B-2~B-4: WSL x86 cFS 빌드 + pytest PTY fixture + CI_LAB 주입/EVS 관측 헬퍼
-      TEST_CASES.md에 계획만 있고 미착수. 이게 되어야 아래가 풀림:
+- [ ] C-1. B-2~B-4: ~~WSL x86 cFS 빌드~~ + pytest PTY fixture + CI_LAB 주입/EVS 관측 헬퍼
+      **빌드 전제는 해소됨(2026-07-23)**: `~/cFS_clean/build-ut`(native/default_cpu1)가
+      이미 존재하고 BL-41 작업에서 coverage 테스트 16/16 ctest 실행까지 검증됨 —
+      "WSL에서 cFS 빌드 불가"는 잘못된 build_check 캐시(Windows 경로)만 보고 내린
+      과거 결론. 잔여는 pytest PTY fixture + CI_LAB 주입/EVS 관측 헬퍼 2가지.
+      이게 되어야 아래가 풀림:
       - skip 중: `test_rec_serial.py`(REC-001~004), `test_uplink_e2e.py`, `test_lora_fc_downlink_e2e.py`(lora_tdm 대상 재작성 필요)
       - 미작성 파일: `test_mavlink_bridge_e2e.py`, `test_cfs_core_health_e2e.py`
       - E2E로만 판정 가능: RT-FC-007/008, RT-CORE-001/002, RT-LORA-002/003, RT-UPL-001~006

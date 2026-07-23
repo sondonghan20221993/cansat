@@ -791,7 +791,7 @@ env var로 테스트 경로 주입)을 그대로 따르고, 추가로 레코드�
 복원은 각 앱 `Init()`에서 컴파일타임 기본값 설정 직후 `LoadState()` 호출로
 수행(파일 없으면 무동작 = 기본값 유지). 상세: cfs_core는
 `cfs_core_app_behavior_spec.md` §14.5, 설계 이력은
-`notes/temp/bl41_config_persistence_design_2026-07-23.md`.
+`notes/bl41_config_persistence_design_2026-07-23_completed.md`.
 
 ## 13. 활성/보류 구성 모델
 

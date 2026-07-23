@@ -158,7 +158,7 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 | ID | 내용 | 근거 |
 |---|---|---|
 | ~~**BL-29**~~ | ✅ **완료 확인(2026-07-22)**. A/B 그룹(A-1~A-4/B-1) 전부 `[x]` — 상단 요약(2026-07-22)에서 이미 제거 표기됐으나 이 표에 갱신 누락돼 있던 것 정정(2026-07-23) | `testcase_coverage_gap_2026-07-20` |
-| **BL-30** | C-1: WSL x86 cFS 빌드 + pytest PTY fixture + CI_LAB 주입/EVS 관측 헬퍼 (E2E 하네스) | 동 |
+| **BL-30** | C-1: ~~WSL x86 cFS 빌드~~(✅ 해소 2026-07-23 — `~/cFS_clean/build-ut` ctest 검증됨, BL-41 작업 중 확인) + pytest PTY fixture + CI_LAB 주입/EVS 관측 헬퍼 (E2E 하네스) | 동 |
 
 ---
 
@@ -179,7 +179,8 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 
 ---
 
-| **BL-41** | 🔵 **설계 확정(2026-07-23), 구현 미착수(양쪽 다)**. **route 부분**: `cfs_core_app`의 `MissionRoute`를 **파일 지속 대신 FC를 진실원본으로 하는 RAM 전용 버퍼**로 전환 — FC(ArduPilot/PX4)가 미션을 자체 플래시에 영속하므로 Pi 파일 저장은 "사본의 사본"이 돼 이중 원본 문제만 생김. ① FC 링크 CONNECTED 전이 ② ROUTE_UPDATE 업로드 완료 후 ③ MISSION_QUERY_CC 수신 시, 3개 트리거에서 FC 재조회해 캐시 채움(무한 재시도+지수 백오프 1s→5s 상한). MID `0x1914`(가칭 FC_MISSION_READBACK_MID)로 지상국발 ROUTE_UPDATE_MID(0x190B)와 분리. 상세: `bl41_route_buffer_design_2026-07-23.md`. **CONFIG 부분**: cfs_core_app/mavlink_bridge_app/lora_tdm_app 3개 앱의 `ActiveConfig`를 BL-17/18/19와 동일 표준 패턴(매직+체크섬+fsync/rename+ConfigVersion)으로 상태파일에 지속 — CONFIG 적용 성공 시 즉시 저장, 로드 시 range 재검증은 불필요(승격 전 이미 검증됨), ConfigVersion 불일치 시만 전체 폴백. cfs_core_app은 기존 파일에 필드 추가, mavlink_bridge_app/lora_tdm_app은 상태파일 신규 생성. 상세: `bl41_config_persistence_design_2026-07-23.md`. 부가: Pi journald 영구 저장 전환 완료(2026-07-23, 재부팅 원인 추적용) | waypoint readback 실기 검증 중 발견 |
+| **BL-41** | 🔶 **CONFIG 부분 구현 완료(2026-07-23), route 부분 미착수**. **CONFIG 부분 ✅**: TDD(테스트 44개 선작성 red → green 구현) 완료 — cfs_core(기존 파일에 ConfigVersion+ActiveConfig 6필드 추가, STATE_CORRUPT_EID 19, BL-18 부모 dir fsync 추가), mavlink_bridge(신규, Magic 0x3AB51DE0, 7필드, EID 14·15), lora_tdm(신규, Magic 0x10A7D3B0, UseV2Downlink, EID 23·24, CONFIG_CMD_MID+SET_DL_PROTO_CC 양쪽 배선). coverage 16/16 PASS(`~/cFS_clean/build-ut`), spec 정합(runtime spec §12.2 신설, cfs_core spec §14.5 본문화). 커밋 `c33357c`. **Pi 실기 검증 잔여**(CONFIG 전송→재부팅→값 유지). 상세: `bl41_config_persistence_design_2026-07-23.md`, `bl41_config_tdd_session_state_2026-07-23.md`. **route 부분(미착수)**: `cfs_core_app`의 `MissionRoute`를 **파일 지속 대신 FC를 진실원본으로 하는 RAM 전용 버퍼**로 전환 — FC(ArduPilot/PX4)가 미션을 자체 플래시에 영속하므로 Pi 파일 저장은 "사본의 사본"이 돼 이중 원본 문제만 생김. ① FC 링크 CONNECTED 전이 ② ROUTE_UPDATE 업로드 완료 후 ③ MISSION_QUERY_CC 수신 시, 3개 트리거에서 FC 재조회해 캐시 채움(무한 재시도+지수 백오프 1s→5s 상한). MID `0x1914`(가칭 FC_MISSION_READBACK_MID)로 지상국발 ROUTE_UPDATE_MID(0x190B)와 분리. 상세: `bl41_route_buffer_design_2026-07-23.md`. 부가: Pi journald 영구 저장 전환 완료(2026-07-23, 재부팅 원인 추적용) | waypoint readback 실기 검증 중 발견 |
+| **BL-42** | **타임스탬프 time base 검증 미구현** (2026-07-23 등재 — `cfs_core_app_command_execution_gap.md`에서 "백로그 미등재"로 추적 누락돼 있던 것). cfs_core spec §7의 타임스탬프 유효성 중 미래 타임스탬프 거부(`> NowMs + 5000ms`)만 구현돼 있고, 타임스탬프의 **기준/출처(time base) 유효성**(FC 부팅 기준 ms인지, SYSTEM_TIME 동기화 여부에 따른 해석 차이 등)은 검사 없음. 우선순위 낮음 — 현 파이프라인은 단일 time base(FC TimestampMs) 가정이 실측상 유지되고 있음 | `cfs_core_app_command_execution_gap` §4 |
 
 ## 착수 순서 제안
 
@@ -224,8 +225,13 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 - `../ambiguity_recheck_immediate_list_2026-07-21_completed.md`
 
 **미해결 항목이 남아 `temp/`에 유지**:
-- `cfs_core_app_command_execution_gap.md` ← **BL-07로 갱신 필요**, BL-10 참조 중
 - `testcase_coverage_gap_2026-07-20.md` ← BL-30 참조 중
 - `lora_downlink_5hz_cap_2026-07-21.md` ← BL-15 참조 중
-- `mission_item_int_frame_gap.md` ← BL-34 참조 중
 - `camera_phase_verification_gap.md` ← BL-36 참조 중
+
+**2026-07-23 이관됨** (잔여 항목은 BACKLOG가 계속 추적):
+- `../cfs_core_app_command_execution_gap_completed.md` ← 잔여는 BL-10/BL-42
+- `../mission_item_int_frame_gap_completed.md` ← 잔여는 BL-34(실물 FC 검증)
+- `../parser_reset_serial_reconnect_progress_2026-07-22_completed.md`
+- `../bl41_config_persistence_design_2026-07-23_completed.md` ← 잔여는 BL-41 Pi 실기 검증
+- `../bl41_config_tdd_session_state_2026-07-23_completed.md`
