@@ -47,8 +47,23 @@
 - **미완(GUI)**: uplinkGUI/uplinkCLI에 DIAGNOSTIC 버튼/명령 없음(HTTP
   API만 가능) — 필요 시 추가.
 
+## 🔴 신규 발견 — Pi 원인불명 재부팅 + persistent state 갭 (BL-41)
+
+waypoint readback 실기 검증 도중 Pi가 원인불명으로 **재부팅**(하드웨어
+리부팅, 16:36 KST — 커널 로그의 USB/WiFi/GPU 드라이버 재초기화로 확인,
+서비스 재시작이 아니라 진짜 리부팅). `cfs_core_app`의 `MissionRoute`
+캐시가 RAM 전용이라 소실 → `wp_count=0` 확인. 재부팅 원인은 journald
+비영구 저장 설정 탓에 추적 불가(정직 인정) — `/var/log/journal` 생성 +
+`systemctl restart systemd-journald`로 영구화 완료(재발 시 추적 가능).
+CDS 사용 검토했으나 `POWER ON RESET` 시 CDS도 초기화됨을 로그로
+확인 — 해법 아님. spec §12 재확인 결과 원래 설계는 파일 기반(현
+BL-39 방식과 일치)이 맞았음. **8범주 지속 상태 후보 대비 구현 갭
+감사 완료**(`persistent_state_gap_audit_2026-07-23.md`, BACKLOG BL-41)
+— 구현은 보류, 우선순위 정의부터 다음 세션에서.
+
 ## 다음 세션 이월 항목
 
+- [ ] **BL-41 persistent state 우선순위 정의 + 구현** (신규, 위 참조)
 - [ ] waypoint readback 실제 왕복(DIAGNOSTIC 요청→DL2 페이지 수신→
       RouteReadbackAssembler 재조립) 실기 확인 — 서버 재시작 후 진행
 - [ ] uplinkGUI/uplinkCLI에 DIAGNOSTIC(readback 등) 버튼/명령 추가

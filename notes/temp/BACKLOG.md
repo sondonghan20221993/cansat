@@ -179,6 +179,8 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 
 ---
 
+| **BL-41** | 🔵 **설계 결정 필요(2026-07-23 발견)**: Pi 원인불명 재부팅(하드웨어 리부팅, 커널 로그로 확인)으로 `cfs_core_app`의 `MissionRoute` 캐시(RAM only)가 소실 — waypoint readback 검증 중 `wp_count=0`으로 실측. spec §12는 "하드 부팅/전원 주기에도 검증된 지속 상태는 복원"을 요구하고 저장소 백엔드로 파일시스템(CDS 아님)을 명시하는데, CDS는 이번 재부팅에서 `POWER ON RESET` 판정으로 실제로 초기화됨을 로그로 확인(CDS는 해법 아님). spec §12 후보 8범주(부팅/오류·앱상태·하드웨어상태·임무상태·항해·텔레메트리·구성·회복) 대비 현재 구현은 `LastHealthState`/`BootCount` 등 극히 일부뿐 — **CONFIG 운영 중 조정값**과 **mission route**가 재부팅마다 소실되는 게 실질 영향 큼(추천이지 확정 아님). **구현 보류 — 무엇을 지속 대상에 넣을지 우선순위 정의부터 필요(사용자 지시)**. 부가: Pi journald가 비영구 저장이라 이번 재부팅 원인 자체는 추적 불가했음 → `/var/log/journal` 생성+`systemctl restart systemd-journald`로 영구 저장 전환 완료(재발 시 원인 추적 가능). 상세: `persistent_state_gap_audit_2026-07-23.md` | waypoint readback 실기 검증 중 발견 |
+
 ## 착수 순서 제안
 
 ```
