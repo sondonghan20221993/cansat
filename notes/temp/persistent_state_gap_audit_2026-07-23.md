@@ -59,10 +59,21 @@ mission route가 체감 영향이 제일 큼 — CONFIG는 재부팅마다 튜�
 
 ## 후속 (2026-07-23 같은 날 진행)
 
-위 추천 2건이 그대로 채택되어 설계 확정:
-- CONFIG → `bl41_config_persistence_design_2026-07-23.md` + UT 44개
-  선작성(TDD red, `bl41_config_tdd_session_state_2026-07-23.md`)
-- route → `bl41_route_buffer_design_2026-07-23.md` (파일 영속화 대신
-  FC 진실원본 + RAM 버퍼 + readback으로 방향 전환, 코드/테스트 미착수)
-- 나머지 6범주(부팅/오류 확장, 앱 상태, 하드웨어, 항해, 텔레메트리,
-  회복)는 여전히 미착수 — 이 문서가 계속 추적 원본.
+위 추천 2건이 그대로 채택되어 **구현까지 완료**:
+- CONFIG → ✅ `bl41_config_persistence_design_2026-07-23_completed.md` (UT 44개, 커밋 `c33357c`)
+- route → ✅ `bl41_route_buffer_design_2026-07-23.md` (FC 진실원본 + RAM 버퍼 +
+  0x1914 readback, UT 15개, 커밋 `07c622d`)
+
+## 나머지 6범주 우선순위 결정 (2026-07-23 사용자 확정)
+
+| 범주 | 결정 | 사유 |
+| --- | --- | --- |
+| 1. 부팅/오류 | ✅ **구현** | 부팅 카운터 + 재부팅 루프 감지 창(WindowStartMs/BootsInWindow) + LastResetReason. **보고만** — 루프 감지 시 기체 동작 변경 없이 HK/다운링크 플래그 노출, 대응은 지상국 판단. watchdog 카운터는 watchdog 설정 실체 확인 후 |
+| 2. 앱 상태 | ✅ **구현** | 재시작 카운터 3종(bridge/uplink/lora) + LastFaultCode 영속화 — BL-38 RAM 카운터에 저장/복원 배선만 추가. Init LoadState로 자동 복원(누적 지속), RESET_COUNTER 명령 시에도 SaveState 동기화 |
+| 3. 하드웨어 | ❌ 제외 | 저장할 원천(HW 오류 분류/복구 로직)이 코드에 없음 — 빈 필드만 생김. SD카드 감시 논의 있었으나("고장난 SD에 SD 고장을 기록"하는 자기모순) 함께 제외 |
+| 4. 항해 | ❌ 제외 | FC를 진실원본으로 신뢰(route와 동일 논리) — FC 생존 시 몇 초 내 실데이터 재수신, 지상국도 다운링크 로그로 마지막 위치 보유 |
+| 5. 텔레메트리 | ❌ 제외 | 정보 중복 — 링크 단절 시각은 지상국 로그(상대편이 이미 앎) + journald 영구화(EVS 전이 이벤트 잔존)로 복원 가능. 1·2번과 달리 소실돼도 새로 알게 되는 것이 없음 |
+| 6. 회복 | ❌ 제외 | 현재 복구 동작이 전부 원자적(RestartApp/PARSER_RESET/SERIAL_RECONNECT — 호출=완료, 중간 상태 없음) — "이어할 작업"이 존재하지 않고, 실패 시 BL-38 무한 재시도가 재발동. 다단계 복구가 생기면 재검토 |
+
+→ 다음 작업: 1·2번 SDD(spec 정의) → TDD → 구현. 이 문서의 갭 감사는
+이것으로 **전 범주 처분 완료** — 1·2번 구현 끝나면 이 문서도 completed 이관.

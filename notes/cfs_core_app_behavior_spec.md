@@ -583,6 +583,17 @@ bridge 앱 외 다른 앱·FC·센서·시리얼 장치에 대한 능동 복구�
 - 손상 처리: 파일 없음(ENOENT)만 침묵(첫 부팅 정상), 그 외(truncated/bad magic/checksum 불일치/open 오류)는 `STATE_CORRUPT_EID` ERROR 보고 후 기본값 유지(uplink_app §12.1 표와 동일 정책). `ConfigVersion` 불일치는 구버전 파일로 간주해 range 재검증 없이 전체 기본값 폴백(필드 오해석 방지).
 - 복원값은 range 재검증하지 않는다 — ActiveConfig 승격 전에 이미 검증된 값만 저장되기 때문.
 
+**앱 상태 영속화 (BL-43, 2026-07-23 설계 확정)** — 레코드에 추가:
+`BridgeRestartCount`/`UplinkRestartCount`/`LoraRestartCount`(u32 누계) +
+`LastFaultCode`(u8). 저장 시점: ① `CheckAppRestarts()`의
+`CFE_ES_RestartApp()` 발행 직후(3분기 각각), ② RECOVERY `RESET_COUNTER`
+처리 시(리셋 동기화), ③ health 전이 시(기존 SaveState에 동승). 복원:
+Init `LoadState()` 자동 — 재부팅 후에도 재시작 누계 지속. **보고 전용**
+(복원값이 동작을 바꾸지 않음, 지상국 판단 재료). HK에
+`BridgeRestartCount`/`UplinkRestartCount`/`LoraRestartCount`/`LastFaultCode`
+신규 노출(종전 RAM 전용 — BL-38 당시 "HK 노출" 기술은 미구현이었음).
+상세: runtime spec §12.3.
+
 ## 15. HK 동작
 
 HK 요청 시 앱은 다음을 보고한다.

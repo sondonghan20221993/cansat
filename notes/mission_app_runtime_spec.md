@@ -752,6 +752,8 @@ lora_tdm_app/mavlink_bridge_app의 시리얼 경로 주입과 동일 패턴 적�
 **레코드 구조** (16바이트, 전부 `uint32`): `Magic`(`0x55504C4BU`="UPLK") /
 `LastAcceptedSequence` / `BootCount` / `Checksum`(`Magic+LastAcceptedSequence+BootCount`
 단순합, 암호학적 강도 아님 — 비트플립 탐지 목적).
+BL-43(2026-07-23)으로 `LastResetReason`/`SurvivedMark`/`ShortBootStreak`
+필드 확장 예정 — §12.3 참조.
 
 **쓰기(atomic write)**: `.tmp` 파일에 쓰고 `fsync()` 후 `rename()`, 이어서 부모
 디렉터리(`/cf`) fd도 `fsync()`(BL-18, 2026-07-21) — POSIX상 rename 자체의
@@ -793,6 +795,60 @@ env var로 테스트 경로 주입)을 그대로 따르고, 추가로 레코드�
 수행(파일 없으면 무동작 = 기본값 유지). 상세: cfs_core는
 `cfs_core_app_behavior_spec.md` §14.5, 설계 이력은
 `notes/bl41_config_persistence_design_2026-07-23_completed.md`.
+
+### 12.3 부팅/오류·앱 상태 영속화 (2026-07-23 설계 확정, BL-43)
+
+§12 표의 "부팅/오류"·"앱 상태" 범주 구현. 나머지 4범주(하드웨어/항해/
+텔레메트리/회복)는 **의도적 제외** — 사유는
+`persistent_state_gap_audit_2026-07-23.md` 결정 표 참조(원천 부재/FC
+진실원본/정보 중복/원자적 복구). 두 항목 모두 **보고 전용** — 복원값이
+기체 동작을 바꾸지 않으며, 대응 판단은 지상국 몫.
+
+**① uplink_app — 부팅/오류** (`uplink_app_state.bin` 확장):
+
+| 신규 필드 | 의미 |
+| --- | --- |
+| `LastResetReason` (u8) | 직전 부팅의 PSP reset type (POWER_ON/PROCESSOR 등) |
+| `SurvivedMark` (u8) | 이번 세션이 안정 가동 임계(120s)를 넘겼는지 |
+| `ShortBootStreak` (u8) | 연속 단명 부팅 횟수 (120s 미만 생존 연속) |
+| (Reserved u8) | 정렬 |
+
+**재부팅 루프 감지 — "생존 마커" 방식**: `CFE_TIME`이 부팅마다 0에서
+재시작해 부팅 간 벽시계 비교가 불가하므로, 시계 없이 동작하는 마커
+방식을 쓴다. ⓐ Init에서 직전 세션의 `SurvivedMark`를 검사 — 0이면(직전
+세션이 120s를 못 버팀) `ShortBootStreak++`, 1이면 0으로 리셋. 이어서
+`SurvivedMark=0`으로 저장. ⓑ 가동 120s(`UPLINK_APP_BOOT_SURVIVE_MS`)
+도달 시 `SurvivedMark=1` 1회 저장. ⓒ `ShortBootStreak >= 5`
+(`UPLINK_APP_BOOT_LOOP_THRESHOLD`)이면 HK에 `BootLoopSuspect=1` 노출 —
+기체 동작 변경 없음(안전모드 등은 미구현, 지상국 판단). 세션당 파일
+쓰기 2회(Init 1 + 생존 확정 1)로 flash 마모 무시 가능.
+
+HK 노출(신규): `BootLoopSuspect`, `ShortBootStreak`, `LastResetReason`
+(BootCount는 기존 HK/DL2 노출 유지).
+
+**② cfs_core_app — 앱 상태** (`cfs_core_app_state.bin` 확장):
+
+| 신규 필드 | 의미 |
+| --- | --- |
+| `BridgeRestartCount` (u32) | bridge 자동/지상 재시작 누계 |
+| `UplinkRestartCount` (u32) | uplink 재시작 누계 |
+| `LoraRestartCount` (u32) | lora 재시작 누계 |
+| `LastFaultCode` (u8) + Reserved[3] | 마지막 fault 코드 |
+
+저장 시점: ⓐ `CheckAppRestarts()`의 `CFE_ES_RestartApp()` 발행 직후
+(3분기 각각), ⓑ 지상 RECOVERY `RESET_COUNTER` 처리 시(리셋값 동기화),
+ⓒ health 전이 시(기존 SaveState 호출에 `LastFaultCode` 동승). 복원:
+Init `LoadState()`에서 자동 — 재부팅 후에도 누계 지속, 운영자 개입 불필요.
+
+HK 노출(신규): 현재 RAM 카운터가 **어느 tlm에도 없음**(BL-38 당시 "HK
+노출" 기술은 미구현이었음 — 이번에 실구현) → `CFS_CORE_APP_HkTlm`에
+`BridgeRestartCount`/`UplinkRestartCount`/`LoraRestartCount`/`LastFaultCode`
+추가.
+
+**레코드 마이그레이션**: 두 파일 모두 구조 확장으로 기존 파일은 read
+크기 불일치(truncated) → `STATE_CORRUPT_EID` 후 기본값 폴백 — 배포 후
+첫 부팅 1회에 한해 기존 카운터(BootCount 등)가 리셋됨(수용, spec §12.2
+ConfigVersion 정책과 동일 계열).
 
 ## 13. 활성/보류 구성 모델
 
