@@ -72,3 +72,22 @@ BL-39 방식과 일치)이 맞았음. **8범주 지속 상태 후보 대비 구�
 - [ ] BL-39(영속 상태 상대경로 수정) 실기 재검증 — boot_count 실측 증가 확인
 - [ ] 어제 이월분: v2 표준화, BL-15 최종값 확정, 최종 전수 검증,
       권한검증 재검토, TDM 패킷 시각화, RT-LORA-001 재편입
+
+## 2차 세션 (21:40~21:55) — BL-41/43 실기 검증
+
+배포: git pull f1f95f1→f53a9e8, Pi 빌드(`make -C build` + `DESTDIR` install
+— 루트 `make install`은 rtems 잔재 타깃에서 실패, native만 별도 빌드).
+주의: install이 `cfe_es_startup.scr`를 재생성해 **이전에 수동 추가한
+CI_LAB 줄이 사라짐** → 다시 추가함(영구화하려면 sample_defs 쪽 수정 필요,
+미해결).
+
+| 항목 | 결과 |
+| --- | --- |
+| BL-41 route | ✅ **PASS** — 기동 시 readback started → timeout → **백오프 재시도 1000ms 실증** → published wp_count=3 → cfs_core applied wp_count=3, HK mission_wp 0→3 실측. 원 문제(재부팅 후 wp_count=0) 해소 확인 |
+| BL-41 CONFIG 마이그레이션 | ✅ 구 레이아웃 파일 → `state file truncated ... using defaults` 1회 폴백(설계대로), 이후 신규 포맷 저장/복원 정상 |
+| BL-43 생존 마커 | 🔴→✅ **실기 버그 발견·수정**: CFE_TIME이 부팅 시 0이 아니라(1980-012-14:03…) 기동 2초 만에 survival 마킹 → 루프 감지 무력화. `BootStartMs` 상대 uptime으로 수정(f53a9e8) + 회귀 UT. 재검증: 즉시 마킹 없음 확인 |
+| BL-43 루프 감지 | ✅ **PASS** — 빠른 재시작 반복 → `boot loop suspect - 5 consecutive short boots` EVS 발생, boot_count 1→7 영속 누적 확인 |
+| BL-41 CONFIG 적용 | ⏸ **실내 환경 제약** — `command blocked by health state=1`(DEGRADED, EKF fault=3 상시). CONFIG 명령이 health 게이팅에 막혀 실외 NOMINAL 확보 후 검증(BL-33/37과 동일 조건) |
+
+잔여: CONFIG 적용→재부팅 유지 실측(실외), CI_LAB 영구 탑재(sample_defs),
+Pi streak 리셋(현재 suspect 상태로 남음 — 120s 방치 후 재시작 1회면 자연 해소).
