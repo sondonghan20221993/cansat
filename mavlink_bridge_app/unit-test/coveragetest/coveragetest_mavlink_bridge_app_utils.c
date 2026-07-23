@@ -1543,6 +1543,377 @@ void Test_ProcessSerialReconnectCmd_ClosesFdAndIncrementsCmdCounter(void)
     UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.SerialFd, -1);
 }
 
+/* -----------------------------------------------------------------------
+ * BL-41 route: FC 미션 readback — mavlink spec §10 재정의(2026-07-23) 계약
+ * 검증. 트리거 3종(CONNECTED 전이/업로드 완료/MISSION_QUERY 기존), 완료 시
+ * FC_MISSION_READBACK_MID(0x1914) 게시, timeout 지수 백오프(1→2→4→5s 상한)
+ * 무한 재시도. 테스트가 요구하는 신규 인터페이스(TDD red):
+ *  - Data 필드: MissionReadbackPending / MissionReadbackBackoffMs /
+ *    MissionReadbackNextRetryMs / FcMissionReadbackTlm(ROUTE_UPDATE_TLM_t)
+ *  - MID: MAVLINK_BRIDGE_APP_FC_MISSION_READBACK_MID (0x1914)
+ *  - SetLinkState 엣지 트리거 / MISSION_ACK 후 자동 재조회 / ServiceSerial
+ *    재시도 발화
+ * ----------------------------------------------------------------------- */
+
+#define UT_MISSION_REQUEST_LIST_MSGID 43U
+#define UT_MISSION_COUNT_MSGID        44U
+#define UT_MISSION_COUNT_CRC_EXTRA    221U
+#define UT_MISSION_ACK_MSGID          47U
+#define UT_MISSION_ACK_CRC_EXTRA      153U
+#define UT_MISSION_ITEM_INT_CRC_EXTRA 38U
+
+#define UT_READBACK_BACKOFF_INITIAL_MS 1000U
+#define UT_READBACK_BACKOFF_CAP_MS     5000U
+
+/* CFE_TIME_GetTime가 SecondsxMs를 반환하도록 설정 */
+static void UT_SetFakeTimeMs(uint32 Ms)
+{
+    static CFE_TIME_SysTime_t FakeTime;
+
+    FakeTime.Seconds    = Ms / 1000U;
+    FakeTime.Subseconds = (uint32)(((uint64)(Ms % 1000U) << 32) / 1000U);
+    UT_SetDataBuffer(UT_KEY(CFE_TIME_GetTime), &FakeTime, sizeof(FakeTime), false);
+}
+
+/* SerialFd를 socketpair로 걸어두고 Fn 호출 동안 나간 바이트를 캡처 */
+static size_t UT_CaptureTxDuring(void (*Fn)(void), uint8 *OutBuf, size_t OutBufLen)
+{
+    int     Sv[2];
+    ssize_t Rc;
+
+    UtAssert_INT32_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, Sv), 0);
+    UtAssert_INT32_EQ(fcntl(Sv[0], F_SETFL, O_NONBLOCK), 0);
+
+    MAVLINK_BRIDGE_APP_Data.SerialFd       = Sv[0];
+    MAVLINK_BRIDGE_APP_Data.TargetSystemId = 1;
+
+    Fn();
+
+    Rc = read(Sv[1], OutBuf, OutBufLen);
+    close(Sv[0]);
+    close(Sv[1]);
+    MAVLINK_BRIDGE_APP_Data.SerialFd = -1;
+
+    return (Rc > 0) ? (size_t)Rc : 0;
+}
+
+static void UT_CallSetLinkStateConnected(void)
+{
+    MAVLINK_BRIDGE_APP_SetLinkState(MAVLINK_BRIDGE_LINK_CONNECTED);
+}
+
+/* 트리거 1: DISCONNECTED→CONNECTED 엣지에서 readback 자동 시작 */
+void Test_SetLinkState_ConnectedEdge_StartsReadback(void)
+{
+    uint8        OutBuf[256];
+    size_t       CapLen;
+    uint8        PayloadLen;
+    const uint8 *Frame;
+
+    MAVLINK_BRIDGE_APP_Data.LinkState            = (uint8)MAVLINK_BRIDGE_LINK_DISCONNECTED;
+    MAVLINK_BRIDGE_APP_Data.MissionUploadState   = (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_IDLE;
+    MAVLINK_BRIDGE_APP_Data.MissionDownloadState = (uint8)MAVLINK_BRIDGE_MISSION_DOWNLOAD_IDLE;
+    MAVLINK_BRIDGE_APP_Data.MissionReadbackBackoffMs = 5000U; /* 전이 시 리셋돼야 함 */
+    MAVLINK_BRIDGE_APP_Data.MissionReadbackPending   = 1U;
+
+    CapLen = UT_CaptureTxDuring(UT_CallSetLinkStateConnected, OutBuf, sizeof(OutBuf));
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionDownloadState,
+                      (int32)MAVLINK_BRIDGE_MISSION_DOWNLOAD_WAIT_COUNT);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionReadbackBackoffMs, UT_READBACK_BACKOFF_INITIAL_MS);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionReadbackPending, 0);
+    Frame = UT_FindMavFrame(OutBuf, CapLen, (uint8)UT_MISSION_REQUEST_LIST_MSGID, &PayloadLen);
+    UtAssert_True(Frame != NULL, "MISSION_REQUEST_LIST sent on CONNECTED edge");
+}
+
+/* 트리거 1 억제: 업로드 진행 중이면 readback 시작 안 함 */
+void Test_SetLinkState_ConnectedEdge_SkipWhenUploadActive(void)
+{
+    MAVLINK_BRIDGE_APP_Data.LinkState            = (uint8)MAVLINK_BRIDGE_LINK_DISCONNECTED;
+    MAVLINK_BRIDGE_APP_Data.MissionUploadState   = (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_ACTIVE;
+    MAVLINK_BRIDGE_APP_Data.MissionDownloadState = (uint8)MAVLINK_BRIDGE_MISSION_DOWNLOAD_IDLE;
+
+    MAVLINK_BRIDGE_APP_SetLinkState(MAVLINK_BRIDGE_LINK_CONNECTED);
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionDownloadState,
+                      (int32)MAVLINK_BRIDGE_MISSION_DOWNLOAD_IDLE);
+}
+
+/* 트리거 1은 엣지에서만: CONNECTED→CONNECTED 재호출은 무동작 */
+void Test_SetLinkState_NoEdge_NoReadback(void)
+{
+    MAVLINK_BRIDGE_APP_Data.LinkState            = (uint8)MAVLINK_BRIDGE_LINK_CONNECTED;
+    MAVLINK_BRIDGE_APP_Data.MissionUploadState   = (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_IDLE;
+    MAVLINK_BRIDGE_APP_Data.MissionDownloadState = (uint8)MAVLINK_BRIDGE_MISSION_DOWNLOAD_IDLE;
+
+    MAVLINK_BRIDGE_APP_SetLinkState(MAVLINK_BRIDGE_LINK_CONNECTED);
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionDownloadState,
+                      (int32)MAVLINK_BRIDGE_MISSION_DOWNLOAD_IDLE);
+}
+
+/* DISCONNECTED 전이 시 대기 중 재시도 취소 */
+void Test_SetLinkState_Disconnect_CancelsPendingRetry(void)
+{
+    MAVLINK_BRIDGE_APP_Data.LinkState              = (uint8)MAVLINK_BRIDGE_LINK_CONNECTED;
+    MAVLINK_BRIDGE_APP_Data.MissionReadbackPending = 1U;
+
+    MAVLINK_BRIDGE_APP_SetLinkState(MAVLINK_BRIDGE_LINK_DISCONNECTED);
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionReadbackPending, 0);
+}
+
+/* 트리거 2: MISSION_ACK ACCEPTED(업로드 완료) 직후 readback 자동 시작 */
+void Test_UploadComplete_TriggersReadback(void)
+{
+    uint8        AckPayload[3];
+    uint8        AckFrame[24];
+    uint8        OutBuf[512];
+    size_t       AckLen;
+    size_t       CapLen;
+    uint8        PayloadLen;
+    const uint8 *Frame;
+
+    MAVLINK_BRIDGE_APP_Data.LinkState            = (uint8)MAVLINK_BRIDGE_LINK_CONNECTED;
+    MAVLINK_BRIDGE_APP_Data.MissionUploadState   = (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_ACTIVE;
+    MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount = 1U;
+    MAVLINK_BRIDGE_APP_Data.MissionDownloadState = (uint8)MAVLINK_BRIDGE_MISSION_DOWNLOAD_IDLE;
+    MAVLINK_BRIDGE_APP_Data.MissionPendingX[0]   = 1.0f;
+    MAVLINK_BRIDGE_APP_Data.MissionPendingY[0]   = 2.0f;
+    MAVLINK_BRIDGE_APP_Data.MissionPendingZ[0]   = 3.0f;
+
+    memset(AckPayload, 0, sizeof(AckPayload)); /* [2]=0 → MAV_MISSION_ACCEPTED */
+    AckLen = UT_BuildMavFrameGeneric(AckFrame, (uint8)UT_MISSION_ACK_MSGID,
+                                     (uint8)UT_MISSION_ACK_CRC_EXTRA, AckPayload, sizeof(AckPayload));
+
+    CapLen = UT_FeedSerialCaptureTx(AckFrame, AckLen, OutBuf, sizeof(OutBuf));
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionUploadState,
+                      (int32)MAVLINK_BRIDGE_MISSION_UPLOAD_IDLE);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionDownloadState,
+                      (int32)MAVLINK_BRIDGE_MISSION_DOWNLOAD_WAIT_COUNT);
+    Frame = UT_FindMavFrame(OutBuf, CapLen, (uint8)UT_MISSION_REQUEST_LIST_MSGID, &PayloadLen);
+    UtAssert_True(Frame != NULL, "MISSION_REQUEST_LIST sent after upload complete");
+}
+
+/* 다운로드 완료 → 항목 역변환 버퍼링 + 0x1914 게시 (트리거 3 공통 완료 경로) */
+void Test_DownloadComplete_PublishesReadbackMid(void)
+{
+    uint8  CountPayload[2];
+    uint8  CountFrame[24];
+    uint8  ItemPayload[38];
+    uint8  ItemFrame[64];
+    uint8  OutBuf[512];
+    size_t Len;
+    int32  RefLatE7 = 100000000;  /* 10.0 deg */
+    int32  RefLonE7 = 1000000000; /* 100.0 deg */
+    float  ExpX = 10.0f, ExpY = 20.0f, ExpZ = 5.0f;
+    float  RefLatDeg, RefLonDeg, RefLatRad, WpLatDeg, WpLonDeg;
+    int32  LatE7, LonE7;
+    uint32 TxCountBefore;
+    uint32 FloatBits;
+
+    UT_SetGpsReference(RefLatE7, RefLonE7);
+
+    MAVLINK_BRIDGE_APP_Data.LinkState                = (uint8)MAVLINK_BRIDGE_LINK_CONNECTED;
+    MAVLINK_BRIDGE_APP_Data.MissionDownloadState     = (uint8)MAVLINK_BRIDGE_MISSION_DOWNLOAD_WAIT_COUNT;
+    MAVLINK_BRIDGE_APP_Data.MissionDownloadTimeoutMs = 0x40000000U;
+    memset(&MAVLINK_BRIDGE_APP_Data.FcMissionReadbackTlm, 0,
+           sizeof(MAVLINK_BRIDGE_APP_Data.FcMissionReadbackTlm));
+
+    /* MISSION_COUNT: 1개 */
+    UT_WriteU16LE(&CountPayload[0], 1U);
+    Len = UT_BuildMavFrameGeneric(CountFrame, (uint8)UT_MISSION_COUNT_MSGID,
+                                  (uint8)UT_MISSION_COUNT_CRC_EXTRA, CountPayload, sizeof(CountPayload));
+    (void)UT_FeedSerialCaptureTx(CountFrame, Len, OutBuf, sizeof(OutBuf));
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionDownloadState,
+                      (int32)MAVLINK_BRIDGE_MISSION_DOWNLOAD_WAIT_ITEM);
+
+    /* MISSION_ITEM_INT: 로컬 (10,20,5)m에 해당하는 lat/lon degE7 (업로드 순변환 재현) */
+    RefLatDeg = (float)RefLatE7 / 1e7f;
+    RefLonDeg = (float)RefLonE7 / 1e7f;
+    RefLatRad = RefLatDeg * UT_DEG_TO_RAD;
+    WpLatDeg  = RefLatDeg + ExpX / UT_EARTH_RADIUS_M * UT_RAD_TO_DEG;
+    WpLonDeg  = RefLonDeg + ExpY / (UT_EARTH_RADIUS_M * cosf(RefLatRad)) * UT_RAD_TO_DEG;
+    LatE7     = (int32)(WpLatDeg * 1e7f);
+    LonE7     = (int32)(WpLonDeg * 1e7f);
+
+    memset(ItemPayload, 0, sizeof(ItemPayload));
+    UT_WriteU32LE(&ItemPayload[16], (uint32)LatE7);
+    UT_WriteU32LE(&ItemPayload[20], (uint32)LonE7);
+    memcpy(&FloatBits, &ExpZ, sizeof(FloatBits));
+    UT_WriteU32LE(&ItemPayload[24], FloatBits);
+    UT_WriteU16LE(&ItemPayload[28], 0U);  /* seq */
+    UT_WriteU16LE(&ItemPayload[30], 16U); /* NAV_WAYPOINT */
+
+    TxCountBefore = UT_GetStubCount(UT_KEY(CFE_SB_TransmitMsg));
+    MAVLINK_BRIDGE_APP_Data.MissionDownloadTimeoutMs = 0x40000000U;
+    Len = UT_BuildMavFrameGeneric(ItemFrame, (uint8)UT_MISSION_ITEM_INT_MSGID,
+                                  (uint8)UT_MISSION_ITEM_INT_CRC_EXTRA, ItemPayload, sizeof(ItemPayload));
+    (void)UT_FeedSerialCaptureTx(ItemFrame, Len, OutBuf, sizeof(OutBuf));
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionDownloadState,
+                      (int32)MAVLINK_BRIDGE_MISSION_DOWNLOAD_IDLE);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.FcMissionReadbackTlm.WaypointCount, 1);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.FcMissionReadbackTlm.RouteType, 1);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.FcMissionReadbackTlm.SourceSequence, 0);
+    /* 역변환 왕복 오차 허용 0.5m (float degE7 반올림 경유) */
+    UtAssert_True(fabsf(MAVLINK_BRIDGE_APP_Data.FcMissionReadbackTlm.Waypoints[0].X - ExpX) < 0.5f,
+                  "wp X roundtrip (%.3f ~ %.3f)",
+                  (double)MAVLINK_BRIDGE_APP_Data.FcMissionReadbackTlm.Waypoints[0].X, (double)ExpX);
+    UtAssert_True(fabsf(MAVLINK_BRIDGE_APP_Data.FcMissionReadbackTlm.Waypoints[0].Y - ExpY) < 0.5f,
+                  "wp Y roundtrip (%.3f ~ %.3f)",
+                  (double)MAVLINK_BRIDGE_APP_Data.FcMissionReadbackTlm.Waypoints[0].Y, (double)ExpY);
+    UtAssert_True(fabsf(MAVLINK_BRIDGE_APP_Data.FcMissionReadbackTlm.Waypoints[0].Z - ExpZ) < 0.001f,
+                  "wp Z passthrough");
+    UtAssert_True(UT_GetStubCount(UT_KEY(CFE_SB_TransmitMsg)) > TxCountBefore,
+                  "FC_MISSION_READBACK_MID published on download complete");
+}
+
+/* 16개 초과 미션은 16개로 클램프 (버퍼 오버플로 없이 완주) */
+void Test_DownloadCount_ClampedTo16(void)
+{
+    uint8  CountPayload[2];
+    uint8  CountFrame[24];
+    uint8  ItemPayload[38];
+    uint8  ItemFrame[64];
+    uint8  OutBuf[512];
+    size_t Len;
+    uint8  i;
+    uint32 FloatBits;
+    float  Alt = 1.0f;
+
+    UT_SetGpsReference(100000000, 1000000000);
+
+    MAVLINK_BRIDGE_APP_Data.LinkState                = (uint8)MAVLINK_BRIDGE_LINK_CONNECTED;
+    MAVLINK_BRIDGE_APP_Data.MissionDownloadState     = (uint8)MAVLINK_BRIDGE_MISSION_DOWNLOAD_WAIT_COUNT;
+    MAVLINK_BRIDGE_APP_Data.MissionDownloadTimeoutMs = 0x40000000U;
+
+    UT_WriteU16LE(&CountPayload[0], 20U);
+    Len = UT_BuildMavFrameGeneric(CountFrame, (uint8)UT_MISSION_COUNT_MSGID,
+                                  (uint8)UT_MISSION_COUNT_CRC_EXTRA, CountPayload, sizeof(CountPayload));
+    (void)UT_FeedSerialCaptureTx(CountFrame, Len, OutBuf, sizeof(OutBuf));
+
+    memset(ItemPayload, 0, sizeof(ItemPayload));
+    memcpy(&FloatBits, &Alt, sizeof(FloatBits));
+    UT_WriteU32LE(&ItemPayload[24], FloatBits);
+    UT_WriteU16LE(&ItemPayload[30], 16U);
+
+    for (i = 0; i < 20U; i++)
+    {
+        UT_WriteU16LE(&ItemPayload[28], (uint16)i);
+        MAVLINK_BRIDGE_APP_Data.MissionDownloadTimeoutMs = 0x40000000U;
+        Len = UT_BuildMavFrameGeneric(ItemFrame, (uint8)UT_MISSION_ITEM_INT_MSGID,
+                                      (uint8)UT_MISSION_ITEM_INT_CRC_EXTRA, ItemPayload, sizeof(ItemPayload));
+        (void)UT_FeedSerialCaptureTx(ItemFrame, Len, OutBuf, sizeof(OutBuf));
+    }
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionDownloadState,
+                      (int32)MAVLINK_BRIDGE_MISSION_DOWNLOAD_IDLE);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.FcMissionReadbackTlm.WaypointCount, 16);
+}
+
+/* timeout → IDLE + 백오프 재시도 예약(간격 2배) */
+void Test_DownloadTimeout_SchedulesBackoffRetry(void)
+{
+    uint8 OutBuf[256];
+
+    UT_SetFakeTimeMs(10000U);
+    MAVLINK_BRIDGE_APP_Data.LinkState                 = (uint8)MAVLINK_BRIDGE_LINK_CONNECTED;
+    MAVLINK_BRIDGE_APP_Data.MissionDownloadState      = (uint8)MAVLINK_BRIDGE_MISSION_DOWNLOAD_WAIT_COUNT;
+    MAVLINK_BRIDGE_APP_Data.MissionDownloadTimeoutMs  = 1000U; /* 이미 지남 */
+    MAVLINK_BRIDGE_APP_Data.MissionReadbackBackoffMs  = UT_READBACK_BACKOFF_INITIAL_MS;
+    MAVLINK_BRIDGE_APP_Data.MissionReadbackPending    = 0U;
+
+    (void)UT_FeedSerialCaptureTx(NULL, 0, OutBuf, sizeof(OutBuf));
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionDownloadState,
+                      (int32)MAVLINK_BRIDGE_MISSION_DOWNLOAD_IDLE);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionReadbackPending, 1);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionReadbackNextRetryMs, 10000U + UT_READBACK_BACKOFF_INITIAL_MS);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionReadbackBackoffMs, 2U * UT_READBACK_BACKOFF_INITIAL_MS);
+}
+
+/* 백오프 2배 증가, 5s 상한 고정 */
+void Test_BackoffDoubles_To5sCap(void)
+{
+    uint8 OutBuf[256];
+
+    /* 4000 → 5000 (2배=8000이지만 상한 클램프) */
+    UT_SetFakeTimeMs(10000U);
+    MAVLINK_BRIDGE_APP_Data.LinkState                = (uint8)MAVLINK_BRIDGE_LINK_CONNECTED;
+    MAVLINK_BRIDGE_APP_Data.MissionDownloadState     = (uint8)MAVLINK_BRIDGE_MISSION_DOWNLOAD_WAIT_COUNT;
+    MAVLINK_BRIDGE_APP_Data.MissionDownloadTimeoutMs = 1000U;
+    MAVLINK_BRIDGE_APP_Data.MissionReadbackBackoffMs = 4000U;
+    (void)UT_FeedSerialCaptureTx(NULL, 0, OutBuf, sizeof(OutBuf));
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionReadbackBackoffMs, UT_READBACK_BACKOFF_CAP_MS);
+
+    /* 5000 → 5000 (상한 유지) */
+    UT_SetFakeTimeMs(20000U);
+    MAVLINK_BRIDGE_APP_Data.MissionDownloadState     = (uint8)MAVLINK_BRIDGE_MISSION_DOWNLOAD_WAIT_COUNT;
+    MAVLINK_BRIDGE_APP_Data.MissionDownloadTimeoutMs = 11000U;
+    (void)UT_FeedSerialCaptureTx(NULL, 0, OutBuf, sizeof(OutBuf));
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionReadbackBackoffMs, UT_READBACK_BACKOFF_CAP_MS);
+}
+
+/* 예약 시각 도달 시 ServiceSerial이 재시도 발화 */
+void Test_RetryFires_WhenDue(void)
+{
+    uint8        OutBuf[512];
+    size_t       CapLen;
+    uint8        PayloadLen;
+    const uint8 *Frame;
+
+    UT_SetFakeTimeMs(10000U);
+    MAVLINK_BRIDGE_APP_Data.LinkState                 = (uint8)MAVLINK_BRIDGE_LINK_CONNECTED;
+    MAVLINK_BRIDGE_APP_Data.MissionUploadState        = (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_IDLE;
+    MAVLINK_BRIDGE_APP_Data.MissionDownloadState      = (uint8)MAVLINK_BRIDGE_MISSION_DOWNLOAD_IDLE;
+    MAVLINK_BRIDGE_APP_Data.MissionReadbackPending    = 1U;
+    MAVLINK_BRIDGE_APP_Data.MissionReadbackNextRetryMs = 5000U; /* 이미 지남 */
+
+    CapLen = UT_FeedSerialCaptureTx(NULL, 0, OutBuf, sizeof(OutBuf));
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionDownloadState,
+                      (int32)MAVLINK_BRIDGE_MISSION_DOWNLOAD_WAIT_COUNT);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionReadbackPending, 0);
+    Frame = UT_FindMavFrame(OutBuf, CapLen, (uint8)UT_MISSION_REQUEST_LIST_MSGID, &PayloadLen);
+    UtAssert_True(Frame != NULL, "MISSION_REQUEST_LIST sent on retry");
+}
+
+/* 예약 시각 미도달이면 발화 안 함 */
+void Test_RetryHolds_BeforeDue(void)
+{
+    uint8 OutBuf[256];
+
+    UT_SetFakeTimeMs(3000U);
+    MAVLINK_BRIDGE_APP_Data.LinkState                  = (uint8)MAVLINK_BRIDGE_LINK_CONNECTED;
+    MAVLINK_BRIDGE_APP_Data.MissionUploadState         = (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_IDLE;
+    MAVLINK_BRIDGE_APP_Data.MissionDownloadState       = (uint8)MAVLINK_BRIDGE_MISSION_DOWNLOAD_IDLE;
+    MAVLINK_BRIDGE_APP_Data.MissionReadbackPending     = 1U;
+    MAVLINK_BRIDGE_APP_Data.MissionReadbackNextRetryMs = 5000U; /* 아직 안 됨 */
+
+    (void)UT_FeedSerialCaptureTx(NULL, 0, OutBuf, sizeof(OutBuf));
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionDownloadState,
+                      (int32)MAVLINK_BRIDGE_MISSION_DOWNLOAD_IDLE);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionReadbackPending, 1);
+}
+
+/* 재연결이 백오프를 초기값으로 리셋 (Test 1과 조합해 전체 사이클 커버) */
+void Test_ReconnectResetsBackoff(void)
+{
+    uint8 OutBuf[256];
+
+    MAVLINK_BRIDGE_APP_Data.LinkState                = (uint8)MAVLINK_BRIDGE_LINK_DISCONNECTED;
+    MAVLINK_BRIDGE_APP_Data.MissionUploadState       = (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_IDLE;
+    MAVLINK_BRIDGE_APP_Data.MissionDownloadState     = (uint8)MAVLINK_BRIDGE_MISSION_DOWNLOAD_IDLE;
+    MAVLINK_BRIDGE_APP_Data.MissionReadbackBackoffMs = UT_READBACK_BACKOFF_CAP_MS;
+
+    (void)UT_CaptureTxDuring(UT_CallSetLinkStateConnected, OutBuf, sizeof(OutBuf));
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionReadbackBackoffMs, UT_READBACK_BACKOFF_INITIAL_MS);
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(UpdateFromHeartbeat_Armed);
@@ -1586,6 +1957,18 @@ void UtTest_Setup(void)
     ADD_TEST(VerifyCmdLength_Fail);
     ADD_TEST(SetLinkState_Connected);
     ADD_TEST(SetLinkState_Disconnected);
+    ADD_TEST(SetLinkState_ConnectedEdge_StartsReadback);
+    ADD_TEST(SetLinkState_ConnectedEdge_SkipWhenUploadActive);
+    ADD_TEST(SetLinkState_NoEdge_NoReadback);
+    ADD_TEST(SetLinkState_Disconnect_CancelsPendingRetry);
+    ADD_TEST(UploadComplete_TriggersReadback);
+    ADD_TEST(DownloadComplete_PublishesReadbackMid);
+    ADD_TEST(DownloadCount_ClampedTo16);
+    ADD_TEST(DownloadTimeout_SchedulesBackoffRetry);
+    ADD_TEST(BackoffDoubles_To5sCap);
+    ADD_TEST(RetryFires_WhenDue);
+    ADD_TEST(RetryHolds_BeforeDue);
+    ADD_TEST(ReconnectResetsBackoff);
     ADD_TEST(RecordParseError);
     ADD_TEST(RecordParseError_Cumulative);
     ADD_TEST(SysTime_FullPayload);

@@ -68,6 +68,17 @@ typedef struct
     uint8     MissionDownloadExpectedCount;
     uint8     MissionDownloadSpare;
     uint32    MissionDownloadTimeoutMs;
+
+    /* BL-41 route(2026-07-23): FC 미션 readback — 다운로드 항목을 로컬 미터로
+     * 역변환해 버퍼링 후 완료 시 FC_MISSION_READBACK_MID(0x1914) 게시.
+     * timeout 시 지수 백오프(1→2→4→5s 상한) 무한 재시도 (mavlink spec §10). */
+    ROUTE_WAYPOINT_t MissionDownloadWaypoints[MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS];
+    uint8     MissionReadbackPending;
+    uint8     MissionReadbackPad[3];
+    uint32    MissionReadbackBackoffMs;
+    uint32    MissionReadbackNextRetryMs;
+    uint32    MissionReadbackSeq;
+    ROUTE_UPDATE_TLM_t FcMissionReadbackTlm;
     uint8     FcBaseMode;
     uint8     FcSystemStatus;
     uint8     IsArmed;

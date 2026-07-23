@@ -65,31 +65,132 @@ timeout으로 실패하면 **무한 재시도, 단 지수 백오프(1s→2s→4s
 다운로드 도중 링크가 DISCONNECTED로 전이하면 이 백오프 루프는 즉시
 중단 — 이후 트리거 1(재연결)이 백오프를 리셋하고 처음부터 재개.
 
-## 남은 구현 작업 (미착수)
+## 남은 구현 작업 (✅ 전부 완료, 2026-07-23 — SDD→TDD)
 
-- [ ] `shared_msgs/`에 readback MID용 메시지 구조체 신설 (route_msg.h
+- [x] `shared_msgs/`에 readback MID용 메시지 구조체 신설 (route_msg.h
       재사용 가능한지, 아니면 신규 파일)
-- [ ] MID 값 `0x1914` 실제 반영 (`default_cfs_core_app_msgid_values.h`,
+- [x] MID 값 `0x1914` 실제 반영 (`default_cfs_core_app_msgid_values.h`,
       `default_mavlink_bridge_app_msgid_values.h` 동기화)
-- [ ] 지수 백오프 재시도 상태(현재 백오프 간격, 다음 재시도 타임스탬프)를
+- [x] 지수 백오프 재시도 상태(현재 백오프 간격, 다음 재시도 타임스탬프)를
       `MissionDownload*` 그룹에 필드 추가
-- [ ] mavlink_bridge_app: `MissionDownload*` 완료 시 readback MID 게시
+- [x] mavlink_bridge_app: `MissionDownload*` 완료 시 readback MID 게시
       배선 (현재는 EVS 로그로만 끝남 — `mavlink_bridge_app_utils.c`
       MISSION_ITEM_INT 응답 처리 블록, 다운로드 완료 지점)
-- [ ] mavlink_bridge_app: 트리거 1(CONNECTED 전이) 자동 MISSION_QUERY
+- [x] mavlink_bridge_app: 트리거 1(CONNECTED 전이) 자동 MISSION_QUERY
       발동 로직 추가 — 현재 MISSION_QUERY는 지상 명령으로만 시작됨
-- [ ] mavlink_bridge_app: 트리거 2(업로드 완료 후) 자동 재조회 호출 추가
+- [x] mavlink_bridge_app: 트리거 2(업로드 완료 후) 자동 재조회 호출 추가
       (`MISSION_UPLOAD_ACCEPTED` 분기, utils.c:1505 부근)
-- [ ] cfs_core_app: readback MID 구독 + `MissionRoute` 캐시 갱신 처리
+- [x] cfs_core_app: readback MID 구독 + `MissionRoute` 캐시 갱신 처리
       추가 (기존 `ROUTE_UPDATE_MID` 처리와 별도 분기)
-- [ ] spec 갱신: `mission_app_runtime_spec.md`(MID 계약),
+- [x] spec 갱신(SDD로 구현 전 선반영): `mission_app_runtime_spec.md`(MID 계약),
       `cfs_core_app_behavior_spec.md`, `mavlink_bridge_app_behavior_spec.md`
-- [ ] UT 추가: mavlink_bridge_app(readback 게시), cfs_core_app(캐시 갱신
+- [x] UT 추가(15개: mavlink 11 + cfs_core utils 2 + app 1 + dispatch 1): mavlink_bridge_app(readback 게시), cfs_core_app(캐시 갱신
       분기), 트리거 3종 각각의 엣지 케이스(경합 방지 조건 포함)
-- [ ] BACKLOG.md BL-41 항목을 이 설계로 갱신, 착수 시작하면 진행상황
+- [x] BACKLOG.md BL-41 항목을 이 설계로 갱신, 착수 시작하면 진행상황
       기록
 
 ## 미결정 (다음 세션 또는 착수 중 결정)
 
-- CONFIG 조정값 쪽 지속 방안(파일 vs 다른 방식) — 이 문서 범위 밖,
-  별도 논의 필요. 그 외 route 설계는 이 문서로 확정 완료(2026-07-23).
+- ~~CONFIG 조정값 쪽 지속 방안~~ — ✅ 별도 완료(2026-07-23, BL-41 CONFIG 부분).
+
+---
+
+## 상세 구현 설계 (SDD, 2026-07-23 확정)
+
+### D1. 메시지 — 신규 구조체 불필요, `ROUTE_UPDATE_TLM_t` 재사용
+
+`shared_msgs/route_msg.h`의 `ROUTE_UPDATE_TLM_t`를 그대로 MID
+`FC_MISSION_READBACK_MID(0x1914)`에 실어 게시 — cfs_core_app의 기존
+`UpdateRouteCache()` 파서를 재사용할 수 있고, 출처 구분은 MID로 충분.
+필드 채움 규칙: `SourceSequence=0`(지상 시퀀스 아님), `RouteType=1`
+(MISSION — FC에 landing 세그먼트 개념 없음), `RouteVersion=0`,
+`Seq`=mavlink_bridge 자체 증가 카운터, `WaypointCount=min(수신 개수, 16)`
+(초과 시 16 클램프 + WARN 이벤트).
+
+### D2. 좌표 역변환 (다운로드 lat/lon → 로컬 미터)
+
+캐시(`ROUTE_WAYPOINT_t`)는 로컬 미터 좌표이므로, FC가 돌려주는
+lat/lon degE7을 업로드 변환(`SendMissionItemInt`)의 **정확한 역함수**로
+되돌린다 (`RefLatE7`/`RefLonE7` 기준 equirectangular):
+
+```
+X = (WpLatDeg - RefLatDeg) * DEG_TO_RAD * EARTH_RADIUS_M
+Y = (WpLonDeg - RefLonDeg) * DEG_TO_RAD * EARTH_RADIUS_M * cos(RefLatRad)
+Z = Alt (무변환)
+```
+
+Ref가 (0,0)(GPS 미수신)이면 업로드와 동일하게 그대로 진행(왕복 정합 유지).
+
+### D3. mavlink_bridge_app 상태 추가 (`MAVLINK_BRIDGE_APP_Data`)
+
+- `ROUTE_WAYPOINT_t MissionDownloadWaypoints[16]` — 수신 중 wp 버퍼
+  (현재는 EVS 로그 후 버림 → 항목별 역변환해 저장)
+- `uint8  MissionReadbackPending` — 재시도 대기 플래그
+- `uint32 MissionReadbackBackoffMs` — 현재 백오프(1000 시작)
+- `uint32 MissionReadbackNextRetryMs` — 다음 재시도 시각
+- `uint32 MissionReadbackSeq` — 게시 Seq 카운터
+- `ROUTE_UPDATE_TLM_t FcMissionReadbackTlm` — 게시 버퍼(Init에서 CFE_MSG_Init)
+
+### D4. 트리거 배선 (3개 모두 기존 `StartMissionDownload` 경로 공유)
+
+| 트리거 | 위치 | 조건 |
+| --- | --- | --- |
+| 1. CONNECTED 전이 | `SetLinkState()` — 현재 단순 대입(utils.c:2137)에 엣지 검출 추가 | 이전 상태 ≠ CONNECTED && 신규 == CONNECTED && upload/download 둘 다 IDLE. 전이 시 백오프 리셋(1s) + pending 해제 후 즉시 시작. DISCONNECTED 전이 시 pending 취소 |
+| 2. 업로드 완료 | MISSION_ACK accepted 분기(utils.c:1505, upload ACTIVE→IDLE 직후) | download IDLE일 때 시작 |
+| 3. MISSION_QUERY_CC | 기존 `MissionQuery()` 그대로 (시작 로직 변경 없음) | 기존 조건 유지 |
+
+완료 게시는 3개 트리거 공통 — 다운로드 완료 지점(utils.c:1601~,
+`download complete` 분기)에서 버퍼→`FcMissionReadbackTlm` 채워 0x1914
+게시. 신규 EID `MISSION_READBACK_EID(16)` INFO.
+
+### D5. 백오프 재시도
+
+- `CheckMissionDownloadTimeout()`에서 IDLE로 떨굴 때: 링크 CONNECTED면
+  `Pending=1`, `NextRetryMs = now + Backoff`, `Backoff = min(Backoff*2, 5000)`
+- `ServiceSerial()` 주기 처리에 재시도 체크 추가: `Pending && now >=
+  NextRetryMs && CONNECTED && upload/download IDLE` → 재시작
+- DISCONNECTED 전이 시 `Pending=0` (트리거 1이 재연결 때 백오프 리셋 후 재개)
+
+### D6. cfs_core_app 수신
+
+- Init: `FC_MISSION_READBACK_MID(0x1914)` 구독 추가
+  (`default_cfs_core_app_msgid_values.h`에 정의)
+- `ProcessStateMessage()`: 0x1914 분기 신설 — `UpdateRouteCache(&MissionRoute)`
+  호출(ROUTE_UPDATE_MID 분기와 별도, RouteType 검사 없이 MissionRoute 고정 —
+  출처가 FC readback이므로), 기존 `ROUTE_READBACK_EID(18)` INFO 재사용
+
+### D7. UT 목록 (TDD red 선작성 대상)
+
+mavlink_bridge (utils 러너):
+1. `SetLinkState_ConnectedEdge_StartsReadback` — 전이 → download WAIT_COUNT
+2. `SetLinkState_ConnectedEdge_SkipWhenUploadActive`
+3. `SetLinkState_NoEdge_NoReadback` — CONNECTED→CONNECTED 재호출 무동작
+4. `SetLinkState_Disconnect_CancelsPendingRetry`
+5. `UploadComplete_TriggersReadback` — MISSION_ACK accepted 주입 → WAIT_COUNT
+6. `DownloadComplete_PublishesReadbackMid` — count+item 주입 → 0x1914 게시,
+   wp 역변환 값 검증(업로드 공식 역산 왕복)
+7. `DownloadCount_ClampedTo16`
+8. `DownloadTimeout_SchedulesBackoffRetry` — 1s 예약
+9. `BackoffDoubles_To5sCap` — 1→2→4→5(고정)
+10. `RetryFires_WhenDue` — ServiceSerial 경유 재시작
+11. `ReconnectResetsBackoff`
+
+cfs_core (utils 러너 + app 러너):
+12. `ProcessStateMessage_FcReadback_UpdatesMissionRoute`
+13. `ProcessStateMessage_FcReadback_LandingUntouched`
+14. `Init_Subscribes_FcMissionReadback` (app 러너, SubscribeEx 스텁 카운트)
+
+### D8. spec 반영 (green 완료 후)
+
+`mission_app_runtime_spec.md` §5.1 MID 계약 테이블 + §17.1에 0x1914 추가,
+`cfs_core_app_behavior_spec.md` §16(경로 처리), `mavlink_bridge_app_behavior_spec.md`
+§6(미션 다운로드) 갱신.
+
+## 구현 완료 기록 (2026-07-23)
+
+SDD(spec 선정의: mavlink §10 재정의, runtime §5.1.1/§17.1, cfs_core §16 2채널)
+→ TDD(테스트 15개 red 선작성 → green). 신규 구조체 없이 ROUTE_UPDATE_TLM_t
+재사용. dispatch 화이트리스트 누락 갭을 코드 검사로 발견해 테스트 1개 추가
+(TaskPipe_FcMissionReadback). 테스트 픽스처 버그 1건 수정(TimeoutMs
+0xFFFFFFF0은 wraparound 비교에서 즉시 만료 판정 → 0x40000000). 전체 회귀
+16/16 PASS. 잔여: Pi 실기 검증(재배포 후 FC readback 실측).

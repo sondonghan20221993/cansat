@@ -173,6 +173,7 @@ MID 계약을 정의했습니다. 앱은 다른 앱이 소유한 앱을 직접 �
 | `SYSTEM_HEALTH_MID` (`0x1904`) | `cfs_core_app` | `cfs_core_app` | `lora_tdm_app`, `uplink_app`, 운영자 모니터링 소비자 | `CFS_CORE_APP_CMD_MID` (`0x18C0`) | 1 Hz periodic + 상태 전이 이벤트 | Section 6.5 | 필수 입력(자세/EKF/bridge) freshness/유효성 규칙 통과 (GPS는 헬스 비반영, `GpsValid`로 보고만 — §15 GPS 정책) | 입력 부족 시 `CFS_DEGRADED` 또는 `CFS_RECOVERY` 게시, FaultCode로 원인 구분 | `CFE_TIME` mission elapsed ms | 생산자 로컬 단조 증가, wrap 허용 |
 | `UPLINK_STATUS_MID` (`0x190A`) | `uplink_app` | `uplink_app` | `cfs_core_app`, 운영자 모니터링 소비자 | `UPLINK_APP_CMD_MID` (`0x18D0`) | 1 Hz periodic + 명령 처리 결과 이벤트 | Section 18.7 | 프레임 검증/라우팅 처리 결과를 상태 필드에 반영 | CRC/길이/인증/시퀀스 실패 시 reject 카운터와 오류 코드 게시 | `CFE_TIME` mission elapsed ms | 수락된 uplink command sequence는 단조 증가, 회귀/중복 거부 |
 | `ROUTE_UPDATE_MID` (`0x190B`) | `cfs_core_app` | `uplink_app`(입력 생산), `cfs_core_app`(cache 반영 상태 생산) | `cfs_core_app`(입력 소비), 임무 경로 소비자 앱 | `UPLINK_APP_CMD_MID` (`0x18D0`) ingress, 내부 route 반영 인터페이스 | 이벤트 기반(유효 route update 수락 시) | Section 18.5.2 route payload + Section 6.5 연계 상태 | waypoint 개수(`1..16`), 필드 범위, route version/sequence, CRC/길이, 인접 waypoint 거리(`2m..2m`) 검증 통과 | 검증 실패 시 `uplink_app`에서 거부, `UPLINK_STATUS_MID`에 원인 게시, 기존 active route 유지 | `CFE_TIME` mission elapsed ms | route update sequence는 소스별 단조 증가, 회귀/중복은 거부 |
+| `FC_MISSION_READBACK_MID` (`0x1914`, BL-41 route 2026-07-23) | `mavlink_bridge_app` | `mavlink_bridge_app` (FC 미션 다운로드 완료 시) | `cfs_core_app` (`MissionRoute` RAM 캐시 갱신 — FC가 유일 진실원본, 파일 영속화 없음) | 트리거 3종: FC 링크 CONNECTED 전이 / 미션 업로드 완료 / `MISSION_QUERY_CC`(0x18A0 CC=2) | 이벤트 기반(다운로드 완료 시) | `ROUTE_UPDATE_TLM_t` 레이아웃 재사용 (`RouteType=1` MISSION 고정, `SourceSequence=0`, lat/lon→로컬 미터 역변환 — mavlink spec §10) | 다운로드 상태머신 CRC/타임아웃 통과분만 게시, `WaypointCount=min(N,16)` 클램프 | timeout 시 지수 백오프(1→2→4→5s 상한) 무한 재시도, DISCONNECTED 전이 시 중단 | `CFE_TIME` mission elapsed ms | 생산자 로컬 단조 증가(`MissionReadbackSeq`) |
 
 > **MID 정합 주의**: 위 표는 **실제 코드 config 헤더의 MID 값**을 계약 원본으로 한다. 이전 초안의 aspirational MID(`IMU_STATE_MID 0x1900`, `GPS_STATE_MID 0x1901`, `EKF_STATE_MID 0x1902`, `BRIDGE_STATUS_MID 0x1903`)는 구현되지 않았으며, Section 6의 논리적 페이로드 이름으로만 남는다(대응은 6장 상단 매핑 표 참조). `DOWNLINK_STATUS_MID`는 미구현이며 `0x1905`는 `FC_EKF_LOCAL_STATE_MID`에 할당되어 사용할 수 없다 — (역사 참고) 폐기·삭제된 `lora_fc_downlink_app`은 별도 status MID 없이 자체 HK(`LORA_FC_DOWNLINK_APP_HK_TLM_MID`)만 publish했다.
 
@@ -1039,6 +1040,9 @@ FC, 모터 또는 액추에이터 명령 및 비행 제어 매개변수
 | `MODE_CMD_MID` | `0x190F` (uplink_app 라우팅) |
 | `DIAGNOSTIC_CMD_MID` | `0x1910` (uplink_app 라우팅) |
 | `LORA_TDM_APP_LINK_STATUS_MID` | `0x1911` (lora_tdm_app; baseline 등록됨, 2026-06-16 — `lora_fc_downlink_app` 대체) |
+| `EXEC_RESULT_MID` | `0x1912` (대상앱→uplink_app 실행결과 회신, BL-08 2026-07-22) |
+| `ROUTE_SNAPSHOT_MID` | `0x1913` (cfs_core_app→lora_tdm_app waypoint readback 다운링크, 2026-07-23) |
+| `FC_MISSION_READBACK_MID` | `0x1914` (mavlink_bridge_app→cfs_core_app FC 미션 재조회 결과, BL-41 route 2026-07-23 — §5.1.1 표 참조) |
 
 > 명령 라우팅 MID(`0x190C`~`0x1910`)는 `uplink_app`이 검증된 uplink 명령을 클래스별로 publish하는 대상이다(§18.4.7 라우팅 표 참조). `0x1909`는 `lora_tdm_app`이 LoRa로 수신한 "UP,..." 원문을 `uplink_app`에 전달하는 raw frame MID이다(`lora_fc_downlink_app`에서 이관).
 

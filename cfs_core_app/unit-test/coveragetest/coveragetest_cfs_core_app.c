@@ -12,6 +12,17 @@ void Test_CFS_CORE_APP_Init(void)
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.RunStatus, CFE_ES_RunStatus_APP_RUN);
 }
 
+/* BL-41 route: Init이 FC_MISSION_READBACK_MID(0x1914) 구독을 포함하는지 —
+ * 기존 15개 구독에 1개 추가돼 총 16회 호출돼야 한다 (TDD red) */
+void Test_CFS_CORE_APP_Init_Subscribes_FcMissionReadback(void)
+{
+    UtAssert_INT32_EQ(CFS_CORE_APP_Init(), CFE_SUCCESS);
+
+    UtAssert_True(UT_GetStubCount(UT_KEY(CFE_SB_Subscribe)) == 16,
+                  "Init() subscribes 16 MIDs (incl. FC_MISSION_READBACK_MID), got %u",
+                  (unsigned int)UT_GetStubCount(UT_KEY(CFE_SB_Subscribe)));
+}
+
 void Test_CFS_CORE_APP_Init_SubscribeError(void)
 {
     /* 첫 번째 Subscribe(CMD_MID) 실패 */
@@ -122,6 +133,7 @@ void Test_CFS_CORE_APP_Init_RestoresPersistedConfig(void)
 void UtTest_Setup(void)
 {
     ADD_TEST(CFS_CORE_APP_Init);
+    ADD_TEST(CFS_CORE_APP_Init_Subscribes_FcMissionReadback);
     ADD_TEST(CFS_CORE_APP_Init_RestoresPersistedConfig);
     ADD_TEST(CFS_CORE_APP_Init_SubscribeError);
     ADD_TEST(CFS_CORE_APP_Init_EVSRegisterError);

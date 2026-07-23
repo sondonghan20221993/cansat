@@ -92,6 +92,21 @@ void Test_CFS_CORE_APP_TaskPipe_RouteUpdate(void)
     UtAssert_STUB_COUNT(CFS_CORE_APP_ProcessStateMessage, 1);
 }
 
+/* BL-41 route(2026-07-23): FC_MISSION_READBACK_MID → ProcessStateMessage 라우팅
+ * (구독만 있고 dispatch 화이트리스트에 빠지면 도달 불가 — 코드 검사로 발견된 갭) */
+void Test_CFS_CORE_APP_TaskPipe_FcMissionReadback(void)
+{
+    CFE_SB_Buffer_t Buffer;
+    CFE_SB_MsgId_t  MsgId;
+
+    memset(&Buffer, 0, sizeof(Buffer));
+    MsgId = CFE_SB_ValueToMsgId(FC_MISSION_READBACK_MID);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+
+    CFS_CORE_APP_TaskPipe(&Buffer);
+    UtAssert_STUB_COUNT(CFS_CORE_APP_ProcessStateMessage, 1);
+}
+
 /* 알 수 없는 MID → ErrCounter 증가 */
 void Test_CFS_CORE_APP_TaskPipe_UnknownMid(void)
 {
@@ -239,6 +254,7 @@ void UtTest_Setup(void)
     ADD_TEST(CFS_CORE_APP_TaskPipe_AttitudeState);
     ADD_TEST(CFS_CORE_APP_TaskPipe_BridgeHk);
     ADD_TEST(CFS_CORE_APP_TaskPipe_RouteUpdate);
+    ADD_TEST(CFS_CORE_APP_TaskPipe_FcMissionReadback);
     ADD_TEST(CFS_CORE_APP_TaskPipe_UnknownMid);
     ADD_TEST(CFS_CORE_APP_TaskPipe_GetFcnCodeError);
     ADD_TEST(CFS_CORE_APP_TaskPipe_Noop);

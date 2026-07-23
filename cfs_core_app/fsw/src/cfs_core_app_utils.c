@@ -183,6 +183,17 @@ void CFS_CORE_APP_ProcessStateMessage(CFE_SB_Buffer_t *SBBufPtr)
     {
         CFS_CORE_APP_UpdateStateCache(&CFS_CORE_APP_Data.EkfState, (const CFS_CORE_APP_GenericStateTlm_t *)MsgPtr, NowMs);
     }
+    else if (CFE_SB_MsgIdToValue(MsgId) == FC_MISSION_READBACK_MID)
+    {
+        /* BL-41 route(2026-07-23): FC 실물 미션 readback — RouteType 검사 없이
+         * MissionRoute 고정 갱신(FC에 landing 개념 없음, spec §16 2채널) */
+        const CFS_CORE_APP_RouteUpdateTlm_t *RouteMsg = (const CFS_CORE_APP_RouteUpdateTlm_t *)MsgPtr;
+
+        CFS_CORE_APP_UpdateRouteCache(&CFS_CORE_APP_Data.MissionRoute, RouteMsg);
+        CFE_EVS_SendEvent(CFS_CORE_APP_ROUTE_READBACK_EID, CFE_EVS_EventType_INFORMATION,
+                          "CFS_CORE_APP: FC mission readback applied wp_count=%u seq=%lu",
+                          (unsigned int)RouteMsg->WaypointCount, (unsigned long)RouteMsg->Seq);
+    }
     else if (CFE_SB_MsgIdToValue(MsgId) == ROUTE_UPDATE_MID)
     {
         const CFS_CORE_APP_RouteUpdateTlm_t *RouteMsg = (const CFS_CORE_APP_RouteUpdateTlm_t *)MsgPtr;

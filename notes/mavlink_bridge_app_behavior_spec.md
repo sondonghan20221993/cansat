@@ -276,13 +276,22 @@ MAVLink MISSION_ACK 필드 순서: `[0]` target_system, `[1]` target_component, 
 
 업로드 후 실제 저장 여부는 `MISSION_QUERY_CC` 또는 GCS mission list 조회로 별도 확인해야 한다.
 
-## 10. FC MISSION 조회 명세 (MISSION_QUERY_CC)
+## 10. FC MISSION 재조회(readback) 명세 (BL-41 route, 2026-07-23 재정의)
 
-cFS CMD `MAVLINK_BRIDGE_APP_CMD_MID` (0x18A0), CC=2로 트리거된다.
+**목적**: FC에 저장된 현재 미션을 읽어 **`FC_MISSION_READBACK_MID(0x1914)`로
+게시**한다 — cfs_core_app이 구독해 `MissionRoute` 캐시를 채운다(FC가 유일
+진실원본, Pi 캐시는 RAM 전용 미러 — `bl41_route_buffer_design_2026-07-23.md`).
+EVS 로그 출력은 진단용으로 유지.
 
-**목적**: FC에 저장된 현재 미션 항목을 읽어 EVS 로그로 출력한다. 업로드 결과 확인용.
+**트리거 3종** (모두 동일 다운로드 상태머신 공유):
 
-**다운로드 프로토콜:**
+| # | 트리거 | 조건 |
+| --- | --- | --- |
+| 1 | FC 링크 **CONNECTED 전이** (엣지) | 이전 ≠ CONNECTED && 신규 == CONNECTED && upload/download 둘 다 IDLE. 전이 시 백오프 리셋. DISCONNECTED 전이는 대기 중 재시도 취소 |
+| 2 | 미션 **업로드 완료** (MISSION_ACK ACCEPTED 수신, upload ACTIVE→IDLE 직후) | download IDLE일 때 — FC가 실제 받아들인 값으로 캐시 확정(검증 겸함) |
+| 3 | 지상 명령 `MISSION_QUERY_CC` (CMD_MID 0x18A0, CC=2) | 기존과 동일 (링크 CONNECTED 필요) |
+
+**다운로드 프로토콜** (기존과 동일):
 
 ```
 mavlink_bridge_app → FC : MISSION_REQUEST_LIST
@@ -294,10 +303,30 @@ FC → mavlink_bridge_app : MISSION_ITEM_INT    (seq=N-1)
 mavlink_bridge_app → FC : MISSION_ACK         (MAV_MISSION_ACCEPTED)
 ```
 
-**출력**: 수신된 각 waypoint를 `MAVLINK_BRIDGE_APP_MISSION_DOWNLOAD_INF_EID` EVS 이벤트로 출력한다.
+**항목 처리**: 각 `MISSION_ITEM_INT`의 lat/lon degE7·alt를 업로드 변환
+(§13.1)의 정확한 역함수로 로컬 미터로 되돌려 버퍼링:
+
 ```
-[wp N] x=<val> y=<val> z=<val> cmd=<cmd>
+X = (WpLatDeg - RefLatDeg) * DEG_TO_RAD * EARTH_RADIUS_M
+Y = (WpLonDeg - RefLonDeg) * DEG_TO_RAD * EARTH_RADIUS_M * cos(RefLatRad)
+Z = Alt (무변환)
 ```
+
+Ref(GLOBAL_POSITION_INT 기준점)가 (0,0)이면 업로드와 동일하게 그대로 진행
+(왕복 정합 유지). 진단 EVS `[wp N] lat/lon/alt/cmd` 출력은 유지.
+
+**완료 게시**: 다운로드 완료 시 `ROUTE_UPDATE_TLM_t` 레이아웃 그대로
+`FC_MISSION_READBACK_MID(0x1914)`에 실어 게시. `SourceSequence=0`,
+`RouteType=1`(MISSION), `RouteVersion=0`, `Seq`=자체 증가 카운터,
+`WaypointCount=min(N,16)`(초과분 클램프 + WARN). 신규
+`MISSION_READBACK_EID(16)` INFO 발생.
+
+**재시도(백오프)**: 전체 시퀀스가 timeout(3s)으로 실패하면 링크가
+CONNECTED인 동안 **무한 재시도, 지수 백오프 1s→2s→4s→5s(상한 고정)**.
+재시도 발화는 `ServiceSerial()` 주기 체크(upload/download IDLE 조건).
+링크 DISCONNECTED 전이 시 대기 중 재시도 즉시 취소 — 이후 재연결
+(트리거 1)이 백오프를 리셋하고 재개. 근거: readback 실패 = 임무 수행
+불가이므로 포기 금지, 단 요청 폭주 방지(BL-38 "무한 재시도" 패턴).
 
 **타이밍**: 단계별 응답 대기 timeout 3000 ms. 재시도 없음.
 

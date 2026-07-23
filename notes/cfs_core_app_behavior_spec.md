@@ -603,6 +603,18 @@ HK 요청 시 앱은 다음을 보고한다.
 mission route와 landing route는 독립적으로 캐시된다.
 허용된 경로 갱신 시마다 선택된 경로 캐시의 `UpdateCount`가 증가한다.
 
+경로 캐시 입력은 2채널이다 (BL-41 route, 2026-07-23):
+
+- `ROUTE_UPDATE_MID`(0x190B) — 지상국 발 경로 갱신. `RouteType`으로
+  mission(1)/landing(2) 캐시 선택 (기존 동작).
+- `FC_MISSION_READBACK_MID`(0x1914) — **FC 실물 미션 readback**
+  (mavlink_bridge_app 게시, mavlink spec §10). `RouteType` 검사 없이
+  **`MissionRoute` 캐시 고정 갱신**(FC에 landing 세그먼트 개념 없음),
+  `ROUTE_READBACK_EID`(18) INFO. `MissionRoute`는 RAM 전용 미러 —
+  파일 영속화하지 않으며, 재부팅 후 비어있는 것이 정상(FC 링크
+  CONNECTED 전이 시 readback이 곧 다시 채움 — FC가 유일 진실원본,
+  runtime spec §12.2와 대비되는 의도적 비영속 항목).
+
 경로 갱신이 영향을 주는 항목:
 
 - 경로 캐시

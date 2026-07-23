@@ -89,6 +89,9 @@ static const char *MAVLINK_BRIDGE_APP_GetSerialPath(void)
 #define MAVLINK_MSG_ID_MISSION_REQUEST_LIST            43U
 #define MAVLINK_MISSION_REQUEST_LIST_CRC_EXTRA         132U
 #define MAVLINK_BRIDGE_APP_MISSION_DOWNLOAD_TIMEOUT_MS 3000U
+/* BL-41 route(2026-07-23): readback 실패 시 지수 백오프 재시도 */
+#define MAVLINK_BRIDGE_APP_READBACK_BACKOFF_INITIAL_MS 1000U
+#define MAVLINK_BRIDGE_APP_READBACK_BACKOFF_CAP_MS     5000U
 #define MAVLINK_MSG_ID_MISSION_REQUEST                 40U
 #define MAVLINK_MSG_ID_MISSION_ITEM                    39U
 #define MAVLINK_MSG_ID_MISSION_CLEAR_ALL               45U
@@ -654,6 +657,62 @@ static void MAVLINK_BRIDGE_APP_SendMissionAckAccepted(void)
                                      MAVLINK_MISSION_ACK_CRC_EXTRA);
 }
 
+/* BL-41 route(2026-07-23): FC 미션 readback 자동 시작 — 트리거 1(CONNECTED
+ * 전이)/2(업로드 완료)/재시도 발화가 공유. MissionQuery(트리거 3)와 동일한
+ * 다운로드 상태머신을 세팅하되 지상 명령 카운터는 건드리지 않는다. */
+static void MAVLINK_BRIDGE_APP_StartFcMissionReadback(void)
+{
+    MAVLINK_BRIDGE_APP_Data.MissionDownloadState         = (uint8)MAVLINK_BRIDGE_MISSION_DOWNLOAD_WAIT_COUNT;
+    MAVLINK_BRIDGE_APP_Data.MissionDownloadSeq           = 0U;
+    MAVLINK_BRIDGE_APP_Data.MissionDownloadExpectedCount = 0U;
+    MAVLINK_BRIDGE_APP_Data.MissionDownloadTimeoutMs     =
+        MAVLINK_BRIDGE_APP_GetTimeMs() + MAVLINK_BRIDGE_APP_MISSION_DOWNLOAD_TIMEOUT_MS;
+    MAVLINK_BRIDGE_APP_Data.MissionReadbackPending       = 0U;
+
+    MAVLINK_BRIDGE_APP_SendMissionRequestList();
+
+    CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_MISSION_READBACK_EID, CFE_EVS_EventType_INFORMATION,
+                      "MAVLINK_BRIDGE_APP: FC mission readback started");
+}
+
+/* BL-41 route: 다운로드 완료 시 버퍼를 FC_MISSION_READBACK_MID(0x1914)로 게시.
+ * ROUTE_UPDATE_TLM_t 레이아웃 재사용, RouteType=1(MISSION) 고정, SourceSequence=0
+ * (지상 시퀀스 아님) — spec §10 완료 게시 규칙. */
+static void MAVLINK_BRIDGE_APP_PublishFcMissionReadback(void)
+{
+    ROUTE_UPDATE_TLM_t *Tlm = &MAVLINK_BRIDGE_APP_Data.FcMissionReadbackTlm;
+    uint8               Count = MAVLINK_BRIDGE_APP_Data.MissionDownloadExpectedCount;
+    uint8               i;
+
+    if (Count > (uint8)MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS)
+    {
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_MISSION_READBACK_EID, CFE_EVS_EventType_INFORMATION,
+                          "MAVLINK_BRIDGE_APP: readback clamped %u->%u waypoints",
+                          (unsigned int)Count, (unsigned int)MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS);
+        Count = (uint8)MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS;
+    }
+
+    MAVLINK_BRIDGE_APP_Data.MissionReadbackSeq++;
+    CFE_MSG_Init(CFE_MSG_PTR(Tlm->TelemetryHeader), CFE_SB_ValueToMsgId(FC_MISSION_READBACK_MID), sizeof(*Tlm));
+    Tlm->Seq            = MAVLINK_BRIDGE_APP_Data.MissionReadbackSeq;
+    Tlm->TimestampMs    = MAVLINK_BRIDGE_APP_GetTimeMs();
+    Tlm->SourceSequence = 0U;
+    Tlm->RouteType      = 1U; /* MISSION 고정 — FC에 landing 세그먼트 개념 없음 */
+    Tlm->RouteVersion   = 0U;
+    Tlm->WaypointCount  = Count;
+    for (i = 0U; i < Count; i++)
+    {
+        Tlm->Waypoints[i] = MAVLINK_BRIDGE_APP_Data.MissionDownloadWaypoints[i];
+    }
+
+    CFE_SB_TimeStampMsg(CFE_MSG_PTR(Tlm->TelemetryHeader));
+    CFE_SB_TransmitMsg(CFE_MSG_PTR(Tlm->TelemetryHeader), true);
+
+    CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_MISSION_READBACK_EID, CFE_EVS_EventType_INFORMATION,
+                      "MAVLINK_BRIDGE_APP: FC mission readback published wp_count=%u seq=%lu",
+                      (unsigned int)Count, (unsigned long)MAVLINK_BRIDGE_APP_Data.MissionReadbackSeq);
+}
+
 void MAVLINK_BRIDGE_APP_MissionQuery(const MAVLINK_BRIDGE_APP_MissionQueryCmd_t *Cmd)
 {
     if (!MAVLINK_BRIDGE_APP_VerifyCmdLength(&Cmd->CommandHeader.Msg, sizeof(*Cmd)))
@@ -699,6 +758,28 @@ static void MAVLINK_BRIDGE_APP_CheckMissionDownloadTimeout(uint32 NowMs)
                       "MAVLINK_BRIDGE_APP: MISSION_QUERY timeout (seq=%u expected=%u)",
                       (unsigned int)MAVLINK_BRIDGE_APP_Data.MissionDownloadSeq,
                       (unsigned int)MAVLINK_BRIDGE_APP_Data.MissionDownloadExpectedCount);
+
+    /* BL-41 route: 링크가 살아있으면 백오프 후 무한 재시도 예약 (spec §10) */
+    if (MAVLINK_BRIDGE_APP_Data.LinkState == (uint8)MAVLINK_BRIDGE_LINK_CONNECTED)
+    {
+        uint32 Backoff = MAVLINK_BRIDGE_APP_Data.MissionReadbackBackoffMs;
+
+        if (Backoff < MAVLINK_BRIDGE_APP_READBACK_BACKOFF_INITIAL_MS)
+        {
+            Backoff = MAVLINK_BRIDGE_APP_READBACK_BACKOFF_INITIAL_MS;
+        }
+        MAVLINK_BRIDGE_APP_Data.MissionReadbackPending     = 1U;
+        MAVLINK_BRIDGE_APP_Data.MissionReadbackNextRetryMs = NowMs + Backoff;
+        Backoff *= 2U;
+        if (Backoff > MAVLINK_BRIDGE_APP_READBACK_BACKOFF_CAP_MS)
+        {
+            Backoff = MAVLINK_BRIDGE_APP_READBACK_BACKOFF_CAP_MS;
+        }
+        MAVLINK_BRIDGE_APP_Data.MissionReadbackBackoffMs = Backoff;
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_MISSION_READBACK_EID, CFE_EVS_EventType_INFORMATION,
+                          "MAVLINK_BRIDGE_APP: readback retry scheduled in %lums",
+                          (unsigned long)(MAVLINK_BRIDGE_APP_Data.MissionReadbackNextRetryMs - NowMs));
+    }
 }
 
 static void MAVLINK_BRIDGE_APP_SendCompanionHeartbeat(uint32 NowMs)
@@ -1521,6 +1602,13 @@ static void MAVLINK_BRIDGE_APP_HandleFrameComplete(uint32 RxTimestampMs, uint8 C
                     CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_MISSION_UPLOAD_INF_EID, CFE_EVS_EventType_INFORMATION,
                                       "MAVLINK_BRIDGE_APP: mission upload success wp_count=%u",
                                       (unsigned int)ConfirmedCount);
+
+                    /* BL-41 route: 트리거 2 — 업로드 완료 후 FC가 실제로 받아들인
+                     * 값을 readback으로 재확인해 캐시 확정 (spec §10) */
+                    if (MAVLINK_BRIDGE_APP_Data.MissionDownloadState == (uint8)MAVLINK_BRIDGE_MISSION_DOWNLOAD_IDLE)
+                    {
+                        MAVLINK_BRIDGE_APP_StartFcMissionReadback();
+                    }
                 }
                 else
                 {
@@ -1555,6 +1643,7 @@ static void MAVLINK_BRIDGE_APP_HandleFrameComplete(uint32 RxTimestampMs, uint8 C
                 MAVLINK_BRIDGE_APP_SendMissionAckAccepted();
                 CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_MISSION_DOWNLOAD_INF_EID, CFE_EVS_EventType_INFORMATION,
                                   "MAVLINK_BRIDGE_APP: MISSION download complete: 0 waypoints (empty)");
+                MAVLINK_BRIDGE_APP_PublishFcMissionReadback(); /* BL-41: 빈 미션도 캐시 확정(0개) 게시 */
             }
             else
             {
@@ -1595,6 +1684,25 @@ static void MAVLINK_BRIDGE_APP_HandleFrameComplete(uint32 RxTimestampMs, uint8 C
                               (double)Alt_m,
                               (unsigned int)Cmd);
 
+            /* BL-41 route: lat/lon degE7 → 로컬 미터 역변환해 버퍼링 (업로드
+             * 변환(SendMissionItemInt)의 정확한 역함수 — spec §10). 16개 초과
+             * 항목은 버리되 다운로드 자체는 완주(클램프). */
+            if (MAVLINK_BRIDGE_APP_Data.MissionDownloadSeq < (uint8)MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS)
+            {
+                float RefLatDeg = (float)MAVLINK_BRIDGE_APP_RefLatE7 / 1e7f;
+                float RefLonDeg = (float)MAVLINK_BRIDGE_APP_RefLonE7 / 1e7f;
+                float RefLatRad = RefLatDeg * MAVLINK_DEG_TO_RAD;
+                float WpLatDeg  = (float)LatE7 / 1e7f;
+                float WpLonDeg  = (float)LonE7 / 1e7f;
+                uint8 Idx       = MAVLINK_BRIDGE_APP_Data.MissionDownloadSeq;
+
+                MAVLINK_BRIDGE_APP_Data.MissionDownloadWaypoints[Idx].X =
+                    (WpLatDeg - RefLatDeg) * MAVLINK_DEG_TO_RAD * MAVLINK_EARTH_RADIUS_M;
+                MAVLINK_BRIDGE_APP_Data.MissionDownloadWaypoints[Idx].Y =
+                    (WpLonDeg - RefLonDeg) * MAVLINK_DEG_TO_RAD * MAVLINK_EARTH_RADIUS_M * cosf(RefLatRad);
+                MAVLINK_BRIDGE_APP_Data.MissionDownloadWaypoints[Idx].Z = Alt_m;
+            }
+
             MAVLINK_BRIDGE_APP_Data.MissionDownloadSeq++;
             if (MAVLINK_BRIDGE_APP_Data.MissionDownloadSeq >=
                 MAVLINK_BRIDGE_APP_Data.MissionDownloadExpectedCount)
@@ -1604,6 +1712,7 @@ static void MAVLINK_BRIDGE_APP_HandleFrameComplete(uint32 RxTimestampMs, uint8 C
                 CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_MISSION_DOWNLOAD_INF_EID, CFE_EVS_EventType_INFORMATION,
                                   "MAVLINK_BRIDGE_APP: MISSION download complete: %u waypoints",
                                   (unsigned int)MAVLINK_BRIDGE_APP_Data.MissionDownloadExpectedCount);
+                MAVLINK_BRIDGE_APP_PublishFcMissionReadback();
             }
             else
             {
@@ -2136,7 +2245,26 @@ bool MAVLINK_BRIDGE_APP_VerifyCmdLength(const CFE_MSG_Message_t *MsgPtr, size_t 
 
 void MAVLINK_BRIDGE_APP_SetLinkState(MAVLINK_BRIDGE_APP_LinkState_t NewState)
 {
+    uint8 PrevState = MAVLINK_BRIDGE_APP_Data.LinkState;
+
     MAVLINK_BRIDGE_APP_Data.LinkState = (uint8)NewState;
+
+    /* BL-41 route(2026-07-23): 트리거 1 — CONNECTED 엣지에서 FC 미션 readback
+     * 자동 시작(백오프 리셋). DISCONNECTED 전이는 대기 중 재시도 취소. */
+    if (NewState == MAVLINK_BRIDGE_LINK_CONNECTED && PrevState != (uint8)MAVLINK_BRIDGE_LINK_CONNECTED)
+    {
+        MAVLINK_BRIDGE_APP_Data.MissionReadbackBackoffMs = MAVLINK_BRIDGE_APP_READBACK_BACKOFF_INITIAL_MS;
+        MAVLINK_BRIDGE_APP_Data.MissionReadbackPending   = 0U;
+        if (MAVLINK_BRIDGE_APP_Data.MissionUploadState == (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_IDLE &&
+            MAVLINK_BRIDGE_APP_Data.MissionDownloadState == (uint8)MAVLINK_BRIDGE_MISSION_DOWNLOAD_IDLE)
+        {
+            MAVLINK_BRIDGE_APP_StartFcMissionReadback();
+        }
+    }
+    else if (NewState == MAVLINK_BRIDGE_LINK_DISCONNECTED)
+    {
+        MAVLINK_BRIDGE_APP_Data.MissionReadbackPending = 0U;
+    }
 }
 
 void MAVLINK_BRIDGE_APP_RecordParseError(MAVLINK_BRIDGE_APP_ErrorCode_t ErrorCode)
@@ -2194,6 +2322,16 @@ void MAVLINK_BRIDGE_APP_ServiceSerial(void)
 
     MAVLINK_BRIDGE_APP_CheckMissionUploadTimeout(NowMs);
     MAVLINK_BRIDGE_APP_CheckMissionDownloadTimeout(NowMs);
+
+    /* BL-41 route: 예약된 readback 재시도 발화 (spec §10 백오프) */
+    if (MAVLINK_BRIDGE_APP_Data.MissionReadbackPending != 0U &&
+        (int32)(NowMs - MAVLINK_BRIDGE_APP_Data.MissionReadbackNextRetryMs) >= 0 &&
+        MAVLINK_BRIDGE_APP_Data.LinkState == (uint8)MAVLINK_BRIDGE_LINK_CONNECTED &&
+        MAVLINK_BRIDGE_APP_Data.MissionUploadState == (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_IDLE &&
+        MAVLINK_BRIDGE_APP_Data.MissionDownloadState == (uint8)MAVLINK_BRIDGE_MISSION_DOWNLOAD_IDLE)
+    {
+        MAVLINK_BRIDGE_APP_StartFcMissionReadback();
+    }
 
     SawData = false;
     while ((ReadSize = read(MAVLINK_BRIDGE_APP_Data.SerialFd, RxBuffer, sizeof(RxBuffer))) > 0)

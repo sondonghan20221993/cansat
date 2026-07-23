@@ -219,6 +219,71 @@ void Test_CFS_CORE_APP_ProcessStateMessage_RouteUpdate(void)
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.MissionRoute.WaypointCount, 2);
 }
 
+/* BL-41 route: FC_MISSION_READBACK_MID(0x1914) 수신 → MissionRoute 캐시
+ * 고정 갱신 (RouteType 검사 없음 — 출처가 FC readback, spec §16 2채널).
+ * TDD red: FC_MISSION_READBACK_MID define + ProcessStateMessage 분기 요구 */
+void Test_CFS_CORE_APP_ProcessStateMessage_FcReadback_UpdatesMissionRoute(void)
+{
+    uint8                          Storage[sizeof(CFS_CORE_APP_RouteUpdateTlm_t)];
+    CFE_SB_Buffer_t               *Buffer;
+    CFE_SB_MsgId_t                 MsgId;
+    CFS_CORE_APP_RouteUpdateTlm_t *RouteMsg;
+
+    memset(Storage, 0, sizeof(Storage));
+    Buffer   = (CFE_SB_Buffer_t *)Storage;
+    RouteMsg = (CFS_CORE_APP_RouteUpdateTlm_t *)Storage;
+    CFE_MSG_Init(CFE_MSG_PTR(RouteMsg->TelemetryHeader), CFE_SB_ValueToMsgId(FC_MISSION_READBACK_MID), sizeof(*RouteMsg));
+    MsgId = CFE_SB_ValueToMsgId(FC_MISSION_READBACK_MID);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+    RouteMsg->TimestampMs    = 7777;
+    RouteMsg->SourceSequence = 0;   /* FC readback은 지상 시퀀스 없음 */
+    RouteMsg->RouteType      = 1;   /* MISSION 고정 */
+    RouteMsg->RouteVersion   = 0;
+    RouteMsg->WaypointCount  = 2;
+    RouteMsg->Waypoints[0].X = 10.0f;
+    RouteMsg->Waypoints[0].Y = 20.0f;
+    RouteMsg->Waypoints[0].Z = 5.0f;
+    RouteMsg->Waypoints[1].X = 30.0f;
+    RouteMsg->Waypoints[1].Y = 40.0f;
+    RouteMsg->Waypoints[1].Z = 5.0f;
+
+    memset(&CFS_CORE_APP_Data.MissionRoute, 0, sizeof(CFS_CORE_APP_Data.MissionRoute));
+
+    CFS_CORE_APP_ProcessStateMessage(Buffer);
+
+    UtAssert_BOOL_TRUE(CFS_CORE_APP_Data.MissionRoute.Valid);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.MissionRoute.WaypointCount, 2);
+    UtAssert_True(CFS_CORE_APP_Data.MissionRoute.Waypoints[0].X == 10.0f, "wp0.X from FC readback");
+    UtAssert_True(CFS_CORE_APP_Data.MissionRoute.Waypoints[1].Y == 40.0f, "wp1.Y from FC readback");
+}
+
+/* FC readback은 LandingRoute를 건드리지 않는다 (RouteType 무관 MissionRoute 고정) */
+void Test_CFS_CORE_APP_ProcessStateMessage_FcReadback_LandingUntouched(void)
+{
+    uint8                          Storage[sizeof(CFS_CORE_APP_RouteUpdateTlm_t)];
+    CFE_SB_Buffer_t               *Buffer;
+    CFE_SB_MsgId_t                 MsgId;
+    CFS_CORE_APP_RouteUpdateTlm_t *RouteMsg;
+
+    memset(Storage, 0, sizeof(Storage));
+    Buffer   = (CFE_SB_Buffer_t *)Storage;
+    RouteMsg = (CFS_CORE_APP_RouteUpdateTlm_t *)Storage;
+    CFE_MSG_Init(CFE_MSG_PTR(RouteMsg->TelemetryHeader), CFE_SB_ValueToMsgId(FC_MISSION_READBACK_MID), sizeof(*RouteMsg));
+    MsgId = CFE_SB_ValueToMsgId(FC_MISSION_READBACK_MID);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+    RouteMsg->RouteType     = CFS_CORE_APP_ROUTE_SEGMENT_LANDING; /* 악의적/오류 값이라도 */
+    RouteMsg->WaypointCount = 1;
+    RouteMsg->Waypoints[0].X = 99.0f;
+
+    memset(&CFS_CORE_APP_Data.MissionRoute, 0, sizeof(CFS_CORE_APP_Data.MissionRoute));
+    memset(&CFS_CORE_APP_Data.LandingRoute, 0, sizeof(CFS_CORE_APP_Data.LandingRoute));
+
+    CFS_CORE_APP_ProcessStateMessage(Buffer);
+
+    UtAssert_BOOL_TRUE(CFS_CORE_APP_Data.MissionRoute.Valid);
+    UtAssert_BOOL_FALSE(CFS_CORE_APP_Data.LandingRoute.Valid);
+}
+
 void Test_CFS_CORE_APP_ProcessStateMessage_LandingRouteUpdate(void)
 {
     uint8                          Storage[sizeof(CFS_CORE_APP_RouteUpdateTlm_t)];
@@ -2860,6 +2925,8 @@ void UtTest_Setup(void)
     ADD_TEST(CFS_CORE_APP_UpdateHealth_FailedRecovery);
     ADD_TEST(CFS_CORE_APP_ProcessStateMessage_RouteUpdate);
     ADD_TEST(CFS_CORE_APP_ProcessStateMessage_LandingRouteUpdate);
+    ADD_TEST(CFS_CORE_APP_ProcessStateMessage_FcReadback_UpdatesMissionRoute);
+    ADD_TEST(CFS_CORE_APP_ProcessStateMessage_FcReadback_LandingUntouched);
     ADD_TEST(CFS_CORE_APP_ProcessStateMessage_BridgeHk);
     ADD_TEST(CFS_CORE_APP_ProcessStateMessage_UplinkHk);
     ADD_TEST(CFS_CORE_APP_UpdateHealth_UplinkTimeout);

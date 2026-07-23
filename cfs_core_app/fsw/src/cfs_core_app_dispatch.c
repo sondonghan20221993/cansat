@@ -32,7 +32,8 @@ void CFS_CORE_APP_TaskPipe(CFE_SB_Buffer_t *SBBufPtr)
         CFE_SB_MsgIdToValue(MsgId) == CFS_CORE_APP_FC_ATTITUDE_STATE_MID_VALUE ||
         CFE_SB_MsgIdToValue(MsgId) == CFS_CORE_APP_FC_GPS_RAW_STATE_MID_VALUE ||
         CFE_SB_MsgIdToValue(MsgId) == CFS_CORE_APP_FC_EKF_STATUS_MID_VALUE ||
-        CFE_SB_MsgIdToValue(MsgId) == ROUTE_UPDATE_MID)
+        CFE_SB_MsgIdToValue(MsgId) == ROUTE_UPDATE_MID ||
+        CFE_SB_MsgIdToValue(MsgId) == FC_MISSION_READBACK_MID) /* BL-41 route(2026-07-23) */
     {
         CFS_CORE_APP_ProcessStateMessage(SBBufPtr);
         return;

@@ -57,6 +57,7 @@ CFE_Status_t MAVLINK_BRIDGE_APP_Init(void)
     MAVLINK_BRIDGE_APP_Data.LinkState           = MAVLINK_BRIDGE_LINK_DISCONNECTED;
     MAVLINK_BRIDGE_APP_Data.ReconnectIntervalMs = MAVLINK_BRIDGE_APP_RECONNECT_INTERVAL_MS;
     MAVLINK_BRIDGE_APP_Data.SerialFd            = -1;
+    MAVLINK_BRIDGE_APP_Data.MissionReadbackBackoffMs = 1000U; /* BL-41 route: 초기 백오프 */
 
     MAVLINK_BRIDGE_APP_Data.ActiveConfig.AttitudeIntervalUs        = MAVLINK_BRIDGE_APP_ATTITUDE_INTERVAL_US;
     MAVLINK_BRIDGE_APP_Data.ActiveConfig.LocalPositionIntervalUs   = MAVLINK_BRIDGE_APP_LOCAL_POSITION_INTERVAL_US;

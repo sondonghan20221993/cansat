@@ -210,6 +210,13 @@ CFE_Status_t CFS_CORE_APP_Init(void)
         return Status;
     }
 
+    /* BL-41 route(2026-07-23): FC 미션 readback 수신 → MissionRoute 캐시 갱신 */
+    Status = CFE_SB_Subscribe(CFE_SB_ValueToMsgId(FC_MISSION_READBACK_MID), CFS_CORE_APP_Data.CommandPipe);
+    if (Status != CFE_SUCCESS)
+    {
+        return Status;
+    }
+
     CFS_CORE_APP_LoadState();
 
     CFE_EVS_SendEvent(CFS_CORE_APP_STARTUP_EID, CFE_EVS_EventType_INFORMATION,

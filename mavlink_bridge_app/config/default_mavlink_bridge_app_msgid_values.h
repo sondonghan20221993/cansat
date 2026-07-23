@@ -7,5 +7,6 @@
 #define ROUTE_UPDATE_MID              0x190BU
 #define CONFIG_CMD_MID                0x190EU
 #define EXEC_RESULT_MID               0x1912U /* BL-08(2026-07-22): 대상앱→uplink_app 실행결과 회신 (공용) */
+#define FC_MISSION_READBACK_MID       0x1914U /* BL-41 route(2026-07-23): FC 미션 readback → cfs_core_app */
 
 #endif
