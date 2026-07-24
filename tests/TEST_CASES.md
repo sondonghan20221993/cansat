@@ -1051,6 +1051,12 @@ mavlink_bridge_app의 FC 장애 처리와 cfs_core_app 보고 경로 검증.
 | RT-FLIGHTMODE-004 | auth Level 3 미달 거부 | HOVER를 auth=2로 전송(Level 3 요구) | `UPLINK_APP: command blocked (insufficient auth) auth=2 required=3 class=8` | ✅ **PASS(2026-07-24)** |
 | RT-FLIGHTMODE-005 | PX4 COMMAND_LONG/MISSION_SET_CURRENT wire 왕복(FC 응답 확인) | WAYPOINT를 NOMINAL(비-DEGRADED) 상태에서 전송해 실제 FC 모드 전환 확인 | FC가 실제로 AUTO/MISSION 모드로 전환됐는지 GCS/FC 텔레메트리로 확인 | ⬜ 미실행 — 실외 GPS로 NOMINAL 도달 필요(WAYPOINT는 DEGRADED에서 차단되므로 이번 세션은 게이트 검증까지만 수행) |
 
+**⑩ PX4 미션 업로드 quirk 재검증 (BL-49, 2026-07-24):**
+
+| ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) | 검증 상태 |
+|---|---|---|---|---|
+| RT-PX4-MISSION-001 | ArduPilot 유래 quirk 3종의 PX4 유효성 | `tools/uplink_route_update_sender.py route-good-no-gps`(REPLACE 2-waypoint, DEGRADED 상태에서도 허용되는 클래스)로 실제 PX4에 업로드 | `MAVLINK_BRIDGE_APP: mission upload success wp_count=2` → readback 왕복(`FC mission readback applied wp_count=2`)까지 값 일치 확인 — `MISSION_CLEAR_ALL` 선행/`GLOBAL_RELATIVE_ALT` frame 변환/`sysid=255` 전부 PX4에서 유효 | ✅ **PASS(2026-07-24)** |
+
 ### 🔲 추가 런타임 시험 후보 — LoRa 링크/지상 명령 (2026-07-10 도출)
 
 lora_tdm_app 장애 처리와 uplink_app 명령 검증/차단 경로.
