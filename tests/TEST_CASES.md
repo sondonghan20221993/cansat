@@ -1006,7 +1006,7 @@ mavlink_bridge_app의 FC 장애 처리와 cfs_core_app 보고 경로 검증.
 
 | ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) | 검증 상태 |
 |---|---|---|---|---|
-| RT-CONFIG-001 | CONFIG 파라미터 변경 → 재부팅 → 값 유지 | `tools/uplink_config_sender.py`로 3개 앱 중 1개(예: cfs_core `AttitudeTimeoutMs`) 변경 → `sudo systemctl restart cfs.service` → 재부팅 후 HK로 변경값 유지 확인 | HK 파라미터 필드가 기본값이 아닌 전송값과 일치. `/cf/cfs_core_app_state.bin` 등 상태파일 mtime이 전송 시점과 일치(SaveState 실제 호출 증거) | ⬜ 미실행 |
+| RT-CONFIG-001 | CONFIG 파라미터 변경 → 재부팅 → 값 유지 | `tools/uplink_config_sender.py`로 3개 앱 중 1개(예: cfs_core `AttitudeTimeoutMs`) 변경 → `sudo systemctl restart cfs.service` → 재부팅 후 HK로 변경값 유지 확인 | HK 파라미터 필드가 기본값이 아닌 전송값과 일치. `/cf/cfs_core_app_state.bin` 등 상태파일 mtime이 전송 시점과 일치(SaveState 실제 호출 증거) | ✅ **PASS(2026-07-24)**. `attitude_timeout_ms=4321` 전송(DEGRADED라 `--force` 필요, `FORCED THROUGH health gate`) → `config activated param=0 value=4321` → 6회 연속 재부팅 내내 `restored health state=1 config(attitude=4321 ...)` 유지 확인 |
 | RT-CONFIG-002 | 상태파일 손상 시 기본값 폴백 | 재부팅 전 `cf/*_state.bin`을 일부 바이트 덮어써 손상 후 재기동 | `STATE_CORRUPT_EID(19)`(cfs_core) 등 손상 EVS 발생 + HK가 기본값으로 복귀(크래시 아님) | ⬜ 미실행 |
 | RT-CONFIG-003 | 3개 앱(mavlink_bridge/lora_tdm/cfs_core) 동시 영속화 | 3개 앱 각각 CONFIG 변경 후 동시 재부팅 | 3개 앱 전부 HK에서 개별 변경값 유지(상호 간섭 없음) | ⬜ 미실행 |
 
@@ -1014,7 +1014,7 @@ mavlink_bridge_app의 FC 장애 처리와 cfs_core_app 보고 경로 검증.
 
 | ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) | 검증 상태 |
 |---|---|---|---|---|
-| RT-ROUTE-001 | FC 링크 CONNECTED 전이 시 자동 재조회 | mavlink_bridge 재시작(링크 재연결) → `FC_MISSION_READBACK_MID(0x1914)` 자동 발행 확인 | cfs_core HK `MissionRouteWaypointCount`가 FC에 이미 업로드된 실제 waypoint 수와 일치 | ⬜ 미실행 |
+| RT-ROUTE-001 | FC 링크 CONNECTED 전이 시 자동 재조회 | mavlink_bridge 재시작(링크 재연결) → `FC_MISSION_READBACK_MID(0x1914)` 자동 발행 확인 | cfs_core HK `MissionRouteWaypointCount`가 FC에 이미 업로드된 실제 waypoint 수와 일치 | ✅ **PASS(2026-07-24)**. cFS 재기동 직후 `mission_wp=2`가 재부팅 전과 동일 `last_route_ts`로 즉시 재등장 — 파일 영속 아닌 FC readback으로 캐시 재구성 확인 |
 | RT-ROUTE-002 | ROUTE_UPDATE 업로드 완료 후 캐시 갱신 | `tools/uplink_route_update_sender.py`로 REPLACE 업로드 → `MISSION_ACK` accepted 확인 후 캐시 자동 갱신 | cfs_core `MissionRoute` 캐시가 업로드한 waypoint와 일치(readback 경유 확인) | ⬜ 미실행 |
 | RT-ROUTE-003 | `tools/query_fc_mission.py`로 수동 재조회(MISSION_QUERY_CC) | 수동 재조회 명령 전송 → 캐시 갱신 | `FC_MISSION_READBACK_MID` 발행 로그 + 캐시 갱신 확인 | ⬜ 미실행 |
 | RT-ROUTE-004 | timeout 지수 백오프(1→2→4→5s) | FC 무응답 상태에서 재조회 시도 간격 측정 | journalctl 타임스탬프 간격이 1s→2s→4s→5s(상한) 패턴, 무한 재시도(포기 없음) | ⬜ 미실행 |
@@ -1030,16 +1030,26 @@ mavlink_bridge_app의 FC 장애 처리와 cfs_core_app 보고 경로 검증.
 
 | ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) | 검증 상태 |
 |---|---|---|---|---|
-| RT-BOOTLOOP-001 | 정상 부팅 — 생존 마커 정착 | 부팅 후 120초 이상 정상 유지 | uplink `StatusTlm.BootLoopSuspect=0`, `ShortBootStreak=0` 유지. 상태파일 `SurvivedMark=1` 기록 확인(재부팅 전 read) | ⬜ 미실행 |
-| RT-BOOTLOOP-002 | 반복 단명 재부팅(5회) → BootLoopSuspect | 120초 미만 생존 후 강제 재부팅을 5회 반복(`sudo systemctl restart cfs.service`를 100초 간격으로) | 5회차 부팅 후 uplink HK `BootLoopSuspect=1`, `ShortBootStreak=5`. 보고만 하고 자동 대응(강제 착륙 등) 없음 확인 | ⬜ 미실행 |
+| RT-BOOTLOOP-001 | 정상 부팅 — 생존 마커 정착 | 부팅 후 120초 이상 정상 유지 | uplink `StatusTlm.BootLoopSuspect=0`, `ShortBootStreak=0` 유지. 상태파일 `SurvivedMark=1` 기록 확인(재부팅 전 read) | ✅ **PASS(2026-07-24)**. 120초 경과 시 `UPLINK_APP: boot survival marked (uptime >= 120000ms)` EVS 확인 |
+| RT-BOOTLOOP-002 | 반복 단명 재부팅(5회) → BootLoopSuspect | 120초 미만 생존 후 강제 재부팅을 5회 반복(`sudo systemctl restart cfs.service`를 100초 간격으로) | 5회차 부팅 후 uplink HK `BootLoopSuspect=1`, `ShortBootStreak=5`. 보고만 하고 자동 대응(강제 착륙 등) 없음 확인 | ✅ **PASS(2026-07-24)**. 12초 간격 6회 재부팅 → 6번째 부팅에서 정확히 `boot loop suspect - 5 consecutive short boots` 발생(threshold=5 정확) |
 | RT-BOOTLOOP-003 | cfs_core 재시작 카운터·LastFaultCode 영속 | RESTART_BRIDGE/UPLINK/LORA 각 1회 실행 후 재부팅 | cfs_core HK `BridgeRestartCount`/`UplinkRestartCount`/`LoraRestartCount`가 재부팅 후에도 유지(0으로 리셋 안 됨), `LastFaultCode`도 마지막 값 유지 | ⬜ 미실행 |
 
 **⑧ v2(DL2) 다운링크 컴파일타임 기본값 (BL-45):**
 
 | ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) | 검증 상태 |
 |---|---|---|---|---|
-| RT-DL2-DEFAULT-001 | 첫 부팅(CONFIG 저장 이력 없음) 시 v2로 송신 | `cf/lora_tdm_app_state.bin` 삭제 후 재부팅(첫 부팅 재현) | 지상 수신 프레임이 `0xD2`(DL2 magic)로 시작 — v1 ASCII(`F`/`S`) 아님 | ⬜ 미실행 |
+| RT-DL2-DEFAULT-001 | 첫 부팅(CONFIG 저장 이력 없음) 시 v2로 송신 | `cf/lora_tdm_app_state.bin` 삭제 후 재부팅(첫 부팅 재현) | 지상 수신 프레임이 `0xD2`(DL2 magic)로 시작 — v1 ASCII(`F`/`S`) 아님 | ✅ **PASS(2026-07-24, 부수 확인)**. 별도 CONFIG 미전송 상태에서 `ACK2 seq mismatch` 이벤트 지속 관측 — ACK2는 v2 전용 명칭(v1은 `ACK,<seq>`)이라 기본 v2 송신 확인 |
 | RT-DL2-DEFAULT-002 | 저장된 v1 설정이 있으면 재부팅 후에도 v1 유지 | CONFIG로 v1(`PARAM_DOWNLINK_PROTOCOL=0`) 전송 후 재부팅 | 지상 수신 프레임이 v1 텍스트(`F,...`)로 유지 — LoadState가 Init 기본값(v2)을 덮어씀 확인 | ⬜ 미실행 |
+
+**⑨ FLIGHT_MODE base 명령 (BL-44, 2026-07-24 신규):**
+
+| ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) | 검증 상태 |
+|---|---|---|---|---|
+| RT-FLIGHTMODE-001 | HOVER — DEGRADED 헬스게이트 예외 허용 | health DEGRADED(fault=3, 실내 GPS 없음) 상태에서 HOVER(auth=3) 전송 | `UPLINK_APP: routed uplink class=8 ... target=4` → `MAVLINK_BRIDGE_APP: flight mode set mode=0` → `exec result ... generic=0`(OK), 차단 없음 | ✅ **PASS(2026-07-24)**. FC 보드 연결(프로펠러 미장착) 상태로 실기 확인 |
+| RT-FLIGHTMODE-002 | WAYPOINT — DEGRADED 헬스게이트 정상 차단 | 동일 DEGRADED 상태에서 WAYPOINT(auth=3) 전송 | `UPLINK_APP: command blocked by health state=1 class=8` — mavlink_bridge로 미전달 | ✅ **PASS(2026-07-24)** |
+| RT-FLIGHTMODE-003 | LAND — DEGRADED 헬스게이트 예외 허용 | 동일 DEGRADED 상태에서 LAND(auth=3) 전송 | `flight mode set mode=2` → `exec result generic=0`(OK), 차단 없음 | ✅ **PASS(2026-07-24)** |
+| RT-FLIGHTMODE-004 | auth Level 3 미달 거부 | HOVER를 auth=2로 전송(Level 3 요구) | `UPLINK_APP: command blocked (insufficient auth) auth=2 required=3 class=8` | ✅ **PASS(2026-07-24)** |
+| RT-FLIGHTMODE-005 | PX4 COMMAND_LONG/MISSION_SET_CURRENT wire 왕복(FC 응답 확인) | WAYPOINT를 NOMINAL(비-DEGRADED) 상태에서 전송해 실제 FC 모드 전환 확인 | FC가 실제로 AUTO/MISSION 모드로 전환됐는지 GCS/FC 텔레메트리로 확인 | ⬜ 미실행 — 실외 GPS로 NOMINAL 도달 필요(WAYPOINT는 DEGRADED에서 차단되므로 이번 세션은 게이트 검증까지만 수행) |
 
 ### 🔲 추가 런타임 시험 후보 — LoRa 링크/지상 명령 (2026-07-10 도출)
 
