@@ -1765,8 +1765,81 @@ param2=custom main mode, param3=custom sub mode):
 - Level 3 공통 차단 규칙(`request_token=0`)
 - WAYPOINT에 한해 시스템 헬스 DEGRADED/RECOVERY/FAILED(HOVER/LAND는 이 규칙 면제)
 
-**미착수 항목(구현 대상)**: 위 계약대로 uplink_app 파싱/포워딩(SDD→TDD) 및 mavlink_bridge
-COMMAND_LONG 송신 배선. 실외 원형비행 실기 검증은 하드웨어 대기(BL-44 등록).
+**구현 현황(2026-07-24)**: uplink_app 파싱/포워딩 슬라이스 완료(SDD→TDD, 신규 10종 green).
+mavlink_bridge_app 슬라이스는 아래 wire-level 계약까지 확정 후 착수.
+
+##### 18.4.6.8.1 mavlink_bridge_app 구현 계약 (wire-level, 2026-07-24 확정)
+
+**SB 명령 구조 정정 — SourceSequence 누락 보완**: uplink_app 슬라이스 구현 중 발견된 설계
+공백 — `EXEC_RESULT_MID` 회신(`MAVLINK_BRIDGE_APP_PublishExecResult`)은 원본 지상 명령의
+`SourceSequence`를 echo해야 하는데(다른 모든 CMD_TLM 구조가 이 필드를 가짐, 예:
+`ConfigCmdTlm_t.SourceSequence`), 최초 `UPLINK_APP_FlightModeCtrlCmd_t`엔 이 필드가 없었다.
+**정정**: 구조를 아래로 확장(uplink_app/mavlink_bridge_app 양쪽 동일 레이아웃 유지 필요).
+
+```c
+typedef struct
+{
+    CFE_MSG_CommandHeader_t CommandHeader;
+    uint16                  SourceSequence;      /* 원본 지상 명령 seq — EXEC_RESULT echo용 */
+    uint8                   FlightMode;
+    uint8                   WaypointStartIndex;
+} UPLINK_APP_FlightModeCtrlCmd_t;  /* mavlink_bridge_app은 동일 레이아웃을 자체 typedef */
+```
+
+`UPLINK_APP_ForwardFlightModeCommand()`는 `Cmd->Sequence`를 `SourceSequence`에 채운다.
+
+**PX4 커스텀 모드 정수값** (MAVLink `base_mode`/`custom_mode` 필드, PX4 정의):
+
+| 이름 | 값 |
+| --- | --- |
+| `PX4_MAIN_MODE_AUTO` | `4` |
+| `PX4_SUB_MODE_AUTO_LOITER` | `3` |
+| `PX4_SUB_MODE_AUTO_MISSION` | `4` |
+| `PX4_SUB_MODE_AUTO_LAND` | `6` |
+
+`custom_mode`(u32)는 PX4 인코딩상 `(main_mode << 16) | (sub_mode << 24)`이다 — main mode 바이트는
+custom_mode의 2번째 바이트(bit 16~23), sub mode는 3번째 바이트(bit 24~31)에 위치한다(PX4
+`px4_custom_mode` 유니온 정의 기준). 예: AUTO/LOITER → `custom_mode = (4 << 16) | (3 << 24)`.
+
+**`MAV_CMD_DO_SET_MODE`(176) — 기존 `COMMAND_LONG` 인프라 재사용**
+(`MAVLINK_BRIDGE_APP_RequestMessageInterval()`과 동일 33바이트 프레임 구조,
+`MAVLINK_MSG_ID_COMMAND_LONG_LEN`/`MAVLINK_COMMAND_LONG_CRC_EXTRA` 그대로 사용):
+
+| offset | 필드 | 값 |
+| --- | --- | --- |
+| 0 | param1 (float) | `base_mode` = `1.0f` (`MAV_MODE_FLAG_CUSTOM_MODE_ENABLED`) |
+| 4 | param2 (float) | `custom_mode` — 위 인코딩값을 float로 재해석(bit pattern 그대로, `(float)(uint32)` 아님 — MAVLink 관례상 COMMAND_LONG의 mode 파라미터는 정수를 float 필드에 **bit-cast**하지 않고 **수치 그대로 float 변환**한다: `(float)custom_mode_uint32`) |
+| 8~24 | param3~7 (float) | `0.0f` |
+| 28 | command (u16) | `176`(`MAV_CMD_DO_SET_MODE`) |
+| 30 | target_system (u8) | `MAVLINK_BRIDGE_APP_Data.TargetSystemId` |
+| 31 | target_component (u8) | `MAVLINK_BRIDGE_APP_Data.TargetComponentId` |
+| 32 | confirmation (u8) | `0` |
+
+**`MISSION_SET_CURRENT`(신규 프레임, WAYPOINT 전용, 모드 전환 뒤 별도 전송)**:
+
+| offset | 필드 | 형식 | 값 |
+| --- | --- | --- | --- |
+| 0 | seq | u16 | `waypoint_start_index` (0-base, 0도 유효 — "처음부터") |
+| 2 | target_system | u8 | `MAVLINK_BRIDGE_APP_Data.TargetSystemId` |
+| 3 | target_component | u8 | `MAVLINK_BRIDGE_APP_Data.TargetComponentId` |
+
+msg id `41`, 길이 4바이트, `CRC_EXTRA=28`(MAVLink common.xml 고정값 — 신규 상수
+`MAVLINK_MISSION_SET_CURRENT_CRC_EXTRA`로 추가). `MAVLINK_BRIDGE_APP_SendMavlinkV2()` 재사용.
+
+**결과 판정 범위(명시 — 2026-07-24 결정)**: `EXECUTED_OK`는 **FC가 실제로 모드를 전환했음을
+확인한 것이 아니라, COMMAND_LONG(+WAYPOINT는 MISSION_SET_CURRENT까지) 전송 자체가
+성공했음**을 의미한다. 기존 `RequestMessageInterval`/`RESTART_BRIDGE` 등 다른 fire-and-forget
+명령과 동일한 신뢰 수준(§18.4.7 request_token 계약과 별개로, FC `COMMAND_ACK`(77) 대기는
+범위 밖 — 필요해지면 별도 항목으로 재검토). WAYPOINT는 두 전송(모드 전환 + MISSION_SET_CURRENT)
+중 하나라도 실패하면 `EXECUTED_FAILED`.
+
+**신규 EID**: `MAVLINK_BRIDGE_APP_SET_FLIGHT_MODE_EID` — 성공/실패 각각 INFORMATION/ERROR로 발생.
+
+**핸들러 시그니처**: `void MAVLINK_BRIDGE_APP_ProcessSetFlightModeCmd(const MAVLINK_BRIDGE_APP_SetFlightModeCmd_t *Cmd)`
+— `PARSER_RESET`과 달리 payload가 있고 `PublishExecResult` 호출까지 수행하는 첫 사례(P1-a
+payload-less 패턴의 확장).
+
+실외 원형비행 실기 검증은 하드웨어 대기(BL-44 등록).
 
 #### 18.4.7 Request Token 계약
 
