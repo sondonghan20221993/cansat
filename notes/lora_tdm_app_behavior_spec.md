@@ -46,7 +46,7 @@
 - Config: `lora_tdm_app/config/default_lora_tdm_app_mission_cfg.h` — 타이밍 상수, 링크 임계값
 - Config: `lora_tdm_app/config/default_lora_tdm_app_topicid_values.h` — MID 값
 - Config: `lora_tdm_app/config/default_lora_tdm_app_msgstruct.h` — 메시지 구조체
-- 프로토콜 v2: `notes/lora_protocol_v2_spec.md` — 바이너리 프레임(DL2/UP2/ACK2). **구현·배포됨** (2026-07, `BuildDl2Frame`/`ParseUp2Frame`/`ParseAck2Frame`). CONFIG `PARAM_DOWNLINK_PROTOCOL`(0=v1 텍스트, 1=v2 바이너리)로 런타임 전환. TDM 주기도 Stage 3 값(200ms, §7)으로 전환 완료.
+- 프로토콜 v2: `notes/lora_protocol_v2_spec.md` — 바이너리 프레임(DL2/UP2/ACK2). **구현·배포됨** (2026-07, `BuildDl2Frame`/`ParseUp2Frame`/`ParseAck2Frame`). CONFIG `PARAM_DOWNLINK_PROTOCOL`(0=v1 텍스트, 1=v2 바이너리)로 런타임 전환. **컴파일타임 기본값 v2(BL-45, 2026-07-24)** — `Init()`에서 `UseV2Downlink=1U` 세팅, LoadState 저장값으로 덮어쓰기 가능. TDM 주기도 Stage 3 값(200ms, §7)으로 전환 완료.
 - **EXEC_RESULT 회신 (2026-07-22, BL-08)**: `LORA_TDM_APP_ProcessConfigCommand`가
   scope 일치 이후의 모든 종료 지점(성공/BAD_VERSION/BAD_LENGTH/BAD_CHECKSUM/
   알 수 없는 파라미터)에서 공용 `EXEC_RESULT_MID(0x1912)`로 uplink_app에

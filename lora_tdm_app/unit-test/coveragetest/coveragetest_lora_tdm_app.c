@@ -29,6 +29,7 @@ void Test_RunCycle_TxWriteFailClosesFd(void)
 
     UtAssert_INT32_EQ(LORA_TDM_APP_Init(), CFE_SUCCESS);
 
+    LORA_TDM_APP_Data.UseV2Downlink = 0; /* BL-45: Init 기본값이 v2라 v1 write 경로 검증엔 명시 필요 */
     UT_SetDefaultReturnValue(UT_KEY(LORA_TDM_APP_BuildFcDownlinkLine), 10);
     UT_SetDefaultReturnValue(UT_KEY(LORA_TDM_APP_BuildShDownlinkLine), 10);
 
@@ -84,6 +85,7 @@ void Test_RunCycle_RxReadFailClosesFd(void)
 
     UtAssert_INT32_EQ(LORA_TDM_APP_Init(), CFE_SUCCESS);
 
+    LORA_TDM_APP_Data.UseV2Downlink = 0; /* BL-45: Init 기본값이 v2 — v1 TX 후 RX 실패 경로 검증 */
     UT_SetDefaultReturnValue(UT_KEY(LORA_TDM_APP_BuildFcDownlinkLine), 10);
     UT_SetDefaultReturnValue(UT_KEY(LORA_TDM_APP_BuildShDownlinkLine), 10);
 

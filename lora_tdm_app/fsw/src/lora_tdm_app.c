@@ -430,7 +430,11 @@ CFE_Status_t LORA_TDM_APP_Init(void)
     LORA_TDM_APP_Data.RunStatus = CFE_ES_RunStatus_APP_RUN;
     LORA_TDM_APP_Data.LoRaFd   = -1;
 
-    /* BL-41(2026-07-23): 기본값(memset=v1) 설정 후 저장된 CONFIG 복원(파일 없으면 무동작) */
+    /* BL-45(2026-07-24): 컴파일타임 기본 다운링크 프로토콜을 v2(DL2)로 변경.
+     * memset=0(v1) 위에 명시적으로 세팅 → LoadState가 저장값 있으면 덮어씀. */
+    LORA_TDM_APP_Data.UseV2Downlink = 1U;
+
+    /* BL-41(2026-07-23): 기본값 설정 후 저장된 CONFIG 복원(파일 없으면 무동작) */
     LORA_TDM_APP_LoadState();
 
     Status = CFE_EVS_Register(NULL, 0, 0);
