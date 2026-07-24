@@ -769,6 +769,7 @@ Init/dispatch 추가:
 | `test_lora_fc_downlink_packet.py` | LORA-FRAME-001~008 | ✓ 구현 |
 | `test_hb_parse.py` | LORA-HB-001~010, REC-005 | ✓ 구현 |
 | `test_uplink_config_sender.py` | CONFIG payload/checksum/LoRa 프레임 빌드 (12개 테스트) | ✓ 구현 |
+| `test_uplink_flight_mode_sender.py` | FLIGHT_MODE(class 8, BL-44) payload/checksum/CCSDS 프레임 빌드 (9개 테스트) | ✓ 구현(2026-07-24) |
 | `test_mission_upload_diag.py` | MAVLink X.25 CRC, V2 프레임 빌더, ITEM_INT z부호반전, Parser 라운드트립 (25개) | ✓ 구현 |
 | `test_tools_packet_builders.py` | CFS 커맨드 XOR 체크섬, CCSDS 주헤더 구조 (9개) | ✓ 구현 |
 | `test_mavlink_uart_bridge.py` | describe_message 포맷, parse_args 기본값/커스텀 (10개) | ✓ 구현 |
