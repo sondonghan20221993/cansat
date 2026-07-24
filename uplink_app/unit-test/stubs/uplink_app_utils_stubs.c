@@ -134,6 +134,26 @@ bool UPLINK_APP_ForwardCounterMgmtCommand(const UPLINK_APP_ProcessUplinkCmd_t *C
     return UT_GenStub_GetReturnValue(UPLINK_APP_ForwardCounterMgmtCommand, bool);
 }
 
+bool UPLINK_APP_ParseFlightModePayload(const UPLINK_APP_ProcessUplinkCmd_t *Cmd,
+                                       UPLINK_APP_FlightModePayload_t *Payload)
+{
+    UT_GenStub_SetupReturnBuffer(UPLINK_APP_ParseFlightModePayload, bool);
+    UT_GenStub_AddParam(UPLINK_APP_ParseFlightModePayload, const UPLINK_APP_ProcessUplinkCmd_t *, Cmd);
+    UT_GenStub_AddParam(UPLINK_APP_ParseFlightModePayload, UPLINK_APP_FlightModePayload_t *, Payload);
+    UT_GenStub_Execute(UPLINK_APP_ParseFlightModePayload, Basic, NULL);
+    return UT_GenStub_GetReturnValue(UPLINK_APP_ParseFlightModePayload, bool);
+}
+
+bool UPLINK_APP_ForwardFlightModeCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd,
+                                         const UPLINK_APP_FlightModePayload_t *Payload)
+{
+    UT_GenStub_SetupReturnBuffer(UPLINK_APP_ForwardFlightModeCommand, bool);
+    UT_GenStub_AddParam(UPLINK_APP_ForwardFlightModeCommand, const UPLINK_APP_ProcessUplinkCmd_t *, Cmd);
+    UT_GenStub_AddParam(UPLINK_APP_ForwardFlightModeCommand, const UPLINK_APP_FlightModePayload_t *, Payload);
+    UT_GenStub_Execute(UPLINK_APP_ForwardFlightModeCommand, Basic, NULL);
+    return UT_GenStub_GetReturnValue(UPLINK_APP_ForwardFlightModeCommand, bool);
+}
+
 void UPLINK_APP_LoadState(void)
 {
     UT_GenStub_Execute(UPLINK_APP_LoadState, Basic, NULL);

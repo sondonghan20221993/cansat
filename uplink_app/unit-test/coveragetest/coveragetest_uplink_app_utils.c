@@ -920,8 +920,85 @@ void Test_UPLINK_APP_UpdateStatusTelemetry_ExposesBootFields(void)
     UtAssert_INT32_EQ(UPLINK_APP_Data.StatusTlm.LastResetReason, 2);
 }
 
+/* -----------------------------------------------------------------------
+ * BL-44(2026-07-24): flight mode base 명령(§18.4.6.8) — 파싱/전달.
+ * ----------------------------------------------------------------------- */
+
+void Test_UPLINK_APP_ParseFlightModePayload(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t   Cmd;
+    UPLINK_APP_FlightModePayload_t  Payload;
+
+    /* 정상: HOVER, waypoint_start_index=0 */
+    memset(&Cmd, 0, sizeof(Cmd));
+    Cmd.PayloadLength = 6;
+    Cmd.Payload[0]    = UPLINK_APP_FLIGHT_MODE_HOVER;
+    Cmd.Payload[1]    = 0;
+    Cmd.Payload[2]    = 0x11; Cmd.Payload[3] = 0x22; Cmd.Payload[4] = 0x33; Cmd.Payload[5] = 0x44;
+    UtAssert_BOOL_TRUE(UPLINK_APP_ParseFlightModePayload(&Cmd, &Payload));
+    UtAssert_INT32_EQ(Payload.FlightMode, UPLINK_APP_FLIGHT_MODE_HOVER);
+    UtAssert_INT32_EQ(Payload.WaypointStartIndex, 0);
+    UtAssert_INT32_EQ((int)Payload.RequestToken, (int)0x44332211U);
+
+    /* 정상: WAYPOINT, waypoint_start_index 임의값 허용 */
+    Cmd.Payload[0] = UPLINK_APP_FLIGHT_MODE_WAYPOINT;
+    Cmd.Payload[1] = 5;
+    UtAssert_BOOL_TRUE(UPLINK_APP_ParseFlightModePayload(&Cmd, &Payload));
+    UtAssert_INT32_EQ(Payload.WaypointStartIndex, 5);
+
+    /* 정상: LAND */
+    Cmd.Payload[0] = UPLINK_APP_FLIGHT_MODE_LAND;
+    Cmd.Payload[1] = 0;
+    UtAssert_BOOL_TRUE(UPLINK_APP_ParseFlightModePayload(&Cmd, &Payload));
+
+    /* 길이 부족 거부 */
+    Cmd.PayloadLength = 5;
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseFlightModePayload(&Cmd, &Payload));
+
+    /* flight_mode 범위 초과 거부 */
+    Cmd.PayloadLength = 6;
+    Cmd.Payload[0]    = 3;
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseFlightModePayload(&Cmd, &Payload));
+
+    /* HOVER인데 waypoint_start_index != 0 거부 */
+    Cmd.Payload[0] = UPLINK_APP_FLIGHT_MODE_HOVER;
+    Cmd.Payload[1] = 1;
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseFlightModePayload(&Cmd, &Payload));
+
+    /* LAND인데 waypoint_start_index != 0 거부 */
+    Cmd.Payload[0] = UPLINK_APP_FLIGHT_MODE_LAND;
+    Cmd.Payload[1] = 1;
+    UtAssert_BOOL_FALSE(UPLINK_APP_ParseFlightModePayload(&Cmd, &Payload));
+}
+
+void Test_UPLINK_APP_ForwardFlightModeCommand(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t  Cmd;
+    UPLINK_APP_FlightModePayload_t Payload;
+
+    memset(&Cmd, 0, sizeof(Cmd));
+    memset(&Payload, 0, sizeof(Payload));
+    Payload.FlightMode         = UPLINK_APP_FLIGHT_MODE_WAYPOINT;
+    Payload.WaypointStartIndex = 3;
+
+    UT_SetDefaultReturnValue(UT_KEY(CFE_MSG_SetFcnCode), CFE_SUCCESS);
+    UT_SetDefaultReturnValue(UT_KEY(CFE_SB_TransmitMsg), CFE_SUCCESS);
+    UtAssert_BOOL_TRUE(UPLINK_APP_ForwardFlightModeCommand(&Cmd, &Payload));
+    UtAssert_INT32_EQ(UPLINK_APP_Data.FlightModeCtrlCmd.FlightMode, UPLINK_APP_FLIGHT_MODE_WAYPOINT);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.FlightModeCtrlCmd.WaypointStartIndex, 3);
+
+    UT_SetDefaultReturnValue(UT_KEY(CFE_MSG_SetFcnCode), -1);
+    UtAssert_BOOL_FALSE(UPLINK_APP_ForwardFlightModeCommand(&Cmd, &Payload));
+
+    UT_SetDefaultReturnValue(UT_KEY(CFE_MSG_SetFcnCode), CFE_SUCCESS);
+    UT_SetDefaultReturnValue(UT_KEY(CFE_SB_TransmitMsg), -1);
+    UtAssert_BOOL_FALSE(UPLINK_APP_ForwardFlightModeCommand(&Cmd, &Payload));
+}
+
 void UtTest_Setup(void)
 {
+    ADD_TEST(UPLINK_APP_ParseFlightModePayload);
+    ADD_TEST(UPLINK_APP_ForwardFlightModeCommand);
     ADD_TEST(UPLINK_APP_ValidateProxyCommand);
     ADD_TEST(UPLINK_APP_VerifyCmdLength_Impl);
     ADD_TEST(UPLINK_APP_ParseRouteUpdatePayload);

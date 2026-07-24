@@ -20,7 +20,8 @@ typedef enum
     UPLINK_APP_RESULT_DUPLICATE        = 14, /* seq == last accepted: 4x 재전송 슬롯 중복, replay 아님 (BL-01) */
     UPLINK_APP_RESULT_EXECUTED_OK      = 15, /* 대상앱 EXEC_RESULT 회신: 처리 성공 (BL-08) */
     UPLINK_APP_RESULT_EXECUTED_FAILED  = 16, /* 대상앱 EXEC_RESULT 회신: 처리 실패 (BL-08) */
-    UPLINK_APP_RESULT_REJECT_COUNTER   = 17  /* counter management: scope/action 오류 (§18.4.6.7, 2026-07-22) */
+    UPLINK_APP_RESULT_REJECT_COUNTER   = 17, /* counter management: scope/action 오류 (§18.4.6.7, 2026-07-22) */
+    UPLINK_APP_RESULT_REJECT_FLIGHT_MODE = 18 /* flight mode: flight_mode/waypoint_start_index 오류 (BL-44, §18.4.6.8) */
 } UPLINK_APP_Result_t;
 
 typedef enum
@@ -40,8 +41,17 @@ typedef enum
     UPLINK_APP_CLASS_RECOVERY     = 4,
     UPLINK_APP_CLASS_MODE         = 5,
     UPLINK_APP_CLASS_DIAGNOSTIC   = 6,
-    UPLINK_APP_CLASS_COUNTER_MGMT = 7
+    UPLINK_APP_CLASS_COUNTER_MGMT = 7,
+    UPLINK_APP_CLASS_FLIGHT_MODE  = 8 /* BL-44(2026-07-24): FC 비행모드 base 명령 (§18.4.6.8) */
 } UPLINK_APP_CommandClass_t;
+
+/* BL-44(2026-07-24): flight mode payload의 flight_mode 값 (§18.4.6.8) */
+typedef enum
+{
+    UPLINK_APP_FLIGHT_MODE_HOVER    = 0,
+    UPLINK_APP_FLIGHT_MODE_WAYPOINT = 1,
+    UPLINK_APP_FLIGHT_MODE_LAND     = 2
+} UPLINK_APP_FlightMode_t;
 
 typedef enum
 {
@@ -64,7 +74,8 @@ typedef enum
     UPLINK_APP_ROUTE_NONE          = 0,
     UPLINK_APP_ROUTE_CORE          = 1,
     UPLINK_APP_ROUTE_DOWNLINK      = 2,
-    UPLINK_APP_ROUTE_COUNTER_MGMT  = 3
+    UPLINK_APP_ROUTE_COUNTER_MGMT  = 3,
+    UPLINK_APP_ROUTE_FLIGHT_MODE   = 4 /* BL-44: mavlink_bridge 직접 라우팅(cfs_core 미경유), §18.4.6.8 */
 } UPLINK_APP_RouteTarget_t;
 
 typedef enum

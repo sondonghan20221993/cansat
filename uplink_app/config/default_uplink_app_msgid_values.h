@@ -24,5 +24,11 @@
 #define UPLINK_APP_COUNTER_TARGET_LORA_TDM_CMD_MID       0x18E0U
 #define UPLINK_APP_COUNTER_TARGET_RESET_COUNTERS_CC      1U
 
+/* BL-44(2026-07-24): flight mode base 명령(§18.4.6.8) — mavlink_bridge_app CMD_MID에
+ * FcnCode(SET_FLIGHT_MODE_CC=5, mavlink_bridge_app 쪽 정의와 값 일치 유지 필요)를
+ * 얹어 직접 전송. counter management와 동일 패턴(cfs_core_app 미경유). */
+#define UPLINK_APP_FLIGHT_MODE_TARGET_CMD_MID            0x18A0U
+#define UPLINK_APP_FLIGHT_MODE_SET_FLIGHT_MODE_CC        5U
+
 #endif
 

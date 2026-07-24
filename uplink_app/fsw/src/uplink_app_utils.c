@@ -159,6 +159,7 @@ bool UPLINK_APP_ValidateProxyCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd, U
         case UPLINK_APP_CLASS_MODE:
         case UPLINK_APP_CLASS_DIAGNOSTIC:
         case UPLINK_APP_CLASS_COUNTER_MGMT:
+        case UPLINK_APP_CLASS_FLIGHT_MODE:
             break;
 
         default:
@@ -424,6 +425,58 @@ bool UPLINK_APP_ForwardCounterMgmtCommand(const UPLINK_APP_ProcessUplinkCmd_t *C
     }
 
     return (CFE_SB_TransmitMsg(CFE_MSG_PTR(CmdHdr), true) == CFE_SUCCESS);
+}
+
+/* BL-44(2026-07-24): flight mode base 명령 파싱 (§18.4.6.8).
+ * payload = flight_mode(1) + waypoint_start_index(1) + request_token(4, LE) = 6B. */
+bool UPLINK_APP_ParseFlightModePayload(const UPLINK_APP_ProcessUplinkCmd_t *Cmd,
+                                       UPLINK_APP_FlightModePayload_t *Payload)
+{
+    if (Cmd->PayloadLength < 6U)
+    {
+        return false;
+    }
+
+    if (Cmd->Payload[0] > UPLINK_APP_FLIGHT_MODE_LAND)
+    {
+        return false;
+    }
+
+    /* waypoint_start_index는 WAYPOINT 전용 — 그 외 모드에서 0이 아니면 거부 */
+    if (Cmd->Payload[0] != UPLINK_APP_FLIGHT_MODE_WAYPOINT && Cmd->Payload[1] != 0U)
+    {
+        return false;
+    }
+
+    Payload->FlightMode         = Cmd->Payload[0];
+    Payload->WaypointStartIndex = Cmd->Payload[1];
+    Payload->RequestToken       = (uint32)Cmd->Payload[2] | ((uint32)Cmd->Payload[3] << 8) |
+                                  ((uint32)Cmd->Payload[4] << 16) | ((uint32)Cmd->Payload[5] << 24);
+
+    return true;
+}
+
+/* BL-44(2026-07-24): mavlink_bridge_app CMD_MID로 SET_FLIGHT_MODE_CC 직접 전송
+ * (counter management와 동일 패턴, cfs_core_app 미경유). RequestToken은 uplink_app의
+ * Level 3 게이트에서만 소비되고 mavlink_bridge로는 전달하지 않는다(EXEC_RESULT_MID의
+ * SourceSequence 상관으로 결과 회신이 이미 가능하기 때문). */
+bool UPLINK_APP_ForwardFlightModeCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd,
+                                         const UPLINK_APP_FlightModePayload_t *Payload)
+{
+    UPLINK_APP_FlightModeCtrlCmd_t *FmCmd = &UPLINK_APP_Data.FlightModeCtrlCmd;
+
+    (void)Cmd;
+
+    if (CFE_MSG_SetFcnCode(CFE_MSG_PTR(FmCmd->CommandHeader), UPLINK_APP_FLIGHT_MODE_SET_FLIGHT_MODE_CC) !=
+        CFE_SUCCESS)
+    {
+        return false;
+    }
+
+    FmCmd->FlightMode         = Payload->FlightMode;
+    FmCmd->WaypointStartIndex = Payload->WaypointStartIndex;
+
+    return (CFE_SB_TransmitMsg(CFE_MSG_PTR(FmCmd->CommandHeader), true) == CFE_SUCCESS);
 }
 
 static uint16 UPLINK_APP_ConfigChecksum(const UPLINK_APP_ConfigPayloadHdr_t *Hdr,
@@ -849,6 +902,9 @@ UPLINK_APP_RouteTarget_t UPLINK_APP_ResolveRouteTarget(uint8 CommandClass)
 
         case UPLINK_APP_CLASS_COUNTER_MGMT:
             return UPLINK_APP_ROUTE_COUNTER_MGMT;
+
+        case UPLINK_APP_CLASS_FLIGHT_MODE:
+            return UPLINK_APP_ROUTE_FLIGHT_MODE;
 
         default:
             return UPLINK_APP_ROUTE_NONE;

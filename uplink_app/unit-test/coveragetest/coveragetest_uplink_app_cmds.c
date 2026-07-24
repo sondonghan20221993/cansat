@@ -945,6 +945,218 @@ void Test_UPLINK_APP_ProcessUplink_NoForceFlagStillBlockedInDegraded(void)
     UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_REJECT_STATE);
 }
 
+/* -----------------------------------------------------------------------
+ * BL-44(2026-07-24): flight mode base 명령(§18.4.6.8) 디스패치/게이트.
+ * ----------------------------------------------------------------------- */
+
+void Test_UPLINK_APP_ProcessUplink_FlightModeAccept(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_FLIGHT_MODE;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(3);
+    TestMsg.PayloadLength = 6;
+    TestMsg.Payload[2]    = 1; /* non-zero request_token (offset 2..5) */
+    TestMsg.Sequence      = 100;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U;
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_FLIGHT_MODE);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ParseFlightModePayload), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ForwardFlightModeCommand), true);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.AcceptedCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_ROUTED);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastRouteTarget, UPLINK_APP_ROUTE_FLIGHT_MODE);
+}
+
+void Test_UPLINK_APP_ProcessUplink_FlightModeParseReject(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_FLIGHT_MODE;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(3);
+    TestMsg.PayloadLength = 6;
+    TestMsg.Payload[2]    = 1;
+    TestMsg.Sequence      = 101;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U;
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_FLIGHT_MODE);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ParseFlightModePayload), false);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.RejectedCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_REJECT_FLIGHT_MODE);
+}
+
+void Test_UPLINK_APP_ProcessUplink_FlightModeForwardFail(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_FLIGHT_MODE;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(3);
+    TestMsg.PayloadLength = 6;
+    TestMsg.Payload[2]    = 1;
+    TestMsg.Sequence      = 102;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U;
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_FLIGHT_MODE);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ParseFlightModePayload), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ForwardFlightModeCommand), false);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.ErrCounter, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.RoutingFailureCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_FAILED);
+}
+
+/* auth Level 3 요구 — level 미달 거부 */
+void Test_UPLINK_APP_ProcessUplink_FlightModeAuthReject(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_FLIGHT_MODE;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(2); /* Level 3 미달 */
+    TestMsg.PayloadLength = 6;
+    TestMsg.Payload[2]    = 1;
+    TestMsg.Sequence      = 103;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U;
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_FLIGHT_MODE);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.RejectedCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_REJECT_STATE);
+}
+
+/* health gate 예외: FAILED 상태에서도 HOVER는 항상 허용 */
+void Test_UPLINK_APP_ProcessUplink_FlightModeHoverExemptInFailed(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_FLIGHT_MODE;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(3);
+    TestMsg.PayloadLength = 6;
+    TestMsg.Payload[0]    = UPLINK_APP_FLIGHT_MODE_HOVER;
+    TestMsg.Payload[2]    = 1;
+    TestMsg.Sequence      = 104;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U;
+    UPLINK_APP_Data.CfsHealthState    = 3U; /* FAILED */
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_FLIGHT_MODE);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ParseFlightModePayload), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ForwardFlightModeCommand), true);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.AcceptedCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_ROUTED);
+}
+
+/* health gate 예외: RECOVERY 상태에서도 LAND는 항상 허용 */
+void Test_UPLINK_APP_ProcessUplink_FlightModeLandExemptInRecovery(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_FLIGHT_MODE;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(3);
+    TestMsg.PayloadLength = 6;
+    TestMsg.Payload[0]    = UPLINK_APP_FLIGHT_MODE_LAND;
+    TestMsg.Payload[2]    = 1;
+    TestMsg.Sequence      = 105;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U;
+    UPLINK_APP_Data.CfsHealthState    = 2U; /* RECOVERY */
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_FLIGHT_MODE);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ParseFlightModePayload), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ForwardFlightModeCommand), true);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.AcceptedCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_ROUTED);
+}
+
+/* health gate 정상 적용: FAILED 상태에서 WAYPOINT는 차단(예외 아님) */
+void Test_UPLINK_APP_ProcessUplink_FlightModeWaypointBlockedInFailed(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_FLIGHT_MODE;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(3);
+    TestMsg.PayloadLength = 6;
+    TestMsg.Payload[0]    = UPLINK_APP_FLIGHT_MODE_WAYPOINT;
+    TestMsg.Payload[2]    = 1;
+    TestMsg.Sequence      = 106;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U;
+    UPLINK_APP_Data.CfsHealthState    = 3U; /* FAILED */
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_FLIGHT_MODE);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.RejectedCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_REJECT_STATE);
+}
+
+/* health gate 정상 적용: DEGRADED 상태에서 WAYPOINT는 차단 */
+void Test_UPLINK_APP_ProcessUplink_FlightModeWaypointBlockedInDegraded(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_FLIGHT_MODE;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(3);
+    TestMsg.PayloadLength = 6;
+    TestMsg.Payload[0]    = UPLINK_APP_FLIGHT_MODE_WAYPOINT;
+    TestMsg.Payload[2]    = 1;
+    TestMsg.Sequence      = 107;
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U;
+    UPLINK_APP_Data.CfsHealthState    = 1U; /* DEGRADED */
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_FLIGHT_MODE);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.RejectedCount, 1);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_REJECT_STATE);
+}
+
 void UtTest_Setup(void)
 {
     ADD_TEST(UPLINK_APP_Noop);
@@ -984,6 +1196,14 @@ void UtTest_Setup(void)
     ADD_TEST(UPLINK_APP_ProcessUplink_ForceFlagBypassesDegradedBlock);
     ADD_TEST(UPLINK_APP_ProcessUplink_ForceFlagNoOpWhenNotBlocked);
     ADD_TEST(UPLINK_APP_ProcessUplink_NoForceFlagStillBlockedInDegraded);
+    ADD_TEST(UPLINK_APP_ProcessUplink_FlightModeAccept);
+    ADD_TEST(UPLINK_APP_ProcessUplink_FlightModeParseReject);
+    ADD_TEST(UPLINK_APP_ProcessUplink_FlightModeForwardFail);
+    ADD_TEST(UPLINK_APP_ProcessUplink_FlightModeAuthReject);
+    ADD_TEST(UPLINK_APP_ProcessUplink_FlightModeHoverExemptInFailed);
+    ADD_TEST(UPLINK_APP_ProcessUplink_FlightModeLandExemptInRecovery);
+    ADD_TEST(UPLINK_APP_ProcessUplink_FlightModeWaypointBlockedInFailed);
+    ADD_TEST(UPLINK_APP_ProcessUplink_FlightModeWaypointBlockedInDegraded);
     ADD_TEST(UPLINK_APP_ProcessExecResult_MatchesLastAccepted_OK);
     ADD_TEST(UPLINK_APP_ProcessExecResult_MatchesLastAccepted_Failed);
     ADD_TEST(UPLINK_APP_ProcessExecResult_StaleSequenceIgnored);

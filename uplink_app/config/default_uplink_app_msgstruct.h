@@ -62,6 +62,25 @@ typedef struct
 
 typedef VIEWPOINT_CMD_TLM_t UPLINK_APP_ViewpointCmdTlm_t;
 
+/* BL-44(2026-07-24): flight mode payload (§18.4.6.8) */
+typedef struct
+{
+    uint8  FlightMode;         /* 0=HOVER 1=WAYPOINT 2=LAND */
+    uint8  WaypointStartIndex; /* WAYPOINT 전용, 그 외 0 */
+    uint32 RequestToken;
+} UPLINK_APP_FlightModePayload_t;
+
+/* BL-44(2026-07-24): mavlink_bridge_app CMD_MID(0x18A0)로 FcnCode(SET_FLIGHT_MODE_CC)를
+ * 얹어 직접 전송하는 명령 구조 — counter management(§18.4.6.7)와 동일 패턴(cfs_core
+ * 미경유). mavlink_bridge_app이 동일 바이트 레이아웃으로 자체 정의(공유 헤더 아님,
+ * PARSER_RESET/SERIAL_RECONNECT의 헤더-only 패턴을 payload 2바이트로 확장). */
+typedef struct
+{
+    CFE_MSG_CommandHeader_t CommandHeader;
+    uint8                   FlightMode;
+    uint8                   WaypointStartIndex;
+} UPLINK_APP_FlightModeCtrlCmd_t;
+
 typedef CONFIG_CMD_TLM_t UPLINK_APP_ConfigCmdTlm_t;
 
 /* config payload 내부 헤더 (openMCT fc_serial_ws_server.py _build_config_payload와 동일 레이아웃) */

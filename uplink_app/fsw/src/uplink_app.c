@@ -79,6 +79,16 @@ CFE_Status_t UPLINK_APP_Init(void)
         return Status;
     }
 
+    /* BL-44(2026-07-24): flight mode 직접 라우팅용 cmd 캐시(mavlink_bridge CMD_MID,
+     * P1-a CFS_CORE_APP_BridgeCtrlCmd와 동일 패턴 — FcnCode/payload는 매 전송 시 갱신) */
+    Status = CFE_MSG_Init(CFE_MSG_PTR(UPLINK_APP_Data.FlightModeCtrlCmd.CommandHeader),
+                          CFE_SB_ValueToMsgId(UPLINK_APP_FLIGHT_MODE_TARGET_CMD_MID),
+                          sizeof(UPLINK_APP_Data.FlightModeCtrlCmd));
+    if (Status != CFE_SUCCESS)
+    {
+        return Status;
+    }
+
     Status = CFE_SB_CreatePipe(&UPLINK_APP_Data.CommandPipe, UPLINK_APP_PLATFORM_PIPE_DEPTH, UPLINK_APP_PLATFORM_PIPE_NAME);
     if (Status != CFE_SUCCESS)
     {

@@ -52,6 +52,7 @@ static uint8 UPLINK_APP_GetClassRequiredLevel(uint8 CommandClass)
         case UPLINK_APP_CLASS_MODE:         return 3; /* mode command */
         case UPLINK_APP_CLASS_DIAGNOSTIC:   return 1; /* diagnostic command */
         case UPLINK_APP_CLASS_COUNTER_MGMT: return 3; /* counter management (§18.4.6.7) */
+        case UPLINK_APP_CLASS_FLIGHT_MODE:  return 3; /* flight mode base 명령 (BL-44, §18.4.6.8) */
         default: return 0xFF; /* unknown */
     }
 }
@@ -106,6 +107,7 @@ void UPLINK_APP_ProcessUplink(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
     UPLINK_APP_RouteTarget_t      RouteTarget;
     UPLINK_APP_RouteUpdatePayload_t RoutePayload;
     UPLINK_APP_ViewpointPayload_t ViewpointPayload;
+    UPLINK_APP_FlightModePayload_t FlightModePayload;
 
     TimeNow = CFE_TIME_GetTime();
     TimeMs  = ((uint64)TimeNow.Seconds * 1000ULL) + ((uint64)TimeNow.Subseconds * 1000ULL / 0x100000000ULL);
@@ -204,10 +206,23 @@ void UPLINK_APP_ProcessUplink(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
             Blocked = (Cmd->CommandClass != UPLINK_APP_CLASS_RECOVERY &&
                        Cmd->CommandClass != UPLINK_APP_CLASS_DIAGNOSTIC);
         }
-        else if (State == 1U) /* DEGRADED: block VIEWPOINT + CONFIG (§18.10.1) */
+        else if (State == 1U) /* DEGRADED: block VIEWPOINT + CONFIG (§18.10.1) + FLIGHT_MODE(WAYPOINT만, BL-44) */
         {
             Blocked = (Cmd->CommandClass == UPLINK_APP_CLASS_VIEWPOINT ||
-                       Cmd->CommandClass == UPLINK_APP_CLASS_CONFIG);
+                       Cmd->CommandClass == UPLINK_APP_CLASS_CONFIG ||
+                       (Cmd->CommandClass == UPLINK_APP_CLASS_FLIGHT_MODE && Cmd->PayloadLength >= 1U &&
+                        Cmd->Payload[0] == UPLINK_APP_FLIGHT_MODE_WAYPOINT));
+        }
+
+        /* BL-44(2026-07-24, §18.4.6.8): HOVER/LAND는 "위험 축소"(새로 시도 않고 유지/종료) 명령이라
+         * 시스템 헬스와 무관하게 항상 허용 — WAYPOINT("위험 증가": 새 경로 신뢰)만 위 게이트를 정상 적용받는다. */
+        if (Blocked && Cmd->CommandClass == UPLINK_APP_CLASS_FLIGHT_MODE && Cmd->PayloadLength >= 1U &&
+            (Cmd->Payload[0] == UPLINK_APP_FLIGHT_MODE_HOVER || Cmd->Payload[0] == UPLINK_APP_FLIGHT_MODE_LAND))
+        {
+            CFE_EVS_SendEvent(UPLINK_APP_STATE_BLOCK_EID, CFE_EVS_EventType_INFORMATION,
+                              "UPLINK_APP: FLIGHT_MODE HOVER/LAND exempt from health gate (state=%u seq=%u)",
+                              (unsigned int)State, (unsigned int)Cmd->Sequence);
+            Blocked = false;
         }
 
         /* 명령 자체에 실린 강제 플래그(무선으로 실제 온 값, 컴파일타임 기본값 아님) —
@@ -256,6 +271,11 @@ void UPLINK_APP_ProcessUplink(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
                                ((uint32)Cmd->Payload[4] << 16) | ((uint32)Cmd->Payload[5] << 24);
             }
             else if (Cmd->CommandClass == UPLINK_APP_CLASS_COUNTER_MGMT && Cmd->PayloadLength >= 6U)
+            {
+                request_token = (uint32)Cmd->Payload[2] | ((uint32)Cmd->Payload[3] << 8) |
+                               ((uint32)Cmd->Payload[4] << 16) | ((uint32)Cmd->Payload[5] << 24);
+            }
+            else if (Cmd->CommandClass == UPLINK_APP_CLASS_FLIGHT_MODE && Cmd->PayloadLength >= 6U)
             {
                 request_token = (uint32)Cmd->Payload[2] | ((uint32)Cmd->Payload[3] << 8) |
                                ((uint32)Cmd->Payload[4] << 16) | ((uint32)Cmd->Payload[5] << 24);
@@ -412,6 +432,35 @@ void UPLINK_APP_ProcessUplink(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
             UPLINK_APP_Data.LinkState         = UPLINK_APP_LINK_DEGRADED;
             CFE_EVS_SendEvent(UPLINK_APP_COMMAND_ERR_EID, CFE_EVS_EventType_ERROR,
                               "UPLINK_APP: failed counter management command seq=%u",
+                              (unsigned int)Cmd->Sequence);
+            UPLINK_APP_UpdateStatusTelemetry(0);
+            return;
+        }
+    }
+    else if (Cmd->CommandClass == UPLINK_APP_CLASS_FLIGHT_MODE)
+    {
+        if (!UPLINK_APP_ParseFlightModePayload(Cmd, &FlightModePayload))
+        {
+            UPLINK_APP_Data.ErrCounter++;
+            UPLINK_APP_Data.RejectedCount++;
+            UPLINK_APP_Data.LastCommandResult = UPLINK_APP_RESULT_REJECT_FLIGHT_MODE;
+            UPLINK_APP_Data.LinkState         = UPLINK_APP_LINK_DEGRADED;
+            CFE_EVS_SendEvent(UPLINK_APP_COMMAND_ERR_EID, CFE_EVS_EventType_ERROR,
+                              "UPLINK_APP: invalid flight mode payload seq=%u len=%u",
+                              (unsigned int)Cmd->Sequence, (unsigned int)Cmd->PayloadLength);
+            UPLINK_APP_UpdateStatusTelemetry(0);
+            return;
+        }
+
+        if (!UPLINK_APP_ForwardFlightModeCommand(Cmd, &FlightModePayload))
+        {
+            UPLINK_APP_Data.ErrCounter++;
+            UPLINK_APP_Data.RoutingFailureCount++;
+            UPLINK_APP_Data.LastCommandResult = UPLINK_APP_RESULT_FAILED;
+            UPLINK_APP_Data.LastRouteTarget   = (uint8)RouteTarget;
+            UPLINK_APP_Data.LinkState         = UPLINK_APP_LINK_DEGRADED;
+            CFE_EVS_SendEvent(UPLINK_APP_COMMAND_ERR_EID, CFE_EVS_EventType_ERROR,
+                              "UPLINK_APP: failed to forward flight mode command seq=%u",
                               (unsigned int)Cmd->Sequence);
             UPLINK_APP_UpdateStatusTelemetry(0);
             return;

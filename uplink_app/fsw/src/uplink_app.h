@@ -50,6 +50,7 @@ typedef struct
     uint8                  FcMissionResult;
     uint8                  FcMissionUploadState;
     uint32                 FcMissionUploadSuccessCount;
+    UPLINK_APP_FlightModeCtrlCmd_t FlightModeCtrlCmd; /* BL-44(2026-07-24): mavlink_bridge CMD_MID로 보낼 SET_FLIGHT_MODE_CC 캐시 (P1-a 패턴) */
     CFE_SB_PipeId_t        CommandPipe;
     UPLINK_APP_HkTlm_t     HkTlm;
     UPLINK_APP_StatusTlm_t StatusTlm;
@@ -78,6 +79,10 @@ bool         UPLINK_APP_ForwardConfigCommand(const UPLINK_APP_ProcessUplinkCmd_t
 bool         UPLINK_APP_ForwardModeCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd);
 bool         UPLINK_APP_ForwardDiagnosticCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd);
 bool         UPLINK_APP_ForwardCounterMgmtCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd);
+bool         UPLINK_APP_ParseFlightModePayload(const UPLINK_APP_ProcessUplinkCmd_t *Cmd,
+                                               UPLINK_APP_FlightModePayload_t *Payload);
+bool         UPLINK_APP_ForwardFlightModeCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd,
+                                                 const UPLINK_APP_FlightModePayload_t *Payload);
 void         UPLINK_APP_LoadState(void);
 void         UPLINK_APP_SaveState(void);
 
