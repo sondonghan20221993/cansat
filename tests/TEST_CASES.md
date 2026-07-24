@@ -996,6 +996,51 @@ mavlink_bridge_app의 FC 장애 처리와 cfs_core_app 보고 경로 검증.
 > **주:** RT-FC-007/008(깨진 바이트 주입)은 실물 재현이 어려워 **E2E(B) PTY 테스트가 더 적합**
 > (PTY로 원하는 깨진 바이트를 정확히 주입 가능). 런타임에서는 ①③이 실물 검증 가치가 높다.
 
+### 🔲 추가 런타임 시험 후보 — BL-41/42/43/45 영속화·time base·기본값 (2026-07-24 신설)
+
+> 단위테스트(coveragetest)는 각 기능 구현 시 작성·green 확인됐으나(BACKLOG.md 참조),
+> Pi 실기에서의 확인 절차가 이 문서에 등재돼 있지 않았던 항목들. 사전조건은 별도
+> 표기 없는 한 Pi+FC 정상 연결 상태.
+
+**④ CONFIG 영속화 (BL-41):**
+
+| ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) | 검증 상태 |
+|---|---|---|---|---|
+| RT-CONFIG-001 | CONFIG 파라미터 변경 → 재부팅 → 값 유지 | `tools/uplink_config_sender.py`로 3개 앱 중 1개(예: cfs_core `AttitudeTimeoutMs`) 변경 → `sudo systemctl restart cfs.service` → 재부팅 후 HK로 변경값 유지 확인 | HK 파라미터 필드가 기본값이 아닌 전송값과 일치. `/cf/cfs_core_app_state.bin` 등 상태파일 mtime이 전송 시점과 일치(SaveState 실제 호출 증거) | ⬜ 미실행 |
+| RT-CONFIG-002 | 상태파일 손상 시 기본값 폴백 | 재부팅 전 `cf/*_state.bin`을 일부 바이트 덮어써 손상 후 재기동 | `STATE_CORRUPT_EID(19)`(cfs_core) 등 손상 EVS 발생 + HK가 기본값으로 복귀(크래시 아님) | ⬜ 미실행 |
+| RT-CONFIG-003 | 3개 앱(mavlink_bridge/lora_tdm/cfs_core) 동시 영속화 | 3개 앱 각각 CONFIG 변경 후 동시 재부팅 | 3개 앱 전부 HK에서 개별 변경값 유지(상호 간섭 없음) | ⬜ 미실행 |
+
+**⑤ route readback — FC를 진실원본으로 하는 RAM 캐시 (BL-41):**
+
+| ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) | 검증 상태 |
+|---|---|---|---|---|
+| RT-ROUTE-001 | FC 링크 CONNECTED 전이 시 자동 재조회 | mavlink_bridge 재시작(링크 재연결) → `FC_MISSION_READBACK_MID(0x1914)` 자동 발행 확인 | cfs_core HK `MissionRouteWaypointCount`가 FC에 이미 업로드된 실제 waypoint 수와 일치 | ⬜ 미실행 |
+| RT-ROUTE-002 | ROUTE_UPDATE 업로드 완료 후 캐시 갱신 | `tools/uplink_route_update_sender.py`로 REPLACE 업로드 → `MISSION_ACK` accepted 확인 후 캐시 자동 갱신 | cfs_core `MissionRoute` 캐시가 업로드한 waypoint와 일치(readback 경유 확인) | ⬜ 미실행 |
+| RT-ROUTE-003 | `tools/query_fc_mission.py`로 수동 재조회(MISSION_QUERY_CC) | 수동 재조회 명령 전송 → 캐시 갱신 | `FC_MISSION_READBACK_MID` 발행 로그 + 캐시 갱신 확인 | ⬜ 미실행 |
+| RT-ROUTE-004 | timeout 지수 백오프(1→2→4→5s) | FC 무응답 상태에서 재조회 시도 간격 측정 | journalctl 타임스탬프 간격이 1s→2s→4s→5s(상한) 패턴, 무한 재시도(포기 없음) | ⬜ 미실행 |
+
+**⑥ BootCount 신뢰성 — time base 검증 (BL-42):**
+
+| ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) | 검증 상태 |
+|---|---|---|---|---|
+| RT-TIMEBASE-001 | FC 재부팅 시 time base 불연속 감지 | FC 전원 재투입(companion은 유지) → `Msg->TimestampMs`(FC time_boot_ms)가 0 부근으로 리셋되는 순간 관측 | `TIMEBASE_SHIFT_EID(20)` 발생 + HK `TimebaseShiftCount` 증가. 동시에 만료 판정(ArrivalMs 기준)은 **끊기지 않고** 정상 유지(false expiry 없음) | ⬜ 미실행 |
+| RT-TIMEBASE-002 | 링크 두절 중 만료 정상 감지(회귀) | mavlink_bridge 프로세스 정지 등으로 FC 상태 갱신 중단 | 각 State(Attitude/Local/Gps/Ekf)가 `ArrivalMs` 기준으로 timeout 후 정상 stale 처리(구 TimestampMs 기준 버그였다면 FC 재부팅 전엔 만료가 늦게 감지될 수 있었음) | ⬜ 미실행 |
+
+**⑦ 부팅 루프 감지 — 생존 마커 (BL-43):**
+
+| ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) | 검증 상태 |
+|---|---|---|---|---|
+| RT-BOOTLOOP-001 | 정상 부팅 — 생존 마커 정착 | 부팅 후 120초 이상 정상 유지 | uplink `StatusTlm.BootLoopSuspect=0`, `ShortBootStreak=0` 유지. 상태파일 `SurvivedMark=1` 기록 확인(재부팅 전 read) | ⬜ 미실행 |
+| RT-BOOTLOOP-002 | 반복 단명 재부팅(5회) → BootLoopSuspect | 120초 미만 생존 후 강제 재부팅을 5회 반복(`sudo systemctl restart cfs.service`를 100초 간격으로) | 5회차 부팅 후 uplink HK `BootLoopSuspect=1`, `ShortBootStreak=5`. 보고만 하고 자동 대응(강제 착륙 등) 없음 확인 | ⬜ 미실행 |
+| RT-BOOTLOOP-003 | cfs_core 재시작 카운터·LastFaultCode 영속 | RESTART_BRIDGE/UPLINK/LORA 각 1회 실행 후 재부팅 | cfs_core HK `BridgeRestartCount`/`UplinkRestartCount`/`LoraRestartCount`가 재부팅 후에도 유지(0으로 리셋 안 됨), `LastFaultCode`도 마지막 값 유지 | ⬜ 미실행 |
+
+**⑧ v2(DL2) 다운링크 컴파일타임 기본값 (BL-45):**
+
+| ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) | 검증 상태 |
+|---|---|---|---|---|
+| RT-DL2-DEFAULT-001 | 첫 부팅(CONFIG 저장 이력 없음) 시 v2로 송신 | `cf/lora_tdm_app_state.bin` 삭제 후 재부팅(첫 부팅 재현) | 지상 수신 프레임이 `0xD2`(DL2 magic)로 시작 — v1 ASCII(`F`/`S`) 아님 | ⬜ 미실행 |
+| RT-DL2-DEFAULT-002 | 저장된 v1 설정이 있으면 재부팅 후에도 v1 유지 | CONFIG로 v1(`PARAM_DOWNLINK_PROTOCOL=0`) 전송 후 재부팅 | 지상 수신 프레임이 v1 텍스트(`F,...`)로 유지 — LoadState가 Init 기본값(v2)을 덮어씀 확인 | ⬜ 미실행 |
+
 ### 🔲 추가 런타임 시험 후보 — LoRa 링크/지상 명령 (2026-07-10 도출)
 
 lora_tdm_app 장애 처리와 uplink_app 명령 검증/차단 경로.
