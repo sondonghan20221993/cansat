@@ -36,6 +36,8 @@ magic 할당: DL2=`0xD2`, UP2=`0xB2`, ACK2=`0xA2`.
 
 ## 4. DL2 — 다운링크 통합 프레임 (기체 → 지상)
 
+> 📡 **인터랙티브 바이트 맵**: [`lora_frame_map.html`](lora_frame_map.html) — DL2/UP2/ACK2/v1 프레임의 바이트 레이아웃을 필드 그룹 색상으로 시각화(호버 시 offset·형식·의미 판독, SysTime·waypoint 확장 토글). 이 §4~§6 표를 그대로 렌더한 것 (BL-47, 2026-07-24).
+
 FC 상태 + 시스템 헬스를 **하나의 프레임**으로 매 TDM 주기 전송. v1의 `PacketType` last-wins 스케줄링은 폐지한다.
 
 | offset | 필드 | 형식 | 단위/의미 |

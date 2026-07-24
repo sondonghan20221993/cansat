@@ -1,0 +1,417 @@
+<title>LoRa TDM Frame Map — cfs-telemetry-app</title>
+<style>
+  :root {
+    --bg: #f4f6f8;
+    --panel: #ffffff;
+    --panel-2: #eef1f4;
+    --ink: #1b2330;
+    --ink-soft: #566173;
+    --hair: #d5dbe2;
+    --accent: #0f9e8f;
+    --shadow: 0 1px 2px rgba(20,30,45,.06), 0 6px 20px rgba(20,30,45,.06);
+
+    --g-frame:   #b9761f;
+    --g-seq:     #0f8fa0;
+    --g-flags:   #1a9e73;
+    --g-feed:    #b03fa0;
+    --g-time:    #4666c9;
+    --g-att:     #5a8f2b;
+    --g-pos:     #1f8fa0;
+    --g-vel:     #2f7fbf;
+    --g-gps:     #7b52c9;
+    --g-status:  #b07316;
+    --g-tail:    #c05a1f;
+    --g-systime: #8a5aa8;
+    --g-wp:      #2a7fa0;
+    --g-crc:     #c2314a;
+    --g-payload: #5b647f;
+
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --byte: 40px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #090d13;
+      --panel: #10161f;
+      --panel-2: #0b1119;
+      --ink: #dbe4ef;
+      --ink-soft: #7f8ea3;
+      --hair: #1e2836;
+      --accent: #46d1c3;
+      --shadow: 0 1px 0 rgba(255,255,255,.02), 0 10px 30px rgba(0,0,0,.45);
+
+      --g-frame:   #e0a24a;
+      --g-seq:     #46c8d1;
+      --g-flags:   #57d1a0;
+      --g-feed:    #d97fce;
+      --g-time:    #7aa2f7;
+      --g-att:     #9ece6a;
+      --g-pos:     #56b6c2;
+      --g-vel:     #7dcfff;
+      --g-gps:     #bb9af7;
+      --g-status:  #e0af68;
+      --g-tail:    #ff9e64;
+      --g-systime: #c6a0e0;
+      --g-wp:      #88c8dc;
+      --g-crc:     #f7768e;
+      --g-payload: #7e88ad;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg:#f4f6f8; --panel:#fff; --panel-2:#eef1f4; --ink:#1b2330; --ink-soft:#566173;
+    --hair:#d5dbe2; --accent:#0f9e8f; --shadow:0 1px 2px rgba(20,30,45,.06),0 6px 20px rgba(20,30,45,.06);
+    --g-frame:#b9761f; --g-seq:#0f8fa0; --g-flags:#1a9e73; --g-feed:#b03fa0; --g-time:#4666c9;
+    --g-att:#5a8f2b; --g-pos:#1f8fa0; --g-vel:#2f7fbf; --g-gps:#7b52c9; --g-status:#b07316;
+    --g-tail:#c05a1f; --g-systime:#8a5aa8; --g-wp:#2a7fa0; --g-crc:#c2314a; --g-payload:#5b647f;
+  }
+  :root[data-theme="dark"] {
+    --bg:#090d13; --panel:#10161f; --panel-2:#0b1119; --ink:#dbe4ef; --ink-soft:#7f8ea3;
+    --hair:#1e2836; --accent:#46d1c3; --shadow:0 1px 0 rgba(255,255,255,.02),0 10px 30px rgba(0,0,0,.45);
+    --g-frame:#e0a24a; --g-seq:#46c8d1; --g-flags:#57d1a0; --g-feed:#d97fce; --g-time:#7aa2f7;
+    --g-att:#9ece6a; --g-pos:#56b6c2; --g-vel:#7dcfff; --g-gps:#bb9af7; --g-status:#e0af68;
+    --g-tail:#ff9e64; --g-systime:#c6a0e0; --g-wp:#88c8dc; --g-crc:#f7768e; --g-payload:#7e88ad;
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans);
+         line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 32px 20px 80px; }
+
+  header.top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between;
+               gap: 16px; border-bottom: 1px solid var(--hair); padding-bottom: 20px; }
+  .eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: .18em; text-transform: uppercase;
+             color: var(--accent); margin: 0 0 8px; }
+  h1 { font-size: clamp(24px, 4vw, 36px); margin: 0; letter-spacing: -.01em; text-wrap: balance;
+       font-weight: 650; }
+  .sub { color: var(--ink-soft); margin: 8px 0 0; max-width: 60ch; font-size: 14px; }
+  .meta { font-family: var(--mono); font-size: 12px; color: var(--ink-soft); text-align: right;
+          display: grid; gap: 3px; }
+  .meta b { color: var(--ink); font-weight: 600; }
+
+  .themebtn { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+              background: var(--panel-2); color: var(--ink-soft); border: 1px solid var(--hair);
+              border-radius: 6px; padding: 6px 10px; cursor: pointer; margin-top: 8px; }
+  .themebtn:hover { color: var(--ink); border-color: var(--accent); }
+
+  /* readout */
+  .readout { position: sticky; top: 12px; z-index: 5; margin: 22px 0 26px;
+             background: var(--panel); border: 1px solid var(--hair); border-radius: 10px;
+             box-shadow: var(--shadow); padding: 14px 16px; display: grid;
+             grid-template-columns: 14px 1fr; gap: 0 14px; align-items: center; min-height: 74px; }
+  .readout .swatch { width: 14px; height: 44px; border-radius: 3px; background: var(--hair); align-self: center; }
+  .readout .rd-body { display: grid; gap: 2px; }
+  .rd-name { font-family: var(--mono); font-weight: 650; font-size: 15px; letter-spacing: .01em; }
+  .rd-line { font-family: var(--mono); font-size: 12.5px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+  .rd-desc { font-size: 13px; color: var(--ink); margin-top: 3px; max-width: 82ch; }
+  .rd-hint { color: var(--ink-soft); font-style: italic; }
+
+  section.frame { margin-top: 30px; }
+  .fhead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; margin-bottom: 4px; }
+  .fhead h2 { font-size: 20px; margin: 0; font-weight: 640; letter-spacing: -.01em; }
+  .fhead .magic { font-family: var(--mono); font-size: 12px; padding: 2px 8px; border-radius: 5px;
+                  background: var(--panel-2); border: 1px solid var(--hair); color: var(--ink-soft); }
+  .fhead .dir { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+                color: var(--accent); }
+  .fnote { color: var(--ink-soft); font-size: 13px; margin: 2px 0 14px; max-width: 78ch; }
+
+  .ribbon { display: flex; flex-wrap: wrap; gap: 5px; padding: 14px; border-radius: 10px;
+            background: var(--panel-2); border: 1px solid var(--hair); }
+  .ribbon.ext { background: repeating-linear-gradient(135deg, var(--panel-2) 0 12px, transparent 12px 14px), var(--panel-2);
+                margin-top: 6px; }
+  .exttag { width: 100%; font-family: var(--mono); font-size: 11px; letter-spacing: .06em;
+            text-transform: uppercase; color: var(--ink-soft); margin-bottom: 2px; }
+  .exttag b { color: var(--ink); }
+
+  .cell { --c: var(--hair); position: relative; border-radius: 6px; cursor: pointer;
+          border: 1px solid color-mix(in srgb, var(--c) 55%, var(--hair));
+          background: color-mix(in srgb, var(--c) 14%, var(--panel));
+          padding: 7px 9px 8px; min-height: 52px; display: flex; flex-direction: column;
+          justify-content: space-between; transition: transform .08s ease, box-shadow .12s ease;
+          overflow: hidden; }
+  .cell::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--c); }
+  .cell:hover, .cell.active { transform: translateY(-2px);
+          box-shadow: 0 0 0 1.5px var(--c), 0 8px 18px rgba(0,0,0,.14); }
+  .cell:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .cell .off { font-family: var(--mono); font-size: 10.5px; color: var(--ink-soft);
+               font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+  .cell .nm { font-family: var(--mono); font-size: 12.5px; font-weight: 600; color: var(--ink);
+              line-height: 1.15; word-break: break-word; }
+  .cell .ty { font-family: var(--mono); font-size: 10.5px; color: color-mix(in srgb, var(--c) 70%, var(--ink-soft)); }
+  .cell .sz { position: absolute; right: 6px; top: 5px; font-family: var(--mono); font-size: 9.5px;
+              color: var(--ink-soft); opacity: .8; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 14px; margin: 8px 0 0; padding: 0; list-style: none; }
+  .legend li { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11.5px;
+               color: var(--ink-soft); }
+  .legend .dot { width: 11px; height: 11px; border-radius: 3px; background: var(--c); }
+
+  .v1 { font-family: var(--mono); font-size: 13px; background: var(--panel-2); border: 1px solid var(--hair);
+        border-radius: 10px; padding: 14px 16px; overflow-x: auto; display: grid; gap: 10px; }
+  .v1 .row { display: grid; grid-template-columns: 88px 1fr; gap: 12px; align-items: start; }
+  .v1 .k { color: var(--accent); }
+  .v1 .fmt { color: var(--ink); white-space: pre; }
+  .v1 .cm { color: var(--ink-soft); }
+
+  .toggle { display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px;
+            color: var(--ink-soft); cursor: pointer; user-select: none; margin: 12px 2px 0; }
+  .toggle input { accent-color: var(--accent); width: 15px; height: 15px; }
+
+  footer { margin-top: 54px; padding-top: 18px; border-top: 1px solid var(--hair);
+           font-family: var(--mono); font-size: 11.5px; color: var(--ink-soft); line-height: 1.7; }
+  footer b { color: var(--ink); }
+  @media (prefers-reduced-motion: reduce) { .cell { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <p class="eyebrow">cfs-telemetry-app · LoRa half-duplex TDM</p>
+      <h1>Telemetry Frame Map</h1>
+      <p class="sub">기체↔지상 LoRa 프레임의 바이트 단위 wire format. 필드 위에 커서를 올리면 판독창에 형식·오프셋·의미가 표시됩니다.</p>
+    </div>
+    <div>
+      <div class="meta">
+        <span>byte order · <b>little-endian</b></span>
+        <span>CRC · <b>CRC-16/CCITT 0x1021</b></span>
+        <span>source · <b>lora_protocol_v2_spec §4–6</b></span>
+      </div>
+      <button class="themebtn" id="themebtn" type="button">◐ theme</button>
+    </div>
+  </header>
+
+  <div class="readout" id="readout" aria-live="polite">
+    <div class="swatch" id="rd-swatch"></div>
+    <div class="rd-body">
+      <div class="rd-name" id="rd-name">필드를 가리키세요</div>
+      <div class="rd-line" id="rd-line">DL2 다운링크 · UP2 업링크 · ACK2 · v1 레거시 4종 프레임</div>
+      <div class="rd-desc rd-hint" id="rd-desc">각 셀은 하나의 필드입니다. 폭은 바이트 수에 비례합니다. 클릭하면 판독을 고정합니다.</div>
+    </div>
+  </div>
+
+  <div id="frames"></div>
+
+  <section class="frame">
+    <div class="fhead"><h2>v1 레거시 (ASCII 텍스트)</h2><span class="dir">참조 · 공존 이행용</span></div>
+    <p class="fnote">첫 바이트가 magic(0xD2/0xB2/0xA2)이 아니면 수신 파서는 v1 텍스트로 분기합니다. hex 인코딩·개행 종단 방식.</p>
+    <div class="v1">
+      <div class="row"><span class="k">DL v1</span><span><span class="fmt">F,&lt;ts&gt;,&lt;roll&gt;,…,&lt;crc16&gt;\n   /   S,&lt;…&gt;\n</span>  <span class="cm">— FC/SH 상태 텍스트 라인</span></span></div>
+      <div class="row"><span class="k">UP v1</span><span><span class="fmt">UP,&lt;version&gt;,&lt;class&gt;,&lt;seq&gt;,&lt;flags&gt;,&lt;payload_hex&gt;,&lt;crc16&gt;\n</span></span></div>
+      <div class="row"><span class="k">ACK v1</span><span><span class="fmt">ACK,&lt;seq&gt;\n</span>  <span class="cm">— CRC 없음 (v2 ACK2가 CRC 추가)</span></span></div>
+    </div>
+  </section>
+
+  <footer>
+    <div><b>레전드 색상</b> = 필드 기능 그룹. 확장 블록은 빗금 배경으로 구분되며 <b>flags</b> 비트로 첨부 여부가 결정됩니다.</div>
+    <div>DL2 기본 <b>50B</b> (에어타임 ~21ms) · +SysTime <b>8B</b> · +waypoint 페이지 <b>28B</b>. 확장 첨부 시 tail(uplink_last_seq/boot_count)과 CRC가 뒤로 밀립니다.</div>
+    <div>생성: BL-47 · 2026-07-24 · 근거 <b>notes/lora_protocol_v2_spec.md</b>, <b>lora_tdm_app_behavior_spec.md §9.2</b></div>
+  </footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var G = {
+    frame:"--g-frame", seq:"--g-seq", flags:"--g-flags", feed:"--g-feed", time:"--g-time",
+    att:"--g-att", pos:"--g-pos", vel:"--g-vel", gps:"--g-gps", status:"--g-status",
+    tail:"--g-tail", systime:"--g-systime", wp:"--g-wp", crc:"--g-crc", payload:"--g-payload"
+  };
+  var GNAME = {
+    frame:"프레임 헤더", seq:"시퀀스", flags:"flags", feed:"업링크 피드백", time:"타임스탬프",
+    att:"자세", pos:"위치", vel:"속도", gps:"GPS", status:"상태/헬스",
+    tail:"tail (자가복구)", systime:"SysTime 확장", wp:"waypoint 확장", crc:"CRC", payload:"페이로드"
+  };
+
+  // fields: [offset, name, type, bytes, group, desc]
+  var DL2_BASE = [
+    [0,"magic","u8",1,"frame","0xD2 — DL2 다운링크 식별자. v1 ASCII('F','S','A','U')와 겹치지 않아 즉시 판별."],
+    [1,"len","u8",1,"frame","magic부터 CRC 직전까지의 길이(확장 블록 포함). 프레임 경계 확정용."],
+    [2,"seq","u16",2,"seq","DownlinkSeq — 다운링크 성공마다 +1, wrap 허용."],
+    [4,"flags","u8",1,"flags","bit0=SysTime 첨부 · bit1=위치 saturate 발생 · bit2=waypoint 페이지 첨부 · bit3~7 예약(0)."],
+    [5,"ufb","u8",1,"feed","UplinkFeedback — 0x00 OK · 0x01 CRC_FAIL · 0x02 SEQ_FAIL · 0x03 STATE_BLOCKED · 0x04 FAILED · 0x05~0x0B REJECT_* (BL-11)."],
+    [6,"ts","u32",4,"time","FC 상태 캐시 TimestampMs (FC boot ms 기준)."],
+    [10,"roll,pitch,yaw","i16×3",6,"att","자세각. rad ×10⁴ (±3.2767 rad → ±π 커버)."],
+    [16,"x,y,z","i16×3",6,"pos","로컬 위치. cm 단위 (±327.67m, 초과 시 flags bit1 saturate)."],
+    [22,"vx,vy,vz","i16×3",6,"vel","속도. cm/s (±327.67 m/s)."],
+    [28,"lat,lon","i32×2",8,"gps","위경도. deg ×10⁷ (v1과 동일 스케일)."],
+    [36,"alt_mm","i32",4,"gps","고도. mm."],
+    [40,"fix","u8",1,"gps","GPS fix type."],
+    [41,"sats","u8",1,"gps","SatellitesVisible."],
+    [42,"health","u8",1,"status","SystemHealthState (cfs_core 헬스)."],
+    [43,"fault","u8",1,"status","FaultCode."],
+    [44,"linkstate","u8",1,"status","LoRa LinkState."],
+    [45,"uplink_last_seq","u16",2,"tail","기체가 마지막 수락한 uplink seq (BL-03). 지상 재시작 시 이 값+1부터 재개(자가복구)."],
+    [47,"uplink_boot_count","u8",1,"tail","기체 부팅 카운터 uint8 wrap (BL-12). 감소 감지 시 지상은 자동거부 대신 '운영자 확인' 플래그만."],
+    [48,"crc","u16",2,"crc","CRC-16/CCITT. 대상 = magic부터 payload 끝까지."]
+  ];
+  var DL2_SYSTIME = [
+    [0,"sys_time_unix_usec","u64",8,"systime","FC SYSTEM_TIME 기반 GPS UNIX epoch (µs). TimeValid=0이면 미첨부. flags bit0=1일 때 삽입 → tail/CRC가 8B 뒤로 밀림."]
+  ];
+  var DL2_WP = [
+    [0,"route_type","u8",1,"wp","ROUTE_SEGMENT_* (현재 MISSION_EXTENSION=1 고정)."],
+    [1,"page_index","u8",1,"wp","0-base 현재 페이지."],
+    [2,"total_pages","u8",1,"wp","전체 페이지 수 = ceil(waypoint/2)."],
+    [3,"waypoints_in_page","u8",1,"wp","이 페이지 실제 waypoint 수(1 또는 2)."],
+    [4,"waypoint[0]","float×3",12,"wp","X/Y/Z 로컬 좌표 (12B)."],
+    [16,"waypoint[1]","float×3",12,"wp","X/Y/Z (waypoints_in_page==1이면 0 패딩)."]
+  ];
+  var UP2 = [
+    [0,"magic","u8",1,"frame","0xB2 — UP2 업링크 명령 식별자."],
+    [1,"plen","u8",1,"frame","payload 길이 (0 허용 — payload 없는 명령 유효)."],
+    [2,"version","u8",1,"frame","프로토콜 버전 = 2."],
+    [3,"command_class","u8",1,"frame","CommandClass (1=CONFIG … 6=DIAGNOSTIC)."],
+    [4,"seq","u16",2,"seq","업링크 시퀀스."],
+    [6,"flags","u8",1,"flags","bit[7:6]=AUTH_LEVEL · bit[2:1]=RETX_IDX · bit0=FORCE_FLAG · 나머지 예약."],
+    [7,"payload","u8×plen","plen","payload","명령 페이로드(raw). v1 hex 인코딩 폐지로 원본 크기 그대로."],
+    ["7+plen","crc","u16",2,"crc","CRC-16/CCITT. 실패 시 PendingUplinkFeedback=CRC_FAIL."]
+  ];
+  var ACK2 = [
+    [0,"magic","u8",1,"frame","0xA2 — ACK2 식별자."],
+    [1,"seq_echo","u16",2,"seq","마지막 수신 DL2 seq 반사."],
+    [3,"crc","u16",2,"crc","CRC-16/CCITT (v1 ACK 대비 신규 추가)."]
+  ];
+
+  var UNIT = 40, PAD = 20;
+  function cellWidth(bytes) {
+    var n = (typeof bytes === "number" && bytes > 0) ? bytes : 1;
+    var w = n * UNIT + (n - 1) * 5;
+    return Math.max(w, 74);
+  }
+
+  function makeCell(f) {
+    var off = f[0], nm = f[1], ty = f[2], bytes = f[3], grp = f[4], desc = f[5];
+    var c = document.createElement("button");
+    c.type = "button";
+    c.className = "cell";
+    c.style.setProperty("--c", "var(" + G[grp] + ")");
+    c.style.width = cellWidth(bytes) + "px";
+    c.style.flexGrow = (typeof bytes === "number" ? bytes : 1);
+    var szLabel = (typeof bytes === "number") ? bytes + "B" : bytes + "B";
+    c.innerHTML =
+      '<span class="off">@' + off + '</span>' +
+      '<span class="sz">' + szLabel + '</span>' +
+      '<span class="nm">' + nm + '</span>' +
+      '<span class="ty">' + ty + '</span>';
+    var payload = { off: off, nm: nm, ty: ty, bytes: szLabel, grp: grp, desc: desc };
+    c.addEventListener("mouseenter", function () { show(payload, false); });
+    c.addEventListener("focus", function () { show(payload, false); });
+    c.addEventListener("click", function () { show(payload, true); markActive(c); });
+    return c;
+  }
+
+  var pinned = false, activeEl = null;
+  function markActive(el) {
+    if (activeEl) activeEl.classList.remove("active");
+    activeEl = el; el.classList.add("active");
+  }
+  var rdName = document.getElementById("rd-name"),
+      rdLine = document.getElementById("rd-line"),
+      rdDesc = document.getElementById("rd-desc"),
+      rdSw   = document.getElementById("rd-swatch");
+  function show(p, pin) {
+    if (pinned && !pin) return;
+    if (pin) pinned = true;
+    rdName.textContent = p.nm;
+    rdLine.innerHTML = "offset @" + p.off + "  ·  " + p.ty + "  ·  " + p.bytes +
+                       "  ·  " + GNAME[p.grp];
+    rdDesc.textContent = p.desc;
+    rdDesc.classList.remove("rd-hint");
+    rdSw.style.background = "var(" + G[p.grp] + ")";
+  }
+
+  function ribbon(fields, extClass, tag) {
+    var r = document.createElement("div");
+    r.className = "ribbon" + (extClass ? " ext" : "");
+    if (tag) {
+      var t = document.createElement("div");
+      t.className = "exttag";
+      t.innerHTML = tag;
+      r.appendChild(t);
+    }
+    fields.forEach(function (f) { r.appendChild(makeCell(f)); });
+    return r;
+  }
+
+  function legend(groups) {
+    var ul = document.createElement("ul");
+    ul.className = "legend";
+    groups.forEach(function (g) {
+      var li = document.createElement("li");
+      li.style.setProperty("--c", "var(" + G[g] + ")");
+      li.innerHTML = '<span class="dot"></span>' + GNAME[g];
+      ul.appendChild(li);
+    });
+    return ul;
+  }
+
+  function frameSection(cfg) {
+    var s = document.createElement("section");
+    s.className = "frame";
+    var head = '<div class="fhead"><h2>' + cfg.title + '</h2>' +
+               '<span class="magic">magic ' + cfg.magic + '</span>' +
+               '<span class="dir">' + cfg.dir + '</span></div>' +
+               '<p class="fnote">' + cfg.note + '</p>';
+    s.innerHTML = head;
+    s.appendChild(ribbon(cfg.base, false, null));
+    if (cfg.exts) {
+      cfg.exts.forEach(function (e) { s.appendChild(ribbon(e.fields, true, e.tag)); });
+    }
+    s.appendChild(legend(cfg.groups));
+    if (cfg.toggle) {
+      var lbl = document.createElement("label");
+      lbl.className = "toggle";
+      lbl.innerHTML = '<input type="checkbox" checked> 확장 블록 표시 (SysTime · waypoint 페이지)';
+      var chk = lbl.querySelector("input");
+      chk.addEventListener("change", function () {
+        s.querySelectorAll(".ribbon.ext").forEach(function (r) {
+          r.style.display = chk.checked ? "" : "none";
+        });
+      });
+      s.appendChild(lbl);
+    }
+    return s;
+  }
+
+  var host = document.getElementById("frames");
+  host.appendChild(frameSection({
+    title: "DL2 — 다운링크 통합 프레임", magic: "0xD2", dir: "기체 → 지상",
+    note: "매 사이클 기체 상태를 지상으로 전송. 기본 50B, flags 비트에 따라 확장 블록이 tail 앞이 아닌 CRC 직전에 첨부됩니다(신규 필드는 항상 끝에 추가 원칙).",
+    base: DL2_BASE,
+    exts: [
+      { tag: 'flags bit0 · <b>SysTime 확장 (+8B → 총 58B)</b>', fields: DL2_SYSTIME },
+      { tag: 'flags bit2 · <b>waypoint 페이지 확장 (+28B)</b> — tail/CRC 뒤로 밀림', fields: DL2_WP }
+    ],
+    groups: ["frame","seq","flags","feed","time","att","pos","vel","gps","status","tail","systime","wp","crc"],
+    toggle: true
+  }));
+  host.appendChild(frameSection({
+    title: "UP2 — 업링크 명령 프레임", magic: "0xB2", dir: "지상 → 기체",
+    note: "지상국 명령. v1 UP 텍스트의 바이너리 대체 — hex 폐지로 payload 구간 50% 절감. RX창을 넘는 대형 payload(ROUTE_UPDATE)는 바이트 스트림 상태머신으로 여러 창에 걸쳐 수신.",
+    base: UP2,
+    groups: ["frame","seq","flags","payload","crc"]
+  }));
+  host.appendChild(frameSection({
+    title: "ACK2 — 지상 ACK 프레임", magic: "0xA2", dir: "지상 → 기체",
+    note: "DL2 수신 확인. 5B — v1 ACK 대비 기능 동일 + CRC 보호 추가.",
+    base: ACK2,
+    groups: ["frame","seq","crc"]
+  }));
+
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest(".cell") && !e.target.closest(".readout")) {
+      pinned = false;
+      if (activeEl) { activeEl.classList.remove("active"); activeEl = null; }
+    }
+  });
+
+  // theme toggle
+  var btn = document.getElementById("themebtn");
+  btn.addEventListener("click", function () {
+    var cur = document.documentElement.getAttribute("data-theme");
+    var isDark = cur ? cur === "dark"
+                     : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    document.documentElement.setAttribute("data-theme", isDark ? "light" : "dark");
+  });
+})();
+</script>
