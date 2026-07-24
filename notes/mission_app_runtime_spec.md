@@ -1768,6 +1768,13 @@ param2=custom main mode, param3=custom sub mode):
 **구현 현황(2026-07-24)**: uplink_app 파싱/포워딩 슬라이스 완료(SDD→TDD, 신규 10종 green).
 mavlink_bridge_app 슬라이스는 아래 wire-level 계약까지 확정 후 착수.
 
+**force flag(§18.10.2 `UPLINK_APP_FORCE_FLAG`) 지상국 노출**: 기체측 게이트는 이미 범용
+force 비트를 지원하나(`uplink_app_cmds.c` health-gate 예외 처리), 지상국
+`fc_serial_ws_server.py`/GUI는 CONFIG에만 force 체크박스를 연결해뒀고 FLIGHT_MODE에는
+연결이 빠져 있어 실기 GUI 테스트(RT-FLIGHTMODE) 중 발견됨 — WAYPOINT가 DEGRADED에서
+막혔는데 우회 수단이 없었음. `/api/uplink/flight_mode` 라우트와 GUI Flight Mode 패널에
+force 체크박스 추가로 해결(openMCT, 2026-07-24).
+
 ##### 18.4.6.8.1 mavlink_bridge_app 구현 계약 (wire-level, 2026-07-24 확정)
 
 **SB 명령 구조 정정 — SourceSequence 누락 보완**: uplink_app 슬라이스 구현 중 발견된 설계
