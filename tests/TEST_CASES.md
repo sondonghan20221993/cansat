@@ -1045,11 +1045,13 @@ mavlink_bridge_app의 FC 장애 처리와 cfs_core_app 보고 경로 검증.
 
 | ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) | 검증 상태 |
 |---|---|---|---|---|
-| RT-FLIGHTMODE-001 | HOVER — DEGRADED 헬스게이트 예외 허용 | health DEGRADED(fault=3, 실내 GPS 없음) 상태에서 HOVER(auth=3) 전송 | `UPLINK_APP: routed uplink class=8 ... target=4` → `MAVLINK_BRIDGE_APP: flight mode set mode=0` → `exec result ... generic=0`(OK), 차단 없음 | ✅ **PASS(2026-07-24)**. FC 보드 연결(프로펠러 미장착) 상태로 실기 확인 |
-| RT-FLIGHTMODE-002 | WAYPOINT — DEGRADED 헬스게이트 정상 차단 | 동일 DEGRADED 상태에서 WAYPOINT(auth=3) 전송 | `UPLINK_APP: command blocked by health state=1 class=8` — mavlink_bridge로 미전달 | ✅ **PASS(2026-07-24)** |
-| RT-FLIGHTMODE-003 | LAND — DEGRADED 헬스게이트 예외 허용 | 동일 DEGRADED 상태에서 LAND(auth=3) 전송 | `flight mode set mode=2` → `exec result generic=0`(OK), 차단 없음 | ✅ **PASS(2026-07-24)** |
+| RT-FLIGHTMODE-001 | HOVER — DEGRADED 헬스게이트 예외 허용 | health DEGRADED(fault=3, 실내 GPS 없음) 상태에서 HOVER(auth=3) 전송 | `UPLINK_APP: routed uplink class=8 ... target=4` → `MAVLINK_BRIDGE_APP: flight mode set mode=0` → `exec result ... generic=0`(OK), 차단 없음 | ✅ **PASS(2026-07-24)**. FC 보드 연결(프로펠러 미장착) 상태로 실기 확인. **재검증(2026-07-24, 2차)**: 임시 스크립트가 아닌 openMCT uplinkGUI Flight Mode 섹션→서버 `/api/uplink/flight_mode`→실제 LoRa RF 경로로도 동일 결과 확인(UDP 직결 아님) |
+| RT-FLIGHTMODE-002 | WAYPOINT — DEGRADED 헬스게이트 정상 차단 | 동일 DEGRADED 상태에서 WAYPOINT(auth=3) 전송 | `UPLINK_APP: command blocked by health state=1 class=8` — mavlink_bridge로 미전달 | ✅ **PASS(2026-07-24)**. GUI/LoRa RF 경로 재검증 완료(4x 재전송 슬롯 각각 정상 차단) |
+| RT-FLIGHTMODE-003 | LAND — DEGRADED 헬스게이트 예외 허용 | 동일 DEGRADED 상태에서 LAND(auth=3) 전송 | `flight mode set mode=2` → `exec result generic=0`(OK), 차단 없음 | ✅ **PASS(2026-07-24)**. GUI/LoRa RF 경로 재검증 완료 |
 | RT-FLIGHTMODE-004 | auth Level 3 미달 거부 | HOVER를 auth=2로 전송(Level 3 요구) | `UPLINK_APP: command blocked (insufficient auth) auth=2 required=3 class=8` | ✅ **PASS(2026-07-24)** |
 | RT-FLIGHTMODE-005 | PX4 COMMAND_LONG/MISSION_SET_CURRENT wire 왕복(FC 응답 확인) | WAYPOINT를 NOMINAL(비-DEGRADED) 상태에서 전송해 실제 FC 모드 전환 확인 | FC가 실제로 AUTO/MISSION 모드로 전환됐는지 GCS/FC 텔레메트리로 확인 | ⬜ 미실행 — 실외 GPS로 NOMINAL 도달 필요(WAYPOINT는 DEGRADED에서 차단되므로 이번 세션은 게이트 검증까지만 수행) |
+| RT-FLIGHTMODE-006 | openMCT uplinkGUI Flight Mode 섹션 신설 + UFB=0x0D(REJECT_FLIGHT_MODE) 매핑 | GUI에 HOVER/WAYPOINT/LAND 버튼 추가(기존엔 섹션 자체가 없었음) — 서버 `/api/uplink/flight_mode` 신설. 부수 발견: `UPLINK_APP_RESULT_REJECT_FLIGHT_MODE`(18)가 lora_tdm UFB 코드표(BL-11)에 매핑 누락돼 있어 거부돼도 UFB=OK로 오표시되던 버그 발견·수정 | openMCT 레포 pytest 38/38 PASS(FlightMode 7종 신규), cfs-telemetry-app lora_tdm coverage 4종 PASS(UFB 매핑 회귀 테스트 포함) | ✅ **PASS(2026-07-24)** — 커밋 cfs-telemetry-app `e46fb6c`, openMCT `2d455a0` |
+| RT-ROUTE-READBACK-GUI-001 | 0x1913 readback 지상 GUI 왕복(DIAGNOSTIC 버튼) | openMCT uplinkGUI에 Diagnostic 섹션 신설(기존엔 섹션 자체가 없었음) — `route_readback` 액션 선택 시 완료까지 자동 폴링. 서버 측 `RouteReadbackAssembler`(기존엔 콘솔 로그만 남기고 상태 노출 없었음)를 `GET /api/uplink/route_readback`으로 노출 | DIAGNOSTIC 전송→cfs_core `route readback requested`→`ROUTE_SNAPSHOT_MID`→lora_tdm DL2 waypoint 페이지→지상 재조립→GUI `status=complete`, waypoints가 업로드값과 일치(부동소수점 오차만) | ✅ **PASS(2026-07-24)** — openMCT pytest 38/38(RouteReadbackStatus 3종 신규) |
 
 **⑩ PX4 미션 업로드 quirk 재검증 (BL-49, 2026-07-24):**
 
