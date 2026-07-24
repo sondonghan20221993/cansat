@@ -1490,9 +1490,8 @@ REPLACE 연산에 한해, payload의 `reserved` 필드를 2-pass 보정 활성�
 | 상태머신(`IDLE→LAP1→CORRECTING→LAP2→DONE`) | **지상국** | 랩 진행·전이·타임아웃 관리 |
 | lap 1 위치 샘플 수집 | **지상국** | 다운링크되는 위치 텔레메트리(DL2)를 지상에서 누적 |
 | 최소자승 원 피팅 | **지상국** | 실측 (cx,cy,r) 산출, 계획 원과 편차로 waypoint 보정 |
-| 보정 route 업로드 | **지상국** | 기존 ROUTE_UPDATE 경로로 REPLACE 재업로드 |
-| lap 끝 호버링 | **기체(FC)** | lap 마지막 waypoint를 `MAV_CMD_NAV_LOITER_UNLIM`으로 보내 확정 호버 |
-| 호버 해제·lap 2 시작 | **기체(FC)** | 지상 명령 수신 시 `MISSION_SET_CURRENT(0)` 전송 |
+| 보정 route 업로드 | **지상국** | 보정 계산 결과 점(a,b,c)을 **평범한 REPLACE waypoint로 재업로드** (특수 item·플래그 없음) |
+| 호버링/재개/착륙 | **지상국→기체** | 명시 **비행모드 명령 3종(HOVER/WAYPOINT/LAND)**으로 오케스트레이션 (아래 base 배선) |
 
 **lap 1 — 데이터 수집(지상)**: 지상국은 lap 1 동안 다운링크되는 위치(DL2 `x,y,z` i16 cm,
 또는 `lat/lon`)를 누적한다. 온보드 5Hz 1500샘플 대신 다운링크된 더 적고 거친 샘플을
@@ -1510,31 +1509,31 @@ REPLACE 연산에 한해, payload의 `reserved` 필드를 2-pass 보정 활성�
    않으며 측정 편차는 크기와 무관하게 항상 반영(노이즈 상쇄는 다중 샘플 평균화에 의존).
 
 **LAP2 전이**:
-- 보정 성공 시: 지상국이 보정 route를 REPLACE로 업로드. 기체는 **마지막 waypoint에서
-  호버링(LOITER_UNLIM) 중인 상태에 한해** armed 미션 업로드를 허용한다(일반 비행 중 임의
-  route 재업로드는 계속 차단 — 기체측 게이트). 업로드 완료(`MISSION_ACK` accepted) 후
-  지상 명령으로 `MISSION_SET_CURRENT(0)`을 FC에 전송해 호버 해제·lap 2 시작.
+- 보정 성공 시: 지상국이 보정 계산 결과 점(a,b,c)을 **평범한 REPLACE waypoint로 재업로드**한다
+  (미션에 LOITER item을 심거나 특수 플래그를 두지 않는다). 재업로드는 기체가 **HOVER 모드로
+  대기 중인 동안** 수행하고, 완료(`MISSION_ACK` accepted) 후 지상이 **WAYPOINT 모드 명령**을
+  보내 lap 2를 시작한다.
 - 보정 실패/피팅 무효, 또는 **타임아웃 내 보정 route 미도착(LoRa 링크 단절 등)** 시:
-  기체는 원본(lap 1) route로 lap 2를 재비행. 미션을 reject/중단하지 않는다. (링크 의존은
-  지상 연산 방식의 대가 — 이 폴백으로 안전 확보.)
+  지상은 원본(lap 1) route로 WAYPOINT 모드를 재명령해 lap 2를 재비행. 미션을 reject/중단하지
+  않는다. (링크 의존은 지상 연산 방식의 대가 — 이 폴백으로 안전 확보.)
 
-**lap 2 종료**: lap 2 마지막 waypoint 도달 시 동일하게 호버링으로 전환하고 DONE 종료.
+**lap 2 종료**: lap 2 마지막 waypoint 도달 후 지상이 HOVER 또는 LAND 모드를 명령하고 DONE 종료.
 추가 보정·3회차 이상 반복 없음.
 
 **출력**: 랩 번호·보정 성공/폴백·산출 (cx,cy,r)는 **지상국**이 표시·기록한다.
 
-**기체측(cFS) 최소 변경 범위(BL-44 이 레포)**: ① lap 1 위치 샘플이 지상 피팅에 충분한
-빈도/해상도로 다운링크되는지 확인(대체로 DL2로 이미 충족) · ② lap 끝 waypoint를
-LOITER_UNLIM으로 보내는 경로 · ③ 호버링 상태에서만 armed 미션 업로드 허용하는 게이트 ·
-④ 지상 명령으로 `MISSION_SET_CURRENT(0)` 전송. 원 피팅·상태머신·버퍼는 **지상국 레포
-(openMCT/Python, 별개 레포)** 담당.
+**설계 재정의(BL-44, 2026-07-24)**: 보정된 경로는 특별한 게 아니라 **평범한 waypoint 목록**이므로
+(지상이 점 a,b,c를 REPLACE로 올리면 끝), 미션 내 LOITER_UNLIM·2-pass 플래그·"호버 중에만 업로드"
+게이트 같은 온보드 특수 처리를 모두 걷어낸다. 기체가 필요한 것은 **비행모드 base 명령 3종**뿐이고,
+2-pass는 지상이 이 base를 조합해 오케스트레이션한다(waypoint→끝 감지→HOVER→보정 재업로드→
+waypoint→…→HOVER/LAND).
 
-> **uplink 명령 배선(구현 대상, 하드웨어 검증과 분리)**: 위 ②~④는 지상이 산출한
-> 값을 **uplink 명령 경로로 전달받아** 수행한다. 즉 지금 구현 가능한 코드 대상은
-> ⓐ ROUTE_UPDATE `reserved`의 2-pass 활성화 플래그 파싱, ⓑ `MISSION_SET_CURRENT(0)`
-> 전달용 명령 클래스/FcnCode 정의, ⓒ lap 끝 LOITER_UNLIM 활성화 신호 —
-> 이들을 `uplink_app`이 수신해 FC로 전달하는 배선이다. 실외 원형비행 실기 검증만
-> 하드웨어를 대기하며, 배선·파싱·단위테스트는 선행 가능하다(BL-44 등록).
+> **base 배선 — 비행모드 명령 3종(구현 대상, 하드웨어 검증과 분리)**: `HOVER`/`WAYPOINT`/`LAND`.
+> 신규 command class(FLIGHT_MODE)로 `uplink_app`이 수신 → 신규 MID로 게시 → `mavlink_bridge`가
+> FC로 전달(`MAV_CMD_DO_SET_MODE`; WAYPOINT는 AUTO 모드 + `MISSION_SET_CURRENT` 동반, HOVER는
+> LOITER/POSHOLD, LAND는 LAND/RTL). 배선·파싱·단위테스트는 선행 가능하고, 실외 원형비행 실기
+> 검증만 하드웨어를 대기한다(BL-44 등록). (구 설계의 reserved 2-pass 플래그 배선은 이 모델에서
+> 불필요해 폐기.)
 
 **알려진 제약(추후 해결 과제)**:
 - waypoint 개수 상한(`MAX_ROUTE_WAYPOINT_COUNT=16`)은 임의 값이 아니라 LoRa 프레임
