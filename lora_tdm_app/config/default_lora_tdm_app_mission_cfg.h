@@ -32,6 +32,7 @@
 #define LORA_TDM_APP_UPLINK_FB_REJECT_CHECKSUM   10
 #define LORA_TDM_APP_UPLINK_FB_REJECT_VIEWPOINT  11
 #define LORA_TDM_APP_UPLINK_FB_REJECT_COUNTER    12 /* counter management scope/action 오류(§18.4.6.7, BL-CTR) */
+#define LORA_TDM_APP_UPLINK_FB_REJECT_FLIGHT_MODE 13 /* flight mode payload 오류(BL-44, §18.4.6.8) */
 
 /* Link state values */
 #define LORA_TDM_APP_LINK_DISCONNECTED         0
