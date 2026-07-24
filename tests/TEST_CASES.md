@@ -1018,7 +1018,7 @@ mavlink_bridge_app의 FC 장애 처리와 cfs_core_app 보고 경로 검증.
 | RT-ROUTE-001 | FC 링크 CONNECTED 전이 시 자동 재조회 | mavlink_bridge 재시작(링크 재연결) → `FC_MISSION_READBACK_MID(0x1914)` 자동 발행 확인 | cfs_core HK `MissionRouteWaypointCount`가 FC에 이미 업로드된 실제 waypoint 수와 일치 | ✅ **PASS(2026-07-24)**. cFS 재기동 직후 `mission_wp=2`가 재부팅 전과 동일 `last_route_ts`로 즉시 재등장 — 파일 영속 아닌 FC readback으로 캐시 재구성 확인 |
 | RT-ROUTE-002 | ROUTE_UPDATE 업로드 완료 후 캐시 갱신 | `tools/uplink_route_update_sender.py`로 REPLACE 업로드 → `MISSION_ACK` accepted 확인 후 캐시 자동 갱신 | cfs_core `MissionRoute` 캐시가 업로드한 waypoint와 일치(readback 경유 확인) | ✅ **PASS(2026-07-24, BL-49 검증 때 소급 확인)**. `route-good-no-gps` REPLACE 업로드 → `mission upload success wp_count=2` → readback 자동 트리거 → `FC mission readback applied wp_count=2`, `route_updates` 1→2→3 증가 |
 | RT-ROUTE-003 | `tools/query_fc_mission.py`로 수동 재조회(MISSION_QUERY_CC) | 수동 재조회 명령 전송 → 캐시 갱신 | `FC_MISSION_READBACK_MID` 발행 로그 + 캐시 갱신 확인 | ✅ **PASS(2026-07-24)**. `MISSION_QUERY started`→`download complete: 2 waypoints`→`readback published`→`cfs_core applied` 전체 체인 확인 |
-| RT-ROUTE-004 | timeout 지수 백오프(1→2→4→5s) | FC 무응답 상태에서 재조회 시도 간격 측정 | journalctl 타임스탬프 간격이 1s→2s→4s→5s(상한) 패턴, 무한 재시도(포기 없음) | ⬜ 미실행 |
+| RT-ROUTE-004 | timeout 지수 백오프(1→2→4→5s) | FC 무응답 상태에서 재조회 시도 간격 측정 | journalctl 타임스탬프 간격이 1s→2s→4s→5s(상한) 패턴, 무한 재시도(포기 없음) | ⚠️ **시도했으나 무효(2026-07-24)**: Pi↔FC 시리얼 케이블 물리적 분리로 재현 시도 → 의도한 "FC 응답 지연"이 아니라 **시리얼 open 자체 실패로 BL-38 자동 앱 재시작 루프**가 발생(케이블 뽑음=`OpenSerial` 실패, 이는 `MissionReadbackBackoffMs` 백오프 로직과는 다른 코드 경로). `restored config` 반복 관측으로 확인. 케이블 재연결로 정상 복구(seq regression 자연 해소). **재현 방법 재검토 필요**: FC가 heartbeat는 유지하되 `MISSION_REQUEST_INT`에만 응답 안 하는 상황을 만들어야 함(케이블 분리는 부적합) — FC측 스크립트 개입이나 별도 프록시가 필요할 수 있음 | ⬜ 미실행(방법 재검토) |
 
 **⑥ BootCount 신뢰성 — time base 검증 (BL-42):**
 
