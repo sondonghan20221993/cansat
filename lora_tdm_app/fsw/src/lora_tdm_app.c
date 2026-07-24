@@ -434,14 +434,17 @@ CFE_Status_t LORA_TDM_APP_Init(void)
      * memset=0(v1) 위에 명시적으로 세팅 → LoadState가 저장값 있으면 덮어씀. */
     LORA_TDM_APP_Data.UseV2Downlink = 1U;
 
-    /* BL-41(2026-07-23): 기본값 설정 후 저장된 CONFIG 복원(파일 없으면 무동작) */
-    LORA_TDM_APP_LoadState();
-
     Status = CFE_EVS_Register(NULL, 0, 0);
     if (Status != CFE_SUCCESS)
     {
         return Status;
     }
+
+    /* BL-41(2026-07-23): 기본값 설정 후 저장된 CONFIG 복원(파일 없으면 무동작).
+     * 정정(2026-07-24, 실기 발견): EVS_Register보다 먼저 호출되고 있어서
+     * LoadState 내부의 모든 EVS 이벤트(복원/손상 로그)가 등록 전 상태라
+     * "EVS_NotRegistered" 로 조용히 유실되고 있었음 — Register 뒤로 이동. */
+    LORA_TDM_APP_LoadState();
 
     Status = CFE_SB_CreatePipe(&LORA_TDM_APP_Data.CommandPipe, 50, "LORA_TDM_PIPE");
     if (Status != CFE_SUCCESS)

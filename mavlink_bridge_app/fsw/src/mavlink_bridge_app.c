@@ -69,14 +69,17 @@ CFE_Status_t MAVLINK_BRIDGE_APP_Init(void)
     MAVLINK_BRIDGE_APP_Data.PendingConfig  = MAVLINK_BRIDGE_APP_Data.ActiveConfig;
     MAVLINK_BRIDGE_APP_Data.PreviousConfig = MAVLINK_BRIDGE_APP_Data.ActiveConfig;
 
-    /* BL-41(2026-07-23): 기본값 설정 후 저장된 CONFIG 복원(파일 없으면 무동작) */
-    MAVLINK_BRIDGE_APP_LoadState();
-
     Status = CFE_EVS_Register(NULL, 0, CFE_EVS_EventFilter_BINARY);
     if (Status != CFE_SUCCESS)
     {
         return Status;
     }
+
+    /* BL-41(2026-07-23): 기본값 설정 후 저장된 CONFIG 복원(파일 없으면 무동작).
+     * 정정(2026-07-24, 실기 발견): EVS_Register보다 먼저 호출되고 있어서
+     * LoadState 내부의 모든 EVS 이벤트(복원/손상 로그)가 등록 전 상태라
+     * "EVS_NotRegistered" 로 조용히 유실되고 있었음 — Register 뒤로 이동. */
+    MAVLINK_BRIDGE_APP_LoadState();
 
     Status = CFE_MSG_Init(CFE_MSG_PTR(MAVLINK_BRIDGE_APP_Data.HkTlm.TelemetryHeader),
                           CFE_SB_ValueToMsgId(MAVLINK_BRIDGE_APP_HK_TLM_MID),
