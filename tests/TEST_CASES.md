@@ -1008,8 +1008,8 @@ mavlink_bridge_app의 FC 장애 처리와 cfs_core_app 보고 경로 검증.
 | ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) | 검증 상태 |
 |---|---|---|---|---|
 | RT-CONFIG-001 | CONFIG 파라미터 변경 → 재부팅 → 값 유지 | `tools/uplink_config_sender.py`로 3개 앱 중 1개(예: cfs_core `AttitudeTimeoutMs`) 변경 → `sudo systemctl restart cfs.service` → 재부팅 후 HK로 변경값 유지 확인 | HK 파라미터 필드가 기본값이 아닌 전송값과 일치. `/cf/cfs_core_app_state.bin` 등 상태파일 mtime이 전송 시점과 일치(SaveState 실제 호출 증거) | ✅ **PASS(2026-07-24)**. `attitude_timeout_ms=4321` 전송(DEGRADED라 `--force` 필요, `FORCED THROUGH health gate`) → `config activated param=0 value=4321` → 6회 연속 재부팅 내내 `restored health state=1 config(attitude=4321 ...)` 유지 확인 |
-| RT-CONFIG-002 | 상태파일 손상 시 기본값 폴백 | 재부팅 전 `cf/*_state.bin`을 일부 바이트 덮어써 손상 후 재기동 | `STATE_CORRUPT_EID(19)`(cfs_core) 등 손상 EVS 발생 + HK가 기본값으로 복귀(크래시 아님) | ⬜ 미실행 |
-| RT-CONFIG-003 | 3개 앱(mavlink_bridge/lora_tdm/cfs_core) 동시 영속화 | 3개 앱 각각 CONFIG 변경 후 동시 재부팅 | 3개 앱 전부 HK에서 개별 변경값 유지(상호 간섭 없음) | ⬜ 미실행 |
+| RT-CONFIG-002 | 상태파일 손상 시 기본값 폴백 | 재부팅 전 `cf/*_state.bin`을 일부 바이트 덮어써 손상 후 재기동 | `STATE_CORRUPT_EID(19)`(cfs_core) 등 손상 EVS 발생 + HK가 기본값으로 복귀(크래시 아님) | ✅ **PASS(2026-07-24)**. `cfs_core_app_state.bin` offset 10~13 덮어씀(백업 보관) → 재부팅 시 `CFS_CORE_APP: state file checksum mismatch, using defaults`(EID 19) 발생, 크래시 없이 정상 기동(health 0→2→1 전이 정상) |
+| RT-CONFIG-003 | 3개 앱(mavlink_bridge/lora_tdm/cfs_core) 동시 영속화 | 3개 앱 각각 CONFIG 변경(cfs_core attitude_timeout_ms/mavlink_bridge heartbeat_interval_ms/lora_tdm downlink_protocol) 후 동시 재부팅 | 3개 앱 전부 HK에서 개별 변경값 유지(상호 간섭 없음) | ✅ **PASS(2026-07-24)**. 재부팅 후 `CFS_CORE_APP: restored ... attitude=5555`, `LORA_TDM_APP: restored downlink protocol v1(text)` 값 유지 확인 + `MAVLINK_BRIDGE_APP: restored config(...)`(값은 EVS 메시지 길이제한으로 로그 말미 절단, 직전 라이브 적용 `config activated param=6 value=2500` 로그로 보완 확인). **부수 발견·수정**: mavlink_bridge/lora_tdm이 `LoadState()`를 `CFE_EVS_Register()`보다 먼저 호출해 복원 로그가 `EVS_NotRegistered`로 조용히 유실되던 버그 발견·수정(커밋 `e1c57ab`) — 수정 후 재검증하여 4개 앱 전부 복원 로그 정상 출력 확인 |
 
 **⑤ route readback — FC를 진실원본으로 하는 RAM 캐시 (BL-41):**
 
@@ -1033,7 +1033,7 @@ mavlink_bridge_app의 FC 장애 처리와 cfs_core_app 보고 경로 검증.
 |---|---|---|---|---|
 | RT-BOOTLOOP-001 | 정상 부팅 — 생존 마커 정착 | 부팅 후 120초 이상 정상 유지 | uplink `StatusTlm.BootLoopSuspect=0`, `ShortBootStreak=0` 유지. 상태파일 `SurvivedMark=1` 기록 확인(재부팅 전 read) | ✅ **PASS(2026-07-24)**. 120초 경과 시 `UPLINK_APP: boot survival marked (uptime >= 120000ms)` EVS 확인 |
 | RT-BOOTLOOP-002 | 반복 단명 재부팅(5회) → BootLoopSuspect | 120초 미만 생존 후 강제 재부팅을 5회 반복(`sudo systemctl restart cfs.service`를 100초 간격으로) | 5회차 부팅 후 uplink HK `BootLoopSuspect=1`, `ShortBootStreak=5`. 보고만 하고 자동 대응(강제 착륙 등) 없음 확인 | ✅ **PASS(2026-07-24)**. 12초 간격 6회 재부팅 → 6번째 부팅에서 정확히 `boot loop suspect - 5 consecutive short boots` 발생(threshold=5 정확) |
-| RT-BOOTLOOP-003 | cfs_core 재시작 카운터·LastFaultCode 영속 | RESTART_BRIDGE/UPLINK/LORA 각 1회 실행 후 재부팅 | cfs_core HK `BridgeRestartCount`/`UplinkRestartCount`/`LoraRestartCount`가 재부팅 후에도 유지(0으로 리셋 안 됨), `LastFaultCode`도 마지막 값 유지 | ⬜ 미실행 |
+| RT-BOOTLOOP-003 | cfs_core 재시작 카운터·LastFaultCode 영속 | ⚠️ **절차 정정(2026-07-24)**: RECOVERY 수동 명령(RESTART_BRIDGE 등)은 `BridgeRestartCount`를 증가시키지 않음(cfs_core_app_utils.c:955 주석 — 자동 fault 재시작 전용 카운터, 수동 단발 명령은 게이트/카운트 미적용). 실제 절차는 **fault 유발(예: mavlink_bridge 프로세스 정지→bridge timeout)로 자동 재시작을 발생**시켜 카운터 증가 확인 후 재부팅 | cfs_core HK `BridgeRestartCount`/`UplinkRestartCount`/`LoraRestartCount`가 재부팅 후에도 유지(0으로 리셋 안 됨), `LastFaultCode`도 마지막 값 유지 | ⬜ 미실행 — fault 유발 절차 필요(파괴적이라 사용자 확인 후 진행) |
 
 **⑧ v2(DL2) 다운링크 컴파일타임 기본값 (BL-45):**
 
