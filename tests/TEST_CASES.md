@@ -1024,7 +1024,7 @@ mavlink_bridge_app의 FC 장애 처리와 cfs_core_app 보고 경로 검증.
 
 | ID | 시나리오 | 검증 내용 | 관측 수단 (판정 기준) | 검증 상태 |
 |---|---|---|---|---|
-| RT-TIMEBASE-001 | FC 재부팅 시 time base 불연속 감지 | FC 전원 재투입(companion은 유지) → `Msg->TimestampMs`(FC time_boot_ms)가 0 부근으로 리셋되는 순간 관측 | `TIMEBASE_SHIFT_EID(20)` 발생 + HK `TimebaseShiftCount` 증가. 동시에 만료 판정(ArrivalMs 기준)은 **끊기지 않고** 정상 유지(false expiry 없음) | ⬜ 미실행 |
+| RT-TIMEBASE-001 | FC 재부팅 시 time base 불연속 감지 | FC 전원 재투입(companion은 유지) → `Msg->TimestampMs`(FC time_boot_ms)가 0 부근으로 리셋되는 순간 관측 | `TIMEBASE_SHIFT_EID(20)` 발생 + HK `TimebaseShiftCount` 증가. 동시에 만료 판정(ArrivalMs 기준)은 **끊기지 않고** 정상 유지(false expiry 없음) | ✅ **PASS(2026-07-24, 실물 FC 전원 재투입)**. `boot_ms=8637`(재부팅 직후 소값) 확인. `CFS_CORE_APP: time base shift (FC reboot?) prev=4977349 new=851` 정확히 감지(EID 20). health는 정전 기간(fault=1 BRIDGE_TIMEOUT)만 반영 후 FC 복귀 즉시 평상 상태(fault=3, 실내 GPS 없음)로 클린 복구 — false expiry나 재부팅 후 판정 꼬임 없음 확인 |
 | RT-TIMEBASE-002 | 링크 두절 중 만료 정상 감지(회귀) | mavlink_bridge 프로세스 정지 등으로 FC 상태 갱신 중단 | 각 State(Attitude/Local/Gps/Ekf)가 `ArrivalMs` 기준으로 timeout 후 정상 stale 처리(구 TimestampMs 기준 버그였다면 FC 재부팅 전엔 만료가 늦게 감지될 수 있었음) | ✅ **PASS(2026-07-24)**. `CFE_ES_STOP_APP_CC`로 mavlink_bridge_app 정지 → 3초 내 `health 1→2 fault=1(BRIDGE_TIMEOUT)` 정확히 감지, ArrivalMs 기준 stale 판정 정상 동작. **주의(재확인 필요, BL-40 기존 결과와 상충 가능성)**: 이번 세션에선 mavlink_bridge_app에 `CFE_ES_STOP_APP_CC` 전송 후 ~50초간 관찰했으나 BL-38 자동 재시작(`bridge restart attempt=`)이 발생하지 않음(cfs.service 수동 재기동으로 복구) — `CFE_ES_DeleteApp`/`ExitApp` 로그로 볼 때 완전 삭제된 것으로 보여 이후 `CFE_ES_GetAppIDByName`이 실패했을 가능성. 다만 BL-40에서는 동일 STOP_APP 메커니즘으로 uplink_app/lora_tdm_app 자동 재시작이 실측 PASS로 기록돼 있어(`runtime_test_session_2026-07-23`) 상충 — 대기 시간 부족이었을 수도 있음. 다음 실기 세션에서 mavlink_bridge STOP_APP 후 재시작 인터벌(5s)을 확실히 넘겨 재확인 필요 |
 
 **⑦ 부팅 루프 감지 — 생존 마커 (BL-43):**
