@@ -42,15 +42,19 @@ void Test_CFS_CORE_APP_UpdateHealth_Nominal(void)
 
     CFS_CORE_APP_Data.AttitudeState.Received  = true;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs = 4900;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs = 4900;
     CFS_CORE_APP_Data.AttitudeState.Valid     = 1;
     CFS_CORE_APP_Data.LocalState.Received     = true;
     CFS_CORE_APP_Data.LocalState.TimestampMs  = 4900;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs  = 4900;
     CFS_CORE_APP_Data.LocalState.Valid        = 1;
     CFS_CORE_APP_Data.GpsState.Received       = true;
     CFS_CORE_APP_Data.GpsState.TimestampMs    = 4800;
+    CFS_CORE_APP_Data.GpsState.ArrivalMs    = 4800;
     CFS_CORE_APP_Data.GpsState.Valid          = 1;
     CFS_CORE_APP_Data.EkfState.Received       = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs    = 4900;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs    = 4900;
     CFS_CORE_APP_Data.EkfState.Valid          = 1;
     CFS_CORE_APP_Data.BridgeState.Received    = true;
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 4900;
@@ -86,16 +90,20 @@ void Test_CFS_CORE_APP_UpdateHealth_GpsStale(void)
 
     CFS_CORE_APP_Data.AttitudeState.Received      = true;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs   = 4900;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs   = 4900;
     CFS_CORE_APP_Data.AttitudeState.Valid         = 1;
     CFS_CORE_APP_Data.LocalState.Received         = true;
     CFS_CORE_APP_Data.LocalState.TimestampMs      = 4900;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs      = 4900;
     CFS_CORE_APP_Data.LocalState.Valid            = 1;
     CFS_CORE_APP_Data.GpsState.Received           = true;
     CFS_CORE_APP_Data.GpsState.TimestampMs        = 4800;
+    CFS_CORE_APP_Data.GpsState.ArrivalMs        = 4800;
     CFS_CORE_APP_Data.GpsState.Valid              = 1;
     CFS_CORE_APP_Data.GpsState.Stale              = 1;
     CFS_CORE_APP_Data.EkfState.Received           = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs        = 4900;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs        = 4900;
     CFS_CORE_APP_Data.EkfState.Valid              = 1;
     CFS_CORE_APP_Data.BridgeState.Received        = true;
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 4900;
@@ -118,15 +126,19 @@ void Test_CFS_CORE_APP_UpdateHealth_EkfInvalid(void)
 
     CFS_CORE_APP_Data.AttitudeState.Received      = true;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs   = 4900;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs   = 4900;
     CFS_CORE_APP_Data.AttitudeState.Valid         = 1;
     CFS_CORE_APP_Data.LocalState.Received         = true;
     CFS_CORE_APP_Data.LocalState.TimestampMs      = 4900;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs      = 4900;
     CFS_CORE_APP_Data.LocalState.Valid            = 1;
     CFS_CORE_APP_Data.GpsState.Received           = true;
     CFS_CORE_APP_Data.GpsState.TimestampMs        = 4800;
+    CFS_CORE_APP_Data.GpsState.ArrivalMs        = 4800;
     CFS_CORE_APP_Data.GpsState.Valid              = 1;
     CFS_CORE_APP_Data.EkfState.Received           = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs        = 4900;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs        = 4900;
     CFS_CORE_APP_Data.EkfState.Valid              = 0;
     CFS_CORE_APP_Data.BridgeState.Received        = true;
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 4900;
@@ -143,15 +155,19 @@ void Test_CFS_CORE_APP_UpdateHealth_LocalTimeout(void)
 
     CFS_CORE_APP_Data.AttitudeState.Received      = true;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs   = 4900;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs   = 4900;
     CFS_CORE_APP_Data.AttitudeState.Valid         = 1;
     CFS_CORE_APP_Data.LocalState.Received         = true;
     CFS_CORE_APP_Data.LocalState.TimestampMs      = 0;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs      = 0;
     CFS_CORE_APP_Data.LocalState.Valid            = 1;
     CFS_CORE_APP_Data.GpsState.Received           = true;
     CFS_CORE_APP_Data.GpsState.TimestampMs        = 4800;
+    CFS_CORE_APP_Data.GpsState.ArrivalMs        = 4800;
     CFS_CORE_APP_Data.GpsState.Valid              = 1;
     CFS_CORE_APP_Data.EkfState.Received           = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs        = 4900;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs        = 4900;
     CFS_CORE_APP_Data.EkfState.Valid              = 1;
     CFS_CORE_APP_Data.BridgeState.Received        = true;
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 4900;
@@ -168,15 +184,19 @@ void Test_CFS_CORE_APP_UpdateHealth_AttitudeTimeout(void)
 
     CFS_CORE_APP_Data.AttitudeState.Received      = true;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs   = 0;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs   = 0;
     CFS_CORE_APP_Data.AttitudeState.Valid         = 1;
     CFS_CORE_APP_Data.LocalState.Received         = true;
     CFS_CORE_APP_Data.LocalState.TimestampMs      = 4900;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs      = 4900;
     CFS_CORE_APP_Data.LocalState.Valid            = 1;
     CFS_CORE_APP_Data.GpsState.Received           = true;
     CFS_CORE_APP_Data.GpsState.TimestampMs        = 4800;
+    CFS_CORE_APP_Data.GpsState.ArrivalMs        = 4800;
     CFS_CORE_APP_Data.GpsState.Valid              = 1;
     CFS_CORE_APP_Data.EkfState.Received           = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs        = 4900;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs        = 4900;
     CFS_CORE_APP_Data.EkfState.Valid              = 1;
     CFS_CORE_APP_Data.BridgeState.Received        = true;
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 4900;
@@ -352,15 +372,19 @@ void Test_CFS_CORE_APP_UpdateHealth_NominalStabilization(void)
     /* Fully healthy setup */
     CFS_CORE_APP_Data.AttitudeState.Received        = true;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs     = NowMs - 100;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs     = NowMs - 100;
     CFS_CORE_APP_Data.AttitudeState.Valid           = 1;
     CFS_CORE_APP_Data.LocalState.Received           = true;
     CFS_CORE_APP_Data.LocalState.TimestampMs        = NowMs - 100;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs        = NowMs - 100;
     CFS_CORE_APP_Data.LocalState.Valid              = 1;
     CFS_CORE_APP_Data.GpsState.Received             = true;
     CFS_CORE_APP_Data.GpsState.TimestampMs          = NowMs - 100;
+    CFS_CORE_APP_Data.GpsState.ArrivalMs          = NowMs - 100;
     CFS_CORE_APP_Data.GpsState.Valid                = 1;
     CFS_CORE_APP_Data.EkfState.Received             = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs          = NowMs - 100;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs          = NowMs - 100;
     CFS_CORE_APP_Data.EkfState.Valid                = 1;
     CFS_CORE_APP_Data.BridgeState.Received          = true;
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = NowMs - 100;
@@ -380,9 +404,13 @@ void Test_CFS_CORE_APP_UpdateHealth_NominalStabilization(void)
 
     /* 5 s later: still stabilizing */
     CFS_CORE_APP_Data.AttitudeState.TimestampMs     = NowMs + 5000 - 100;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs     = NowMs + 5000 - 100;
     CFS_CORE_APP_Data.LocalState.TimestampMs        = NowMs + 5000 - 100;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs        = NowMs + 5000 - 100;
     CFS_CORE_APP_Data.GpsState.TimestampMs          = NowMs + 5000 - 100;
+    CFS_CORE_APP_Data.GpsState.ArrivalMs          = NowMs + 5000 - 100;
     CFS_CORE_APP_Data.EkfState.TimestampMs          = NowMs + 5000 - 100;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs          = NowMs + 5000 - 100;
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = NowMs + 5000 - 100;
     CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs     = NowMs + 5000 - 100;
     CFS_CORE_APP_Data.LoraAppState.LastHkRxMs       = NowMs + 5000 - 100;
@@ -391,9 +419,13 @@ void Test_CFS_CORE_APP_UpdateHealth_NominalStabilization(void)
 
     /* 10 s later: stable enough, transition to NOMINAL */
     CFS_CORE_APP_Data.AttitudeState.TimestampMs     = NowMs + 10001 - 100;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs     = NowMs + 10001 - 100;
     CFS_CORE_APP_Data.LocalState.TimestampMs        = NowMs + 10001 - 100;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs        = NowMs + 10001 - 100;
     CFS_CORE_APP_Data.GpsState.TimestampMs          = NowMs + 10001 - 100;
+    CFS_CORE_APP_Data.GpsState.ArrivalMs          = NowMs + 10001 - 100;
     CFS_CORE_APP_Data.EkfState.TimestampMs          = NowMs + 10001 - 100;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs          = NowMs + 10001 - 100;
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = NowMs + 10001 - 100;
     CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs     = NowMs + 10001 - 100;
     CFS_CORE_APP_Data.LoraAppState.LastHkRxMs       = NowMs + 10001 - 100;
@@ -408,21 +440,25 @@ void Test_CFS_CORE_APP_UpdateHealth_InputStatus(void)
 
     CFS_CORE_APP_Data.AttitudeState.Received      = true;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs   = 4900;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs   = 4900;
     CFS_CORE_APP_Data.AttitudeState.Valid         = 1;
     CFS_CORE_APP_Data.AttitudeState.Stale         = 0;
     CFS_CORE_APP_Data.AttitudeState.ErrorCode     = 0;
     CFS_CORE_APP_Data.LocalState.Received         = true;
     CFS_CORE_APP_Data.LocalState.TimestampMs      = 4900;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs      = 4900;
     CFS_CORE_APP_Data.LocalState.Valid            = 1;
     CFS_CORE_APP_Data.LocalState.Stale            = 0;
     CFS_CORE_APP_Data.LocalState.ErrorCode        = 7;
     CFS_CORE_APP_Data.GpsState.Received           = true;
     CFS_CORE_APP_Data.GpsState.TimestampMs        = 4800;
+    CFS_CORE_APP_Data.GpsState.ArrivalMs        = 4800;
     CFS_CORE_APP_Data.GpsState.Valid              = 0;
     CFS_CORE_APP_Data.GpsState.Stale              = 1;
     CFS_CORE_APP_Data.GpsState.ErrorCode          = 3;
     CFS_CORE_APP_Data.EkfState.Received           = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs        = 4900;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs        = 4900;
     CFS_CORE_APP_Data.EkfState.Valid              = 1;
     CFS_CORE_APP_Data.EkfState.Stale              = 0;
     CFS_CORE_APP_Data.EkfState.ErrorCode          = 0;
@@ -461,15 +497,19 @@ void Test_CFS_CORE_APP_UpdateHealth_HealthTransition(void)
 
     CFS_CORE_APP_Data.AttitudeState.Received        = true;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs     = 4900;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs     = 4900;
     CFS_CORE_APP_Data.AttitudeState.Valid           = 1;
     CFS_CORE_APP_Data.LocalState.Received           = true;
     CFS_CORE_APP_Data.LocalState.TimestampMs        = 4900;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs        = 4900;
     CFS_CORE_APP_Data.LocalState.Valid              = 1;
     CFS_CORE_APP_Data.GpsState.Received             = true;
     CFS_CORE_APP_Data.GpsState.TimestampMs          = 4800;
+    CFS_CORE_APP_Data.GpsState.ArrivalMs          = 4800;
     CFS_CORE_APP_Data.GpsState.Valid                = 1;
     CFS_CORE_APP_Data.EkfState.Received             = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs          = 4900;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs          = 4900;
     CFS_CORE_APP_Data.EkfState.Valid                = 1;
     CFS_CORE_APP_Data.BridgeState.Received          = true;
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 4900;
@@ -506,15 +546,19 @@ void Test_CFS_CORE_APP_UpdateHealth_LocalInvalid(void)
 
     CFS_CORE_APP_Data.AttitudeState.Received      = true;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs   = 4900;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs   = 4900;
     CFS_CORE_APP_Data.AttitudeState.Valid         = 1;
     CFS_CORE_APP_Data.LocalState.Received         = true;
     CFS_CORE_APP_Data.LocalState.TimestampMs      = 4900;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs      = 4900;
     CFS_CORE_APP_Data.LocalState.Valid            = 0; /* invalid, fresh timestamp */
     CFS_CORE_APP_Data.GpsState.Received           = true;
     CFS_CORE_APP_Data.GpsState.TimestampMs        = 4800;
+    CFS_CORE_APP_Data.GpsState.ArrivalMs        = 4800;
     CFS_CORE_APP_Data.GpsState.Valid              = 1;
     CFS_CORE_APP_Data.EkfState.Received           = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs        = 4900;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs        = 4900;
     CFS_CORE_APP_Data.EkfState.Valid              = 1;
     CFS_CORE_APP_Data.BridgeState.Received        = true;
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 4900;
@@ -531,16 +575,20 @@ void Test_CFS_CORE_APP_UpdateHealth_LocalStale(void)
 
     CFS_CORE_APP_Data.AttitudeState.Received      = true;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs   = 4900;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs   = 4900;
     CFS_CORE_APP_Data.AttitudeState.Valid         = 1;
     CFS_CORE_APP_Data.LocalState.Received         = true;
     CFS_CORE_APP_Data.LocalState.TimestampMs      = 4900;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs      = 4900;
     CFS_CORE_APP_Data.LocalState.Valid            = 1;
     CFS_CORE_APP_Data.LocalState.Stale            = 1; /* stale, fresh timestamp */
     CFS_CORE_APP_Data.GpsState.Received           = true;
     CFS_CORE_APP_Data.GpsState.TimestampMs        = 4800;
+    CFS_CORE_APP_Data.GpsState.ArrivalMs        = 4800;
     CFS_CORE_APP_Data.GpsState.Valid              = 1;
     CFS_CORE_APP_Data.EkfState.Received           = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs        = 4900;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs        = 4900;
     CFS_CORE_APP_Data.EkfState.Valid              = 1;
     CFS_CORE_APP_Data.BridgeState.Received        = true;
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 4900;
@@ -557,15 +605,19 @@ void Test_CFS_CORE_APP_UpdateHealth_AttitudeInvalid(void)
 
     CFS_CORE_APP_Data.AttitudeState.Received      = true;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs   = 4900;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs   = 4900;
     CFS_CORE_APP_Data.AttitudeState.Valid         = 0; /* invalid, fresh timestamp */
     CFS_CORE_APP_Data.LocalState.Received         = true;
     CFS_CORE_APP_Data.LocalState.TimestampMs      = 4900;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs      = 4900;
     CFS_CORE_APP_Data.LocalState.Valid            = 1;
     CFS_CORE_APP_Data.GpsState.Received           = true;
     CFS_CORE_APP_Data.GpsState.TimestampMs        = 4800;
+    CFS_CORE_APP_Data.GpsState.ArrivalMs        = 4800;
     CFS_CORE_APP_Data.GpsState.Valid              = 1;
     CFS_CORE_APP_Data.EkfState.Received           = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs        = 4900;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs        = 4900;
     CFS_CORE_APP_Data.EkfState.Valid              = 1;
     CFS_CORE_APP_Data.BridgeState.Received        = true;
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 4900;
@@ -582,16 +634,20 @@ void Test_CFS_CORE_APP_UpdateHealth_AttitudeStale(void)
 
     CFS_CORE_APP_Data.AttitudeState.Received      = true;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs   = 4900;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs   = 4900;
     CFS_CORE_APP_Data.AttitudeState.Valid         = 1;
     CFS_CORE_APP_Data.AttitudeState.Stale         = 1; /* stale, fresh timestamp */
     CFS_CORE_APP_Data.LocalState.Received         = true;
     CFS_CORE_APP_Data.LocalState.TimestampMs      = 4900;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs      = 4900;
     CFS_CORE_APP_Data.LocalState.Valid            = 1;
     CFS_CORE_APP_Data.GpsState.Received           = true;
     CFS_CORE_APP_Data.GpsState.TimestampMs        = 4800;
+    CFS_CORE_APP_Data.GpsState.ArrivalMs        = 4800;
     CFS_CORE_APP_Data.GpsState.Valid              = 1;
     CFS_CORE_APP_Data.EkfState.Received           = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs        = 4900;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs        = 4900;
     CFS_CORE_APP_Data.EkfState.Valid              = 1;
     CFS_CORE_APP_Data.BridgeState.Received        = true;
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 4900;
@@ -788,15 +844,19 @@ void Test_CFS_CORE_APP_UpdateHealth_PeriodicRateLimit(void)
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 4900;
     CFS_CORE_APP_Data.AttitudeState.Received         = true;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs      = 4900;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs      = 4900;
     CFS_CORE_APP_Data.AttitudeState.Valid            = 1;
     CFS_CORE_APP_Data.LocalState.Received            = true;
     CFS_CORE_APP_Data.LocalState.TimestampMs         = 4900;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs         = 4900;
     CFS_CORE_APP_Data.LocalState.Valid               = 1;
     CFS_CORE_APP_Data.GpsState.Received              = true;
     CFS_CORE_APP_Data.GpsState.TimestampMs           = 4900;
+    CFS_CORE_APP_Data.GpsState.ArrivalMs           = 4900;
     CFS_CORE_APP_Data.GpsState.Valid                 = 1;
     CFS_CORE_APP_Data.EkfState.Received              = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs           = 4900;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs           = 4900;
     CFS_CORE_APP_Data.EkfState.Valid                 = 1;
 
     /* 첫 번째 호출 */
@@ -1380,15 +1440,19 @@ void Test_CFS_CORE_APP_SaveState_OnTransition(void)
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = NowMs - 100;
     CFS_CORE_APP_Data.AttitudeState.Received         = true;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs      = NowMs - 100;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs      = NowMs - 100;
     CFS_CORE_APP_Data.AttitudeState.Valid            = 1;
     CFS_CORE_APP_Data.LocalState.Received            = true;
     CFS_CORE_APP_Data.LocalState.TimestampMs         = NowMs - 100;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs         = NowMs - 100;
     CFS_CORE_APP_Data.LocalState.Valid               = 1;
     CFS_CORE_APP_Data.GpsState.Received              = true;
     CFS_CORE_APP_Data.GpsState.TimestampMs           = NowMs - 100;
+    CFS_CORE_APP_Data.GpsState.ArrivalMs           = NowMs - 100;
     CFS_CORE_APP_Data.GpsState.Valid                 = 1;
     CFS_CORE_APP_Data.EkfState.Received              = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs           = NowMs - 100;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs           = NowMs - 100;
     CFS_CORE_APP_Data.EkfState.Valid                 = 1;
     CFS_CORE_APP_Data.UplinkAppState.Received    = true;
     CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs  = NowMs - 100;
@@ -1626,15 +1690,19 @@ void Test_CFS_CORE_APP_BridgeRestart_CooldownClearOnRecovery(void)
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = NowMs - 100;
     CFS_CORE_APP_Data.AttitudeState.Received         = true;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs      = NowMs - 100;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs      = NowMs - 100;
     CFS_CORE_APP_Data.AttitudeState.Valid            = 1;
     CFS_CORE_APP_Data.LocalState.Received            = true;
     CFS_CORE_APP_Data.LocalState.TimestampMs         = NowMs - 100;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs         = NowMs - 100;
     CFS_CORE_APP_Data.LocalState.Valid               = 1;
     CFS_CORE_APP_Data.GpsState.Received              = true;
     CFS_CORE_APP_Data.GpsState.TimestampMs           = NowMs - 100;
+    CFS_CORE_APP_Data.GpsState.ArrivalMs           = NowMs - 100;
     CFS_CORE_APP_Data.GpsState.Valid                 = 1;
     CFS_CORE_APP_Data.EkfState.Received              = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs           = NowMs - 100;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs           = NowMs - 100;
     CFS_CORE_APP_Data.EkfState.Valid                 = 1;
     CFS_CORE_APP_Data.LastHealthState                = CFS_CORE_APP_HEALTH_NOMINAL;
 
@@ -1664,12 +1732,15 @@ static void SetHealthyExceptUplinkLora(uint32 NowMs)
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = NowMs;
     CFS_CORE_APP_Data.EkfState.Received             = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs          = NowMs;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs          = NowMs;
     CFS_CORE_APP_Data.EkfState.Valid                = 1;
     CFS_CORE_APP_Data.LocalState.Received           = true;
     CFS_CORE_APP_Data.LocalState.TimestampMs        = NowMs;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs        = NowMs;
     CFS_CORE_APP_Data.LocalState.Valid              = 1;
     CFS_CORE_APP_Data.AttitudeState.Received        = true;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs     = NowMs;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs     = NowMs;
     CFS_CORE_APP_Data.AttitudeState.Valid           = 1;
 }
 
@@ -1686,12 +1757,15 @@ void Test_CFS_CORE_APP_UplinkRestart_DuringEkfFault(void)
     /* EKF 고의로 무효(fault=3 EKF_INVALID) — 상위 fault 지속 상태 재현 */
     CFS_CORE_APP_Data.EkfState.Received  = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs = NowMs;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs = NowMs;
     CFS_CORE_APP_Data.EkfState.Valid       = 0;
     CFS_CORE_APP_Data.LocalState.Received  = true;
     CFS_CORE_APP_Data.LocalState.TimestampMs = NowMs;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs = NowMs;
     CFS_CORE_APP_Data.LocalState.Valid     = 1;
     CFS_CORE_APP_Data.AttitudeState.Received  = true;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs = NowMs;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs = NowMs;
     CFS_CORE_APP_Data.AttitudeState.Valid  = 1;
     CFS_CORE_APP_Data.UplinkAppState.Received   = true;
     CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs = 1000; /* uplink timed out */
@@ -1724,12 +1798,15 @@ void Test_CFS_CORE_APP_CheckAppRestarts_OnePerCyclePriority(void)
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 1000; /* bridge timed out */
     CFS_CORE_APP_Data.EkfState.Received    = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs = NowMs;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs = NowMs;
     CFS_CORE_APP_Data.EkfState.Valid       = 1;
     CFS_CORE_APP_Data.LocalState.Received  = true;
     CFS_CORE_APP_Data.LocalState.TimestampMs = NowMs;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs = NowMs;
     CFS_CORE_APP_Data.LocalState.Valid     = 1;
     CFS_CORE_APP_Data.AttitudeState.Received  = true;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs = NowMs;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs = NowMs;
     CFS_CORE_APP_Data.AttitudeState.Valid  = 1;
     CFS_CORE_APP_Data.UplinkAppState.Received   = true;
     CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs = 1000; /* uplink도 timed out */
@@ -1750,8 +1827,11 @@ void Test_CFS_CORE_APP_CheckAppRestarts_OnePerCyclePriority(void)
     NowMs += 1000;
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 1000; /* 여전히 timed out */
     CFS_CORE_APP_Data.EkfState.TimestampMs    = NowMs;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs    = NowMs;
     CFS_CORE_APP_Data.LocalState.TimestampMs  = NowMs;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs  = NowMs;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs = NowMs;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs = NowMs;
     CFS_CORE_APP_Data.NextUplinkRestartMs = NowMs - 1U;
     CFS_CORE_APP_UpdateHealth(NowMs, true);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.BridgeRestartCount, 1); /* 쿨다운 중이라 불변 */
@@ -1823,15 +1903,19 @@ void Test_CFS_CORE_APP_UplinkRestart_CooldownClearOnRecovery(void)
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = NowMs - 100;
     CFS_CORE_APP_Data.AttitudeState.Received        = true;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs     = NowMs - 100;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs     = NowMs - 100;
     CFS_CORE_APP_Data.AttitudeState.Valid           = 1;
     CFS_CORE_APP_Data.LocalState.Received           = true;
     CFS_CORE_APP_Data.LocalState.TimestampMs        = NowMs - 100;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs        = NowMs - 100;
     CFS_CORE_APP_Data.LocalState.Valid              = 1;
     CFS_CORE_APP_Data.GpsState.Received             = true;
     CFS_CORE_APP_Data.GpsState.TimestampMs          = NowMs - 100;
+    CFS_CORE_APP_Data.GpsState.ArrivalMs          = NowMs - 100;
     CFS_CORE_APP_Data.GpsState.Valid                = 1;
     CFS_CORE_APP_Data.EkfState.Received             = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs          = NowMs - 100;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs          = NowMs - 100;
     CFS_CORE_APP_Data.EkfState.Valid                = 1;
     CFS_CORE_APP_Data.UplinkAppState.Received       = true;
     CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs     = NowMs - 100;
@@ -1933,15 +2017,19 @@ void Test_CFS_CORE_APP_LoraRestart_CooldownClearOnRecovery(void)
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = NowMs - 100;
     CFS_CORE_APP_Data.AttitudeState.Received        = true;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs     = NowMs - 100;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs     = NowMs - 100;
     CFS_CORE_APP_Data.AttitudeState.Valid           = 1;
     CFS_CORE_APP_Data.LocalState.Received           = true;
     CFS_CORE_APP_Data.LocalState.TimestampMs        = NowMs - 100;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs        = NowMs - 100;
     CFS_CORE_APP_Data.LocalState.Valid              = 1;
     CFS_CORE_APP_Data.GpsState.Received             = true;
     CFS_CORE_APP_Data.GpsState.TimestampMs          = NowMs - 100;
+    CFS_CORE_APP_Data.GpsState.ArrivalMs          = NowMs - 100;
     CFS_CORE_APP_Data.GpsState.Valid                = 1;
     CFS_CORE_APP_Data.EkfState.Received             = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs          = NowMs - 100;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs          = NowMs - 100;
     CFS_CORE_APP_Data.EkfState.Valid                = 1;
     CFS_CORE_APP_Data.UplinkAppState.Received       = true;
     CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs     = NowMs - 100;
@@ -1972,12 +2060,15 @@ void Test_CFS_CORE_APP_UpdateHealth_GPS_Timeout(void)
     /* EKF, Local, Attitude 정상 */
     CFS_CORE_APP_Data.EkfState.Received    = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs = 9900;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs = 9900;
     CFS_CORE_APP_Data.EkfState.Valid       = 1;
     CFS_CORE_APP_Data.LocalState.Received    = true;
     CFS_CORE_APP_Data.LocalState.TimestampMs = 9900;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs = 9900;
     CFS_CORE_APP_Data.LocalState.Valid       = 1;
     CFS_CORE_APP_Data.AttitudeState.Received    = true;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs = 9900;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs = 9900;
     CFS_CORE_APP_Data.AttitudeState.Valid       = 1;
 
     /* GPS: 이전에 수신됐으나 타임스탬프 만료 (stale 플래그는 0) */
@@ -2008,15 +2099,19 @@ void Test_CFS_CORE_APP_UpdateHealth_RecoveryToNominal(void)
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = NowMs - 100;
     CFS_CORE_APP_Data.AttitudeState.Received         = true;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs      = NowMs - 100;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs      = NowMs - 100;
     CFS_CORE_APP_Data.AttitudeState.Valid            = 1;
     CFS_CORE_APP_Data.LocalState.Received            = true;
     CFS_CORE_APP_Data.LocalState.TimestampMs         = NowMs - 100;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs         = NowMs - 100;
     CFS_CORE_APP_Data.LocalState.Valid               = 1;
     CFS_CORE_APP_Data.GpsState.Received              = true;
     CFS_CORE_APP_Data.GpsState.TimestampMs           = NowMs - 100;
+    CFS_CORE_APP_Data.GpsState.ArrivalMs           = NowMs - 100;
     CFS_CORE_APP_Data.GpsState.Valid                 = 1;
     CFS_CORE_APP_Data.EkfState.Received              = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs           = NowMs - 100;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs           = NowMs - 100;
     CFS_CORE_APP_Data.EkfState.Valid                 = 1;
     CFS_CORE_APP_Data.UplinkAppState.Received    = true;
     CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs  = NowMs - 100;
@@ -2035,9 +2130,13 @@ void Test_CFS_CORE_APP_UpdateHealth_RecoveryToNominal(void)
     uint32 T5 = NowMs + 5000;
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = T5 - 100;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs      = T5 - 100;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs      = T5 - 100;
     CFS_CORE_APP_Data.LocalState.TimestampMs         = T5 - 100;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs         = T5 - 100;
     CFS_CORE_APP_Data.GpsState.TimestampMs           = T5 - 100;
+    CFS_CORE_APP_Data.GpsState.ArrivalMs           = T5 - 100;
     CFS_CORE_APP_Data.EkfState.TimestampMs           = T5 - 100;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs           = T5 - 100;
     CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs      = T5 - 100;
     CFS_CORE_APP_Data.LoraAppState.LastHkRxMs        = T5 - 100;
     CFS_CORE_APP_UpdateHealth(T5, true);
@@ -2047,9 +2146,13 @@ void Test_CFS_CORE_APP_UpdateHealth_RecoveryToNominal(void)
     uint32 T10 = NowMs + 10001;
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = T10 - 100;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs      = T10 - 100;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs      = T10 - 100;
     CFS_CORE_APP_Data.LocalState.TimestampMs         = T10 - 100;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs         = T10 - 100;
     CFS_CORE_APP_Data.GpsState.TimestampMs           = T10 - 100;
+    CFS_CORE_APP_Data.GpsState.ArrivalMs           = T10 - 100;
     CFS_CORE_APP_Data.EkfState.TimestampMs           = T10 - 100;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs           = T10 - 100;
     CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs      = T10 - 100;
     CFS_CORE_APP_Data.LoraAppState.LastHkRxMs        = T10 - 100;
     CFS_CORE_APP_UpdateHealth(T10, true);
@@ -2069,17 +2172,21 @@ void Test_CFS_CORE_APP_UpdateHealth_Priority_BridgeOverGps(void)
 
     CFS_CORE_APP_Data.GpsState.Received    = true;
     CFS_CORE_APP_Data.GpsState.TimestampMs = 9900;
+    CFS_CORE_APP_Data.GpsState.ArrivalMs = 9900;
     CFS_CORE_APP_Data.GpsState.Valid       = 1;
     CFS_CORE_APP_Data.GpsState.Stale       = 1; /* GPS stale도 동시 발생 */
 
     CFS_CORE_APP_Data.AttitudeState.Received    = true;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs = 9900;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs = 9900;
     CFS_CORE_APP_Data.AttitudeState.Valid       = 1;
     CFS_CORE_APP_Data.LocalState.Received       = true;
     CFS_CORE_APP_Data.LocalState.TimestampMs    = 9900;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs    = 9900;
     CFS_CORE_APP_Data.LocalState.Valid          = 1;
     CFS_CORE_APP_Data.EkfState.Received         = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs      = 9900;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs      = 9900;
     CFS_CORE_APP_Data.EkfState.Valid            = 1;
 
     CFS_CORE_APP_UpdateHealth(NowMs, true);
@@ -2112,17 +2219,21 @@ void Test_CFS_CORE_APP_UpdateHealth_Priority_EkfOverLocal(void)
 
     CFS_CORE_APP_Data.EkfState.Received    = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs = 9900;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs = 9900;
     CFS_CORE_APP_Data.EkfState.Valid       = 0; /* EKF invalid */
 
     CFS_CORE_APP_Data.LocalState.Received    = true;
     CFS_CORE_APP_Data.LocalState.TimestampMs = 9900;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs = 9900;
     CFS_CORE_APP_Data.LocalState.Valid       = 0; /* Local도 invalid */
 
     CFS_CORE_APP_Data.AttitudeState.Received    = true;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs = 9900;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs = 9900;
     CFS_CORE_APP_Data.AttitudeState.Valid       = 1;
     CFS_CORE_APP_Data.GpsState.Received         = true;
     CFS_CORE_APP_Data.GpsState.TimestampMs      = 9800;
+    CFS_CORE_APP_Data.GpsState.ArrivalMs      = 9800;
     CFS_CORE_APP_Data.GpsState.Valid            = 1;
 
     CFS_CORE_APP_UpdateHealth(NowMs, true);
@@ -2141,18 +2252,22 @@ void Test_CFS_CORE_APP_UpdateHealth_Priority_LocalOverAttitude(void)
 
     CFS_CORE_APP_Data.EkfState.Received    = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs = 9900;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs = 9900;
     CFS_CORE_APP_Data.EkfState.Valid       = 1;
 
     CFS_CORE_APP_Data.LocalState.Received    = true;
     CFS_CORE_APP_Data.LocalState.TimestampMs = 9900;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs = 9900;
     CFS_CORE_APP_Data.LocalState.Valid       = 0; /* Local invalid */
 
     CFS_CORE_APP_Data.AttitudeState.Received    = true;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs = 9900;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs = 9900;
     CFS_CORE_APP_Data.AttitudeState.Valid       = 0; /* Attitude도 invalid */
 
     CFS_CORE_APP_Data.GpsState.Received    = true;
     CFS_CORE_APP_Data.GpsState.TimestampMs = 9800;
+    CFS_CORE_APP_Data.GpsState.ArrivalMs = 9800;
     CFS_CORE_APP_Data.GpsState.Valid       = 1;
 
     CFS_CORE_APP_UpdateHealth(NowMs, true);
@@ -2170,18 +2285,22 @@ void Test_CFS_CORE_APP_UpdateHealth_Priority_AttitudeOverGps(void)
 
     CFS_CORE_APP_Data.EkfState.Received    = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs = 9900;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs = 9900;
     CFS_CORE_APP_Data.EkfState.Valid       = 1;
 
     CFS_CORE_APP_Data.LocalState.Received    = true;
     CFS_CORE_APP_Data.LocalState.TimestampMs = 9900;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs = 9900;
     CFS_CORE_APP_Data.LocalState.Valid       = 1;
 
     CFS_CORE_APP_Data.AttitudeState.Received    = true;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs = 9900;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs = 9900;
     CFS_CORE_APP_Data.AttitudeState.Valid       = 0; /* Attitude invalid */
 
     CFS_CORE_APP_Data.GpsState.Received = true;
     CFS_CORE_APP_Data.GpsState.TimestampMs = 9800;
+    CFS_CORE_APP_Data.GpsState.ArrivalMs = 9800;
     CFS_CORE_APP_Data.GpsState.Valid    = 0; /* GPS도 invalid */
 
     CFS_CORE_APP_UpdateHealth(NowMs, true);
@@ -2199,15 +2318,19 @@ void Test_CFS_CORE_APP_UpdateHealth_StabilityTimerReset(void)
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = NowMs - 100;
     CFS_CORE_APP_Data.AttitudeState.Received         = true;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs      = NowMs - 100;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs      = NowMs - 100;
     CFS_CORE_APP_Data.AttitudeState.Valid            = 1;
     CFS_CORE_APP_Data.LocalState.Received            = true;
     CFS_CORE_APP_Data.LocalState.TimestampMs         = NowMs - 100;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs         = NowMs - 100;
     CFS_CORE_APP_Data.LocalState.Valid               = 1;
     CFS_CORE_APP_Data.GpsState.Received              = true;
     CFS_CORE_APP_Data.GpsState.TimestampMs           = NowMs - 100;
+    CFS_CORE_APP_Data.GpsState.ArrivalMs           = NowMs - 100;
     CFS_CORE_APP_Data.GpsState.Valid                 = 1;
     CFS_CORE_APP_Data.EkfState.Received              = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs           = NowMs - 100;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs           = NowMs - 100;
     CFS_CORE_APP_Data.EkfState.Valid                 = 1;
     CFS_CORE_APP_Data.UplinkAppState.Received    = true;
     CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs  = NowMs - 100;
@@ -2224,9 +2347,13 @@ void Test_CFS_CORE_APP_UpdateHealth_StabilityTimerReset(void)
     CFS_CORE_APP_Data.GpsState.Stale = 1;
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = NowMs + 5000 - 100;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs     = NowMs + 5000 - 100;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs     = NowMs + 5000 - 100;
     CFS_CORE_APP_Data.LocalState.TimestampMs        = NowMs + 5000 - 100;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs        = NowMs + 5000 - 100;
     CFS_CORE_APP_Data.EkfState.TimestampMs          = NowMs + 5000 - 100;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs          = NowMs + 5000 - 100;
     CFS_CORE_APP_Data.GpsState.TimestampMs          = NowMs + 5000 - 100;
+    CFS_CORE_APP_Data.GpsState.ArrivalMs          = NowMs + 5000 - 100;
     CFS_CORE_APP_UpdateHealth(NowMs + 5000, true);
 
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_DEGRADED);
@@ -2286,6 +2413,7 @@ void Test_CFS_CORE_APP_SeqCheck_Gap(void)
     CFS_CORE_APP_Data.AttitudeState.Received    = true;
     CFS_CORE_APP_Data.AttitudeState.Seq         = 10;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs = 4800;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs = 4800;
     CFS_CORE_APP_Data.SeqRejectedCount          = 0;
     CFS_CORE_APP_Data.SeqGapCount               = 0;
 
@@ -2339,6 +2467,7 @@ void Test_CFS_CORE_APP_SeqCheck_Duplicate(void)
     CFS_CORE_APP_Data.AttitudeState.Received    = true;
     CFS_CORE_APP_Data.AttitudeState.Seq         = 10;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs = 4800;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs = 4800;
     CFS_CORE_APP_Data.SeqRejectedCount          = 0;
 
     UT_CHECKEVENT_SETUP(&Evt, CFS_CORE_APP_SEQ_ERR_EID, NULL);
@@ -2366,6 +2495,7 @@ void Test_CFS_CORE_APP_SeqCheck_Regression(void)
     CFS_CORE_APP_Data.AttitudeState.Received    = true;
     CFS_CORE_APP_Data.AttitudeState.Seq         = 10;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs = 4800;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs = 4800;
     CFS_CORE_APP_Data.SeqRejectedCount          = 0;
 
     UT_CHECKEVENT_SETUP(&Evt, CFS_CORE_APP_SEQ_ERR_EID, NULL);
@@ -2417,15 +2547,19 @@ void Test_CFS_CORE_APP_UpdateHealth_FailedRecovery(void)
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = NowMs + 30001;
     CFS_CORE_APP_Data.AttitudeState.Received        = true;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs     = NowMs + 30001 - 100;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs     = NowMs + 30001 - 100;
     CFS_CORE_APP_Data.AttitudeState.Valid           = 1;
     CFS_CORE_APP_Data.LocalState.Received           = true;
     CFS_CORE_APP_Data.LocalState.TimestampMs        = NowMs + 30001 - 100;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs        = NowMs + 30001 - 100;
     CFS_CORE_APP_Data.LocalState.Valid              = 1;
     CFS_CORE_APP_Data.GpsState.Received             = true;
     CFS_CORE_APP_Data.GpsState.TimestampMs          = NowMs + 30001 - 100;
+    CFS_CORE_APP_Data.GpsState.ArrivalMs          = NowMs + 30001 - 100;
     CFS_CORE_APP_Data.GpsState.Valid                = 1;
     CFS_CORE_APP_Data.EkfState.Received             = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs          = NowMs + 30001 - 100;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs          = NowMs + 30001 - 100;
     CFS_CORE_APP_Data.EkfState.Valid                = 1;
     CFS_CORE_APP_Data.LastHealthState               = CFS_CORE_APP_HEALTH_FAILED;
 
@@ -2517,12 +2651,15 @@ void Test_CFS_CORE_APP_UpdateHealth_UplinkTimeout(void)
     /* EKF, Local, Attitude 정상 */
     CFS_CORE_APP_Data.EkfState.Received    = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs = NowMs - 100;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs = NowMs - 100;
     CFS_CORE_APP_Data.EkfState.Valid       = 1;
     CFS_CORE_APP_Data.LocalState.Received    = true;
     CFS_CORE_APP_Data.LocalState.TimestampMs = NowMs - 100;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs = NowMs - 100;
     CFS_CORE_APP_Data.LocalState.Valid       = 1;
     CFS_CORE_APP_Data.AttitudeState.Received    = true;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs = NowMs - 100;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs = NowMs - 100;
     CFS_CORE_APP_Data.AttitudeState.Valid       = 1;
     /* uplink HK 미수신 → timeout */
     CFS_CORE_APP_Data.UplinkAppState.Received   = false;
@@ -2544,9 +2681,11 @@ void Test_CFS_CORE_APP_UpdateHealth_Priority_AttitudeOverUplink(void)
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = NowMs - 100;
     CFS_CORE_APP_Data.EkfState.Received    = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs = NowMs - 100;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs = NowMs - 100;
     CFS_CORE_APP_Data.EkfState.Valid       = 1;
     CFS_CORE_APP_Data.LocalState.Received    = true;
     CFS_CORE_APP_Data.LocalState.TimestampMs = NowMs - 100;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs = NowMs - 100;
     CFS_CORE_APP_Data.LocalState.Valid       = 1;
     /* attitude timed out */
     CFS_CORE_APP_Data.AttitudeState.Received    = true;
@@ -2608,12 +2747,15 @@ void Test_CFS_CORE_APP_UpdateHealth_LoraTimeout(void)
     /* EKF, Local, Attitude 정상 */
     CFS_CORE_APP_Data.EkfState.Received    = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs = NowMs - 100;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs = NowMs - 100;
     CFS_CORE_APP_Data.EkfState.Valid       = 1;
     CFS_CORE_APP_Data.LocalState.Received    = true;
     CFS_CORE_APP_Data.LocalState.TimestampMs = NowMs - 100;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs = NowMs - 100;
     CFS_CORE_APP_Data.LocalState.Valid       = 1;
     CFS_CORE_APP_Data.AttitudeState.Received    = true;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs = NowMs - 100;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs = NowMs - 100;
     CFS_CORE_APP_Data.AttitudeState.Valid       = 1;
     /* uplink 정상 */
     CFS_CORE_APP_Data.UplinkAppState.Received   = true;
@@ -2638,12 +2780,15 @@ void Test_CFS_CORE_APP_UpdateHealth_Priority_UplinkOverLora(void)
     CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = NowMs - 100;
     CFS_CORE_APP_Data.EkfState.Received    = true;
     CFS_CORE_APP_Data.EkfState.TimestampMs = NowMs - 100;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs = NowMs - 100;
     CFS_CORE_APP_Data.EkfState.Valid       = 1;
     CFS_CORE_APP_Data.LocalState.Received    = true;
     CFS_CORE_APP_Data.LocalState.TimestampMs = NowMs - 100;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs = NowMs - 100;
     CFS_CORE_APP_Data.LocalState.Valid       = 1;
     CFS_CORE_APP_Data.AttitudeState.Received    = true;
     CFS_CORE_APP_Data.AttitudeState.TimestampMs = NowMs - 100;
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs = NowMs - 100;
     CFS_CORE_APP_Data.AttitudeState.Valid       = 1;
     /* uplink timed out */
     CFS_CORE_APP_Data.UplinkAppState.Received   = false;
@@ -2978,8 +3123,122 @@ void Test_CFS_CORE_APP_ProcessDiagnosticCommand_UnknownAction(void)
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.CmdCounter, 0);
 }
 
+/* -----------------------------------------------------------------------
+ * BL-42(2026-07-24): time base 검증 — 만료는 Pi 도착시각(ArrivalMs) 기준,
+ * FC 재부팅(TimestampMs 역행)은 감지만.
+ * ----------------------------------------------------------------------- */
+
+/* 만료 판정이 FC TimestampMs가 아니라 Pi 도착시각(ArrivalMs)을 쓴다.
+ * TimestampMs=0(구 계약에선 만료)이라도 ArrivalMs가 신선하면 NOMINAL. */
+void Test_CFS_CORE_APP_Expiry_UsesArrivalMs_NotTimestamp(void)
+{
+    uint32 NowMs = 5000;
+
+    memset(&CFS_CORE_APP_Data.SystemHealthTlm, 0, sizeof(CFS_CORE_APP_Data.SystemHealthTlm));
+    CFS_CORE_APP_Data.AttitudeState.Received  = true;
+    CFS_CORE_APP_Data.AttitudeState.TimestampMs = 0;      /* FC 기준값은 만료처럼 보임 */
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs   = 4900;   /* 실제로는 100ms 전 도착 */
+    CFS_CORE_APP_Data.AttitudeState.Valid     = 1;
+    CFS_CORE_APP_Data.LocalState.Received     = true;
+    CFS_CORE_APP_Data.LocalState.TimestampMs  = 0;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs    = 4900;
+    CFS_CORE_APP_Data.LocalState.Valid        = 1;
+    CFS_CORE_APP_Data.GpsState.Received       = true;
+    CFS_CORE_APP_Data.GpsState.TimestampMs    = 0;
+    CFS_CORE_APP_Data.GpsState.ArrivalMs      = 4900;
+    CFS_CORE_APP_Data.GpsState.Valid          = 1;
+    CFS_CORE_APP_Data.EkfState.Received       = true;
+    CFS_CORE_APP_Data.EkfState.TimestampMs    = 0;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs      = 4900;
+    CFS_CORE_APP_Data.EkfState.Valid          = 1;
+    CFS_CORE_APP_Data.BridgeState.Received    = true;
+    CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 4900;
+    CFS_CORE_APP_Data.UplinkAppState.Received    = true;
+    CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs  = NowMs - 100;
+    CFS_CORE_APP_Data.LoraAppState.Received      = true;
+    CFS_CORE_APP_Data.LoraAppState.LastHkRxMs    = NowMs - 100;
+
+    CFS_CORE_APP_UpdateHealth(NowMs, true);
+
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_NOMINAL);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.FaultCode, CFS_CORE_APP_FAULT_NONE);
+}
+
+/* 반대: ArrivalMs가 오래됐으면 TimestampMs가 신선해도 만료로 판정. */
+void Test_CFS_CORE_APP_Expiry_ArrivalStale_Expires(void)
+{
+    uint32 NowMs = 5000;
+
+    memset(&CFS_CORE_APP_Data.SystemHealthTlm, 0, sizeof(CFS_CORE_APP_Data.SystemHealthTlm));
+    CFS_CORE_APP_Data.AttitudeState.Received  = true;
+    CFS_CORE_APP_Data.AttitudeState.TimestampMs = 4950;   /* FC 기준값은 신선처럼 보임 */
+    CFS_CORE_APP_Data.AttitudeState.ArrivalMs   = 0;      /* 실제로는 5000ms 전 도착 → 만료 */
+    CFS_CORE_APP_Data.AttitudeState.Valid     = 1;
+    CFS_CORE_APP_Data.LocalState.Received     = true;
+    CFS_CORE_APP_Data.LocalState.ArrivalMs    = 4900;
+    CFS_CORE_APP_Data.LocalState.Valid        = 1;
+    CFS_CORE_APP_Data.GpsState.Received       = true;
+    CFS_CORE_APP_Data.GpsState.ArrivalMs      = 4900;
+    CFS_CORE_APP_Data.GpsState.Valid          = 1;
+    CFS_CORE_APP_Data.EkfState.Received       = true;
+    CFS_CORE_APP_Data.EkfState.ArrivalMs      = 4900;
+    CFS_CORE_APP_Data.EkfState.Valid          = 1;
+    CFS_CORE_APP_Data.BridgeState.Received    = true;
+    CFS_CORE_APP_Data.BridgeState.LastRxTimestampMs = 4900;
+    CFS_CORE_APP_Data.UplinkAppState.Received    = true;
+    CFS_CORE_APP_Data.UplinkAppState.LastHkRxMs  = NowMs - 100;
+    CFS_CORE_APP_Data.LoraAppState.Received      = true;
+    CFS_CORE_APP_Data.LoraAppState.LastHkRxMs    = NowMs - 100;
+
+    CFS_CORE_APP_UpdateHealth(NowMs, true);
+
+    /* Attitude 만료 → NOMINAL 아님 */
+    UtAssert_INT32_NEQ(CFS_CORE_APP_Data.SystemHealthTlm.HealthState, CFS_CORE_APP_HEALTH_NOMINAL);
+}
+
+/* FC 재부팅: TimestampMs가 크게 역행하면 TIMEBASE_SHIFT_EID + 카운터,
+ * 메시지는 거부하지 않고 새 기준으로 캐시 갱신. */
+void Test_CFS_CORE_APP_TimebaseShift_DetectsFcReboot(void)
+{
+    CFS_CORE_APP_GenericStateTlm_t Msg;
+    CFE_SB_MsgId_t                 MsgId;
+    CFE_TIME_SysTime_t             FakeTime;
+    UT_CheckEvent_t                Evt;
+
+    /* 직전 캐시: TimestampMs=100000, Seq=1 수신 상태 */
+    memset(&CFS_CORE_APP_Data.AttitudeState, 0, sizeof(CFS_CORE_APP_Data.AttitudeState));
+    CFS_CORE_APP_Data.AttitudeState.Received    = true;
+    CFS_CORE_APP_Data.AttitudeState.TimestampMs = 100000U;
+    CFS_CORE_APP_Data.AttitudeState.Seq         = 1;
+    CFS_CORE_APP_Data.TimebaseShiftCount        = 0;
+
+    /* NowMs 충분히 크게(미래거부 회피): Seconds=200 → 200000ms */
+    memset(&FakeTime, 0, sizeof(FakeTime));
+    FakeTime.Seconds = 200U;
+    UT_SetDataBuffer(UT_KEY(CFE_TIME_GetTime), &FakeTime, sizeof(FakeTime), false);
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.TimestampMs = 500U;   /* FC 재부팅 → time_boot_ms 리셋(10s 이상 역행) */
+    Msg.Seq         = 2;       /* Pi측 seq는 계속 증가 */
+    Msg.Valid       = 1;
+    MsgId           = CFE_SB_ValueToMsgId(CFS_CORE_APP_FC_ATTITUDE_STATE_MID_VALUE);
+
+    UT_CHECKEVENT_SETUP(&Evt, CFS_CORE_APP_TIMEBASE_SHIFT_EID, NULL);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+    CFS_CORE_APP_ProcessStateMessage((CFE_SB_Buffer_t *)&Msg);
+
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.TimebaseShiftCount, 1);
+    UtAssert_INT32_EQ(Evt.MatchCount, 1);
+    /* 거부하지 않고 새 기준으로 갱신 */
+    UtAssert_BOOL_TRUE(CFS_CORE_APP_Data.AttitudeState.Received);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.AttitudeState.TimestampMs, 500);
+}
+
 void UtTest_Setup(void)
 {
+    ADD_TEST(CFS_CORE_APP_Expiry_UsesArrivalMs_NotTimestamp);
+    ADD_TEST(CFS_CORE_APP_Expiry_ArrivalStale_Expires);
+    ADD_TEST(CFS_CORE_APP_TimebaseShift_DetectsFcReboot);
     ADD_TEST(CFS_CORE_APP_ReportHousekeeping);
     ADD_TEST(CFS_CORE_APP_VerifyCmdLength_Impl);
     ADD_TEST(CFS_CORE_APP_UpdateHealth_Nominal);

@@ -13,6 +13,7 @@
 #define CFS_CORE_APP_NOMINAL_STABILITY_MS         10000
 #define CFS_CORE_APP_FAILED_ESCALATION_MS         30000
 #define CFS_CORE_APP_TIMESTAMP_MAX_FUTURE_MS       5000
+#define CFS_CORE_APP_TIMEBASE_SHIFT_MS             10000 /* BL-42: FC time_boot_ms 역행 임계(초과 시 재부팅 판정) */
 /* BL-38(2026-07-23): MAX_RESTARTS 제거 — 고정 쿨다운만으로 빈도 제한,
  * 무한 재시도(spec §11.1 참조). */
 #define CFS_CORE_APP_BRIDGE_RESTART_INTERVAL_MS    5000

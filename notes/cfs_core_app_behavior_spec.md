@@ -137,7 +137,11 @@
 | `ErrorCode` | `uint8` | 추적용 캐시만 |
 
 시퀀스 검사가 구현되어 있다 (`CFS_CORE_APP_UpdateStateCache`): 중복(`Seq == 직전`)·역행(`Seq < 직전`)은 캐시 갱신을 거부하고 `SeqRejectedCount` 증가 및 `SEQ_ERR_EID` 발생, 갭(`Seq > 직전+1`)은 수락하되 `SeqGapCount` 증가 및 `SEQ_GAP_EID` 발생. (첫 수신 시에는 검사 생략.)
-타임스탬프 유효성 검사가 구현되어 있다: 미래 timestamp(`Msg->TimestampMs > NowMs + CFS_CORE_APP_TIMESTAMP_MAX_FUTURE_MS(5000)`)는 거부하고 `TimestampRejectedCount` 증가 및 `TIMESTAMP_ERR_EID` 발생. (타임스탬프 *기준/출처*(time base) 유효성 검사는 여전히 미구현.)
+타임스탬프 유효성 검사가 구현되어 있다: 미래 timestamp(`Msg->TimestampMs > NowMs + CFS_CORE_APP_TIMESTAMP_MAX_FUTURE_MS(5000)`)는 거부하고 `TimestampRejectedCount` 증가 및 `TIMESTAMP_ERR_EID` 발생.
+
+**time base 검증(BL-42, 2026-07-24)**: `TimestampMs`는 FC의 `time_boot_ms`(**FC 부팅 기준**)이고 `NowMs`는 Pi cFE 미션 시각(**Pi 기준**)으로 *두 시계의 기준이 다르다*. 따라서 만료 판정에 두 값을 직접 빼면(구 구현) FC 재부팅 시 오프셋이 급변해 판정이 무너진다. 이를 해소하기 위해:
+- **만료 판정은 Pi 도착시각 기준**: `StateCache_t.ArrivalMs`(수신 시점 `NowMs` 기록)를 사용해 `StateExpired = (NowMs - ArrivalMs) > TimeoutMs`. 단조 증가하는 Pi 로컬 시계라 링크 두절도 정상 감지. `TimestampMs`는 만료 판정에서 제외(순서·재부팅 감지용으로만 유지). uplink/lora의 `LastHkRxMs` 패턴과 동일.
+- **FC 재부팅/기준 어긋남 감지**: 수신 시 `Msg->TimestampMs + CFS_CORE_APP_TIMEBASE_SHIFT_MS(10000) < 직전 TimestampMs`(FC 시각이 10s 이상 역행)이면 time base 불연속으로 판단 — `TimebaseShiftCount` 증가 및 `TIMEBASE_SHIFT_EID` 발생. 메시지 자체는 신선하므로 **거부하지 않고** 새 기준으로 캐시 갱신(Seq는 Pi측 bridge 카운터라 FC 재부팅에 무관하게 단조 유지). `TimebaseShiftCount`는 HK에 노출.
 이 텔레메트리 입력에 대한 페이로드 길이 검증은 수행되지 않는다.
 
 ### 7.2 Bridge HK 입력

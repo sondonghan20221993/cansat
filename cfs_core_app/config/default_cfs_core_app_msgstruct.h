@@ -43,6 +43,7 @@ typedef struct
     uint32                    LoraRestartCount;
     uint8                     LastFaultCode;
     uint8                     Bl43Reserved[3];
+    uint32                    TimebaseShiftCount; /* BL-42(2026-07-24): FC 재부팅/time base 불연속 누계 */
 } CFS_CORE_APP_HkTlm_t;
 
 typedef INPUT_STATUS_t  CFS_CORE_APP_InputStatus_t;

@@ -31,7 +31,7 @@
 
 ### 4. 타임스탐프 유효성 (§7)
 - **구현**: 미래 타임스탐프 거부(`Msg->TimestampMs > NowMs + 5000ms`)
-- **미구현**: 타임스탐프 **기준/출처**(time base) 유효성 검사 — 여전히 미착수
+- **구현 완료(BL-42, 2026-07-24)**: 만료 판정을 Pi 도착시각(`ArrivalMs`) 기준으로 전환 + FC 재부팅(TimestampMs 역행) 감지(`TIMEBASE_SHIFT_EID`/`TimebaseShiftCount`). cfs_core spec §7 참조
 
 ## 상태
 
@@ -39,7 +39,7 @@
 - [ ] VIEWPOINT 실행 로직 (BL-10, 방향 미정)
 - [x] RECOVERY 필드 검증 및 구분 처리 (BL-09 완료)
 - [x] MODE 상태 전이 검증 (구현 완료 확인)
-- [ ] 타임스탐프 time base 검증 (미착수, **BL-42로 등재됨** 2026-07-23)
+- [x] 타임스탐프 time base 검증 (**BL-42 완료** 2026-07-24 — 도착시각 만료 + FC 재부팅 감지)
 
 ## 참고
 

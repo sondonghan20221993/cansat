@@ -15,7 +15,8 @@
 
 typedef struct
 {
-    uint32 TimestampMs;
+    uint32 TimestampMs; /* FC time_boot_ms(FC 부팅 기준) — 순서·재부팅 감지용, 만료 판정 제외(BL-42) */
+    uint32 ArrivalMs;   /* BL-42(2026-07-24): Pi 수신시각(NowMs) — 만료 판정 기준(단조 Pi 시계) */
     uint32 Seq;
     uint8  Valid;
     uint8  Stale;
@@ -89,6 +90,7 @@ typedef struct
     uint32                      SeqRejectedCount;
     uint32                      SeqGapCount;
     uint32                      TimestampRejectedCount;
+    uint32                      TimebaseShiftCount; /* BL-42(2026-07-24): FC 재부팅/time base 불연속 감지 누계 */
     uint32                      BridgeRestartCount;
     uint32                      NextBridgeRestartMs;
     uint32                      UplinkRestartCount;

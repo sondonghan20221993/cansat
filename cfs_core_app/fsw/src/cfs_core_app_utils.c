@@ -31,6 +31,17 @@ static void CFS_CORE_APP_UpdateStateCache(CFS_CORE_APP_StateCache_t *Cache,
         return;
     }
 
+    /* BL-42(2026-07-24): FC 재부팅/time base 불연속 감지. FC time_boot_ms가
+     * 임계 이상 역행하면 재부팅으로 판단 — 거부하지 않고 카운터/이벤트만 남기고
+     * 아래에서 새 기준으로 캐시를 갱신한다(메시지 자체는 신선). */
+    if (Cache->Received && (Msg->TimestampMs + CFS_CORE_APP_TIMEBASE_SHIFT_MS) < Cache->TimestampMs)
+    {
+        CFS_CORE_APP_Data.TimebaseShiftCount++;
+        CFE_EVS_SendEvent(CFS_CORE_APP_TIMEBASE_SHIFT_EID, CFE_EVS_EventType_INFORMATION,
+                          "CFS_CORE_APP: time base shift (FC reboot?) prev=%lu new=%lu",
+                          (unsigned long)Cache->TimestampMs, (unsigned long)Msg->TimestampMs);
+    }
+
     /* 시퀀스 중복/역행/갭 검사 */
     if (Cache->Received)
     {
@@ -60,6 +71,7 @@ static void CFS_CORE_APP_UpdateStateCache(CFS_CORE_APP_StateCache_t *Cache,
     }
 
     Cache->TimestampMs = Msg->TimestampMs;
+    Cache->ArrivalMs   = NowMs; /* BL-42: 만료 판정 기준 — Pi 도착시각 */
     Cache->Seq         = Msg->Seq;
     Cache->Valid       = Msg->Valid;
     Cache->Stale       = Msg->Stale;
@@ -74,7 +86,9 @@ static bool CFS_CORE_APP_StateExpired(const CFS_CORE_APP_StateCache_t *Cache, ui
         return true;
     }
 
-    return (NowMs - Cache->TimestampMs) > TimeoutMs;
+    /* BL-42(2026-07-24): 만료는 Pi 도착시각(ArrivalMs) 기준 — FC TimestampMs와
+     * Pi NowMs는 시계 기준이 달라 직접 빼면 FC 재부팅 시 판정이 무너진다. */
+    return (NowMs - Cache->ArrivalMs) > TimeoutMs;
 }
 
 static void CFS_CORE_APP_UpdateRouteCache(CFS_CORE_APP_RouteCache_t *Cache, const CFS_CORE_APP_RouteUpdateTlm_t *Msg)
@@ -108,6 +122,7 @@ void CFS_CORE_APP_ReportHousekeeping(void)
     CFS_CORE_APP_Data.HkTlm.UplinkRestartCount = CFS_CORE_APP_Data.UplinkRestartCount;
     CFS_CORE_APP_Data.HkTlm.LoraRestartCount   = CFS_CORE_APP_Data.LoraRestartCount;
     CFS_CORE_APP_Data.HkTlm.LastFaultCode      = CFS_CORE_APP_Data.LastFaultCode;
+    CFS_CORE_APP_Data.HkTlm.TimebaseShiftCount = CFS_CORE_APP_Data.TimebaseShiftCount; /* BL-42 */
 
     CFE_EVS_SendEvent(CFS_CORE_APP_HK_EID, CFE_EVS_EventType_INFORMATION,
                       "CFS_CORE_APP HK: mission_wp=%u landing_wp=%u route_updates=%lu last_route_ts=%lu",

@@ -20,6 +20,7 @@
 #define CFS_CORE_APP_STATE_SAVE_FAIL_EID  17 /* BL-39(2026-07-23): SaveState 실패 */
 #define CFS_CORE_APP_ROUTE_READBACK_EID   18 /* waypoint readback(2026-07-23) */
 #define CFS_CORE_APP_STATE_CORRUPT_EID    19 /* BL-41(2026-07-23): 상태 파일 손상 → 기본값 폴백 */
+#define CFS_CORE_APP_TIMEBASE_SHIFT_EID   20 /* BL-42(2026-07-24): FC 재부팅/time base 역행 감지 */
 
 #endif
 
