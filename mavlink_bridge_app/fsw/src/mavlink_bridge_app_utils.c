@@ -83,6 +83,17 @@ static const char *MAVLINK_BRIDGE_APP_GetSerialPath(void)
 #define MAVLINK_MAV_CMD_NAV_WAYPOINT           16U
 #define MAVLINK_MISSION_TYPE_MISSION            0U
 #define MAVLINK_MISSION_ACCEPTED                0U
+
+/* BL-44(2026-07-24, §18.4.6.8.1): flight mode base 명령 — PX4 DO_SET_MODE + MISSION_SET_CURRENT */
+#define MAVLINK_MAV_CMD_DO_SET_MODE                     176U
+#define MAVLINK_MAV_MODE_FLAG_CUSTOM_MODE_ENABLED        1.0f
+#define MAVLINK_PX4_MAIN_MODE_AUTO                        4U
+#define MAVLINK_PX4_SUB_MODE_AUTO_LOITER                  3U
+#define MAVLINK_PX4_SUB_MODE_AUTO_MISSION                 4U
+#define MAVLINK_PX4_SUB_MODE_AUTO_LAND                    6U
+#define MAVLINK_MSG_ID_MISSION_SET_CURRENT               41U
+#define MAVLINK_MISSION_SET_CURRENT_PAYLOAD_LEN           4U
+#define MAVLINK_MISSION_SET_CURRENT_CRC_EXTRA            28U
 #define MAVLINK_BRIDGE_APP_MISSION_UPLOAD_TIMEOUT_MS   2000U
 #define MAVLINK_BRIDGE_APP_MISSION_CLEAR_DELAY_MS       300U
 #define MAVLINK_BRIDGE_APP_MISSION_MAX_RETRIES         3U
@@ -297,6 +308,10 @@ static void MAVLINK_BRIDGE_APP_RecordNonFiniteError(uint32 MsgId)
                       "MAVLINK_BRIDGE_APP: non-finite value rejected msgid=%lu",
                       (unsigned long)MsgId);
 }
+
+/* BL-08(2026-07-22): 아래(ProcessSetFlightModeCmd, BL-44)에서 먼저 참조되므로 전방선언 */
+static void MAVLINK_BRIDGE_APP_PublishExecResult(uint16 SourceSequence, uint8 CommandClass,
+                                                  bool Ok, uint8 DetailCode);
 
 static CFE_Status_t MAVLINK_BRIDGE_APP_SendMavlinkV2(uint32 MsgId, const uint8 *Payload, uint8 PayloadLen, uint8 CrcExtra)
 {
@@ -1012,6 +1027,80 @@ void MAVLINK_BRIDGE_APP_ProcessParserResetCmd(const MAVLINK_BRIDGE_APP_ParserRes
     MAVLINK_BRIDGE_APP_Data.CmdCounter++;
     CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_RESET_EID, CFE_EVS_EventType_INFORMATION,
                       "MAVLINK_BRIDGE_APP: parser reset (ground-triggered via cfs_core_app RECOVERY)");
+}
+
+/* BL-44(2026-07-24, §18.4.6.8.1): flight mode base 명령 — PX4 DO_SET_MODE(+WAYPOINT는
+ * MISSION_SET_CURRENT 추가) 전송. EXECUTED_OK는 전송 성공을 의미(FC ACK 대기는 범위 밖). */
+void MAVLINK_BRIDGE_APP_ProcessSetFlightModeCmd(const MAVLINK_BRIDGE_APP_SetFlightModeCmd_t *Cmd)
+{
+    uint8   Payload[MAVLINK_MSG_ID_COMMAND_LONG_LEN];
+    uint32  CustomMode;
+    uint8   SubMode;
+    bool    Ok;
+
+    switch (Cmd->FlightMode)
+    {
+        case 0U: /* HOVER */
+            SubMode = MAVLINK_PX4_SUB_MODE_AUTO_LOITER;
+            break;
+        case 1U: /* WAYPOINT */
+            SubMode = MAVLINK_PX4_SUB_MODE_AUTO_MISSION;
+            break;
+        case 2U: /* LAND */
+            SubMode = MAVLINK_PX4_SUB_MODE_AUTO_LAND;
+            break;
+        default:
+            MAVLINK_BRIDGE_APP_Data.ErrCounter++;
+            CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_COMMAND_ERR_EID, CFE_EVS_EventType_ERROR,
+                              "MAVLINK_BRIDGE_APP: invalid flight_mode=%u seq=%u",
+                              (unsigned int)Cmd->FlightMode, (unsigned int)Cmd->SourceSequence);
+            MAVLINK_BRIDGE_APP_PublishExecResult(Cmd->SourceSequence, 8U, false, (uint8)Cmd->FlightMode);
+            return;
+    }
+
+    CustomMode = ((uint32)MAVLINK_PX4_MAIN_MODE_AUTO << 16) | ((uint32)SubMode << 24);
+
+    memset(Payload, 0, sizeof(Payload));
+    MAVLINK_BRIDGE_APP_WriteFloatLE(&Payload[0], MAVLINK_MAV_MODE_FLAG_CUSTOM_MODE_ENABLED);
+    MAVLINK_BRIDGE_APP_WriteFloatLE(&Payload[4], (float)CustomMode);
+    MAVLINK_BRIDGE_APP_WriteU16LE(&Payload[28], (uint16)MAVLINK_MAV_CMD_DO_SET_MODE);
+    Payload[30] = MAVLINK_BRIDGE_APP_Data.TargetSystemId;
+    Payload[31] = MAVLINK_BRIDGE_APP_Data.TargetComponentId;
+    Payload[32] = 0;
+
+    Ok = (MAVLINK_BRIDGE_APP_SendMavlinkV2(MAVLINK_MSG_ID_COMMAND_LONG, Payload, sizeof(Payload),
+                                           MAVLINK_COMMAND_LONG_CRC_EXTRA) == CFE_SUCCESS);
+
+    if (Ok && Cmd->FlightMode == 1U) /* WAYPOINT: 모드 전환 뒤 MISSION_SET_CURRENT */
+    {
+        uint8 MissionPayload[MAVLINK_MISSION_SET_CURRENT_PAYLOAD_LEN];
+
+        MAVLINK_BRIDGE_APP_WriteU16LE(&MissionPayload[0], (uint16)Cmd->WaypointStartIndex);
+        MissionPayload[2] = MAVLINK_BRIDGE_APP_Data.TargetSystemId;
+        MissionPayload[3] = MAVLINK_BRIDGE_APP_Data.TargetComponentId;
+
+        Ok = (MAVLINK_BRIDGE_APP_SendMavlinkV2(MAVLINK_MSG_ID_MISSION_SET_CURRENT, MissionPayload,
+                                               sizeof(MissionPayload),
+                                               MAVLINK_MISSION_SET_CURRENT_CRC_EXTRA) == CFE_SUCCESS);
+    }
+
+    if (Ok)
+    {
+        MAVLINK_BRIDGE_APP_Data.CmdCounter++;
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_SET_FLIGHT_MODE_EID, CFE_EVS_EventType_INFORMATION,
+                          "MAVLINK_BRIDGE_APP: flight mode set mode=%u waypoint_idx=%u seq=%u",
+                          (unsigned int)Cmd->FlightMode, (unsigned int)Cmd->WaypointStartIndex,
+                          (unsigned int)Cmd->SourceSequence);
+    }
+    else
+    {
+        MAVLINK_BRIDGE_APP_Data.ErrCounter++;
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_SET_FLIGHT_MODE_EID, CFE_EVS_EventType_ERROR,
+                          "MAVLINK_BRIDGE_APP: flight mode send failed mode=%u seq=%u",
+                          (unsigned int)Cmd->FlightMode, (unsigned int)Cmd->SourceSequence);
+    }
+
+    MAVLINK_BRIDGE_APP_PublishExecResult(Cmd->SourceSequence, 8U, Ok, (uint8)Cmd->FlightMode);
 }
 
 void MAVLINK_BRIDGE_APP_ProcessSerialReconnectCmd(const MAVLINK_BRIDGE_APP_SerialReconnectCmd_t *Cmd)

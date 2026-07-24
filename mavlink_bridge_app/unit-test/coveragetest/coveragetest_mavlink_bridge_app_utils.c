@@ -1914,8 +1914,164 @@ void Test_ReconnectResetsBackoff(void)
     UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionReadbackBackoffMs, UT_READBACK_BACKOFF_INITIAL_MS);
 }
 
+/* -----------------------------------------------------------------------
+ * BL-44(2026-07-24, §18.4.6.8.1): flight mode base 명령 — PX4 DO_SET_MODE
+ * (+WAYPOINT는 MISSION_SET_CURRENT) 송신.
+ * ----------------------------------------------------------------------- */
+#define UT_MISSION_SET_CURRENT_MSGID     41U
+#define UT_MISSION_SET_CURRENT_FRAME_LEN 16U /* 10(header) + 4(payload) + 2(crc) */
+
+/* HOVER: DO_SET_MODE 1프레임만, custom_mode=(AUTO<<16)|(LOITER<<24) */
+void Test_ProcessSetFlightModeCmd_Hover(void)
+{
+    MAVLINK_BRIDGE_APP_SetFlightModeCmd_t Cmd;
+    int                                   Sv[2];
+    uint8                                 OutBuf[128];
+    ssize_t                               CapLen;
+    uint32                                CustomMode;
+
+    UtAssert_INT32_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, Sv), 0);
+    UtAssert_INT32_EQ(fcntl(Sv[1], F_SETFL, O_NONBLOCK), 0);
+
+    MAVLINK_BRIDGE_APP_Data.SerialFd          = Sv[0];
+    MAVLINK_BRIDGE_APP_Data.TargetSystemId    = 1;
+    MAVLINK_BRIDGE_APP_Data.TargetComponentId = 1;
+
+    memset(&Cmd, 0, sizeof(Cmd));
+    Cmd.SourceSequence = 50;
+    Cmd.FlightMode      = 0; /* HOVER */
+
+    MAVLINK_BRIDGE_APP_ProcessSetFlightModeCmd(&Cmd);
+
+    CapLen = read(Sv[1], OutBuf, sizeof(OutBuf));
+    close(Sv[0]);
+    close(Sv[1]);
+    MAVLINK_BRIDGE_APP_Data.SerialFd = -1;
+
+    UtAssert_True(CapLen == (ssize_t)UT_COMMAND_LONG_FRAME_LEN,
+                  "DO_SET_MODE 1프레임만 전송 (got %ld bytes)", (long)CapLen);
+    UtAssert_True(OutBuf[7] == (uint8)UT_COMMAND_LONG_MSGID, "msgid == COMMAND_LONG");
+    CustomMode = (uint32)UT_ReadFloatLE(&OutBuf[14]);
+    UtAssert_INT32_EQ((int)CustomMode, (int)((4U << 16) | (3U << 24))); /* AUTO/LOITER */
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ExecResultTlm.SourceSequence, 50);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ExecResultTlm.GenericResult, (int32)EXEC_RESULT_GENERIC_OK);
+}
+
+/* WAYPOINT: DO_SET_MODE + MISSION_SET_CURRENT 2프레임, custom_mode=(AUTO<<16)|(MISSION<<24) */
+void Test_ProcessSetFlightModeCmd_Waypoint(void)
+{
+    MAVLINK_BRIDGE_APP_SetFlightModeCmd_t Cmd;
+    int                                   Sv[2];
+    uint8                                 OutBuf[128];
+    ssize_t                               CapLen;
+    uint32                                CustomMode;
+    uint16                                SeqEcho;
+
+    UtAssert_INT32_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, Sv), 0);
+    UtAssert_INT32_EQ(fcntl(Sv[1], F_SETFL, O_NONBLOCK), 0);
+
+    MAVLINK_BRIDGE_APP_Data.SerialFd          = Sv[0];
+    MAVLINK_BRIDGE_APP_Data.TargetSystemId    = 1;
+    MAVLINK_BRIDGE_APP_Data.TargetComponentId = 1;
+
+    memset(&Cmd, 0, sizeof(Cmd));
+    Cmd.SourceSequence      = 51;
+    Cmd.FlightMode          = 1; /* WAYPOINT */
+    Cmd.WaypointStartIndex  = 7;
+
+    MAVLINK_BRIDGE_APP_ProcessSetFlightModeCmd(&Cmd);
+
+    CapLen = read(Sv[1], OutBuf, sizeof(OutBuf));
+    close(Sv[0]);
+    close(Sv[1]);
+    MAVLINK_BRIDGE_APP_Data.SerialFd = -1;
+
+    UtAssert_True(CapLen == (ssize_t)(UT_COMMAND_LONG_FRAME_LEN + UT_MISSION_SET_CURRENT_FRAME_LEN),
+                  "DO_SET_MODE + MISSION_SET_CURRENT 2프레임 (got %ld bytes)", (long)CapLen);
+
+    UtAssert_True(OutBuf[7] == (uint8)UT_COMMAND_LONG_MSGID, "1st frame msgid == COMMAND_LONG");
+    CustomMode = (uint32)UT_ReadFloatLE(&OutBuf[14]);
+    UtAssert_INT32_EQ((int)CustomMode, (int)((4U << 16) | (4U << 24))); /* AUTO/MISSION */
+
+    UtAssert_True(OutBuf[UT_COMMAND_LONG_FRAME_LEN + 7] == (uint8)UT_MISSION_SET_CURRENT_MSGID,
+                  "2nd frame msgid == MISSION_SET_CURRENT");
+    SeqEcho = (uint16)UT_ReadU32LE(&OutBuf[UT_COMMAND_LONG_FRAME_LEN + 10]) & 0xFFFFU;
+    UtAssert_INT32_EQ((int)SeqEcho, 7);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ExecResultTlm.GenericResult, (int32)EXEC_RESULT_GENERIC_OK);
+}
+
+/* LAND: DO_SET_MODE 1프레임만, custom_mode=(AUTO<<16)|(LAND<<24) */
+void Test_ProcessSetFlightModeCmd_Land(void)
+{
+    MAVLINK_BRIDGE_APP_SetFlightModeCmd_t Cmd;
+    int                                   Sv[2];
+    uint8                                 OutBuf[128];
+    ssize_t                               CapLen;
+    uint32                                CustomMode;
+
+    UtAssert_INT32_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, Sv), 0);
+    UtAssert_INT32_EQ(fcntl(Sv[1], F_SETFL, O_NONBLOCK), 0);
+
+    MAVLINK_BRIDGE_APP_Data.SerialFd          = Sv[0];
+    MAVLINK_BRIDGE_APP_Data.TargetSystemId    = 1;
+    MAVLINK_BRIDGE_APP_Data.TargetComponentId = 1;
+
+    memset(&Cmd, 0, sizeof(Cmd));
+    Cmd.SourceSequence = 52;
+    Cmd.FlightMode      = 2; /* LAND */
+
+    MAVLINK_BRIDGE_APP_ProcessSetFlightModeCmd(&Cmd);
+
+    CapLen = read(Sv[1], OutBuf, sizeof(OutBuf));
+    close(Sv[0]);
+    close(Sv[1]);
+    MAVLINK_BRIDGE_APP_Data.SerialFd = -1;
+
+    UtAssert_True(CapLen == (ssize_t)UT_COMMAND_LONG_FRAME_LEN, "DO_SET_MODE 1프레임만");
+    CustomMode = (uint32)UT_ReadFloatLE(&OutBuf[14]);
+    UtAssert_INT32_EQ((int)CustomMode, (int)((4U << 16) | (6U << 24))); /* AUTO/LAND */
+}
+
+/* 잘못된 flight_mode(>2) → 전송 없음, EXEC_RESULT FAILED */
+void Test_ProcessSetFlightModeCmd_InvalidMode(void)
+{
+    MAVLINK_BRIDGE_APP_SetFlightModeCmd_t Cmd;
+
+    memset(&Cmd, 0, sizeof(Cmd));
+    Cmd.SourceSequence = 53;
+    Cmd.FlightMode      = 3; /* invalid */
+
+    MAVLINK_BRIDGE_APP_Data.ExecResultTlm.GenericResult = (uint8)EXEC_RESULT_GENERIC_OK; /* 이전 값과 구분 */
+
+    MAVLINK_BRIDGE_APP_ProcessSetFlightModeCmd(&Cmd);
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ExecResultTlm.SourceSequence, 53);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ExecResultTlm.GenericResult, (int32)EXEC_RESULT_GENERIC_FAILED);
+}
+
+/* COMMAND_LONG 전송 실패(SerialFd 닫힘) → EXEC_RESULT FAILED */
+void Test_ProcessSetFlightModeCmd_SendFails(void)
+{
+    MAVLINK_BRIDGE_APP_SetFlightModeCmd_t Cmd;
+
+    memset(&Cmd, 0, sizeof(Cmd));
+    Cmd.SourceSequence = 54;
+    Cmd.FlightMode      = 0; /* HOVER */
+
+    MAVLINK_BRIDGE_APP_Data.SerialFd = -1; /* 닫힌 fd -> write 실패 */
+
+    MAVLINK_BRIDGE_APP_ProcessSetFlightModeCmd(&Cmd);
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ExecResultTlm.GenericResult, (int32)EXEC_RESULT_GENERIC_FAILED);
+}
+
 void UtTest_Setup(void)
 {
+    ADD_TEST(ProcessSetFlightModeCmd_Hover);
+    ADD_TEST(ProcessSetFlightModeCmd_Waypoint);
+    ADD_TEST(ProcessSetFlightModeCmd_Land);
+    ADD_TEST(ProcessSetFlightModeCmd_InvalidMode);
+    ADD_TEST(ProcessSetFlightModeCmd_SendFails);
     ADD_TEST(UpdateFromHeartbeat_Armed);
     ADD_TEST(UpdateFromHeartbeat_Disarmed);
     ADD_TEST(UpdateFromHeartbeat_OtherBitsIgnored);

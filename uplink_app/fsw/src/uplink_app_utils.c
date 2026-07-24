@@ -465,14 +465,13 @@ bool UPLINK_APP_ForwardFlightModeCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cm
 {
     UPLINK_APP_FlightModeCtrlCmd_t *FmCmd = &UPLINK_APP_Data.FlightModeCtrlCmd;
 
-    (void)Cmd;
-
     if (CFE_MSG_SetFcnCode(CFE_MSG_PTR(FmCmd->CommandHeader), UPLINK_APP_FLIGHT_MODE_SET_FLIGHT_MODE_CC) !=
         CFE_SUCCESS)
     {
         return false;
     }
 
+    FmCmd->SourceSequence     = Cmd->Sequence;
     FmCmd->FlightMode         = Payload->FlightMode;
     FmCmd->WaypointStartIndex = Payload->WaypointStartIndex;
 

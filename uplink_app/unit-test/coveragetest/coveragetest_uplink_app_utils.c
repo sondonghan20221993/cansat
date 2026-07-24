@@ -978,12 +978,14 @@ void Test_UPLINK_APP_ForwardFlightModeCommand(void)
 
     memset(&Cmd, 0, sizeof(Cmd));
     memset(&Payload, 0, sizeof(Payload));
+    Cmd.Sequence               = 42;
     Payload.FlightMode         = UPLINK_APP_FLIGHT_MODE_WAYPOINT;
     Payload.WaypointStartIndex = 3;
 
     UT_SetDefaultReturnValue(UT_KEY(CFE_MSG_SetFcnCode), CFE_SUCCESS);
     UT_SetDefaultReturnValue(UT_KEY(CFE_SB_TransmitMsg), CFE_SUCCESS);
     UtAssert_BOOL_TRUE(UPLINK_APP_ForwardFlightModeCommand(&Cmd, &Payload));
+    UtAssert_INT32_EQ(UPLINK_APP_Data.FlightModeCtrlCmd.SourceSequence, 42);
     UtAssert_INT32_EQ(UPLINK_APP_Data.FlightModeCtrlCmd.FlightMode, UPLINK_APP_FLIGHT_MODE_WAYPOINT);
     UtAssert_INT32_EQ(UPLINK_APP_Data.FlightModeCtrlCmd.WaypointStartIndex, 3);
 

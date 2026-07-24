@@ -17,5 +17,6 @@
 #define MAVLINK_BRIDGE_APP_STATE_SAVE_FAIL_EID      14 /* BL-41(2026-07-23): SaveState 실패 */
 #define MAVLINK_BRIDGE_APP_STATE_CORRUPT_EID        15 /* BL-41(2026-07-23): 상태 파일 손상 → 기본값 폴백 */
 #define MAVLINK_BRIDGE_APP_MISSION_READBACK_EID     16 /* BL-41 route(2026-07-23): FC 미션 readback 게시/재시도 */
+#define MAVLINK_BRIDGE_APP_SET_FLIGHT_MODE_EID      17 /* BL-44(2026-07-24): 비행모드 전환 명령 전송 성공/실패 */
 
 #endif

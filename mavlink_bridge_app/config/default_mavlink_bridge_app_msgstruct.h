@@ -35,6 +35,17 @@ typedef struct
     CFE_MSG_CommandHeader_t CommandHeader;
 } MAVLINK_BRIDGE_APP_SerialReconnectCmd_t;
 
+/* BL-44(2026-07-24, §18.4.6.8.1): uplink_app의 UPLINK_APP_FlightModeCtrlCmd_t와
+ * 동일 바이트 레이아웃(공유 헤더 아님, counter mgmt류 payload-less 패턴을
+ * SourceSequence+payload 2바이트로 확장 — 양쪽 독립 정의, 레이아웃만 일치 유지). */
+typedef struct
+{
+    CFE_MSG_CommandHeader_t CommandHeader;
+    uint16                  SourceSequence;
+    uint8                   FlightMode;
+    uint8                   WaypointStartIndex;
+} MAVLINK_BRIDGE_APP_SetFlightModeCmd_t;
+
 typedef BRIDGE_HK_TLM_t MAVLINK_BRIDGE_APP_HkTlm_t;
 
 typedef FC_EKF_LOCAL_TLM_t  MAVLINK_BRIDGE_APP_EkfLocalTlm_t;

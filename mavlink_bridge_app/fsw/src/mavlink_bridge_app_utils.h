@@ -17,5 +17,6 @@ void MAVLINK_BRIDGE_APP_LoadState(void);
 void MAVLINK_BRIDGE_APP_SaveState(void);
 void MAVLINK_BRIDGE_APP_ProcessParserResetCmd(const MAVLINK_BRIDGE_APP_ParserResetCmd_t *Cmd);
 void MAVLINK_BRIDGE_APP_ProcessSerialReconnectCmd(const MAVLINK_BRIDGE_APP_SerialReconnectCmd_t *Cmd);
+void MAVLINK_BRIDGE_APP_ProcessSetFlightModeCmd(const MAVLINK_BRIDGE_APP_SetFlightModeCmd_t *Cmd);
 
 #endif

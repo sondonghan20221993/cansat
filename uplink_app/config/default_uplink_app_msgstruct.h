@@ -77,6 +77,7 @@ typedef struct
 typedef struct
 {
     CFE_MSG_CommandHeader_t CommandHeader;
+    uint16                  SourceSequence; /* BL-44(2026-07-24 정정): EXEC_RESULT echo용 — 원본 지상 명령 seq */
     uint8                   FlightMode;
     uint8                   WaypointStartIndex;
 } UPLINK_APP_FlightModeCtrlCmd_t;
