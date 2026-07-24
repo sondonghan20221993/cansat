@@ -1720,11 +1720,60 @@ counter management payload:
 
 > 위 수치(class code 7, scope 1~4, UFB 0x0C)는 spec 원문에 없던 값으로 이번 세션 대화에서 확정. **구현 완료(2026-07-22)**: `uplink_app`에 `UPLINK_APP_CLASS_COUNTER_MGMT=7`/`UPLINK_APP_ForwardCounterMgmtCommand()` 추가 — scope=UPLINK(자신)는 로컬 카운터 직접 초기화, 그 외 3개 앱은 기존 CMD_MID(`0x18A0`/`0x18C0`/`0x18E0`)에 기존 `RESET_COUNTERS_CC=1`을 `CFE_MSG_SetFcnCode`로 얹어 직접 전송(P1-a `CFS_CORE_APP_SendBridgeCtrlCmd`와 동일 패턴, `cfs_core_app` 미경유). `lora_tdm_app` UFB `REJECT_COUNTER=12`(0x0C) 매핑 완료. 단위테스트: uplink_app_utils(120→131), uplink_app_cmds(+4), lora_tdm_app_dispatch(59→61), 전부 통과. **지상측도 완료(2026-07-22, openMCT `92bd3a6`)**: `/api/uplink/counter` 엔드포인트(payload=scope+action+token(LE), Level 3 token 자동생성) + uplinkCLI `counter <scope>` 명령 + uplinkGUI UFB 0x0C 디코딩(`82a8a82`).
 
+##### 18.4.6.8 flight mode command (BL-44, 2026-07-24 설계 확정 — 구현 전)
+
+**목적**: FC 비행모드 제어 base 명령. 2-pass GPS 능동 보정(§18.4.6.2.1)이 이 명령들을 조합해
+지상에서 오케스트레이션한다. 기체=헬리콥터, FC 펌웨어=**PX4**(ArduPilot 아님, 2026-07-24 확정).
+
+**class code**: `8` (신규 `UPLINK_APP_CLASS_FLIGHT_MODE`).
+
+flight mode payload:
+
+| 필드 | 형식 | 의미 | 검증 규칙 |
+| --- | --- | --- | --- |
+| `flight_mode` | `uint8` | `0`=HOVER, `1`=WAYPOINT, `2`=LAND | 0~2 외 값 거부 |
+| `waypoint_start_index` | `uint8` | WAYPOINT 전용 — `MISSION_SET_CURRENT` 대상 인덱스. HOVER/LAND는 0 고정 | WAYPOINT 외 값이 0이 아니면 거부 |
+| `request_token` | `uint32` | §18.4.7 표준 request_token 재사용(Level 3 공통 규칙) | Level 3 공통 규칙 적용 |
+
+**PX4 모드 매핑** (`MAV_CMD_DO_SET_MODE`=176, 기존 `COMMAND_LONG` 송신 인프라 재사용 —
+`MAVLINK_BRIDGE_APP_RequestMessageInterval()`과 동일 패턴, param1=base_mode(`MAV_MODE_FLAG_CUSTOM_MODE_ENABLED`),
+param2=custom main mode, param3=custom sub mode):
+
+| flight_mode | PX4 main/sub | 부가 동작 |
+| --- | --- | --- |
+| HOVER(0) | AUTO(4) / LOITER(3) ("Hold") | 없음 |
+| WAYPOINT(1) | AUTO(4) / MISSION(4) | `MISSION_SET_CURRENT`을 `waypoint_start_index`로 별도 전송(모드 전환 뒤) |
+| LAND(2) | AUTO(4) / LAND(6) | 없음 |
+
+**인가/게이트 (2026-07-24 대화로 확정)**:
+- **auth level**: Level 3 (비행 상태를 직접 바꾸는 안전 민감 명령 — RECOVERY/MODE/COUNTER와 동급, `request_token≠0` 필수).
+- **health gate 예외**: HOVER·LAND는 "위험 축소"(새로운 걸 시도하지 않고 현재 상태를 유지/종료) 명령이라 시스템 헬스(DEGRADED/RECOVERY/FAILED)와 **무관하게 항상 허용**한다 — 상태가 나쁠수록 오히려 필요한 명령이므로 게이트가 막으면 안 된다. WAYPOINT는 "위험 증가"(새 경로를 새로 신뢰해 비행) 명령이라 §18.10.1 헬스 게이트를 **정상 적용**한다(다른 상태-의존 명령과 동일).
+
+**라우팅**: counter management(§18.4.6.7)와 동일 패턴 — `cfs_core_app` 경유 없이 `uplink_app`이
+검수(Level 3 + health-gate 예외 판단) 후 `mavlink_bridge_app`의 기존 `CMD_MID`(`0x18A0`)에
+신규 FcnCode(`SET_FLIGHT_MODE_CC`)를 얹어 직접 전송한다. `mavlink_bridge_app`이 수신해 위
+매핑대로 `COMMAND_LONG`(+WAYPOINT는 `MISSION_SET_CURRENT`)을 FC로 전송.
+
+출력 계약:
+
+- 결과는 `UPLINK_STATUS_MID`의 UFB에 반영 — 신규 코드 1종(`REJECT_FLIGHT_MODE`, class/health 무관하게 flight_mode 값 자체가 잘못된 경우) 추가 필요. 정상 처리는 기존 `EXECUTED_OK`/`EXECUTED_FAILED`(BL-08 EXEC_RESULT_MID) 재사용.
+
+거부 조건:
+
+- `flight_mode` 0~2 외
+- `waypoint_start_index`가 WAYPOINT 외 모드에서 0이 아님
+- Level 3 공통 차단 규칙(`request_token=0`)
+- WAYPOINT에 한해 시스템 헬스 DEGRADED/RECOVERY/FAILED(HOVER/LAND는 이 규칙 면제)
+
+**미착수 항목(구현 대상)**: 위 계약대로 uplink_app 파싱/포워딩(SDD→TDD) 및 mavlink_bridge
+COMMAND_LONG 송신 배선. 실외 원형비행 실기 검증은 하드웨어 대기(BL-44 등록).
+
 #### 18.4.7 Request Token 계약
 
 **목적**: `request_token` 필드의 역할, 수명 주기, 지상국-탑재 앱 간 계약을 명확히 하여 인증·재설계 단계에서의 혼동을 방지한다.
 
-**적용 범위**: recovery command, mode command 페이로드에 포함된 `request_token` uint32 필드.
+**적용 범위**: recovery command, mode command, counter management, flight mode command(BL-44,
+§18.4.6.8) 페이로드에 포함된 `request_token` uint32 필드.
 
 ##### 기본 역할
 
