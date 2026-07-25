@@ -1473,12 +1473,12 @@ route update payload는 다음 필드를 포함한다.
 
 연산 타입별 의미 및 ARMED 정책:
 
-- **REPLACE**: 기존 active route를 `waypoints` 배열로 완전 대체한다. **ARMED 상태에서 차단**(기존 `IsArmed` 가드 유지) — 전체 교체는 위험한 연산으로 간주.
+- **REPLACE**: 기존 active route를 `waypoints` 배열로 완전 대체한다. **ARMED 차단 폐지(2026-07-25 최종 확정)** — 원래 차단 근거였던 "PX4 미션 인덱스 리셋" 문제는 REPLACE도 업로드 트랜잭션 내 `current=1` 플래그(아래 참조)로 해결되므로 ADD/DELETE/MODIFY와 동일하게 ARMED 허용. 다만 REPLACE는 전체 웨이포인트를 통째로 덮어써 실수 시 파급 범위가 크므로(오타·잘못된 경로 업로드 시 기체가 즉시 완전히 다른 경로로 튐), 기체측 가드 대신 **GUI에서 REPLACE 전송 전 재확인 다이얼로그**(항상 표시, ARMED 텔레메트리 의존 없이 단순화)로 완화한다 — `mavlink_bridge_app_utils.c:507`의 `IsArmed` 체크는 완전히 제거.
 - **ADD**: active waypoint cache 끝에 `waypoints`를 추가한다(합계가 MAX 초과 시 MAX에서 절단). ARMED 허용. `ActiveResumeIndex` 불변.
 - **DELETE(index)**: active cache에서 `index` 위치의 waypoint 1개를 제거하고 뒤 인덱스를 당긴다. ARMED 허용. `index == ActiveResumeIndex`(현재 향하고 있는 지점)이면 **거부**(REJECT_ROUTE) — 진행 중인 목표점은 삭제 불가, 필요 시 먼저 다른 인덱스로 진행되길 기다리거나 MODIFY로 좌표만 바꿀 것. `index < ActiveResumeIndex`면 `ActiveResumeIndex -= 1`.
 - **MODIFY(index)**: active cache의 `index` 위치 waypoint를 새 값으로 덮어쓴다. ARMED 허용. `ActiveResumeIndex` 불변(같은 슬롯 좌표만 변경 — `index == ActiveResumeIndex`인 경우 기체는 재업로드 직후 새 좌표를 향해 즉시 진로를 바꾼다).
 
-**비행 중 재개 지점 유지 (인덱스 리셋 문제 해결)**: PX4(`mavlink_mission.cpp`)는 미션 업로드 트랜잭션 중 `current=1`이 찍힌 `MISSION_ITEM_INT`의 seq를 그대로 재개 인덱스로 채택한다(`update_active_mission()`이 그 seq를 `current_seq`로 발행) — 별도 `MISSION_SET_CURRENT` 명령이 불필요하다. 따라서 ADD/DELETE/MODIFY로 인한 모든 재업로드는 `mavlink_bridge_app`이 유지하는 `ActiveResumeIndex`(FC의 `MISSION_CURRENT` 텔레메트리로 갱신)에 해당하는 항목에 `current=1`을 찍어 전송한다. REPLACE는 ARMED 차단으로 항상 지상(정지) 상태에서만 발생하므로 `ActiveResumeIndex`는 항상 0(필요 시 §18.4.6.8 `FLIGHT_MODE(WAYPOINT, waypoint_start_index)`로 별도 지정).
+**비행 중 재개 지점 유지 (인덱스 리셋 문제 해결)**: PX4(`mavlink_mission.cpp`)는 미션 업로드 트랜잭션 중 `current=1`이 찍힌 `MISSION_ITEM_INT`의 seq를 그대로 재개 인덱스로 채택한다(`update_active_mission()`이 그 seq를 `current_seq`로 발행) — 별도 `MISSION_SET_CURRENT` 명령이 불필요하다. 따라서 **REPLACE 포함 4종 op 전부**로 인한 재업로드는 `mavlink_bridge_app`이 유지하는 `ActiveResumeIndex`(FC의 `MISSION_CURRENT` 텔레메트리로 갱신)에 해당하는 항목에 `current=1`을 찍어 전송한다. 지상 정지 상태에서 처음 미션을 올리는 REPLACE는 `ActiveResumeIndex`가 자연히 0(필요 시 §18.4.6.8 `FLIGHT_MODE(WAYPOINT, waypoint_start_index)`로 별도 지정 가능)이고, 비행 중 REPLACE(예: 2-pass 보정 재업로드)는 그 시점의 `ActiveResumeIndex`를 그대로 유지해 재개된다.
 
 route update baseline 수치 기준:
 
@@ -1499,7 +1499,6 @@ route update baseline 수치 기준:
 - 좌표가 finite가 아님 (REPLACE/ADD/MODIFY)
 - 비행 가능 영역 위반 (REPLACE/ADD/MODIFY)
 - 고도 제약 위반 (REPLACE/ADD/MODIFY)
-- REPLACE가 ARMED 상태에서 수신됨
 - DELETE의 `index == ActiveResumeIndex`
 
 **모호점 확정(2026-07-25)**:
