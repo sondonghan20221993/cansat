@@ -1479,9 +1479,15 @@ route update payload는 다음 필드를 포함한다.
 | 필드 | 형식 | 의미 | 검증 규칙 |
 | --- | --- | --- | --- |
 | `route_op` | `uint8` | 경로 연산 타입: `REPLACE=1`, `ADD=2`, `DELETE=3`, `MODIFY=4` | 승인된 op 값만 허용 |
-| `route_version` | `uint8` | payload 버전 | 현재 지원 버전과 일치 |
+| `route_version` | `uint8` | payload 버전, **`2`로 증가(2026-07-25 확정)** | 현재 지원 버전(`2`)과 일치 — v1(구 REPLACE/APPEND/DELETE, 12바이트 waypoint)과 명확히 구분, 파서가 잘못된 버전으로 오해석하지 않도록 |
 | `index_or_count` | `uint8` | REPLACE/ADD: 신규 waypoint 개수; DELETE/MODIFY: 대상 인덱스(단일) | REPLACE/ADD는 `1` 이상 MAX 이하; DELETE/MODIFY는 `0` 이상 현재 waypoint 개수 미만 |
-| `waypoints` | waypoint 배열 | route segment (REPLACE/ADD: N개; MODIFY: 1개; DELETE: 없음) | finite, flyable area, altitude 조건 충족(세그먼트 거리 제약 없음) |
+| `waypoints` | waypoint 배열 | route segment (REPLACE/ADD: N개; MODIFY: 1개; DELETE: 없음) | finite, 고도 조건 충족(세그먼트 거리·flyable area 제약 없음, 위 참조) |
+
+**지상국 API 구조(2026-07-25 확정)**: `fc_serial_ws_server.py`의 `/api/uplink/route` **단일
+엔드포인트**를 유지하고 `op` 필드(REPLACE/ADD/DELETE/MODIFY)로 분기한다 — `config`/`flight_mode` 등
+기존 엔드포인트들과 동일하게 "개념 하나 = 엔드포인트 하나, 세부 동작은 요청 본문으로 구분" 관례를
+따름. op별 REST 분리(`/route/add`, `/route/delete` 등)는 검증 로직이 더 깔끔해지는 대신 코드량·GUI
+호출부가 늘어나 이 규모 시스템엔 과함 — 채택하지 않음.
 
 연산 타입별 의미 및 ARMED 정책:
 
