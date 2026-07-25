@@ -4,7 +4,8 @@ import socket
 import struct
 import sys
 import time
-from typing import Iterable, List, Sequence, Tuple
+from dataclasses import dataclass
+from typing import List, Optional, Sequence
 
 try:
     import serial
@@ -18,8 +19,17 @@ UPLINK_APP_MAX_PAYLOAD_LENGTH = 196
 
 UPLINK_CLASS_ROUTE_UPDATE = 2
 
-ROUTE_TYPE_MISSION_EXTENSION = 1
-ROUTE_TYPE_LANDING = 2
+# route_op (BL-56, 2026-07-25 재설계 — REPLACE/APPEND/DELETE 3종에서 갱신)
+ROUTE_OP_REPLACE = 1
+ROUTE_OP_ADD = 2
+ROUTE_OP_DELETE = 3
+ROUTE_OP_MODIFY = 4
+
+ROUTE_VERSION = 2  # BL-56: payload 포맷 전면 변경으로 v1->v2
+
+ROUTE_WAYPOINT_WIRE_SIZE = 29  # CmdType(1)+Param1..4(4x4)+LatE7(4)+LonE7(4)+Z(4)
+
+MAV_CMD_NAV_WAYPOINT = 16
 
 
 def calc_checksum(packet: bytes) -> int:
@@ -96,10 +106,33 @@ def build_process_uplink_payload(
     ) + fixed_payload
 
 
-def build_route_payload(route_type: int, route_version: int, waypoints: Sequence[Tuple[float, float, float]]) -> bytes:
-    payload = struct.pack("<BBBB", route_type, route_version, len(waypoints), 0)
-    for x, y, z in waypoints:
-        payload += struct.pack("<fff", x, y, z)
+@dataclass(frozen=True)
+class Waypoint:
+    """BL-56(2026-07-25): 항상 절대좌표(LatE7/LonE7). 로컬 X/Y 모드는 폐기됨."""
+    lat_e7: int
+    lon_e7: int
+    z_m: float
+    cmd_type: int = MAV_CMD_NAV_WAYPOINT
+    param1: float = 0.0
+    param2: float = 0.0
+    param3: float = 0.0
+    param4: float = 0.0
+
+    def pack(self) -> bytes:
+        return struct.pack(
+            "<Bffffiif",
+            self.cmd_type, self.param1, self.param2, self.param3, self.param4,
+            self.lat_e7, self.lon_e7, self.z_m,
+        )
+
+
+def build_route_payload(route_op: int, index_or_count: int, waypoints: Sequence[Waypoint]) -> bytes:
+    """route_op=REPLACE/ADD: waypoints 전체 실어보냄(index_or_count=len(waypoints)).
+    route_op=DELETE: waypoints 없음(index_or_count=삭제할 index).
+    route_op=MODIFY: waypoints 1개(index_or_count=수정할 index)."""
+    payload = struct.pack("<BBBB", route_op, ROUTE_VERSION, index_or_count, 0)
+    for wp in waypoints:
+        payload += wp.pack()
     return payload
 
 
@@ -130,56 +163,70 @@ def send_lora_serial(frame_line: str, serial_path: str, baudrate: int, write_del
         port.flush()
 
 
-def pretty_waypoints(waypoints: Iterable[Tuple[float, float, float]]) -> str:
-    return ", ".join(f"({x:.2f}, {y:.2f}, {z:.2f})" for x, y, z in waypoints)
+def pretty_waypoints(waypoints: Sequence[Waypoint]) -> str:
+    return ", ".join(
+        f"(cmd={wp.cmd_type} lat={wp.lat_e7/1e7:.7f} lon={wp.lon_e7/1e7:.7f} z={wp.z_m:.2f})"
+        for wp in waypoints
+    )
 
 
-def preset_case(case_name: str) -> Tuple[int, List[Tuple[float, float, float]]]:
-    # GPS 있음 케이스: bridge가 GLOBAL_POSITION_INT lat/lon 기준으로 좌표 변환
-    if case_name == "route-good":
-        return ROUTE_TYPE_MISSION_EXTENSION, [(0.0, -10.0, 3.0), (2.0, -10.0, 3.0)]
-    if case_name == "route-landing":
-        return ROUTE_TYPE_LANDING, [(2.0, -8.0, 4.0), (2.0, -8.0, 2.0)]
-    if case_name == "route-bad-alt":
-        return ROUTE_TYPE_MISSION_EXTENSION, [(0.0, -10.0, 1.0), (2.0, -10.0, 3.0)]
-    if case_name == "route-bad-distance":
-        return ROUTE_TYPE_MISSION_EXTENSION, [(0.0, -10.0, 3.0), (2.01, -10.0, 3.0)]
-    # GPS 없음 케이스: bridge가 (0,0) 원점 기준으로 변환 (기능 검증 전용)
-    if case_name == "route-good-no-gps":
-        return ROUTE_TYPE_MISSION_EXTENSION, [(0.0, -10.0, 3.0), (2.0, -10.0, 3.0)]
-    if case_name == "route-landing-no-gps":
-        return ROUTE_TYPE_LANDING, [(2.0, -8.0, 4.0), (2.0, -8.0, 2.0)]
-    # Mission Planner 시각 검증용: 범위/거리 제약 준수
-    # 제약: X,Y ∈ [-50,50]m, 고도 ∈ [2,8]m, 세그먼트 거리 = 2.0±0.0001m
-    if case_name == "route-mp-verify-a":
-        return ROUTE_TYPE_MISSION_EXTENSION, [(0.0, 10.0, 4.0), (2.0, 10.0, 4.0)]
-    if case_name == "route-mp-verify-b":
-        return ROUTE_TYPE_MISSION_EXTENSION, [(-20.0, 20.0, 5.0), (-18.0, 20.0, 5.0)]
-    if case_name == "route-mp-verify-c":
-        return ROUTE_TYPE_MISSION_EXTENSION, [(10.0, -10.0, 3.0), (12.0, -10.0, 3.0), (14.0, -10.0, 3.0)]
-    if case_name == "route-mp-verify-d":
-        return ROUTE_TYPE_MISSION_EXTENSION, [(-10.0, -20.0, 6.0), (-8.0, -20.0, 6.0), (-6.0, -20.0, 6.0), (-4.0, -20.0, 6.0)]
-    if case_name == "route-mp-verify-e":
-        return ROUTE_TYPE_MISSION_EXTENSION, [(5.0, 0.0, 5.0), (7.0, 0.0, 5.0), (9.0, 0.0, 5.0), (11.0, 0.0, 5.0), (13.0, 0.0, 5.0)]
+# 더미 기준점(실 GPS 없이 기능 검증용) — 임의 좌표, 실제 위치와 무관
+_DUMMY_LAT_E7 = 375665000   # 37.5665000
+_DUMMY_LON_E7 = 1269780000  # 126.9780000
+
+
+def _dummy_wp(dlat_e7: int, dlon_e7: int, z: float, **kw) -> Waypoint:
+    return Waypoint(lat_e7=_DUMMY_LAT_E7 + dlat_e7, lon_e7=_DUMMY_LON_E7 + dlon_e7, z_m=z, **kw)
+
+
+def preset_case(case_name: str):
+    """반환: (route_op, index_or_count, waypoints)"""
+    # 절대좌표 REPLACE(전체 교체) — 더미 기준점 근처 2점
+    if case_name == "route-replace-good":
+        wps = [_dummy_wp(0, 0, 3.0), _dummy_wp(20, 0, 3.0)]
+        return ROUTE_OP_REPLACE, len(wps), wps
+    if case_name == "route-replace-bad-alt":
+        wps = [_dummy_wp(0, 0, 1.0), _dummy_wp(20, 0, 3.0)]  # 고도 1.0m < MIN(2m)
+        return ROUTE_OP_REPLACE, len(wps), wps
+    # ADD(끝에 추가) — BL-56: index_or_count=추가 개수, 세그먼트 거리 제약 폐지됨
+    if case_name == "route-add-good":
+        wps = [_dummy_wp(40, 0, 3.0), _dummy_wp(60, 0, 3.0)]
+        return ROUTE_OP_ADD, len(wps), wps
+    if case_name == "route-add-single":
+        wps = [_dummy_wp(80, 0, 3.0)]
+        return ROUTE_OP_ADD, len(wps), wps
+    # DELETE(index) — waypoint 데이터 없음, index_or_count=삭제할 인덱스
+    if case_name == "route-delete-index0":
+        return ROUTE_OP_DELETE, 0, []
+    if case_name == "route-delete-index1":
+        return ROUTE_OP_DELETE, 1, []
+    # MODIFY(index) — waypoint 1개, index_or_count=수정할 인덱스, 전체 필드 통째 교체
+    if case_name == "route-modify-index0":
+        wps = [_dummy_wp(5, 5, 4.0)]
+        return ROUTE_OP_MODIFY, 0, wps
+    if case_name == "route-modify-loiter":
+        wps = [_dummy_wp(5, 5, 4.0, cmd_type=17, param1=10.0)]  # NAV_LOITER_UNLIM, radius=10
+        return ROUTE_OP_MODIFY, 1, wps
     raise ValueError(f"unknown case: {case_name}")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Send UPLINK_APP PROCESS_UPLINK route-update commands to cFS/CI_LAB."
+        description="Send UPLINK_APP PROCESS_UPLINK route-update commands to cFS/CI_LAB "
+                    "(BL-56 v2 protocol: REPLACE/ADD/DELETE/MODIFY, absolute lat/lon waypoints)."
     )
     parser.add_argument(
         "case_name",
-        choices=["route-good", "route-landing", "route-bad-alt", "route-bad-distance",
-                 "route-good-no-gps", "route-landing-no-gps",
-                 "route-mp-verify-a", "route-mp-verify-b", "route-mp-verify-c", "route-mp-verify-d", "route-mp-verify-e"],
+        choices=["route-replace-good", "route-replace-bad-alt",
+                 "route-add-good", "route-add-single",
+                 "route-delete-index0", "route-delete-index1",
+                 "route-modify-index0", "route-modify-loiter"],
         help="Preset route-update test case to send.",
     )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=1234)
     parser.add_argument("--sequence", type=int, default=1)
     parser.add_argument("--auth", type=int, default=2, choices=[0,1,2,3], help="Auth level in Flags[7:6] (ROUTE_UPDATE=2)")
-    parser.add_argument("--route-version", type=int, default=1)
     parser.add_argument(
         "--transport",
         choices=["udp", "lora-text", "lora-serial"],
@@ -199,14 +246,14 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    route_type, waypoints = preset_case(args.case_name)
-    route_payload = build_route_payload(route_type, args.route_version, waypoints)
+    route_op, index_or_count, waypoints = preset_case(args.case_name)
+    route_payload = build_route_payload(route_op, index_or_count, waypoints)
     proxy_payload = build_process_uplink_payload(args.sequence, route_payload, flags=(args.auth << 6))
 
     print(
-        f"prepare {args.case_name}: seq={args.sequence} route_type={route_type} "
-        f"route_version={args.route_version} waypoints=[{pretty_waypoints(waypoints)}] "
-        f"transport={args.transport}"
+        f"prepare {args.case_name}: seq={args.sequence} route_op={route_op} "
+        f"route_version={ROUTE_VERSION} index_or_count={index_or_count} "
+        f"waypoints=[{pretty_waypoints(waypoints)}] transport={args.transport}"
     )
 
     if args.transport == "udp":
