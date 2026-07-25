@@ -227,6 +227,8 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=1234)
     parser.add_argument("--sequence", type=int, default=1)
     parser.add_argument("--auth", type=int, default=2, choices=[0,1,2,3], help="Auth level in Flags[7:6] (ROUTE_UPDATE=2)")
+    parser.add_argument("--force", action="store_true",
+                        help="Set UPLINK_APP_FORCE_FLAG (Flags bit 0) to bypass health gate (bench-only)")
     parser.add_argument(
         "--transport",
         choices=["udp", "lora-text", "lora-serial"],
@@ -248,7 +250,8 @@ def main() -> int:
 
     route_op, index_or_count, waypoints = preset_case(args.case_name)
     route_payload = build_route_payload(route_op, index_or_count, waypoints)
-    proxy_payload = build_process_uplink_payload(args.sequence, route_payload, flags=(args.auth << 6))
+    flags = (args.auth << 6) | (0x01 if args.force else 0)
+    proxy_payload = build_process_uplink_payload(args.sequence, route_payload, flags=flags)
 
     print(
         f"prepare {args.case_name}: seq={args.sequence} route_op={route_op} "
