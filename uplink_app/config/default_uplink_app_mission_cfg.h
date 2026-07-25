@@ -4,17 +4,9 @@
 #define UPLINK_APP_ROUTE_MAX_WAYPOINTS        16
 #define UPLINK_APP_ROUTE_ALTITUDE_MIN_M       2.0f
 #define UPLINK_APP_ROUTE_ALTITUDE_MAX_M       8.0f
-#define UPLINK_APP_ROUTE_SEGMENT_DIST_M       2.0f
-#define UPLINK_APP_ROUTE_SEGMENT_DIST_TOL_M   0.0001f
-#define UPLINK_APP_ROUTE_FLYABLE_X_MIN_M     -50.0f
-#define UPLINK_APP_ROUTE_FLYABLE_X_MAX_M      50.0f
-#define UPLINK_APP_ROUTE_FLYABLE_Y_MIN_M     -50.0f
-#define UPLINK_APP_ROUTE_FLYABLE_Y_MAX_M      50.0f
-#define UPLINK_APP_ROUTE_NOFLY_ENABLE         0
-#define UPLINK_APP_ROUTE_NOFLY_X_MIN_M       -5.0f
-#define UPLINK_APP_ROUTE_NOFLY_X_MAX_M        5.0f
-#define UPLINK_APP_ROUTE_NOFLY_Y_MIN_M       -5.0f
-#define UPLINK_APP_ROUTE_NOFLY_Y_MAX_M        5.0f
+
+/* BL-56(2026-07-25): 세그먼트 거리(2.0m) 강제 및 flyable area(±50m)/no-fly zone 기체측
+ * 검증 전면 폐지 — waypoint가 항상 절대좌표(LatE7/LonE7)라 로컬 X/Y 기준점이 없어졌고,
+ * flyable area 판단은 GUI 재확인 다이얼로그로 이관. 고도(2m~8m)와 finite 검증만 유지. */
 
 #endif
-

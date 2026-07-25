@@ -277,11 +277,14 @@ int LORA_TDM_APP_BuildDl2Frame(uint8 *Buf, size_t BufLen, const LORA_TDM_APP_Dat
         Buf[WaypointOffset + 2] = AppData->RouteTotalPages;
         Buf[WaypointOffset + 3] = InPage;
 
-        PutFloatLE(&Buf[WaypointOffset + 4],  (InPage >= 1U) ? AppData->RouteWaypoints[StartIdx].X : 0.0f);
-        PutFloatLE(&Buf[WaypointOffset + 8],  (InPage >= 1U) ? AppData->RouteWaypoints[StartIdx].Y : 0.0f);
+        /* BL-61(2026-07-25): DL2 waypoint 페이지 좌표 포맷 — LatE7(int32)+LonE7(int32)+Z(float)
+         * 12바이트/waypoint(이전 3-float 레이아웃과 총 크기 동일). CmdType/Param1~4는
+         * 의도적으로 생략(지상/openMCT가 기본값 NAV_WAYPOINT=16/0으로 복원). */
+        PutI32LE(&Buf[WaypointOffset + 4],  (InPage >= 1U) ? AppData->RouteWaypoints[StartIdx].LatE7 : 0);
+        PutI32LE(&Buf[WaypointOffset + 8],  (InPage >= 1U) ? AppData->RouteWaypoints[StartIdx].LonE7 : 0);
         PutFloatLE(&Buf[WaypointOffset + 12], (InPage >= 1U) ? AppData->RouteWaypoints[StartIdx].Z : 0.0f);
-        PutFloatLE(&Buf[WaypointOffset + 16], (InPage >= 2U) ? AppData->RouteWaypoints[StartIdx + 1U].X : 0.0f);
-        PutFloatLE(&Buf[WaypointOffset + 20], (InPage >= 2U) ? AppData->RouteWaypoints[StartIdx + 1U].Y : 0.0f);
+        PutI32LE(&Buf[WaypointOffset + 16], (InPage >= 2U) ? AppData->RouteWaypoints[StartIdx + 1U].LatE7 : 0);
+        PutI32LE(&Buf[WaypointOffset + 20], (InPage >= 2U) ? AppData->RouteWaypoints[StartIdx + 1U].LonE7 : 0);
         PutFloatLE(&Buf[WaypointOffset + 24], (InPage >= 2U) ? AppData->RouteWaypoints[StartIdx + 1U].Z : 0.0f);
     }
 

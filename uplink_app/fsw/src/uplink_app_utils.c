@@ -187,55 +187,44 @@ bool UPLINK_APP_ValidateProxyCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd, U
 
 static bool UPLINK_APP_IsWaypointFinite(const UPLINK_APP_Waypoint_t *Waypoint)
 {
-    return isfinite(Waypoint->X) && isfinite(Waypoint->Y) && isfinite(Waypoint->Z);
+    return isfinite(Waypoint->Param1) && isfinite(Waypoint->Param2) && isfinite(Waypoint->Param3) &&
+           isfinite(Waypoint->Param4) && isfinite(Waypoint->Z);
 }
 
-static bool UPLINK_APP_IsWaypointInFlyableArea(const UPLINK_APP_Waypoint_t *Waypoint)
+static bool UPLINK_APP_IsWaypointAltitudeValid(const UPLINK_APP_Waypoint_t *Waypoint)
 {
-    if (Waypoint->X < UPLINK_APP_ROUTE_FLYABLE_X_MIN_M || Waypoint->X > UPLINK_APP_ROUTE_FLYABLE_X_MAX_M)
-    {
-        return false;
-    }
-
-    if (Waypoint->Y < UPLINK_APP_ROUTE_FLYABLE_Y_MIN_M || Waypoint->Y > UPLINK_APP_ROUTE_FLYABLE_Y_MAX_M)
-    {
-        return false;
-    }
-
-    if (Waypoint->Z < UPLINK_APP_ROUTE_ALTITUDE_MIN_M || Waypoint->Z > UPLINK_APP_ROUTE_ALTITUDE_MAX_M)
-    {
-        return false;
-    }
-
-    return true;
+    return (Waypoint->Z >= UPLINK_APP_ROUTE_ALTITUDE_MIN_M) && (Waypoint->Z <= UPLINK_APP_ROUTE_ALTITUDE_MAX_M);
 }
 
-static bool UPLINK_APP_IsWaypointInNoFlyArea(const UPLINK_APP_Waypoint_t *Waypoint)
+/* BL-56(2026-07-25) wire 레벨 헬퍼: ROUTE_WAYPOINT_t는 C 정렬 패딩으로 sizeof가
+ * ROUTE_WAYPOINT_WIRE_SIZE(29)보다 커질 수 있어 memcpy/구조체 캐스팅을 쓸 수 없다 —
+ * 필드별 개별 역직렬화(offset 0=CmdType,1~16=Param1~4,17~24=LatE7/LonE7,25~28=Z). */
+static uint32 UPLINK_APP_ReadU32LE(const uint8 *Buf)
 {
-#if UPLINK_APP_ROUTE_NOFLY_ENABLE
-    return (Waypoint->X >= UPLINK_APP_ROUTE_NOFLY_X_MIN_M && Waypoint->X <= UPLINK_APP_ROUTE_NOFLY_X_MAX_M &&
-            Waypoint->Y >= UPLINK_APP_ROUTE_NOFLY_Y_MIN_M && Waypoint->Y <= UPLINK_APP_ROUTE_NOFLY_Y_MAX_M);
-#else
-    (void)Waypoint;
-    return false;
-#endif
+    return ((uint32)Buf[0]) | ((uint32)Buf[1] << 8) | ((uint32)Buf[2] << 16) | ((uint32)Buf[3] << 24);
 }
 
-static float UPLINK_APP_GetWaypointDistance(const UPLINK_APP_Waypoint_t *First, const UPLINK_APP_Waypoint_t *Second)
+static float UPLINK_APP_ReadFloatLE(const uint8 *Buf)
 {
-    const float Dx = Second->X - First->X;
-    const float Dy = Second->Y - First->Y;
-    const float Dz = Second->Z - First->Z;
+    uint32 Bits = UPLINK_APP_ReadU32LE(Buf);
+    float  Value;
 
-    return sqrtf((Dx * Dx) + (Dy * Dy) + (Dz * Dz));
+    memcpy(&Value, &Bits, sizeof(Value));
+    return Value;
 }
 
-static bool UPLINK_APP_IsWaypointSegmentDistanceValid(const UPLINK_APP_Waypoint_t *First,
-                                                      const UPLINK_APP_Waypoint_t *Second)
+static void UPLINK_APP_ParseWaypointWire(const uint8 *Raw, UPLINK_APP_Waypoint_t *Waypoint)
 {
-    const float SegmentDistance = UPLINK_APP_GetWaypointDistance(First, Second);
+    memset(Waypoint, 0, sizeof(*Waypoint));
 
-    return fabsf(SegmentDistance - UPLINK_APP_ROUTE_SEGMENT_DIST_M) <= UPLINK_APP_ROUTE_SEGMENT_DIST_TOL_M;
+    Waypoint->CmdType = Raw[0];
+    Waypoint->Param1  = UPLINK_APP_ReadFloatLE(&Raw[1]);
+    Waypoint->Param2  = UPLINK_APP_ReadFloatLE(&Raw[5]);
+    Waypoint->Param3  = UPLINK_APP_ReadFloatLE(&Raw[9]);
+    Waypoint->Param4  = UPLINK_APP_ReadFloatLE(&Raw[13]);
+    Waypoint->LatE7   = (int32)UPLINK_APP_ReadU32LE(&Raw[17]);
+    Waypoint->LonE7   = (int32)UPLINK_APP_ReadU32LE(&Raw[21]);
+    Waypoint->Z       = UPLINK_APP_ReadFloatLE(&Raw[25]);
 }
 
 bool UPLINK_APP_ParseRouteUpdatePayload(const UPLINK_APP_ProcessUplinkCmd_t *Cmd, UPLINK_APP_RouteUpdatePayload_t *Payload)
@@ -250,29 +239,30 @@ bool UPLINK_APP_ParseRouteUpdatePayload(const UPLINK_APP_ProcessUplinkCmd_t *Cmd
         return false;
     }
 
-    if ((size_t)Cmd->PayloadLength > sizeof(*Payload))
+    Payload->RouteType     = Cmd->Payload[0];
+    Payload->RouteVersion  = Cmd->Payload[1];
+    Payload->WaypointCount = Cmd->Payload[2]; /* index_or_count: REPLACE/ADD=count, DELETE/MODIFY=index */
+    Payload->Reserved      = Cmd->Payload[3];
+
+    /* route_version v1(구 REPLACE/APPEND/DELETE, 12바이트 waypoint)은 v2 파서로 오해석되면
+     * 안 되므로 명시적으로 거부한다. */
+    if (Payload->RouteVersion != UPLINK_APP_ROUTE_VERSION)
     {
         return false;
     }
-
-    memcpy(Payload, Cmd->Payload, Cmd->PayloadLength);
 
     if ((Payload->RouteType != UPLINK_APP_ROUTE_OP_REPLACE) &&
-        (Payload->RouteType != UPLINK_APP_ROUTE_OP_APPEND) &&
-        (Payload->RouteType != UPLINK_APP_ROUTE_OP_DELETE))
+        (Payload->RouteType != UPLINK_APP_ROUTE_OP_ADD) &&
+        (Payload->RouteType != UPLINK_APP_ROUTE_OP_DELETE) &&
+        (Payload->RouteType != UPLINK_APP_ROUTE_OP_MODIFY))
     {
         return false;
     }
 
-    if (Payload->WaypointCount == 0U)
-    {
-        return false;
-    }
-
-    /* DELETE: WaypointCount = number to remove from end; no waypoint payload. */
+    /* DELETE: index_or_count = 대상 인덱스, waypoint 데이터 없음(헤더 4바이트 고정). */
     if (Payload->RouteType == UPLINK_APP_ROUTE_OP_DELETE)
     {
-        if (Payload->WaypointCount > UPLINK_APP_ROUTE_MAX_WAYPOINTS)
+        if (Payload->WaypointCount >= UPLINK_APP_ROUTE_MAX_WAYPOINTS)
         {
             return false;
         }
@@ -283,12 +273,40 @@ bool UPLINK_APP_ParseRouteUpdatePayload(const UPLINK_APP_ProcessUplinkCmd_t *Cmd
         return true;
     }
 
-    if (Payload->WaypointCount > UPLINK_APP_ROUTE_MAX_WAYPOINTS)
+    /* MODIFY: index_or_count = 대상 인덱스, waypoint 1개(29바이트) 고정. */
+    if (Payload->RouteType == UPLINK_APP_ROUTE_OP_MODIFY)
+    {
+        if (Payload->WaypointCount >= UPLINK_APP_ROUTE_MAX_WAYPOINTS)
+        {
+            return false;
+        }
+        if ((size_t)Cmd->PayloadLength != (4U + ROUTE_WAYPOINT_WIRE_SIZE))
+        {
+            return false;
+        }
+
+        UPLINK_APP_ParseWaypointWire(&Cmd->Payload[4], &Payload->Waypoints[0]);
+
+        if (!UPLINK_APP_IsWaypointFinite(&Payload->Waypoints[0]))
+        {
+            return false;
+        }
+        if (!UPLINK_APP_IsWaypointAltitudeValid(&Payload->Waypoints[0]))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    /* REPLACE/ADD: index_or_count = N개(1 이상 MAX 이하), 와이어 크기는 항상
+     * ROUTE_WAYPOINT_WIRE_SIZE(29, 명시 상수)로 계산 — sizeof(ROUTE_WAYPOINT_t) 금지. */
+    if ((Payload->WaypointCount == 0U) || (Payload->WaypointCount > UPLINK_APP_ROUTE_MAX_WAYPOINTS))
     {
         return false;
     }
 
-    ExpectedLength = 4U + ((size_t)Payload->WaypointCount * sizeof(UPLINK_APP_Waypoint_t));
+    ExpectedLength = 4U + ((size_t)Payload->WaypointCount * ROUTE_WAYPOINT_WIRE_SIZE);
     if ((size_t)Cmd->PayloadLength != ExpectedLength)
     {
         return false;
@@ -296,29 +314,18 @@ bool UPLINK_APP_ParseRouteUpdatePayload(const UPLINK_APP_ProcessUplinkCmd_t *Cmd
 
     for (Index = 0; Index < Payload->WaypointCount; ++Index)
     {
-        const UPLINK_APP_Waypoint_t *Waypoint = &Payload->Waypoints[Index];
+        UPLINK_APP_Waypoint_t *Waypoint = &Payload->Waypoints[Index];
+
+        UPLINK_APP_ParseWaypointWire(&Cmd->Payload[4U + (Index * ROUTE_WAYPOINT_WIRE_SIZE)], Waypoint);
 
         if (!UPLINK_APP_IsWaypointFinite(Waypoint))
         {
             return false;
         }
 
-        if (!UPLINK_APP_IsWaypointInFlyableArea(Waypoint))
+        if (!UPLINK_APP_IsWaypointAltitudeValid(Waypoint))
         {
             return false;
-        }
-
-        if (UPLINK_APP_IsWaypointInNoFlyArea(Waypoint))
-        {
-            return false;
-        }
-
-        if (Index > 0U)
-        {
-            if (!UPLINK_APP_IsWaypointSegmentDistanceValid(&Payload->Waypoints[Index - 1U], Waypoint))
-            {
-                return false;
-            }
         }
     }
 

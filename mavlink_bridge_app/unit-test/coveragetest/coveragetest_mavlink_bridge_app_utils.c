@@ -63,40 +63,40 @@ void Test_UpdateFromHeartbeat_SystemStatus(void)
 }
 
 /* -----------------------------------------------------------------------
- * StartMissionUpload ARMED 차단 테스트
+ * StartMissionUpload ARMED 정책 테스트(BL-56, 2026-07-25: ARMED 차단 전면 폐지)
  * ----------------------------------------------------------------------- */
 
-/* ARMED 상태에서 mission upload → ARMED_WARN_EID 발생 후 차단 */
-void Test_StartMissionUpload_BlockedWhenArmed(void)
+/* ARMED 상태에서도 mission upload가 그대로 진행됨(차단 폐지 회귀 방지) */
+void Test_StartMissionUpload_AllowedWhenArmed(void)
 {
-    UT_CheckEvent_t Evt;
     MAVLINK_BRIDGE_APP_RouteUpdateMirror_t Msg;
 
     memset(&Msg, 0, sizeof(Msg));
-    Msg.WaypointCount = 2;
-    Msg.Waypoints[0].X = 1.0f; Msg.Waypoints[0].Y = 2.0f; Msg.Waypoints[0].Z = 3.0f;
+    Msg.RouteType      = 1U; /* REPLACE */
+    Msg.WaypointCount  = 2;
+    Msg.Waypoints[0].LatE7 = 10; Msg.Waypoints[0].LonE7 = 20; Msg.Waypoints[0].Z = 3.0f;
+    Msg.Waypoints[1].LatE7 = 30; Msg.Waypoints[1].LonE7 = 40; Msg.Waypoints[1].Z = 3.0f;
 
-    MAVLINK_BRIDGE_APP_Data.LinkState = MAVLINK_BRIDGE_LINK_CONNECTED;
-    MAVLINK_BRIDGE_APP_Data.IsArmed   = 1;
+    MAVLINK_BRIDGE_APP_Data.LinkState  = MAVLINK_BRIDGE_LINK_CONNECTED;
+    MAVLINK_BRIDGE_APP_Data.IsArmed    = 1;
     MAVLINK_BRIDGE_APP_Data.FcBaseMode = 0x80;
 
-    UT_CHECKEVENT_SETUP(&Evt, MAVLINK_BRIDGE_APP_ARMED_WARN_EID, NULL);
     MAVLINK_BRIDGE_APP_StartMissionUpload(&Msg);
 
-    UtAssert_INT32_EQ(Evt.MatchCount, 1);
-    /* upload 차단 — MissionUploadState는 변경되지 않아야 함 */
     UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionUploadState,
-                      (int32)MAVLINK_BRIDGE_MISSION_UPLOAD_IDLE);
+                      (int32)MAVLINK_BRIDGE_MISSION_UPLOAD_CLEARING);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount, 2);
 }
 
-/* DISARMED 상태에서 mission upload → 정상 진행 (CLEARING 상태로 전이) */
+/* DISARMED 상태에서도 동일하게 정상 진행(회귀 확인) */
 void Test_StartMissionUpload_AllowedWhenDisarmed(void)
 {
     MAVLINK_BRIDGE_APP_RouteUpdateMirror_t Msg;
 
     memset(&Msg, 0, sizeof(Msg));
-    Msg.WaypointCount = 2;
-    Msg.Waypoints[0].X = 1.0f; Msg.Waypoints[0].Y = 2.0f; Msg.Waypoints[0].Z = 3.0f;
+    Msg.RouteType      = 1U;
+    Msg.WaypointCount  = 2;
+    Msg.Waypoints[0].LatE7 = 1; Msg.Waypoints[0].LonE7 = 2; Msg.Waypoints[0].Z = 3.0f;
 
     MAVLINK_BRIDGE_APP_Data.LinkState = MAVLINK_BRIDGE_LINK_CONNECTED;
     MAVLINK_BRIDGE_APP_Data.IsArmed   = 0;
@@ -108,27 +108,25 @@ void Test_StartMissionUpload_AllowedWhenDisarmed(void)
     UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount, 2);
 }
 
-/* FC 링크 미연결 + ARMED → 링크 오류가 먼저 처리됨 */
-void Test_StartMissionUpload_LinkNotConnectedBeforeArmedCheck(void)
+/* FC 링크 미연결 → 링크 오류로 차단(ARMED 여부 무관) */
+void Test_StartMissionUpload_LinkNotConnected(void)
 {
     MAVLINK_BRIDGE_APP_RouteUpdateMirror_t Msg;
-    UT_CheckEvent_t Evt;
 
     memset(&Msg, 0, sizeof(Msg));
+    Msg.RouteType      = 1U;
+    Msg.WaypointCount  = 1;
     MAVLINK_BRIDGE_APP_Data.LinkState = MAVLINK_BRIDGE_LINK_DISCONNECTED;
     MAVLINK_BRIDGE_APP_Data.IsArmed   = 1;
 
-    UT_CHECKEVENT_SETUP(&Evt, MAVLINK_BRIDGE_APP_ARMED_WARN_EID, NULL);
     MAVLINK_BRIDGE_APP_StartMissionUpload(&Msg);
 
-    /* ARMED_WARN이 아니라 link not connected 오류여야 함 */
-    UtAssert_INT32_EQ(Evt.MatchCount, 0);
     UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionUploadState,
                       (int32)MAVLINK_BRIDGE_MISSION_UPLOAD_IDLE);
 }
 
 /* -----------------------------------------------------------------------
- * StartMissionUpload REPLACE / APPEND / DELETE 동작 테스트
+ * StartMissionUpload REPLACE / ADD / DELETE / MODIFY 동작 테스트(BL-56)
  * ----------------------------------------------------------------------- */
 
 /* REPLACE: pending에 새 waypoint 복사 */
@@ -139,8 +137,8 @@ void Test_StartMissionUpload_Replace(void)
     memset(&Msg, 0, sizeof(Msg));
     Msg.RouteType      = 1U; /* ROUTE_OP_REPLACE */
     Msg.WaypointCount  = 2;
-    Msg.Waypoints[0].X = 10.0f; Msg.Waypoints[0].Y = 20.0f; Msg.Waypoints[0].Z = 5.0f;
-    Msg.Waypoints[1].X = 30.0f; Msg.Waypoints[1].Y = 40.0f; Msg.Waypoints[1].Z = 5.0f;
+    Msg.Waypoints[0].LatE7 = 10; Msg.Waypoints[0].LonE7 = 20; Msg.Waypoints[0].Z = 5.0f;
+    Msg.Waypoints[1].LatE7 = 30; Msg.Waypoints[1].LonE7 = 40; Msg.Waypoints[1].Z = 5.0f;
 
     MAVLINK_BRIDGE_APP_Data.LinkState           = MAVLINK_BRIDGE_LINK_CONNECTED;
     MAVLINK_BRIDGE_APP_Data.IsArmed             = 0;
@@ -151,53 +149,55 @@ void Test_StartMissionUpload_Replace(void)
     UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionUploadState,
                       (int32)MAVLINK_BRIDGE_MISSION_UPLOAD_CLEARING);
     UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount, 2);
-    UtAssert_True(MAVLINK_BRIDGE_APP_Data.MissionPendingX[0] == 10.0f, "Pending[0].X == 10");
-    UtAssert_True(MAVLINK_BRIDGE_APP_Data.MissionPendingX[1] == 30.0f, "Pending[1].X == 30");
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionPendingLatE7[0], 10);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionPendingLatE7[1], 30);
 }
 
-/* APPEND: active + 새 waypoint 결합 */
-void Test_StartMissionUpload_Append(void)
+/* ADD: active 끝에 새 waypoint 추가(구 APPEND 개명, 중간 삽입 없음) */
+void Test_StartMissionUpload_Add(void)
 {
     MAVLINK_BRIDGE_APP_RouteUpdateMirror_t Msg;
 
     memset(&Msg, 0, sizeof(Msg));
-    Msg.RouteType      = 2U; /* ROUTE_OP_APPEND */
+    Msg.RouteType      = 2U; /* ROUTE_OP_ADD */
     Msg.WaypointCount  = 2;
-    Msg.Waypoints[0].X = 50.0f; Msg.Waypoints[0].Y = 0.0f; Msg.Waypoints[0].Z = 5.0f;
-    Msg.Waypoints[1].X = 60.0f; Msg.Waypoints[1].Y = 0.0f; Msg.Waypoints[1].Z = 5.0f;
+    Msg.Waypoints[0].LatE7 = 50; Msg.Waypoints[0].Z = 5.0f;
+    Msg.Waypoints[1].LatE7 = 60; Msg.Waypoints[1].Z = 5.0f;
 
     MAVLINK_BRIDGE_APP_Data.LinkState = MAVLINK_BRIDGE_LINK_CONNECTED;
     MAVLINK_BRIDGE_APP_Data.IsArmed   = 0;
     MAVLINK_BRIDGE_APP_Data.ActiveWaypointCount = 1;
-    MAVLINK_BRIDGE_APP_Data.ActiveWaypointX[0]  = 10.0f;
-    MAVLINK_BRIDGE_APP_Data.ActiveWaypointY[0]  = 0.0f;
-    MAVLINK_BRIDGE_APP_Data.ActiveWaypointZ[0]  = 5.0f;
+    MAVLINK_BRIDGE_APP_Data.ActiveWaypointLatE7[0] = 10;
+    MAVLINK_BRIDGE_APP_Data.ActiveWaypointZ[0]     = 5.0f;
+    MAVLINK_BRIDGE_APP_Data.ActiveResumeIndex      = 0;
 
     MAVLINK_BRIDGE_APP_StartMissionUpload(&Msg);
 
     UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount, 3);
-    UtAssert_True(MAVLINK_BRIDGE_APP_Data.MissionPendingX[0] == 10.0f, "Pending[0]=Active[0]");
-    UtAssert_True(MAVLINK_BRIDGE_APP_Data.MissionPendingX[1] == 50.0f, "Pending[1]=new[0]");
-    UtAssert_True(MAVLINK_BRIDGE_APP_Data.MissionPendingX[2] == 60.0f, "Pending[2]=new[1]");
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionPendingLatE7[0], 10);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionPendingLatE7[1], 50);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionPendingLatE7[2], 60);
+    /* ActiveResumeIndex는 ADD로 불변 */
+    UtAssert_INT32_EQ((int32)MAVLINK_BRIDGE_APP_Data.ActiveResumeIndex, 0);
 }
 
-/* APPEND: active + 새 waypoint 합산이 MAX 초과 → 잘라냄 */
-void Test_StartMissionUpload_AppendTruncated(void)
+/* ADD: active + 새 waypoint 합산이 MAX 초과 → 잘라냄 */
+void Test_StartMissionUpload_AddTruncated(void)
 {
     MAVLINK_BRIDGE_APP_RouteUpdateMirror_t Msg;
     uint8 i;
 
     memset(&Msg, 0, sizeof(Msg));
-    Msg.RouteType     = 2U; /* ROUTE_OP_APPEND */
+    Msg.RouteType     = 2U; /* ROUTE_OP_ADD */
     Msg.WaypointCount = 4;
-    for (i = 0; i < 4; i++) { Msg.Waypoints[i].X = (float)(i + 100); }
+    for (i = 0; i < 4; i++) { Msg.Waypoints[i].LatE7 = (int32)(i + 100); }
 
     MAVLINK_BRIDGE_APP_Data.LinkState           = MAVLINK_BRIDGE_LINK_CONNECTED;
     MAVLINK_BRIDGE_APP_Data.IsArmed             = 0;
     MAVLINK_BRIDGE_APP_Data.ActiveWaypointCount = (uint8)MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS - 1;
     for (i = 0; i < MAVLINK_BRIDGE_APP_Data.ActiveWaypointCount; i++)
     {
-        MAVLINK_BRIDGE_APP_Data.ActiveWaypointX[i] = (float)i;
+        MAVLINK_BRIDGE_APP_Data.ActiveWaypointLatE7[i] = (int32)i;
     }
 
     MAVLINK_BRIDGE_APP_StartMissionUpload(&Msg);
@@ -207,46 +207,118 @@ void Test_StartMissionUpload_AppendTruncated(void)
                       (int32)MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS);
 }
 
-/* DELETE: active 뒤에서 N개 제거 */
+/* DELETE(index): 대상 인덱스를 제거하고 뒤 인덱스를 당김 */
 void Test_StartMissionUpload_Delete(void)
 {
     MAVLINK_BRIDGE_APP_RouteUpdateMirror_t Msg;
 
     memset(&Msg, 0, sizeof(Msg));
     Msg.RouteType      = 3U; /* ROUTE_OP_DELETE */
-    Msg.WaypointCount  = 2;  /* 뒤에서 2개 삭제 */
+    Msg.WaypointCount  = 1;  /* index=1 삭제 */
 
-    MAVLINK_BRIDGE_APP_Data.LinkState           = MAVLINK_BRIDGE_LINK_CONNECTED;
-    MAVLINK_BRIDGE_APP_Data.IsArmed             = 0;
-    MAVLINK_BRIDGE_APP_Data.ActiveWaypointCount = 4;
-    MAVLINK_BRIDGE_APP_Data.ActiveWaypointX[0]  = 1.0f;
-    MAVLINK_BRIDGE_APP_Data.ActiveWaypointX[1]  = 2.0f;
-    MAVLINK_BRIDGE_APP_Data.ActiveWaypointX[2]  = 3.0f;
-    MAVLINK_BRIDGE_APP_Data.ActiveWaypointX[3]  = 4.0f;
+    MAVLINK_BRIDGE_APP_Data.LinkState              = MAVLINK_BRIDGE_LINK_CONNECTED;
+    MAVLINK_BRIDGE_APP_Data.IsArmed                = 0;
+    MAVLINK_BRIDGE_APP_Data.ActiveWaypointCount    = 4;
+    MAVLINK_BRIDGE_APP_Data.ActiveWaypointLatE7[0] = 1;
+    MAVLINK_BRIDGE_APP_Data.ActiveWaypointLatE7[1] = 2;
+    MAVLINK_BRIDGE_APP_Data.ActiveWaypointLatE7[2] = 3;
+    MAVLINK_BRIDGE_APP_Data.ActiveWaypointLatE7[3] = 4;
+    MAVLINK_BRIDGE_APP_Data.ActiveResumeIndex      = 3; /* index(1) < ActiveResumeIndex(3) */
 
     MAVLINK_BRIDGE_APP_StartMissionUpload(&Msg);
 
-    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount, 2);
-    UtAssert_True(MAVLINK_BRIDGE_APP_Data.MissionPendingX[0] == 1.0f, "Pending[0]=Active[0]");
-    UtAssert_True(MAVLINK_BRIDGE_APP_Data.MissionPendingX[1] == 2.0f, "Pending[1]=Active[1]");
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount, 3);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionPendingLatE7[0], 1);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionPendingLatE7[1], 3); /* index 1 제거, 뒤가 당겨짐 */
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionPendingLatE7[2], 4);
+    /* index < ActiveResumeIndex이므로 ActiveResumeIndex -= 1 */
+    UtAssert_INT32_EQ((int32)MAVLINK_BRIDGE_APP_Data.ActiveResumeIndex, 2);
 }
 
-/* DELETE: 삭제 수 >= active → WpCount=0 (CLEAR_ALL만) */
-void Test_StartMissionUpload_DeleteAll(void)
+/* DELETE(index): 범위 밖 인덱스 → 거부, MissionUploadState 불변 */
+void Test_StartMissionUpload_Delete_IndexOutOfRange(void)
 {
     MAVLINK_BRIDGE_APP_RouteUpdateMirror_t Msg;
 
     memset(&Msg, 0, sizeof(Msg));
-    Msg.RouteType     = 3U; /* ROUTE_OP_DELETE */
-    Msg.WaypointCount = 5;  /* active(3)보다 많음 */
+    Msg.RouteType      = 3U;
+    Msg.WaypointCount  = 5; /* active(3)보다 큼 */
 
     MAVLINK_BRIDGE_APP_Data.LinkState           = MAVLINK_BRIDGE_LINK_CONNECTED;
     MAVLINK_BRIDGE_APP_Data.IsArmed             = 0;
     MAVLINK_BRIDGE_APP_Data.ActiveWaypointCount = 3;
+    MAVLINK_BRIDGE_APP_Data.MissionUploadState  = (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_IDLE;
 
     MAVLINK_BRIDGE_APP_StartMissionUpload(&Msg);
 
-    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount, 0);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionUploadState,
+                      (int32)MAVLINK_BRIDGE_MISSION_UPLOAD_IDLE);
+}
+
+/* DELETE(index==ActiveResumeIndex) → 거부(진행 중인 목표점은 삭제 불가) */
+void Test_StartMissionUpload_Delete_RejectedWhenTargetIsActiveResumeIndex(void)
+{
+    MAVLINK_BRIDGE_APP_RouteUpdateMirror_t Msg;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.RouteType      = 3U; /* ROUTE_OP_DELETE */
+    Msg.WaypointCount  = 1;  /* index=1 */
+
+    MAVLINK_BRIDGE_APP_Data.LinkState           = MAVLINK_BRIDGE_LINK_CONNECTED;
+    MAVLINK_BRIDGE_APP_Data.IsArmed             = 0;
+    MAVLINK_BRIDGE_APP_Data.ActiveWaypointCount = 4;
+    MAVLINK_BRIDGE_APP_Data.ActiveResumeIndex   = 1; /* 삭제 대상과 동일 -> 거부 */
+    MAVLINK_BRIDGE_APP_Data.MissionUploadState  = (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_IDLE;
+
+    MAVLINK_BRIDGE_APP_StartMissionUpload(&Msg);
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionUploadState,
+                      (int32)MAVLINK_BRIDGE_MISSION_UPLOAD_IDLE);
+    /* ActiveResumeIndex도 그대로 유지 */
+    UtAssert_INT32_EQ((int32)MAVLINK_BRIDGE_APP_Data.ActiveResumeIndex, 1);
+}
+
+/* MODIFY(index): 전체 레코드(CmdType+Param+좌표) 덮어쓰기 — 좌표뿐 아니라 CmdType/Param도 교체 */
+void Test_StartMissionUpload_Modify_FullRecordOverwrite(void)
+{
+    MAVLINK_BRIDGE_APP_RouteUpdateMirror_t Msg;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.RouteType             = 4U; /* ROUTE_OP_MODIFY */
+    Msg.WaypointCount         = 1;  /* index=1 */
+    Msg.Waypoints[0].CmdType  = 17U; /* NAV_LOITER_UNLIM */
+    Msg.Waypoints[0].Param1   = 9.0f;
+    Msg.Waypoints[0].Param2   = 8.0f;
+    Msg.Waypoints[0].LatE7    = 999;
+    Msg.Waypoints[0].LonE7    = 888;
+    Msg.Waypoints[0].Z        = 6.0f;
+
+    MAVLINK_BRIDGE_APP_Data.LinkState                = MAVLINK_BRIDGE_LINK_CONNECTED;
+    MAVLINK_BRIDGE_APP_Data.IsArmed                  = 0;
+    MAVLINK_BRIDGE_APP_Data.ActiveWaypointCount      = 3;
+    MAVLINK_BRIDGE_APP_Data.ActiveWaypointCmdType[0] = 16U;
+    MAVLINK_BRIDGE_APP_Data.ActiveWaypointLatE7[0]   = 1;
+    MAVLINK_BRIDGE_APP_Data.ActiveWaypointCmdType[1] = 16U;
+    MAVLINK_BRIDGE_APP_Data.ActiveWaypointLatE7[1]   = 2;
+    MAVLINK_BRIDGE_APP_Data.ActiveWaypointCmdType[2] = 16U;
+    MAVLINK_BRIDGE_APP_Data.ActiveWaypointLatE7[2]   = 3;
+    MAVLINK_BRIDGE_APP_Data.ActiveResumeIndex        = 1; /* MODIFY는 ActiveResumeIndex 대상도 허용 */
+
+    MAVLINK_BRIDGE_APP_StartMissionUpload(&Msg);
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount, 3);
+    /* index 0, 2는 그대로 */
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionPendingLatE7[0], 1);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionPendingLatE7[2], 3);
+    /* index 1은 CmdType/Param/좌표 전부 교체 */
+    UtAssert_INT32_EQ((int32)MAVLINK_BRIDGE_APP_Data.MissionPendingCmdType[1], 17);
+    UtAssert_True(MAVLINK_BRIDGE_APP_Data.MissionPendingParam1[1] == 9.0f, "Param1 replaced");
+    UtAssert_True(MAVLINK_BRIDGE_APP_Data.MissionPendingParam2[1] == 8.0f, "Param2 replaced");
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionPendingLatE7[1], 999);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionPendingLonE7[1], 888);
+    UtAssert_True(MAVLINK_BRIDGE_APP_Data.MissionPendingZ[1] == 6.0f, "Z replaced");
+    /* ActiveResumeIndex는 MODIFY로 불변(대상이어도 허용) */
+    UtAssert_INT32_EQ((int32)MAVLINK_BRIDGE_APP_Data.ActiveResumeIndex, 1);
 }
 
 /* MISSION_ACK 성공 → Active 캐시 갱신 확인은 ParseMavlinkFrame 레벨에서
@@ -1260,8 +1332,9 @@ static void UT_SetGpsReference(int32 LatE7, int32 LonE7)
 }
 
 /* SendMissionItemInt가 GLOBAL_RELATIVE_ALT + lat/lon degE7로 인코딩하는지 확인.
- * §13.1 실측(ArduPilot이 LOCAL_NED 미션 아이템을 거부)에 따른 수정 검증 —
- * legacy MISSION_ITEM과 동일한 변환 공식을 그대로 재현해 기대값과 비교한다. */
+ * BL-56(2026-07-25): waypoint가 항상 절대좌표라 로컬->전역 변환이 사라졌으므로,
+ * 수신한 LatE7/LonE7을 그대로 MISSION_ITEM_INT에 기입하는지 직접 검증한다.
+ * 또한 offset 0~15(Param1~4)/30~31(CmdType)/35(current 플래그)도 함께 확인. */
 void Test_SendMissionItemInt_GlobalRelativeAltFrame(void)
 {
     uint8        ReqPayload[2];
@@ -1271,25 +1344,22 @@ void Test_SendMissionItemInt_GlobalRelativeAltFrame(void)
     size_t       CapLen;
     const uint8 *ItemPayload;
     uint8        ItemPayloadLen;
-    int32        RefLatE7 = 100000000; /* 10.0 deg */
-    int32        RefLonE7 = 1000000000; /* 100.0 deg */
-    float        WpX = 10.0f; /* local north, m */
-    float        WpY = 20.0f; /* local east, m */
-    float        WpZ = 5.0f;  /* relative altitude, m */
-    float        RefLatDeg, RefLonDeg, RefLatRad, DeltaLatDeg, DeltaLonDeg, ExpLat, ExpLon;
-    int32        ExpLatE7, ExpLonE7;
+    int32        WpLatE7 = 123456780;
+    int32        WpLonE7 = 987654320;
+    float        WpZ = 5.0f;
     int32        ActLatE7, ActLonE7;
-    float        ActAlt;
+    float        ActAlt, ActP1;
     uint16       ActSeq, ActCmd;
-    uint8        ActFrameByte;
+    uint8        ActFrameByte, ActCurrent;
 
-    UT_SetGpsReference(RefLatE7, RefLonE7);
-
-    MAVLINK_BRIDGE_APP_Data.MissionUploadState    = (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_ACTIVE;
-    MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount  = 1;
-    MAVLINK_BRIDGE_APP_Data.MissionPendingX[0]    = WpX;
-    MAVLINK_BRIDGE_APP_Data.MissionPendingY[0]    = WpY;
-    MAVLINK_BRIDGE_APP_Data.MissionPendingZ[0]    = WpZ;
+    MAVLINK_BRIDGE_APP_Data.MissionUploadState        = (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_ACTIVE;
+    MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount      = 1;
+    MAVLINK_BRIDGE_APP_Data.ActiveResumeIndex         = 0; /* seq 0 == ActiveResumeIndex -> current=1 */
+    MAVLINK_BRIDGE_APP_Data.MissionPendingCmdType[0]  = 16U; /* NAV_WAYPOINT */
+    MAVLINK_BRIDGE_APP_Data.MissionPendingParam1[0]   = 3.5f;
+    MAVLINK_BRIDGE_APP_Data.MissionPendingLatE7[0]    = WpLatE7;
+    MAVLINK_BRIDGE_APP_Data.MissionPendingLonE7[0]    = WpLonE7;
+    MAVLINK_BRIDGE_APP_Data.MissionPendingZ[0]        = WpZ;
 
     UT_WriteU16LE(&ReqPayload[0], 0U); /* seq=0 */
     ReqLen = UT_BuildMavFrameGeneric(ReqFrame, (uint8)UT_MISSION_REQUEST_INT_MSGID,
@@ -1304,32 +1374,80 @@ void Test_SendMissionItemInt_GlobalRelativeAltFrame(void)
         return;
     }
 
-    /* legacy MISSION_ITEM과 동일한 변환 공식을 재현해 기대값 산출 (하드코딩 상수 대신
-     * 같은 수식으로 계산 — float 반올림 경로 일치, tolerance만 소폭 허용) */
-    RefLatDeg   = (float)RefLatE7 / 1e7f;
-    RefLonDeg   = (float)RefLonE7 / 1e7f;
-    RefLatRad   = RefLatDeg * UT_DEG_TO_RAD;
-    DeltaLatDeg = WpX / UT_EARTH_RADIUS_M * UT_RAD_TO_DEG;
-    DeltaLonDeg = WpY / (UT_EARTH_RADIUS_M * cosf(RefLatRad)) * UT_RAD_TO_DEG;
-    ExpLat      = RefLatDeg + DeltaLatDeg;
-    ExpLon      = RefLonDeg + DeltaLonDeg;
-    ExpLatE7    = (int32)(ExpLat * 1e7f);
-    ExpLonE7    = (int32)(ExpLon * 1e7f);
-
+    ActP1        = UT_ReadFloatLE(&ItemPayload[0]);
     ActLatE7     = (int32)UT_ReadU32LE(&ItemPayload[16]);
     ActLonE7     = (int32)UT_ReadU32LE(&ItemPayload[20]);
     ActAlt       = UT_ReadFloatLE(&ItemPayload[24]);
     ActSeq       = UT_ReadU16LE(&ItemPayload[28]);
     ActCmd       = UT_ReadU16LE(&ItemPayload[30]);
     ActFrameByte = ItemPayload[34];
+    ActCurrent   = ItemPayload[35];
 
     /* 핵심 회귀 방지: LOCAL_NED(1)가 아니라 GLOBAL_RELATIVE_ALT(3)여야 함 */
     UtAssert_INT32_EQ((int32)ActFrameByte, 3);
-    UtAssert_True(abs((int)(ActLatE7 - ExpLatE7)) <= 2, "lat degE7 matches formula (tol=2)");
-    UtAssert_True(abs((int)(ActLonE7 - ExpLonE7)) <= 2, "lon degE7 matches formula (tol=2)");
-    UtAssert_True(ActAlt == WpZ, "alt no sign flip (GLOBAL_RELATIVE_ALT is already altitude-positive)");
+    UtAssert_INT32_EQ(ActLatE7, WpLatE7);
+    UtAssert_INT32_EQ(ActLonE7, WpLonE7);
+    UtAssert_True(ActAlt == WpZ, "alt passthrough, always-absolute now");
+    UtAssert_True(ActP1 == 3.5f, "Param1 encoded at offset 0");
     UtAssert_INT32_EQ((int32)ActSeq, 0);
-    UtAssert_INT32_EQ((int32)ActCmd, 16); /* MAV_CMD_NAV_WAYPOINT */
+    UtAssert_INT32_EQ((int32)ActCmd, 16); /* CmdType 그대로 전달 */
+    UtAssert_INT32_EQ((int32)ActCurrent, 1); /* seq(0) == ActiveResumeIndex(0) */
+}
+
+/* current 플래그는 ActiveResumeIndex에 해당하는 seq에만 1, 나머지는 0 */
+void Test_SendMissionItemInt_CurrentFlagOnlyOnActiveResumeIndex(void)
+{
+    uint8        ReqPayload[2];
+    uint8        ReqFrame[16];
+    uint8        OutBuf[256];
+    size_t       ReqLen;
+    size_t       CapLen;
+    const uint8 *ItemPayload;
+    uint8        ItemPayloadLen;
+
+    MAVLINK_BRIDGE_APP_Data.MissionUploadState   = (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_ACTIVE;
+    MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount = 3;
+    MAVLINK_BRIDGE_APP_Data.ActiveResumeIndex    = 2;
+
+    /* seq=1 (ActiveResumeIndex가 아님) -> current=0 */
+    UT_WriteU16LE(&ReqPayload[0], 1U);
+    ReqLen = UT_BuildMavFrameGeneric(ReqFrame, (uint8)UT_MISSION_REQUEST_INT_MSGID,
+                                     (uint8)UT_MISSION_REQUEST_INT_CRC_EXTRA, ReqPayload, sizeof(ReqPayload));
+    CapLen = UT_FeedSerialCaptureTx(ReqFrame, ReqLen, OutBuf, sizeof(OutBuf));
+    ItemPayload = UT_FindMavFrame(OutBuf, CapLen, (uint8)UT_MISSION_ITEM_INT_MSGID, &ItemPayloadLen);
+    UtAssert_True(ItemPayload != NULL, "seq=1 MISSION_ITEM_INT frame captured");
+    if (ItemPayload != NULL)
+    {
+        UtAssert_INT32_EQ((int32)ItemPayload[35], 0);
+    }
+
+    /* seq=2 (ActiveResumeIndex) -> current=1 */
+    UT_WriteU16LE(&ReqPayload[0], 2U);
+    ReqLen = UT_BuildMavFrameGeneric(ReqFrame, (uint8)UT_MISSION_REQUEST_INT_MSGID,
+                                     (uint8)UT_MISSION_REQUEST_INT_CRC_EXTRA, ReqPayload, sizeof(ReqPayload));
+    CapLen = UT_FeedSerialCaptureTx(ReqFrame, ReqLen, OutBuf, sizeof(OutBuf));
+    ItemPayload = UT_FindMavFrame(OutBuf, CapLen, (uint8)UT_MISSION_ITEM_INT_MSGID, &ItemPayloadLen);
+    UtAssert_True(ItemPayload != NULL, "seq=2 MISSION_ITEM_INT frame captured");
+    if (ItemPayload != NULL)
+    {
+        UtAssert_INT32_EQ((int32)ItemPayload[35], 1);
+    }
+}
+
+/* MISSION_CURRENT(msg #42) 파싱 -> ActiveResumeIndex 갱신 */
+void Test_MissionCurrent_UpdatesActiveResumeIndex(void)
+{
+    uint8  Payload[2];
+    uint8  Frame[16];
+    size_t Len;
+
+    MAVLINK_BRIDGE_APP_Data.ActiveResumeIndex = 0;
+
+    UT_WriteU16LE(&Payload[0], 5U);
+    Len = UT_BuildMavFrameGeneric(Frame, 42U, 28U, Payload, sizeof(Payload));
+    UT_FeedSerial(Frame, Len);
+
+    UtAssert_INT32_EQ((int32)MAVLINK_BRIDGE_APP_Data.ActiveResumeIndex, 5);
 }
 
 /* -----------------------------------------------------------------------
@@ -1678,9 +1796,9 @@ void Test_UploadComplete_TriggersReadback(void)
     MAVLINK_BRIDGE_APP_Data.MissionUploadState   = (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_ACTIVE;
     MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount = 1U;
     MAVLINK_BRIDGE_APP_Data.MissionDownloadState = (uint8)MAVLINK_BRIDGE_MISSION_DOWNLOAD_IDLE;
-    MAVLINK_BRIDGE_APP_Data.MissionPendingX[0]   = 1.0f;
-    MAVLINK_BRIDGE_APP_Data.MissionPendingY[0]   = 2.0f;
-    MAVLINK_BRIDGE_APP_Data.MissionPendingZ[0]   = 3.0f;
+    MAVLINK_BRIDGE_APP_Data.MissionPendingLatE7[0] = 1;
+    MAVLINK_BRIDGE_APP_Data.MissionPendingLonE7[0] = 2;
+    MAVLINK_BRIDGE_APP_Data.MissionPendingZ[0]     = 3.0f;
 
     memset(AckPayload, 0, sizeof(AckPayload)); /* [2]=0 → MAV_MISSION_ACCEPTED */
     AckLen = UT_BuildMavFrameGeneric(AckFrame, (uint8)UT_MISSION_ACK_MSGID,
@@ -1696,7 +1814,8 @@ void Test_UploadComplete_TriggersReadback(void)
     UtAssert_True(Frame != NULL, "MISSION_REQUEST_LIST sent after upload complete");
 }
 
-/* 다운로드 완료 → 항목 역변환 버퍼링 + 0x1914 게시 (트리거 3 공통 완료 경로) */
+/* 다운로드 완료 → 항목 그대로(절대좌표) 버퍼링 + 0x1914 게시 (트리거 3 공통 완료 경로).
+ * BL-56(2026-07-25): 로컬 역변환이 없어져 수신값이 그대로 캐시에 반영되는지 검증. */
 void Test_DownloadComplete_PublishesReadbackMid(void)
 {
     uint8  CountPayload[2];
@@ -1705,15 +1824,10 @@ void Test_DownloadComplete_PublishesReadbackMid(void)
     uint8  ItemFrame[64];
     uint8  OutBuf[512];
     size_t Len;
-    int32  RefLatE7 = 100000000;  /* 10.0 deg */
-    int32  RefLonE7 = 1000000000; /* 100.0 deg */
-    float  ExpX = 10.0f, ExpY = 20.0f, ExpZ = 5.0f;
-    float  RefLatDeg, RefLonDeg, RefLatRad, WpLatDeg, WpLonDeg;
-    int32  LatE7, LonE7;
+    int32  ExpLatE7 = 123456780, ExpLonE7 = 987654320;
+    float  ExpZ = 5.0f, ExpP1 = 7.5f;
     uint32 TxCountBefore;
     uint32 FloatBits;
-
-    UT_SetGpsReference(RefLatE7, RefLonE7);
 
     MAVLINK_BRIDGE_APP_Data.LinkState                = (uint8)MAVLINK_BRIDGE_LINK_CONNECTED;
     MAVLINK_BRIDGE_APP_Data.MissionDownloadState     = (uint8)MAVLINK_BRIDGE_MISSION_DOWNLOAD_WAIT_COUNT;
@@ -1729,18 +1843,11 @@ void Test_DownloadComplete_PublishesReadbackMid(void)
     UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionDownloadState,
                       (int32)MAVLINK_BRIDGE_MISSION_DOWNLOAD_WAIT_ITEM);
 
-    /* MISSION_ITEM_INT: 로컬 (10,20,5)m에 해당하는 lat/lon degE7 (업로드 순변환 재현) */
-    RefLatDeg = (float)RefLatE7 / 1e7f;
-    RefLonDeg = (float)RefLonE7 / 1e7f;
-    RefLatRad = RefLatDeg * UT_DEG_TO_RAD;
-    WpLatDeg  = RefLatDeg + ExpX / UT_EARTH_RADIUS_M * UT_RAD_TO_DEG;
-    WpLonDeg  = RefLonDeg + ExpY / (UT_EARTH_RADIUS_M * cosf(RefLatRad)) * UT_RAD_TO_DEG;
-    LatE7     = (int32)(WpLatDeg * 1e7f);
-    LonE7     = (int32)(WpLonDeg * 1e7f);
-
     memset(ItemPayload, 0, sizeof(ItemPayload));
-    UT_WriteU32LE(&ItemPayload[16], (uint32)LatE7);
-    UT_WriteU32LE(&ItemPayload[20], (uint32)LonE7);
+    memcpy(&FloatBits, &ExpP1, sizeof(FloatBits));
+    UT_WriteU32LE(&ItemPayload[0], FloatBits); /* Param1 */
+    UT_WriteU32LE(&ItemPayload[16], (uint32)ExpLatE7);
+    UT_WriteU32LE(&ItemPayload[20], (uint32)ExpLonE7);
     memcpy(&FloatBits, &ExpZ, sizeof(FloatBits));
     UT_WriteU32LE(&ItemPayload[24], FloatBits);
     UT_WriteU16LE(&ItemPayload[28], 0U);  /* seq */
@@ -1757,15 +1864,12 @@ void Test_DownloadComplete_PublishesReadbackMid(void)
     UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.FcMissionReadbackTlm.WaypointCount, 1);
     UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.FcMissionReadbackTlm.RouteType, 1);
     UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.FcMissionReadbackTlm.SourceSequence, 0);
-    /* 역변환 왕복 오차 허용 0.5m (float degE7 반올림 경유) */
-    UtAssert_True(fabsf(MAVLINK_BRIDGE_APP_Data.FcMissionReadbackTlm.Waypoints[0].X - ExpX) < 0.5f,
-                  "wp X roundtrip (%.3f ~ %.3f)",
-                  (double)MAVLINK_BRIDGE_APP_Data.FcMissionReadbackTlm.Waypoints[0].X, (double)ExpX);
-    UtAssert_True(fabsf(MAVLINK_BRIDGE_APP_Data.FcMissionReadbackTlm.Waypoints[0].Y - ExpY) < 0.5f,
-                  "wp Y roundtrip (%.3f ~ %.3f)",
-                  (double)MAVLINK_BRIDGE_APP_Data.FcMissionReadbackTlm.Waypoints[0].Y, (double)ExpY);
-    UtAssert_True(fabsf(MAVLINK_BRIDGE_APP_Data.FcMissionReadbackTlm.Waypoints[0].Z - ExpZ) < 0.001f,
-                  "wp Z passthrough");
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.FcMissionReadbackTlm.Waypoints[0].LatE7, ExpLatE7);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.FcMissionReadbackTlm.Waypoints[0].LonE7, ExpLonE7);
+    UtAssert_True(MAVLINK_BRIDGE_APP_Data.FcMissionReadbackTlm.Waypoints[0].Z == ExpZ, "wp Z passthrough");
+    UtAssert_True(MAVLINK_BRIDGE_APP_Data.FcMissionReadbackTlm.Waypoints[0].Param1 == ExpP1,
+                  "wp Param1 passthrough");
+    UtAssert_INT32_EQ((int32)MAVLINK_BRIDGE_APP_Data.FcMissionReadbackTlm.Waypoints[0].CmdType, 16);
     UtAssert_True(UT_GetStubCount(UT_KEY(CFE_SB_TransmitMsg)) > TxCountBefore,
                   "FC_MISSION_READBACK_MID published on download complete");
 }
@@ -2077,14 +2181,16 @@ void UtTest_Setup(void)
     ADD_TEST(UpdateFromHeartbeat_OtherBitsIgnored);
     ADD_TEST(UpdateFromHeartbeat_StateTransition);
     ADD_TEST(UpdateFromHeartbeat_SystemStatus);
-    ADD_TEST(StartMissionUpload_BlockedWhenArmed);
+    ADD_TEST(StartMissionUpload_AllowedWhenArmed);
     ADD_TEST(StartMissionUpload_AllowedWhenDisarmed);
-    ADD_TEST(StartMissionUpload_LinkNotConnectedBeforeArmedCheck);
+    ADD_TEST(StartMissionUpload_LinkNotConnected);
     ADD_TEST(StartMissionUpload_Replace);
-    ADD_TEST(StartMissionUpload_Append);
-    ADD_TEST(StartMissionUpload_AppendTruncated);
+    ADD_TEST(StartMissionUpload_Add);
+    ADD_TEST(StartMissionUpload_AddTruncated);
     ADD_TEST(StartMissionUpload_Delete);
-    ADD_TEST(StartMissionUpload_DeleteAll);
+    ADD_TEST(StartMissionUpload_Delete_IndexOutOfRange);
+    ADD_TEST(StartMissionUpload_Delete_RejectedWhenTargetIsActiveResumeIndex);
+    ADD_TEST(StartMissionUpload_Modify_FullRecordOverwrite);
     ADD_TEST(MissionQuery_LinkNotConnected);
     ADD_TEST(MissionQuery_Connected);
     ADD_TEST(MissionQuery_LengthCheckFail);
@@ -2132,6 +2238,8 @@ void UtTest_Setup(void)
     ADD_TEST(SysTime_ZeroClockIgnored);
     ADD_TEST(SysTime_CrcFail);
     ADD_TEST(SendMissionItemInt_GlobalRelativeAltFrame);
+    ADD_TEST(SendMissionItemInt_CurrentFlagOnlyOnActiveResumeIndex);
+    ADD_TEST(MissionCurrent_UpdatesActiveResumeIndex);
     ADD_TEST(PublishAttitude_NaNRejected);
     ADD_TEST(PublishEkfLocal_InfRejected);
     ADD_TEST(PublishAttitude_FiniteValuesAccepted);

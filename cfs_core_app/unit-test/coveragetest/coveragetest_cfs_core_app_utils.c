@@ -207,12 +207,15 @@ void Test_CFS_CORE_APP_UpdateHealth_AttitudeTimeout(void)
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.FaultCode, CFS_CORE_APP_FAULT_ATTITUDE_TIMEOUT);
 }
 
+/* route_op=REPLACE(1): payload가 전체 목록이므로 ROUTE_UPDATE_MID 수신 즉시
+ * MissionRoute 캐시와 HK 카운터를 함께 갱신한다(spec §18.4.6.2 캐시 갱신 정책). */
 void Test_CFS_CORE_APP_ProcessStateMessage_RouteUpdate(void)
 {
     uint8                        Storage[sizeof(CFS_CORE_APP_RouteUpdateTlm_t)];
     CFE_SB_Buffer_t             *Buffer;
     CFE_SB_MsgId_t               MsgId;
     CFS_CORE_APP_RouteUpdateTlm_t *RouteMsg;
+    uint32                         PrevUpdateCount;
 
     memset(Storage, 0, sizeof(Storage));
     Buffer   = (CFE_SB_Buffer_t *)Storage;
@@ -220,16 +223,20 @@ void Test_CFS_CORE_APP_ProcessStateMessage_RouteUpdate(void)
     CFE_MSG_Init(CFE_MSG_PTR(RouteMsg->TelemetryHeader), CFE_SB_ValueToMsgId(ROUTE_UPDATE_MID), sizeof(*RouteMsg));
     MsgId = CFE_SB_ValueToMsgId(ROUTE_UPDATE_MID);
     UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+    memset(&CFS_CORE_APP_Data.MissionRoute, 0, sizeof(CFS_CORE_APP_Data.MissionRoute));
+    PrevUpdateCount = CFS_CORE_APP_Data.MissionRoute.UpdateCount;
     RouteMsg->TimestampMs   = 1234;
     RouteMsg->SourceSequence = 55;
-    RouteMsg->RouteType     = 1;
+    RouteMsg->RouteType     = 1; /* route_op REPLACE */
     RouteMsg->RouteVersion  = 2;
     RouteMsg->WaypointCount = 2;
-    RouteMsg->Waypoints[0].X = 1.0f;
-    RouteMsg->Waypoints[0].Y = 2.0f;
+    RouteMsg->Waypoints[0].CmdType = 16;
+    RouteMsg->Waypoints[0].LatE7 = 100;
+    RouteMsg->Waypoints[0].LonE7 = 200;
     RouteMsg->Waypoints[0].Z = 3.0f;
-    RouteMsg->Waypoints[1].X = 4.0f;
-    RouteMsg->Waypoints[1].Y = 5.0f;
+    RouteMsg->Waypoints[1].CmdType = 16;
+    RouteMsg->Waypoints[1].LatE7 = 400;
+    RouteMsg->Waypoints[1].LonE7 = 500;
     RouteMsg->Waypoints[1].Z = 4.0f;
 
     CFS_CORE_APP_ProcessStateMessage(Buffer);
@@ -237,6 +244,10 @@ void Test_CFS_CORE_APP_ProcessStateMessage_RouteUpdate(void)
     UtAssert_BOOL_TRUE(CFS_CORE_APP_Data.MissionRoute.Valid);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.MissionRoute.RouteVersion, 2);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.MissionRoute.WaypointCount, 2);
+    UtAssert_True(CFS_CORE_APP_Data.MissionRoute.Waypoints[0].LatE7 == 100, "wp0.LatE7 from REPLACE");
+    UtAssert_True(CFS_CORE_APP_Data.MissionRoute.Waypoints[1].LonE7 == 500, "wp1.LonE7 from REPLACE");
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.MissionRoute.UpdateCount, (int32)PrevUpdateCount + 1);
+    UtAssert_INT32_EQ((int32)CFS_CORE_APP_Data.MissionRoute.TimestampMs, 1234);
 }
 
 /* BL-41 route: FC_MISSION_READBACK_MID(0x1914) 수신 → MissionRoute 캐시
@@ -260,11 +271,13 @@ void Test_CFS_CORE_APP_ProcessStateMessage_FcReadback_UpdatesMissionRoute(void)
     RouteMsg->RouteType      = 1;   /* MISSION 고정 */
     RouteMsg->RouteVersion   = 0;
     RouteMsg->WaypointCount  = 2;
-    RouteMsg->Waypoints[0].X = 10.0f;
-    RouteMsg->Waypoints[0].Y = 20.0f;
+    RouteMsg->Waypoints[0].CmdType = 16;
+    RouteMsg->Waypoints[0].LatE7 = 10;
+    RouteMsg->Waypoints[0].LonE7 = 20;
     RouteMsg->Waypoints[0].Z = 5.0f;
-    RouteMsg->Waypoints[1].X = 30.0f;
-    RouteMsg->Waypoints[1].Y = 40.0f;
+    RouteMsg->Waypoints[1].CmdType = 16;
+    RouteMsg->Waypoints[1].LatE7 = 30;
+    RouteMsg->Waypoints[1].LonE7 = 40;
     RouteMsg->Waypoints[1].Z = 5.0f;
 
     memset(&CFS_CORE_APP_Data.MissionRoute, 0, sizeof(CFS_CORE_APP_Data.MissionRoute));
@@ -273,8 +286,9 @@ void Test_CFS_CORE_APP_ProcessStateMessage_FcReadback_UpdatesMissionRoute(void)
 
     UtAssert_BOOL_TRUE(CFS_CORE_APP_Data.MissionRoute.Valid);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.MissionRoute.WaypointCount, 2);
-    UtAssert_True(CFS_CORE_APP_Data.MissionRoute.Waypoints[0].X == 10.0f, "wp0.X from FC readback");
-    UtAssert_True(CFS_CORE_APP_Data.MissionRoute.Waypoints[1].Y == 40.0f, "wp1.Y from FC readback");
+    UtAssert_True(CFS_CORE_APP_Data.MissionRoute.Waypoints[0].LatE7 == 10, "wp0.LatE7 from FC readback");
+    UtAssert_True(CFS_CORE_APP_Data.MissionRoute.Waypoints[1].LonE7 == 40, "wp1.LonE7 from FC readback");
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.MissionRoute.UpdateCount, 1);
 }
 
 /* FC readback은 LandingRoute를 건드리지 않는다 (RouteType 무관 MissionRoute 고정) */
@@ -293,7 +307,7 @@ void Test_CFS_CORE_APP_ProcessStateMessage_FcReadback_LandingUntouched(void)
     UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
     RouteMsg->RouteType     = CFS_CORE_APP_ROUTE_SEGMENT_LANDING; /* 악의적/오류 값이라도 */
     RouteMsg->WaypointCount = 1;
-    RouteMsg->Waypoints[0].X = 99.0f;
+    RouteMsg->Waypoints[0].LatE7 = 99;
 
     memset(&CFS_CORE_APP_Data.MissionRoute, 0, sizeof(CFS_CORE_APP_Data.MissionRoute));
     memset(&CFS_CORE_APP_Data.LandingRoute, 0, sizeof(CFS_CORE_APP_Data.LandingRoute));
@@ -304,12 +318,29 @@ void Test_CFS_CORE_APP_ProcessStateMessage_FcReadback_LandingUntouched(void)
     UtAssert_BOOL_FALSE(CFS_CORE_APP_Data.LandingRoute.Valid);
 }
 
-void Test_CFS_CORE_APP_ProcessStateMessage_LandingRouteUpdate(void)
+/* BL-61(2026-07-25): route_op=ADD(2) — payload가 신규분뿐(전체 목록이 아님)이라
+ * ROUTE_UPDATE_MID 수신 즉시로는 MissionRoute.Waypoints/WaypointCount, HK 카운터
+ * 모두 건드리지 않아야 한다(spec §18.4.6.2 캐시 갱신 정책). route_op=2는 옛
+ * CFS_CORE_APP_ROUTE_SEGMENT_LANDING(=2)과 값이 겹치므로, 이 테스트는 그 회귀도
+ * 함께 잡는다 — 옛 코드였다면 이 payload가 LandingRoute로 오분류돼 반영됐을 것. */
+void Test_CFS_CORE_APP_ProcessStateMessage_RouteAdd_DoesNotMutateCache(void)
 {
     uint8                          Storage[sizeof(CFS_CORE_APP_RouteUpdateTlm_t)];
     CFE_SB_Buffer_t               *Buffer;
     CFE_SB_MsgId_t                 MsgId;
     CFS_CORE_APP_RouteUpdateTlm_t *RouteMsg;
+    uint32                         PrevWaypointCount;
+    uint32                         PrevUpdateCount;
+    uint32                         PrevMissionTs;
+
+    memset(&CFS_CORE_APP_Data.MissionRoute, 0, sizeof(CFS_CORE_APP_Data.MissionRoute));
+    memset(&CFS_CORE_APP_Data.LandingRoute, 0, sizeof(CFS_CORE_APP_Data.LandingRoute));
+    CFS_CORE_APP_Data.MissionRoute.WaypointCount = 3; /* 기존 캐시(3개짜리) */
+    CFS_CORE_APP_Data.MissionRoute.UpdateCount   = 5;
+    CFS_CORE_APP_Data.MissionRoute.TimestampMs   = 111;
+    PrevWaypointCount = CFS_CORE_APP_Data.MissionRoute.WaypointCount;
+    PrevUpdateCount   = CFS_CORE_APP_Data.MissionRoute.UpdateCount;
+    PrevMissionTs     = CFS_CORE_APP_Data.MissionRoute.TimestampMs;
 
     memset(Storage, 0, sizeof(Storage));
     Buffer   = (CFE_SB_Buffer_t *)Storage;
@@ -319,18 +350,68 @@ void Test_CFS_CORE_APP_ProcessStateMessage_LandingRouteUpdate(void)
     UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
     RouteMsg->TimestampMs    = 4321;
     RouteMsg->SourceSequence = 66;
-    RouteMsg->RouteType      = CFS_CORE_APP_ROUTE_SEGMENT_LANDING;
-    RouteMsg->RouteVersion   = 3;
-    RouteMsg->WaypointCount  = 1;
-    RouteMsg->Waypoints[0].X = 9.0f;
-    RouteMsg->Waypoints[0].Y = 8.0f;
+    RouteMsg->RouteType      = 2; /* route_op ADD */
+    RouteMsg->RouteVersion   = 2;
+    RouteMsg->WaypointCount  = 1; /* 신규분 1개(전체 목록 아님) */
+    RouteMsg->Waypoints[0].CmdType = 16;
+    RouteMsg->Waypoints[0].LatE7 = 9;
+    RouteMsg->Waypoints[0].LonE7 = 8;
     RouteMsg->Waypoints[0].Z = 3.0f;
 
     CFS_CORE_APP_ProcessStateMessage(Buffer);
 
-    UtAssert_BOOL_TRUE(CFS_CORE_APP_Data.LandingRoute.Valid);
-    UtAssert_INT32_EQ(CFS_CORE_APP_Data.LandingRoute.RouteVersion, 3);
-    UtAssert_INT32_EQ(CFS_CORE_APP_Data.LandingRoute.WaypointCount, 1);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.MissionRoute.WaypointCount, (int32)PrevWaypointCount);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.MissionRoute.UpdateCount, (int32)PrevUpdateCount);
+    UtAssert_INT32_EQ((int32)CFS_CORE_APP_Data.MissionRoute.TimestampMs, (int32)PrevMissionTs);
+    UtAssert_BOOL_FALSE(CFS_CORE_APP_Data.LandingRoute.Valid);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.HkTlm.RouteUpdateCount, 0);
+}
+
+/* ADD 후 뒤이은 FC_MISSION_READBACK_MID가 최종 상태로 캐시와 HK 카운터를
+ * 함께 확정 갱신한다(spec §18.4.6.2). */
+void Test_CFS_CORE_APP_ProcessStateMessage_RouteAdd_ThenFcReadback_Confirms(void)
+{
+    uint8                          Storage[sizeof(CFS_CORE_APP_RouteUpdateTlm_t)];
+    CFE_SB_Buffer_t               *Buffer;
+    CFE_SB_MsgId_t                 MsgId;
+    CFS_CORE_APP_RouteUpdateTlm_t *RouteMsg;
+
+    memset(&CFS_CORE_APP_Data.MissionRoute, 0, sizeof(CFS_CORE_APP_Data.MissionRoute));
+    CFS_CORE_APP_Data.MissionRoute.WaypointCount = 3;
+
+    /* 1) ADD 수신 — 캐시 미변경(위 테스트와 동일 전제) */
+    memset(Storage, 0, sizeof(Storage));
+    Buffer   = (CFE_SB_Buffer_t *)Storage;
+    RouteMsg = (CFS_CORE_APP_RouteUpdateTlm_t *)Storage;
+    CFE_MSG_Init(CFE_MSG_PTR(RouteMsg->TelemetryHeader), CFE_SB_ValueToMsgId(ROUTE_UPDATE_MID), sizeof(*RouteMsg));
+    MsgId = CFE_SB_ValueToMsgId(ROUTE_UPDATE_MID);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+    RouteMsg->RouteType     = 2; /* route_op ADD */
+    RouteMsg->WaypointCount = 1;
+    RouteMsg->Waypoints[0].LatE7 = 9;
+    CFS_CORE_APP_ProcessStateMessage(Buffer);
+
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.MissionRoute.WaypointCount, 3);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.MissionRoute.UpdateCount, 0);
+
+    /* 2) 뒤이은 FC_MISSION_READBACK_MID — 4개짜리 확정 최종 상태로 갱신 */
+    memset(Storage, 0, sizeof(Storage));
+    CFE_MSG_Init(CFE_MSG_PTR(RouteMsg->TelemetryHeader), CFE_SB_ValueToMsgId(FC_MISSION_READBACK_MID), sizeof(*RouteMsg));
+    MsgId = CFE_SB_ValueToMsgId(FC_MISSION_READBACK_MID);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+    RouteMsg->TimestampMs   = 9999;
+    RouteMsg->RouteType     = 1;
+    RouteMsg->WaypointCount = 4;
+    RouteMsg->Waypoints[3].LatE7 = 9;
+
+    CFS_CORE_APP_ProcessStateMessage(Buffer);
+
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.MissionRoute.WaypointCount, 4);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.MissionRoute.UpdateCount, 1);
+    UtAssert_True(CFS_CORE_APP_Data.MissionRoute.Waypoints[3].LatE7 == 9, "wp3.LatE7 confirmed via readback");
+
+    CFS_CORE_APP_ReportHousekeeping();
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.HkTlm.RouteUpdateCount, 1);
 }
 
 void Test_CFS_CORE_APP_ProcessStateMessage_BridgeHk(void)
@@ -3077,8 +3158,8 @@ void Test_CFS_CORE_APP_ProcessDiagnosticCommand_RouteReadback(void)
 
     memset(&CFS_CORE_APP_Data, 0, sizeof(CFS_CORE_APP_Data));
     CFS_CORE_APP_Data.MissionRoute.WaypointCount = 3;
-    CFS_CORE_APP_Data.MissionRoute.Waypoints[0].X = 1.0f;
-    CFS_CORE_APP_Data.MissionRoute.Waypoints[1].Y = 2.0f;
+    CFS_CORE_APP_Data.MissionRoute.Waypoints[0].LatE7 = 1;
+    CFS_CORE_APP_Data.MissionRoute.Waypoints[1].LonE7 = 2;
     CFS_CORE_APP_Data.MissionRoute.Waypoints[2].Z = 3.0f;
 
     CFS_CORE_APP_ProcessDiagnosticCommand(&Msg);
@@ -3087,7 +3168,7 @@ void Test_CFS_CORE_APP_ProcessDiagnosticCommand_RouteReadback(void)
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.RouteSnapshotTlm.WaypointCount, 3);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.RouteSnapshotTlm.RouteType,
                       (int32)CFS_CORE_APP_ROUTE_SEGMENT_MISSION_EXTENSION);
-    UtAssert_True(CFS_CORE_APP_Data.RouteSnapshotTlm.Waypoints[0].X == 1.0f, "waypoint 0 X 복사됨");
+    UtAssert_True(CFS_CORE_APP_Data.RouteSnapshotTlm.Waypoints[0].LatE7 == 1, "waypoint 0 LatE7 복사됨");
     UtAssert_True(CFS_CORE_APP_Data.RouteSnapshotTlm.Waypoints[2].Z == 3.0f, "waypoint 2 Z 복사됨");
 }
 
@@ -3319,7 +3400,8 @@ void UtTest_Setup(void)
     ADD_TEST(CFS_CORE_APP_UpdateHealth_Failed);
     ADD_TEST(CFS_CORE_APP_UpdateHealth_FailedRecovery);
     ADD_TEST(CFS_CORE_APP_ProcessStateMessage_RouteUpdate);
-    ADD_TEST(CFS_CORE_APP_ProcessStateMessage_LandingRouteUpdate);
+    ADD_TEST(CFS_CORE_APP_ProcessStateMessage_RouteAdd_DoesNotMutateCache);
+    ADD_TEST(CFS_CORE_APP_ProcessStateMessage_RouteAdd_ThenFcReadback_Confirms);
     ADD_TEST(CFS_CORE_APP_ProcessStateMessage_FcReadback_UpdatesMissionRoute);
     ADD_TEST(CFS_CORE_APP_ProcessStateMessage_FcReadback_LandingUntouched);
     ADD_TEST(CFS_CORE_APP_ProcessStateMessage_BridgeHk);

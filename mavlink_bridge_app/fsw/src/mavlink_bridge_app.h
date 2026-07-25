@@ -55,14 +55,29 @@ typedef struct
     uint8     LastUploadWaypointCount;
     uint8     LastUploadResult;
     uint16    MissionPad;
-    float     MissionPendingX[MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS];
-    float     MissionPendingY[MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS];
+    /* BL-56(2026-07-25): waypoint가 항상 절대좌표(LatE7/LonE7)+CmdType+Param1~4로 확장되어
+     * 로컬 X/Y/Z pending/active 배열을 CmdType/Param/LatE7/LonE7/Z 배열로 교체한다. */
+    uint8     MissionPendingCmdType[MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS];
+    float     MissionPendingParam1[MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS];
+    float     MissionPendingParam2[MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS];
+    float     MissionPendingParam3[MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS];
+    float     MissionPendingParam4[MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS];
+    int32     MissionPendingLatE7[MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS];
+    int32     MissionPendingLonE7[MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS];
     float     MissionPendingZ[MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS];
-    float     ActiveWaypointX[MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS];
-    float     ActiveWaypointY[MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS];
+    uint8     ActiveWaypointCmdType[MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS];
+    float     ActiveWaypointParam1[MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS];
+    float     ActiveWaypointParam2[MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS];
+    float     ActiveWaypointParam3[MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS];
+    float     ActiveWaypointParam4[MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS];
+    int32     ActiveWaypointLatE7[MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS];
+    int32     ActiveWaypointLonE7[MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS];
     float     ActiveWaypointZ[MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS];
     uint8     ActiveWaypointCount;
-    uint8     ActiveWaypointPad[3];
+    /* BL-56(2026-07-25): PX4가 업로드 트랜잭션 내 current=1 항목 seq를 재개 인덱스로 채택
+     * (§18.4.6.2) — FC의 MISSION_CURRENT(msg #42)로 갱신, 첫 부팅 시 0. */
+    uint8     ActiveResumeIndex;
+    uint8     ActiveWaypointPad[2];
     uint8     MissionDownloadState;
     uint8     MissionDownloadSeq;
     uint8     MissionDownloadExpectedCount;

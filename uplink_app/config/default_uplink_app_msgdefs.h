@@ -61,13 +61,20 @@ typedef enum
     UPLINK_APP_COUNTER_SCOPE_LORA_TDM       = 4
 } UPLINK_APP_CounterScope_t;
 
+/* BL-56(2026-07-25): REPLACE/APPEND/DELETE 3종 -> REPLACE/ADD/DELETE/MODIFY 4종 재정의.
+ * APPEND -> ADD(끝 추가만, 중간 삽입 없음)로 개명, MODIFY(index) 신규 추가. */
 typedef enum
 {
     UPLINK_APP_ROUTE_OP_NONE    = 0,
     UPLINK_APP_ROUTE_OP_REPLACE = 1,
-    UPLINK_APP_ROUTE_OP_APPEND  = 2,
-    UPLINK_APP_ROUTE_OP_DELETE  = 3
+    UPLINK_APP_ROUTE_OP_ADD     = 2,
+    UPLINK_APP_ROUTE_OP_DELETE  = 3,
+    UPLINK_APP_ROUTE_OP_MODIFY  = 4
 } UPLINK_APP_RouteOpType_t;
+
+/* route_version: v1(구 REPLACE/APPEND/DELETE, 12바이트 waypoint)에서 v2(BL-56, 29바이트
+ * 절대좌표 waypoint)로 증가 — 파서는 v2만 허용, v1은 명시적으로 거부한다. */
+#define UPLINK_APP_ROUTE_VERSION 2U
 
 typedef enum
 {

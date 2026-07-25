@@ -91,16 +91,34 @@ static bool CFS_CORE_APP_StateExpired(const CFS_CORE_APP_StateCache_t *Cache, ui
     return (NowMs - Cache->ArrivalMs) > TimeoutMs;
 }
 
-static void CFS_CORE_APP_UpdateRouteCache(CFS_CORE_APP_RouteCache_t *Cache, const CFS_CORE_APP_RouteUpdateTlm_t *Msg)
+/* BL-61(2026-07-25): route_op(REPLACE/ADD/DELETE/MODIFY) 값이 옛
+ * CFS_CORE_APP_ROUTE_SEGMENT_* enum과 겹치므로(LANDING==2 == ADD==2),
+ * 이 파일 내 route_op 판별은 반드시 아래 상수로만 한다 — 옛 SEGMENT 상수를
+ * route_op 판별에 재사용하지 말 것(spec §18.4.6.2.1 2026-07-25 정정: 별도
+ * LANDING 세그먼트 개념 자체가 없음이 확인됨). */
+#define CFS_CORE_APP_ROUTE_OP_REPLACE 1U
+#define CFS_CORE_APP_ROUTE_OP_ADD     2U
+#define CFS_CORE_APP_ROUTE_OP_DELETE  3U
+#define CFS_CORE_APP_ROUTE_OP_MODIFY  4U
+
+/* 캐시 payload(Waypoints/WaypointCount) 갱신만 담당 — HK 카운터는 건드리지 않는다.
+ * REPLACE와 FC_MISSION_READBACK_MID(항상 전체 목록)에서만 호출해야 한다. */
+static void CFS_CORE_APP_SetRouteCacheWaypoints(CFS_CORE_APP_RouteCache_t *Cache, const CFS_CORE_APP_RouteUpdateTlm_t *Msg)
 {
-    Cache->TimestampMs   = Msg->TimestampMs;
-    Cache->SourceSequence = Msg->SourceSequence;
-    Cache->UpdateCount++;
     Cache->RouteType     = Msg->RouteType;
     Cache->RouteVersion  = Msg->RouteVersion;
     Cache->WaypointCount = Msg->WaypointCount;
     Cache->Valid         = true;
     memcpy(Cache->Waypoints, Msg->Waypoints, sizeof(Cache->Waypoints));
+}
+
+/* HK 카운터(RouteUpdateCount/LastRouteUpdateTimestampMs) 갱신만 담당 — 캐시
+ * 확정 반영 시점(REPLACE 즉시, ADD/DELETE/MODIFY는 FC readback 확정 시점)에만 호출한다. */
+static void CFS_CORE_APP_BumpRouteCacheCounters(CFS_CORE_APP_RouteCache_t *Cache, const CFS_CORE_APP_RouteUpdateTlm_t *Msg)
+{
+    Cache->TimestampMs    = Msg->TimestampMs;
+    Cache->SourceSequence = Msg->SourceSequence;
+    Cache->UpdateCount++;
 }
 
 void CFS_CORE_APP_ReportHousekeeping(void)
@@ -206,26 +224,35 @@ void CFS_CORE_APP_ProcessStateMessage(CFE_SB_Buffer_t *SBBufPtr)
     else if (CFE_SB_MsgIdToValue(MsgId) == FC_MISSION_READBACK_MID)
     {
         /* BL-41 route(2026-07-23): FC 실물 미션 readback — RouteType 검사 없이
-         * MissionRoute 고정 갱신(FC에 landing 개념 없음, spec §16 2채널) */
+         * MissionRoute 고정 갱신(FC에 landing 개념 없음, spec §16 2채널).
+         * BL-61(2026-07-25): op 무관(REPLACE/ADD/DELETE/MODIFY 전부)으로 이 경로가
+         * "FC 유일 진실원본" 확정 갱신 — 캐시 payload와 HK 카운터를 여기서 함께 갱신한다. */
         const CFS_CORE_APP_RouteUpdateTlm_t *RouteMsg = (const CFS_CORE_APP_RouteUpdateTlm_t *)MsgPtr;
 
-        CFS_CORE_APP_UpdateRouteCache(&CFS_CORE_APP_Data.MissionRoute, RouteMsg);
+        CFS_CORE_APP_SetRouteCacheWaypoints(&CFS_CORE_APP_Data.MissionRoute, RouteMsg);
+        CFS_CORE_APP_BumpRouteCacheCounters(&CFS_CORE_APP_Data.MissionRoute, RouteMsg);
         CFE_EVS_SendEvent(CFS_CORE_APP_ROUTE_READBACK_EID, CFE_EVS_EventType_INFORMATION,
                           "CFS_CORE_APP: FC mission readback applied wp_count=%u seq=%lu",
                           (unsigned int)RouteMsg->WaypointCount, (unsigned long)RouteMsg->Seq);
     }
     else if (CFE_SB_MsgIdToValue(MsgId) == ROUTE_UPDATE_MID)
     {
+        /* BL-61(2026-07-25): route_op 값(REPLACE=1/ADD=2/DELETE=3/MODIFY=4)으로
+         * 분기한다 — 옛 CFS_CORE_APP_ROUTE_SEGMENT_* enum(LANDING=2)으로 분기하면
+         * ADD(2)가 LANDING으로 오분류되는 실질 충돌이 있었음(spec §18.4.6.2.1
+         * 2026-07-25 정정: 별도 LANDING 세그먼트 캐시 개념 자체가 없음이 확인됨).
+         * REPLACE만 payload가 전체 목록이라 즉시 반영 가능 — ADD/DELETE/MODIFY는
+         * 델타/인덱스뿐이라 여기서 캐시를 건드리지 않고 뒤이은
+         * FC_MISSION_READBACK_MID(위 분기)의 확정 갱신을 기다린다. */
         const CFS_CORE_APP_RouteUpdateTlm_t *RouteMsg = (const CFS_CORE_APP_RouteUpdateTlm_t *)MsgPtr;
 
-        if (RouteMsg->RouteType == CFS_CORE_APP_ROUTE_SEGMENT_MISSION_EXTENSION)
+        if (RouteMsg->RouteType == CFS_CORE_APP_ROUTE_OP_REPLACE)
         {
-            CFS_CORE_APP_UpdateRouteCache(&CFS_CORE_APP_Data.MissionRoute, RouteMsg);
+            CFS_CORE_APP_SetRouteCacheWaypoints(&CFS_CORE_APP_Data.MissionRoute, RouteMsg);
+            CFS_CORE_APP_BumpRouteCacheCounters(&CFS_CORE_APP_Data.MissionRoute, RouteMsg);
         }
-        else if (RouteMsg->RouteType == CFS_CORE_APP_ROUTE_SEGMENT_LANDING)
-        {
-            CFS_CORE_APP_UpdateRouteCache(&CFS_CORE_APP_Data.LandingRoute, RouteMsg);
-        }
+        /* ADD/DELETE/MODIFY: MissionRoute.Waypoints/WaypointCount, HK 카운터
+         * 모두 미변경 — FC_MISSION_READBACK_MID 확정 갱신 대기(spec §18.4.6.2). */
 
         CFE_EVS_SendEvent(CFS_CORE_APP_STARTUP_EID, CFE_EVS_EventType_INFORMATION,
                           "CFS_CORE_APP: route updated type=%u version=%u count=%u src_seq=%lu",
