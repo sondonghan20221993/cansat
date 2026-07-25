@@ -1052,7 +1052,7 @@ FC, 모터 또는 액추에이터 명령 및 비행 제어 매개변수
 | `uplink_app` UDP 임시 입력 검증 | `localhost` UDP 또는 동등한 mock transport를 통해 정상/비정상 uplink packet을 입력한다. | 실제 하드웨어 없이도 수신, 길이 검증, CRC 검증, sequence 검증, route/viewpoint payload 검증이 수행된다. | accept/reject count, 오류 이벤트, `UPLINK_STATUS_MID`, 로그 확인 |
 | `uplink_app` 경로 수정 | 승인된 기존 경로 수정 payload | 경로 수정 정보가 수신·검증되고 상위 임무 계층에 전달된다. | uplink status, route update 처리 로그 확인 |
 | `uplink_app` 내부 복구 명령 | parser reset, serial reconnect, app restart request | 승인된 명령만 전달되고 결과가 `UPLINK_STATUS_MID`에 반영된다. | command result, reject/accept count 확인 |
-| `cfs_core_app` 경로 상태 반영 | 정상 route update 또는 landing route update 입력 | mission route/landing route cache, route update counter, 마지막 route update 시각이 갱신된다. | HK, route update 로그, `SYSTEM_HEALTH_MID` 연계 상태 확인 |
+| `cfs_core_app` 경로 상태 반영 | 정상 route update(REPLACE/ADD/DELETE/MODIFY) 입력 | mission route cache(별도 landing 캐시 없음, §18.4.6.2.1 2026-07-25 정정 참조), route update counter, 마지막 route update 시각이 갱신된다. | HK, route update 로그, `SYSTEM_HEALTH_MID` 연계 상태 확인 |
 | `lora_tdm_app` mock sink 출력 | 실제 LoRa 장치 대신 file sink, stdout sink, UDP localhost sink 또는 동등한 mock sink로 송신한다. | TDM downlink packet 생성, `DownlinkSeq` 증가, 송신 카운터 증가, 실패 시 `NoAckCount` 반영이 확인된다. | HK, 송신 로그, mock sink 출력 확인 |
 ### 16.2 통합 테스트
 
@@ -1548,8 +1548,13 @@ route update baseline 수치 기준:
 REPLACE 연산에 한해, payload의 `reserved` 필드를 2-pass 보정 활성화 플래그로 사용한다.
 총 랩 수는 2로 고정하며 추가 반복은 없다.
 
-**대상 범위**: 보정은 `MISSION_EXTENSION` 세그먼트에만 적용된다. `LANDING` 세그먼트
-(별도 route 캐시)와 이륙 절차(이 시스템의 route 관리 범위 밖)는 영향받지 않는다.
+**대상 범위(2026-07-25 정정)**: ~~`LANDING` 세그먼트(별도 route 캐시)~~는 존재하지 않는 개념으로
+확인됨 — `mavlink_bridge_app_utils.c:715` 주석 "`RouteType=1(MISSION) 고정 — FC에 landing 세그먼트
+개념 없음`"에서 확인, FC(캐시)에는 미션 웨이포인트 배열 하나뿐이다. 지상국 GUI의 "mission"/"landing"
+라디오 버튼은 실제로는 구 REPLACE/APPEND op의 잘못된 이름표였을 뿐(§18.4.6.2에서 이미 REPLACE/
+ADD/DELETE/MODIFY로 재정의하며 이 라디오 버튼 자체는 폐기 대상), 별도 착륙 경로 캐시는 처음부터
+없었다. 이륙 절차는 여전히 이 시스템의 route 관리 범위 밖. (2-pass 보정은 이 문서 §18.4.6.2.1
+전체가 근본 전제 미해결로 보류 중 — 이 정정은 재개 시 혼동 방지용.)
 
 **책임 분담 (개정)**:
 
@@ -2034,7 +2039,7 @@ replay 방어는 sequence에 전적으로 의존하며, token 값 유무와 무�
 | 명령 클래스 | 필수 정상 케이스 | 필수 오류 케이스 |
 | --- | --- | --- |
 | runtime configuration | 범위 내 설정 1건 수락 및 pending 반영 | 범위 오류, 버전 오류, CRC 오류, 대상 상태 비호환 |
-| route update | 유효한 `mission_extension`, 유효한 `landing` | 길이 오류, altitude 오류, distance 오류, replay |
+| route update | 유효한 REPLACE/ADD/DELETE/MODIFY 각 1건 수락(별도 landing 캐시 없음) | 길이 오류, altitude 오류, route_version 불일치, replay |
 | viewpoint update | 유효한 viewpoint 1건 수락 | 좌표 오류, orientation 오류, 타입 미지원 |
 | recovery command | 승인된 parser reset 또는 restart request 전달 | 권한 부족, 대상 불일치, 상태 비호환 |
 | mode command | 허용 상태 전이 요청 전달 | 금지된 상태 전이, 권한 부족 |
