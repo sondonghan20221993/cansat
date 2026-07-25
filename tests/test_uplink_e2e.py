@@ -116,21 +116,18 @@ class UplinkRouteE2ETest:
     """uplink_app route update C 경로 검증."""
 
     def test_valid_route_update_routed(self, cfs_host, cfs_port):
-        """정상 route update → cfs_core_app route cache 갱신."""
-        from tools.uplink_route_update_sender import preset_case, build_process_uplink_packet
-
-        route_type, waypoints = preset_case("route-good")
-        # UDP로 전송
-        pkt = build_process_uplink_packet(
-            mid=UPLINK_APP_CMD_MID,
-            function_code=PROCESS_UPLINK_CC,
-            route_type=route_type,
-            waypoints=waypoints,
-            sequence=1,
-            route_version=1,
+        """정상 route update → cfs_core_app route cache 갱신 (BL-56 v2 프로토콜)."""
+        from tools.uplink_route_update_sender import (
+            preset_case, build_route_payload, build_process_uplink_payload,
+            build_command_packet, UPLINK_APP_PROCESS_UPLINK_CC,
         )
+
+        route_op, index_or_count, waypoints = preset_case("route-replace-good")
+        route_payload = build_route_payload(route_op, index_or_count, waypoints)
+        proxy_payload = build_process_uplink_payload(sequence=1, proxy_payload=route_payload)
+        pkt = build_command_packet(UPLINK_APP_PROCESS_UPLINK_CC, proxy_payload)
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
             sock.sendto(pkt, (cfs_host, cfs_port))
         time.sleep(0.1)
-        # EVS: "CFS_CORE_APP: route updated type=1" 확인 필요
+        # EVS: "CFS_CORE_APP: route updated op=1" 확인 필요
         assert True  # placeholder
