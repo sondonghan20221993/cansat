@@ -1498,6 +1498,17 @@ route update payload는 다음 필드를 포함한다.
 
 **비행 중 재개 지점 유지 (인덱스 리셋 문제 해결)**: PX4(`mavlink_mission.cpp`)는 미션 업로드 트랜잭션 중 `current=1`이 찍힌 `MISSION_ITEM_INT`의 seq를 그대로 재개 인덱스로 채택한다(`update_active_mission()`이 그 seq를 `current_seq`로 발행) — 별도 `MISSION_SET_CURRENT` 명령이 불필요하다. 따라서 **REPLACE 포함 4종 op 전부**로 인한 재업로드는 `mavlink_bridge_app`이 유지하는 `ActiveResumeIndex`(FC의 `MISSION_CURRENT` 텔레메트리로 갱신)에 해당하는 항목에 `current=1`을 찍어 전송한다. 지상 정지 상태에서 처음 미션을 올리는 REPLACE는 `ActiveResumeIndex`가 자연히 0(필요 시 §18.4.6.8 `FLIGHT_MODE(WAYPOINT, waypoint_start_index)`로 별도 지정 가능)이고, 비행 중 REPLACE(예: 2-pass 보정 재업로드)는 그 시점의 `ActiveResumeIndex`를 그대로 유지해 재개된다.
 
+**구현 참고 — wire 레벨(2026-07-25 확인, `mavlink_bridge_app_utils.c` 실측)**:
+- `MAVLINK_BRIDGE_APP_SendMissionItemInt()`의 기존 `Payload[38]` 버퍼는 offset `0~15`(param1~4
+  자리)와 offset `35`(current 플래그 자리)를 현재 한 번도 안 씀(memset 후 0 방치) — 크기 변경
+  없이 그 자리에 `CmdType`→offset `30~31`(기존 `MAVLINK_MAV_CMD_NAV_WAYPOINT` 하드코딩을
+  받은 `CmdType` 값으로 교체), `Param1~4`→offset `0/4/8/12`(각 4바이트 float), `current`
+  플래그→offset `35`(`Seq == ActiveResumeIndex`일 때만 `1`)를 채우면 된다.
+- `ActiveResumeIndex` 초기값(첫 부팅, `MISSION_CURRENT` 아직 미수신 시)은 `0`.
+- `MISSION_CURRENT`(MAVLink msg id `42`) payload는 `seq`(`uint16`, offset `0~1`, LE) 하나뿐 —
+  이 값을 그대로 `ActiveResumeIndex`에 반영(단, DELETE/MODIFY로 인한 로컬 조정 후 다음
+  `MISSION_CURRENT` 수신 시 FC 쪽 값으로 다시 덮어써도 무방 — FC가 최종 authoritative source).
+
 route update baseline 수치 기준:
 
 - `MAX_ROUTE_WAYPOINT_COUNT = 16`
@@ -1513,7 +1524,11 @@ route update baseline 수치 기준:
 
 거부 조건:
 
-- payload 길이 불일치 (DELETE는 고정 길이, REPLACE/ADD는 `N * sizeof(ROUTE_WAYPOINT_t)` 가변, MODIFY는 `1 * sizeof(ROUTE_WAYPOINT_t)` 고정)
+- payload 길이 불일치: **`sizeof(ROUTE_WAYPOINT_t)`(C 구조체, 정렬 패딩으로 29바이트보다 커질 수 있음)를
+  쓰지 말 것** — 와이어 크기는 항상 명시 상수 `ROUTE_WAYPOINT_WIRE_SIZE = 29`(필드별 개별
+  직렬화, 기존 `WriteU32LE` 류 패턴과 동일하게 memcpy/구조체 캐스팅 금지)로 계산한다.
+  DELETE는 헤더만(`4`바이트 고정, waypoint 데이터 없음), REPLACE/ADD는
+  `4 + N × 29`(가변), MODIFY는 `4 + 29 = 33`(고정, N=1)
 - 승인되지 않은 `route_op` 값
 - waypoint 수/인덱스 위반 (REPLACE/ADD: `0` 또는 MAX 초과; DELETE/MODIFY: 범위 밖 인덱스)
 - 좌표가 finite가 아님 (REPLACE/ADD/MODIFY)
