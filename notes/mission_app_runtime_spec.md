@@ -1440,27 +1440,39 @@ runtime configuration payload는 최소한 다음 필드를 포함해야 한다.
 > 호버/loiter 등 명령 파라미터를 표현할 수 없었음(2-pass lap1의 `NAV_LOITER_UNLIM` 등).
 > 아래는 개정된 설계다.
 
-**waypoint 구조 확장** (`ROUTE_WAYPOINT_t`, `shared_msgs/route_msg.h`):
+**waypoint 구조 확장 — 항상 절대좌표(2026-07-25 재확정)** (`ROUTE_WAYPOINT_t`, `shared_msgs/route_msg.h`):
+
+> 최초안은 `UseGlobal` 플래그로 로컬(X/Y)·절대(LatE7/LonE7) 두 모드를 다 지원했으나, 지상국이
+> 다루는 위치 데이터를 **항상 절대좌표로 통일**하기로 최종 확정 — `UseGlobal`/`X`/`Y` 필드를 아예
+> 제거한다. 근거: ① `mavlink_bridge_app`이 하던 로컬→전역 변환(`RefLatE7`/`RefLonE7` 기반,
+> 아래 참조)이 매번 갱신되는 값이라 드리프트 오차의 근원이었는데, 애초에 로컬 모드 자체가 없어지면
+> 이 변환 로직·드리프트 문제가 통째로 사라짐 ② BL-57(지도 입력)·2-pass(지상 계산) 모두 결국
+> 절대좌표를 다루므로 로컬 모드가 실질적으로 쓰일 일이 없음 ③ 구조체가 38→29바이트로 줄어
+> LoRa 프레임당 수용 waypoint 수도 개선(아래 "알려진 제약" 참조).
 
 | 필드 | 형식 | 의미 |
 | --- | --- | --- |
 | `CmdType` | `uint8` | MAVLink MAV_CMD: `NAV_WAYPOINT=16`(기본), `NAV_LOITER_UNLIM=17`, `NAV_LOITER_TIME=19` 등 |
 | `Param1`~`Param4` | `float` | CmdType별 의미(hold time, loiter radius, acceptance radius, yaw 등 — MAVLink MISSION_ITEM param1~4와 동일 관례) |
-| `UseGlobal` | `uint8` | `1`=절대좌표(`LatE7`/`LonE7`) 사용, `0`=로컬 NED(`X`/`Y`) 사용 |
-| `LatE7`, `LonE7` | `int32` | 절대 위경도(degE7). `UseGlobal=1`일 때만 유효 |
-| `X`, `Y` | `float` | 로컬 NED 좌표(m). `UseGlobal=0`일 때만 유효 |
-| `Z` | `float` | 고도(m, relative alt) — `UseGlobal` 값과 무관하게 항상 유효 |
+| `LatE7`, `LonE7` | `int32` | 절대 위경도(degE7) — 항상 유효 |
+| `Z` | `float` | 고도(m, relative alt) — 항상 유효 |
 
-**절대좌표 경로 (BL-57 지도 입력용, 2026-07-25 확정)**: `mavlink_bridge_app`이 로컬→전역 변환에 쓰는
-`RefLatE7`/`RefLonE7`(§ 위 참조)는 고정 홈이 아니라 **가장 최근 `GLOBAL_POSITION_INT` 수신 시점의
-기체 현재 위치**로 매번 갱신되는 값이다 — 지상국이 지도 클릭 시점에 이 값을 내려받아 lat/lon→로컬
-X/Y로 변환해도, 실제 미션 업로드 시점엔 기체가 이동해 기준점이 달라져 있을 수 있어 waypoint가
-의도한 절대 위치에서 어긋난다(드리프트). 이를 피하기 위해 지도 입력은 `UseGlobal=1` +
-`LatE7`/`LonE7`로 **절대좌표를 그대로** 실어 보낸다. `mavlink_bridge_app`은 `UseGlobal=1`인
-waypoint에 대해 `RefLatE7`/`RefLonE7` 기반 로컬→전역 변환을 **수행하지 않고**, 수신한 `LatE7`/`LonE7`을
-`MISSION_ITEM_INT`에 그대로 기입한다(현재 `MAVLINK_BRIDGE_APP_SendMissionItemInt()`의 변환 분기를
-`UseGlobal` 값으로 스킵). 일반 로컬 좌표 경로(REPLACE/2-pass 등 기존 X/Y/Z 기반)는 `UseGlobal=0`으로
-기존 변환 로직을 그대로 사용한다.
+**`mavlink_bridge_app` 단순화**: `RefLatE7`/`RefLonE7`(§ 매 `GLOBAL_POSITION_INT`마다 갱신되는
+기체 현재위치) 기반 로컬→전역 변환 로직이 업로드(`SendMissionItemInt`/`SendMissionItem`)·다운로드
+(readback) 양쪽에 있었는데, 웨이포인트가 항상 절대좌표로만 오가므로 **이 변환 로직 전체와
+`RefLatE7`/`RefLonE7` 추적 자체가 불필요해져 제거 대상**이다 — 수신한 `LatE7`/`LonE7`을 그대로
+`MISSION_ITEM_INT`에 기입/파싱하기만 하면 된다.
+
+**flyable area(±50m) 기체측 검증 폐지(2026-07-25 확정)**: 웨이포인트가 절대좌표만 있어 "반경
+50m 안인지" 판단하려면 로컬 변환용 고정 기준점이 별도로 필요한데, 이 기준점을 새로 두는 대신
+**기체측 거리 기반 검증 자체를 폐지**한다 — flyable area 위반 여부는 **GUI가 전송 전 재확인
+다이얼로그**(REPLACE 재확인과 동일 패턴)로 사용자 책임 하에 판단한다. 기체측엔 finite 검증과
+고도(`2m~8m`, 위치 무관) 검증만 남는다.
+
+**route_readback도 자동 해소**: 항상 절대좌표 단일 모드라, 기체→지상 다운로드 경로
+(`MissionDownloadWaypoints`)도 받은 `LatE7`/`LonE7`을 그대로 채우면 되고 별도 모드 판단이
+필요 없다 — 예전 `UseGlobal` 모드 분기 시절 고민했던 "readback이 로컬 필드를 못 채우는 문제"
+자체가 사라짐.
 
 route update payload는 다음 필드를 포함한다.
 
@@ -1483,7 +1495,9 @@ route update payload는 다음 필드를 포함한다.
 route update baseline 수치 기준:
 
 - `MAX_ROUTE_WAYPOINT_COUNT = 16`
-- 인접 waypoint 간 거리 제약: **폐지**(2026-07-25) — flyable area(`±50m` X/Y)·고도(`2m~8m`) 범위 검증만 유지. 2.0m 정확 간격이 필요한 2-pass 원형 보정(§18.4.6.2.1)은 지상국이 스스로 그렇게 계산해 올리는 것으로 충분, 기체측 강제 불필요.
+- 인접 waypoint 간 거리 제약: **폐지**(2026-07-25) — 2.0m 정확 간격이 필요한 2-pass 원형 보정
+  (§18.4.6.2.1, 보류 중)은 지상국이 스스로 그렇게 계산해 올리는 것으로 충분, 기체측 강제 불필요.
+- flyable area(±50m 수평 거리) 제약: **기체측 검증 폐지**(위 참조) — 고도(`2m~8m`)만 기체측 검증 유지.
 
 출력 계약:
 
@@ -1497,16 +1511,12 @@ route update baseline 수치 기준:
 - 승인되지 않은 `route_op` 값
 - waypoint 수/인덱스 위반 (REPLACE/ADD: `0` 또는 MAX 초과; DELETE/MODIFY: 범위 밖 인덱스)
 - 좌표가 finite가 아님 (REPLACE/ADD/MODIFY)
-- 비행 가능 영역 위반 (REPLACE/ADD/MODIFY)
 - 고도 제약 위반 (REPLACE/ADD/MODIFY)
 - DELETE의 `index == ActiveResumeIndex`
 
 **모호점 확정(2026-07-25)**:
-- **`UseGlobal=1` waypoint의 flyable area 검증 기준점**: §18.4.6.2.1에서 2-pass용으로 정의하는
-  "계획 경로 자체의 값"(계획 waypoint[0] 또는 계획 원피팅 중심)과 동일 기준점을 재사용해
-  LatE7/LonE7 → 로컬 X/Y 변환 후 `±50m` 경계로 검증한다. flyable area 여유가 크고(±50m) 실제
-  운용 반경이 작아 기준점 선택에 따른 실질적 차이는 미미하다고 판단, 별도 기준점을 두지 않고
-  통일한다.
+- **flyable area 검증은 기체측에서 폐지, GUI 재확인으로 대체**(위 "flyable area 기체측 검증 폐지"
+  참조) — 별도 로컬 변환 기준점을 두지 않는다.
 - **`CmdType` 필드는 검증하지 않는다**(지상국 신뢰) — 기체는 수신한 `CmdType`을 그대로
   `MISSION_ITEM_INT`에 실어 MAVLink로 전달만 한다. 위험한 MAV_CMD 값이 실릴 가능성은 지상국
   (GUI)이 생성하는 값만 신뢰하는 전제로 감수한다.
@@ -1573,16 +1583,17 @@ FC가 발행하는 `MISSION_ITEM_REACHED`(마지막 waypoint seq)를 다운링�
 4. 보정 route는 기체측 §18.4.6.2 REPLACE 검증을 다시 통과해야 한다(비행 가능 영역·finite).
    인접 waypoint 거리 제약은 적용하지 않는다(프로토타입 잔재). 편차 크기 임계값은 두지
    않으며 측정 편차는 크기와 무관하게 항상 반영(노이즈 상쇄는 다중 샘플 평균화에 의존).
-   **검증 실패 시(2026-07-25 확정)**: 편차가 커서 보정 waypoint가 flyable area 경계를 벗어나면
-   REPLACE를 reject하지 않고, 지상국이 좌표를 경계 내로 **clamp**(경계값으로 잘라냄)해서라도
-   적용한다 — 폴백(원본 lap1 재비행)보다 clamp된 보정치 적용을 우선.
-5. **전송 시 반드시 절대좌표(`UseGlobal=1`) 사용(2026-07-25 확정)**: 보정 계산은 계획 경로 기준
-   고정 원점(위 "좌표계" 문단 참조) 기준 로컬 좌표(cx, cy 등)로 하지만, 그 결과를 로컬 X/Y
-   (`UseGlobal=0`)로 그대로 REPLACE 전송하면 `mavlink_bridge_app`이 **업로드 시점의 현재
-   위치**(드리프트하는 `RefLatE7`/`RefLonE7`)를 기준으로 재변환해 어긋난다 — 보정 자체가
-   무의미해질 수 있는 오차. 따라서 지상국이 보정된 로컬 좌표를 **계획 경로 고정 원점으로
-   직접** 절대 위경도(LatE7/LonE7)로 변환한 뒤, §18.4.6.2에서 정의한 `UseGlobal=1` 경로로
-   전송해 기체측 재변환(및 그로 인한 기준점 불일치)을 건너뛴다.
+   **검증(2026-07-25 갱신)**: §18.4.6.2에서 flyable area 기체측 검증 자체를 폐지했으므로, 편차가
+   커서 보정 waypoint가 원래 flyable area 경계를 벗어나도 기체가 reject하지는 않는다 — 대신
+   **지상국이 스스로** 보정치를 안전 경계 내로 **clamp**해서 전송(폴백보다 clamp된 보정치 적용을
+   우선).
+5. **전송 시 반드시 절대좌표 사용**: 보정 계산은 계획 경로 기준 고정 원점(위 "좌표계" 문단 참조)
+   기준 로컬 좌표(cx, cy 등)로 하지만, 그 결과를 로컬 좌표 그대로 REPLACE 전송하면(과거 로컬 모드
+   가정) `mavlink_bridge_app`이 **업로드 시점의 현재 위치**(드리프트하는 `RefLatE7`/`RefLonE7`,
+   §18.4.6.2에서 이미 제거 대상으로 확정)를 기준으로 재변환해 어긋난다 — 보정 자체가 무의미해질
+   수 있는 오차. §18.4.6.2가 항상 절대좌표만 쓰기로 확정됐으므로, 지상국이 보정된 로컬 좌표를
+   **계획 경로 고정 원점으로 직접** 절대 위경도(LatE7/LonE7)로 변환한 뒤 전송하면 이 문제는
+   자동으로 해결된다(기체측 재변환 자체가 없음).
 6. **`ActiveResumeIndex` 갱신원은 신규 구현 필요(2026-07-25 확인)**: `mavlink_bridge_app`은
    현재 FC의 `MISSION_CURRENT`(MAVLink msg #42, 현재 진행 중인 미션 인덱스) 메시지를 파싱하지
    않는다 — §18.4.6.2의 `ActiveResumeIndex` 갱신은 기존 기능 재사용이 아니라 `MISSION_CURRENT`
@@ -1632,9 +1643,10 @@ waypoint→…→HOVER/LAND).
 - **waypoint 개수 상한은 계속 16개(`ROUTE_MAX_WAYPOINTS=16`, 미션 배열 전체 상한, 캐시 기준),
   단 LoRa 프레임 1개당 담을 수 있는 waypoint 수는 BL-56 구조체 확장(2026-07-25)으로 줄었다**:
   구 `ROUTE_WAYPOINT_t`(X/Y/Z, 12바이트)는 `4 + 16×12 = 196`으로 프레임 페이로드(196바이트)에
-  정확히 맞았으나, 신 `ROUTE_WAYPOINT_t`(CmdType+Param1~4+UseGlobal+LatE7+LonE7+X+Y+Z, 38바이트)는
-  프레임당 `(196−4)/38 = 5`개가 한도. **16개를 채우려면 지상국(openMCT)이 ADD를 여러 번(예:
-  4개씩 4프레임) 나눠 순차 전송**한다 — 세션/누적 대기 상태는 두지 않는다: ADD 프레임 하나가
+  정확히 맞았으나, 신 `ROUTE_WAYPOINT_t`(CmdType+Param1~4+LatE7+LonE7+Z, 항상 절대좌표로
+  단순화 후 29바이트)는 프레임당 `(196−4)/29 = 6`개가 한도. **16개를 채우려면 지상국(openMCT)이
+  ADD를 여러 번(예: 4개씩 4프레임, 또는 6+6+4) 나눠 순차 전송**한다 — 세션/누적 대기 상태는
+  두지 않는다: ADD 프레임 하나가
   도착할 때마다 `mavlink_bridge_app`이 그 시점 캐시 전체를 즉시 PX4로 재업로드하며, 매 단계가
   독립적으로 완결된 유효 미션이다(예: 4개만 반영된 상태에서도 바로 비행 가능, 16개가 다 모여야
   "시작"되는 게이트는 없음). `HOVER`는 웨이포인트 배열 항목이 아니라 별도 비행모드 명령이라
