@@ -1548,6 +1548,24 @@ route update baseline 수치 기준:
   로컬 웨이포인트 목록과 기체 실제 캐시가 어긋날 동시편집/stale 위험은 무시한다 — DELETE/MODIFY
   직전 강제 `route_readback` 동기화 같은 별도 안전장치는 두지 않는다.
 
+**`cfs_core_app`의 `MissionRoute` 캐시 갱신 정책(2026-07-25 확정, 이전에 미설계였던 부분)**:
+`cfs_core_app`는 `ROUTE_UPDATE_MID`를 `mavlink_bridge_app`과 **병렬로 독립적으로** 받는다(§5.1.1 표
+참조) — 지금까지는 수신한 걸 무조건 `memcpy`로 캐시에 덮어썼는데, 이는 REPLACE(payload에 전체
+웨이포인트 목록 포함)에만 맞고 ADD/DELETE/MODIFY(payload가 신규 웨이포인트 일부 또는 index만
+포함)에는 틀린 방식이다(예: ADD 2개 payload를 그대로 memcpy하면 기존 캐시를 2개짜리로 잘못
+덮어씀). 이미 존재하는 `FC_MISSION_READBACK_MID`(BL-41, "FC가 유일 진실원본") 메커니즘이 미션
+업로드 완료마다(op 종류 무관) 자동으로 트리거되므로, 새 동기화 로직을 만들 필요 없이 다음과 같이
+정리한다:
+- **REPLACE**: 기존과 동일하게 `ROUTE_UPDATE_MID` 수신 즉시 `memcpy`로 `MissionRoute.Waypoints`/
+  `WaypointCount` 갱신(payload가 전체 목록이라 문제없음).
+- **ADD/DELETE/MODIFY**: `ROUTE_UPDATE_MID` 수신 시 `Waypoints`/`WaypointCount`는 건드리지 않는다
+  — 뒤이어 자동 도착하는 `FC_MISSION_READBACK_MID`가 정확한 최종 상태로 갱신해줄 때까지 기존
+  값을 유지(짧은 지연 발생, 링크 저하 시 BL-41 기존 백오프 정책만큼 더 길어질 수 있음 — 신규
+  문제 아니라 기존 특성).
+- **HK 카운터(`RouteUpdateCount`, `LastRouteUpdateTimestampMs`)는 원본 op 수신 시점이 아니라
+  readback으로 실제 확정된 시점에만 갱신한다**(2026-07-25 확정, 사용자 결정 — "실패해도 카운터가
+  올라가는" 불안정한 의미보다, 카운터=확정 반영 건수로 두는 게 안정적).
+
 ##### 18.4.6.2.1 route update — 2-pass GPS 능동 보정 (2026-07-24 개정 — 지상국 연산 방식)
 
 > **아키텍처 개정 이력 (BL-44, 2026-07-24)**
