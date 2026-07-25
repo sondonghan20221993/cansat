@@ -251,6 +251,7 @@ downlink 패킷의 피드백 바이트(UFB)는 가장 최근 uplink 명령의 �
 | `UFB_REJECT_ROUTE` | 0x09 | 라우트 갱신 거부 (BL-11) | `LastCommandResult == REJECT_ROUTE`(9) |
 | `UFB_REJECT_CHECKSUM` | 0x0A | 프록시 명령 체크섬 불일치 (BL-11) | `LastCommandResult == REJECT_CHECKSUM`(12) |
 | `UFB_REJECT_VIEWPOINT` | 0x0B | VIEWPOINT 페이로드 거부 (BL-11) | `LastCommandResult == REJECT_VIEWPOINT`(13) |
+| `UFB_APPLIED` | 0x0C | 라우팅 성공 명시 확인 (BL-55, 2026-07-25 추가) | `LastCommandResult == ROUTED`(3) |
 
 **BL-11(2026-07-22) 매핑 범위 밖 — 의도적으로 UFB에 반영 안 함**:
 - `UPLINK_APP_RESULT_REJECT`(2, 범용 REJECT)는 코드 어디서도 실제 할당되지 않는 죽은 값이라 매핑 대상 아님(`git grep` 확인, 2026-07-22)
@@ -322,13 +323,23 @@ uplink raw frame (lora_tdm_app RX)
 - UFB=REJECT_CHECKSUM: 프록시 명령 페이로드 체크섬 불일치 → 재전송 권장
 - UFB=REJECT_VIEWPOINT: VIEWPOINT 명령 페이로드 검증 실패
 
-**알려진 한계 (2026-07-21)**: `UFB_OK`는 "성공적으로 적용됨"과 "현재 보고할
-pending 결과가 없음(default/idle)"을 구분하지 못하는 구조적 모호성이 있다.
-`ROUTED`(성공)일 때 명시적으로 `UFB_OK`를 세팅하는 코드가 없고, 단지 아무
-실패 분기도 안 탔을 때 이전 값(대개 OK)이 그대로 유지되는 방식이기 때문.
-`REJECT_STATE`(STATE_BLOCKED) 추가로 가장 흔한 오탐 사례(health 차단)는
-해소됐으나, 근본적으로 "적용 성공"을 명시적으로 확인하려면 `ROUTED` 감지도
-추가해 `UFB_APPLIED` 같은 별도 코드를 두는 것이 정확하다 — 아직 미착수.
+**알려진 한계 (2026-07-21) — 설계 확정으로 해소(BL-55, 2026-07-25)**: `UFB_OK`는
+"성공적으로 적용됨"과 "현재 보고할 pending 결과가 없음(default/idle)"을
+구분하지 못하는 구조적 모호성이 있었다. `ROUTED`(성공)일 때 명시적으로
+`UFB_OK`를 세팅하는 코드가 없고, 단지 아무 실패 분기도 안 탔을 때 이전
+값(대개 OK)이 그대로 유지되는 방식이었기 때문 — RT-ROUTE 실기 GUI 테스트
+중 REJECT_ROUTE 4회 거부가 GUI에는 `UFB=0`(오류없음)으로 표시되는 사례로
+실제 발견(BL-55). **해결**: 위 표의 `UFB_APPLIED`(0x0C, `ROUTED` 감지)를
+신설해 "적용 성공"을 명시적으로 신호 — ROUTE뿐 아니라 이 UFB 메커니즘을
+공유하는 전체 명령 클래스(CONFIG/RECOVERY/FLIGHT_MODE 등)에 공통 적용.
+기존 코드들과 동일한 `LastCommandResult` 감지 방식이라 신규 메커니즘
+불필요, 아래 "판정값 지속 정책"(사이클 넘어 유지)도 그대로 적용됨.
+**잔존 한계(의도적으로 감수, 2026-07-25)**: `ROUTED`는 "uplink_app이 대상
+앱으로 성공적으로 라우팅했다"는 뜻이지 "대상 앱이 실제로 FC에 반영까지
+성공했다"는 보장은 아니다(예: 라우팅은 성공했으나 이후 FC 업로드 자체가
+실패하는 경우) — 이 잔여 간극은 범위 밖으로 감수, 확실한 반영 확인이
+필요하면 `route_readback`(BL-41) 등 별도 확인 수단을 쓴다. GUI측
+(`onUFBReceived`, `my_openmct_app`)도 `ufb===0x0C` 분기를 추가해야 완결.
 
 **판정값 지속 정책 (2026-07-21, 레이스 수정)**:
 
