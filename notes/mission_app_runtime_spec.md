@@ -1430,40 +1430,77 @@ runtime configuration payload는 최소한 다음 필드를 포함해야 한다.
 
 ##### 18.4.6.2 route update
 
-route update payload는 최소한 다음 필드를 포함해야 한다.
+> **개정 이력 (BL-56, 2026-07-25 설계 확정 — 구현 전)**
+> 원 설계(REPLACE/APPEND/DELETE, 좌표만 있는 waypoint, 2.0m 정확 간격 강제)는
+> 다음 세 가지 실사용 문제로 재설계한다: ① REPLACE 기반 워크플로가 PX4 미션 인덱스를
+> 리셋시켜 비행 중 경로 수정이 사실상 불가능했음(§18.4.6.8 flight_mode의
+> waypoint_start_index로 우회하던 번거로움) ② 세그먼트 거리 2.0m 강제가 BL-44
+> 2-pass 원형 보정 전용 제약인데 일반 경로(BL-57 지도 입력 등)에도 걸려 있어
+> RT-ROUTE 실기 테스트(BL-55)에서 실제로 정상 요청이 거부됨 ③ waypoint가 좌표뿐이라
+> 호버/loiter 등 명령 파라미터를 표현할 수 없었음(2-pass lap1의 `NAV_LOITER_UNLIM` 등).
+> 아래는 개정된 설계다.
+
+**waypoint 구조 확장** (`ROUTE_WAYPOINT_t`, `shared_msgs/route_msg.h`):
+
+| 필드 | 형식 | 의미 |
+| --- | --- | --- |
+| `CmdType` | `uint8` | MAVLink MAV_CMD: `NAV_WAYPOINT=16`(기본), `NAV_LOITER_UNLIM=17`, `NAV_LOITER_TIME=19` 등 |
+| `Param1`~`Param4` | `float` | CmdType별 의미(hold time, loiter radius, acceptance radius, yaw 등 — MAVLink MISSION_ITEM param1~4와 동일 관례) |
+| `UseGlobal` | `uint8` | `1`=절대좌표(`LatE7`/`LonE7`) 사용, `0`=로컬 NED(`X`/`Y`) 사용 |
+| `LatE7`, `LonE7` | `int32` | 절대 위경도(degE7). `UseGlobal=1`일 때만 유효 |
+| `X`, `Y` | `float` | 로컬 NED 좌표(m). `UseGlobal=0`일 때만 유효 |
+| `Z` | `float` | 고도(m, relative alt) — `UseGlobal` 값과 무관하게 항상 유효 |
+
+**절대좌표 경로 (BL-57 지도 입력용, 2026-07-25 확정)**: `mavlink_bridge_app`이 로컬→전역 변환에 쓰는
+`RefLatE7`/`RefLonE7`(§ 위 참조)는 고정 홈이 아니라 **가장 최근 `GLOBAL_POSITION_INT` 수신 시점의
+기체 현재 위치**로 매번 갱신되는 값이다 — 지상국이 지도 클릭 시점에 이 값을 내려받아 lat/lon→로컬
+X/Y로 변환해도, 실제 미션 업로드 시점엔 기체가 이동해 기준점이 달라져 있을 수 있어 waypoint가
+의도한 절대 위치에서 어긋난다(드리프트). 이를 피하기 위해 지도 입력은 `UseGlobal=1` +
+`LatE7`/`LonE7`로 **절대좌표를 그대로** 실어 보낸다. `mavlink_bridge_app`은 `UseGlobal=1`인
+waypoint에 대해 `RefLatE7`/`RefLonE7` 기반 로컬→전역 변환을 **수행하지 않고**, 수신한 `LatE7`/`LonE7`을
+`MISSION_ITEM_INT`에 그대로 기입한다(현재 `MAVLINK_BRIDGE_APP_SendMissionItemInt()`의 변환 분기를
+`UseGlobal` 값으로 스킵). 일반 로컬 좌표 경로(REPLACE/2-pass 등 기존 X/Y/Z 기반)는 `UseGlobal=0`으로
+기존 변환 로직을 그대로 사용한다.
+
+route update payload는 다음 필드를 포함한다.
 
 | 필드 | 형식 | 의미 | 검증 규칙 |
 | --- | --- | --- | --- |
-| `route_op` | `uint8` | 경로 연산 타입: `REPLACE=1`, `APPEND=2`, `DELETE=3` | 승인된 op 값만 허용 |
+| `route_op` | `uint8` | 경로 연산 타입: `REPLACE=1`, `ADD=2`, `DELETE=3`, `MODIFY=4` | 승인된 op 값만 허용 |
 | `route_version` | `uint8` | payload 버전 | 현재 지원 버전과 일치 |
-| `waypoint_count` | `uint8` | REPLACE/APPEND: 신규 waypoint 개수; DELETE: 제거할 개수 | `1` 이상 최대 waypoint 제한 이하 (DELETE도 동일) |
-| `waypoints` | waypoint 배열 | route segment 좌표 (REPLACE/APPEND에만 존재) | finite, flyable area, altitude, segment distance 조건 충족 |
+| `index_or_count` | `uint8` | REPLACE/ADD: 신규 waypoint 개수; DELETE/MODIFY: 대상 인덱스(단일) | REPLACE/ADD는 `1` 이상 MAX 이하; DELETE/MODIFY는 `0` 이상 현재 waypoint 개수 미만 |
+| `waypoints` | waypoint 배열 | route segment (REPLACE/ADD: N개; MODIFY: 1개; DELETE: 없음) | finite, flyable area, altitude 조건 충족(세그먼트 거리 제약 없음) |
 
-연산 타입별 의미:
-- **REPLACE**: 기존 active route를 `waypoints` 배열로 완전 대체한다.
-- **APPEND**: `mavlink_bridge_app`의 active waypoint cache 뒤에 `waypoints`를 추가한다. 합계가 MAX를 초과하면 MAX에서 절단된다.
-- **DELETE**: active cache 끝에서 `waypoint_count`개를 제거한다. payload에 waypoint 데이터 없음 (`PayloadLength=4` 고정).
+연산 타입별 의미 및 ARMED 정책:
+
+- **REPLACE**: 기존 active route를 `waypoints` 배열로 완전 대체한다. **ARMED 상태에서 차단**(기존 `IsArmed` 가드 유지) — 전체 교체는 위험한 연산으로 간주.
+- **ADD**: active waypoint cache 끝에 `waypoints`를 추가한다(합계가 MAX 초과 시 MAX에서 절단). ARMED 허용. `ActiveResumeIndex` 불변.
+- **DELETE(index)**: active cache에서 `index` 위치의 waypoint 1개를 제거하고 뒤 인덱스를 당긴다. ARMED 허용. `index == ActiveResumeIndex`(현재 향하고 있는 지점)이면 **거부**(REJECT_ROUTE) — 진행 중인 목표점은 삭제 불가, 필요 시 먼저 다른 인덱스로 진행되길 기다리거나 MODIFY로 좌표만 바꿀 것. `index < ActiveResumeIndex`면 `ActiveResumeIndex -= 1`.
+- **MODIFY(index)**: active cache의 `index` 위치 waypoint를 새 값으로 덮어쓴다. ARMED 허용. `ActiveResumeIndex` 불변(같은 슬롯 좌표만 변경 — `index == ActiveResumeIndex`인 경우 기체는 재업로드 직후 새 좌표를 향해 즉시 진로를 바꾼다).
+
+**비행 중 재개 지점 유지 (인덱스 리셋 문제 해결)**: PX4(`mavlink_mission.cpp`)는 미션 업로드 트랜잭션 중 `current=1`이 찍힌 `MISSION_ITEM_INT`의 seq를 그대로 재개 인덱스로 채택한다(`update_active_mission()`이 그 seq를 `current_seq`로 발행) — 별도 `MISSION_SET_CURRENT` 명령이 불필요하다. 따라서 ADD/DELETE/MODIFY로 인한 모든 재업로드는 `mavlink_bridge_app`이 유지하는 `ActiveResumeIndex`(FC의 `MISSION_CURRENT` 텔레메트리로 갱신)에 해당하는 항목에 `current=1`을 찍어 전송한다. REPLACE는 ARMED 차단으로 항상 지상(정지) 상태에서만 발생하므로 `ActiveResumeIndex`는 항상 0(필요 시 §18.4.6.8 `FLIGHT_MODE(WAYPOINT, waypoint_start_index)`로 별도 지정).
 
 route update baseline 수치 기준:
 
 - `MAX_ROUTE_WAYPOINT_COUNT = 16`
-- 인접 waypoint 간 3D 거리: `2m 이상 2m 이하` (REPLACE/APPEND에 적용; DELETE는 좌표 없음)
+- 인접 waypoint 간 거리 제약: **폐지**(2026-07-25) — flyable area(`±50m` X/Y)·고도(`2m~8m`) 범위 검증만 유지. 2.0m 정확 간격이 필요한 2-pass 원형 보정(§18.4.6.2.1)은 지상국이 스스로 그렇게 계산해 올리는 것으로 충분, 기체측 강제 불필요.
 
 출력 계약:
 
 - 유효한 payload는 mission layer가 직접 사용할 수 있는 검증된 route segment 구조로 변환되어야 한다.
-- 최소 출력 필드는 `route_op`, `route_version`, `waypoint_count`, waypoint 배열(REPLACE/APPEND)이다.
+- 최소 출력 필드는 `route_op`, `route_version`, `index_or_count`, waypoint 배열(REPLACE/ADD/MODIFY)이다.
 - 현재 구현에서 내부 bus message를 사용하는 경우, 그 message는 raw payload copy가 아니라 검증된 구조 표현이어야 한다.
 
 거부 조건:
 
-- payload 길이 불일치 (DELETE는 4바이트, REPLACE/APPEND는 `4 + waypoint_count * 12`)
+- payload 길이 불일치 (DELETE는 고정 길이, REPLACE/ADD는 `N * sizeof(ROUTE_WAYPOINT_t)` 가변, MODIFY는 `1 * sizeof(ROUTE_WAYPOINT_t)` 고정)
 - 승인되지 않은 `route_op` 값
-- waypoint 수 위반 (`0` 또는 MAX 초과)
-- 좌표가 finite가 아님 (REPLACE/APPEND)
-- 비행 가능 영역 위반 (REPLACE/APPEND)
-- 고도 제약 위반 (REPLACE/APPEND)
-- 인접 waypoint 거리 제약 위반 (REPLACE/APPEND)
+- waypoint 수/인덱스 위반 (REPLACE/ADD: `0` 또는 MAX 초과; DELETE/MODIFY: 범위 밖 인덱스)
+- 좌표가 finite가 아님 (REPLACE/ADD/MODIFY)
+- 비행 가능 영역 위반 (REPLACE/ADD/MODIFY)
+- 고도 제약 위반 (REPLACE/ADD/MODIFY)
+- REPLACE가 ARMED 상태에서 수신됨
+- DELETE의 `index == ActiveResumeIndex`
 
 ##### 18.4.6.2.1 route update — 2-pass GPS 능동 보정 (2026-07-24 개정 — 지상국 연산 방식)
 
@@ -1493,10 +1530,20 @@ REPLACE 연산에 한해, payload의 `reserved` 필드를 2-pass 보정 활성�
 | 보정 route 업로드 | **지상국** | 보정 계산 결과 점(a,b,c)을 **평범한 REPLACE waypoint로 재업로드** (특수 item·플래그 없음) |
 | 호버링/재개/착륙 | **지상국→기체** | 명시 **비행모드 명령 3종(HOVER/WAYPOINT/LAND)**으로 오케스트레이션 (아래 base 배선) |
 
+**좌표계 (2026-07-25 확정)**: 원 피팅·편차 계산은 전부 **로컬 접평면(local tangent plane) 미터
+좌표**로 수행한다. 위경도(도)는 위도·경도의 실거리 축척이 달라(경도는 `cos(위도)`만큼 수축) 원을
+그대로 피팅하면 타원으로 왜곡되고, 이 시스템 나머지(flyable area, LOCAL_POSITION_NED 샘플, 기존
+REPLACE waypoint)도 전부 미터 단위라 통일이 맞다(PX4/ArduPilot EKF 로컬 origin, ROS `map` 프레임
+등 GPS 항법 시스템의 표준 패턴과 동일). 이 로컬 좌표계의 원점은 **lap 1 시작 시점 기체 위치를
+한 번 스냅샷**해서 세션 내내 고정한다 — `mavlink_bridge_app`의 `RefLatE7`/`RefLonE7`(매
+`GLOBAL_POSITION_INT`마다 갱신되는 현재 위치, §18.4.6.2 참조)을 그대로 쓰면 세션 도중 기준점이
+계속 움직여 원피팅 좌표계가 흔들리므로 **사용 금지** — 지상국이 별도로 lap 1 시작 시점 값을
+한 번 캡처해 세션 동안 재사용한다.
+
 **lap 1 — 데이터 수집(지상)**: 지상국은 lap 1 동안 다운링크되는 위치(DL2 `x,y,z` i16 cm,
-또는 `lat/lon`)를 누적한다. 온보드 5Hz 1500샘플 대신 다운링크된 더 적고 거친 샘플을
-쓰지만, 원 피팅은 원 둘레에 잘 퍼진 수십 점이면 충분하다. lap 1 완료 판정은 FC가
-발행하는 `MISSION_ITEM_REACHED`(마지막 waypoint seq)를 다운링크로 관측한 시점.
+또는 `lat/lon` — 위 고정 원점으로 변환 후 사용)를 누적한다. 온보드 5Hz 1500샘플 대신 다운링크된
+더 적고 거친 샘플을 쓰지만, 원 피팅은 원 둘레에 잘 퍼진 수십 점이면 충분하다. lap 1 완료 판정은
+FC가 발행하는 `MISSION_ITEM_REACHED`(마지막 waypoint seq)를 다운링크로 관측한 시점.
 
 **CORRECTING — 보정 계산(지상)**:
 1. 누적 샘플에 최소자승 원 피팅 → 실측 중심(cx, cy)·반지름(r). 유효 샘플이 3개 미만이면
@@ -1507,6 +1554,13 @@ REPLACE 연산에 한해, payload의 `reserved` 필드를 2-pass 보정 활성�
 4. 보정 route는 기체측 §18.4.6.2 REPLACE 검증을 다시 통과해야 한다(비행 가능 영역·finite).
    인접 waypoint 거리 제약은 적용하지 않는다(프로토타입 잔재). 편차 크기 임계값은 두지
    않으며 측정 편차는 크기와 무관하게 항상 반영(노이즈 상쇄는 다중 샘플 평균화에 의존).
+5. **전송 시 반드시 절대좌표(`UseGlobal=1`) 사용(2026-07-25 확정)**: 보정 계산은 lap 1 시작
+   시점 고정 원점 기준 로컬 좌표(cx, cy 등)로 하지만, 그 결과를 로컬 X/Y(`UseGlobal=0`)로
+   그대로 REPLACE 전송하면 `mavlink_bridge_app`이 **업로드 시점의 현재 위치**(드리프트하는
+   `RefLatE7`/`RefLonE7`)를 기준으로 재변환해 lap 1 시작 이후 이동한 거리만큼(최대 원주 전체,
+   수 m 단위) 어긋난다 — 보정 자체가 무의미해질 수 있는 오차. 따라서 지상국이 보정된 로컬
+   좌표를 **lap 1 고정 원점으로 직접** 절대 위경도(LatE7/LonE7)로 변환한 뒤, §18.4.6.2에서
+   정의한 `UseGlobal=1` 경로로 전송해 기체측 재변환(및 그로 인한 기준점 불일치)을 건너뛴다.
 
 **LAP2 전이**:
 - 보정 성공 시: 지상국이 보정 계산 결과 점(a,b,c)을 **평범한 REPLACE waypoint로 재업로드**한다
@@ -1530,17 +1584,25 @@ waypoint→…→HOVER/LAND).
 
 > **base 배선 — 비행모드 명령 3종(구현 대상, 하드웨어 검증과 분리)**: `HOVER`/`WAYPOINT`/`LAND`.
 > 신규 command class(FLIGHT_MODE)로 `uplink_app`이 수신 → 신규 MID로 게시 → `mavlink_bridge`가
-> FC로 전달(`MAV_CMD_DO_SET_MODE`; WAYPOINT는 AUTO 모드 + `MISSION_SET_CURRENT` 동반, HOVER는
-> LOITER/POSHOLD, LAND는 LAND/RTL). 배선·파싱·단위테스트는 선행 가능하고, 실외 원형비행 실기
+> FC로 전달(`MAV_CMD_DO_SET_MODE`; WAYPOINT는 AUTO 모드, HOVER는 LOITER/POSHOLD, LAND는
+> LAND/RTL). **재개 인덱스는 별도 `MISSION_SET_CURRENT` 명령이 아니라 §18.4.6.2의 current-flag
+> 메커니즘(재업로드 트랜잭션 내 `ActiveResumeIndex` 항목에 `current=1`)으로 처리한다**(2026-07-25
+> 정정 — PX4가 업로드 트랜잭션 안의 `current=1` 항목 seq를 그대로 재개 인덱스로 채택하므로 별도
+> 명령 불필요, BL-56 설계 중 확인). 배선·파싱·단위테스트는 선행 가능하고, 실외 원형비행 실기
 > 검증만 하드웨어를 대기한다(BL-44 등록). (구 설계의 reserved 2-pass 플래그 배선은 이 모델에서
 > 불필요해 폐기.)
 
 **알려진 제약(추후 해결 과제)**:
-- waypoint 개수 상한(`MAX_ROUTE_WAYPOINT_COUNT=16`)은 임의 값이 아니라 LoRa 프레임
-  페이로드(196바이트)에 정확히 맞춘 하드 리밋이다(`4 + 16×12 = 196`). APPEND 연산으로
-  여러 LoRa 프레임에 나눠 보내도 최종 합계는 여전히 16에서 절단되므로, 미션 전체를
-  통틀어 16 waypoint가 절대 상한이다. 원형 촬영 밀도 요구량이 이보다 많은 지점을
-  필요로 하는지, 필요하다면 메시지 구조체(3개 앱 공통) 재설계가 선행돼야 하는지는
+- **waypoint 개수 상한은 계속 16개(`ROUTE_MAX_WAYPOINTS=16`, 미션 배열 전체 상한, 캐시 기준),
+  단 LoRa 프레임 1개당 담을 수 있는 waypoint 수는 BL-56 구조체 확장(2026-07-25)으로 줄었다**:
+  구 `ROUTE_WAYPOINT_t`(X/Y/Z, 12바이트)는 `4 + 16×12 = 196`으로 프레임 페이로드(196바이트)에
+  정확히 맞았으나, 신 `ROUTE_WAYPOINT_t`(CmdType+Param1~4+UseGlobal+LatE7+LonE7+X+Y+Z, 38바이트)는
+  프레임당 `(196−4)/38 = 5`개가 한도. **16개를 채우려면 지상국(openMCT)이 ADD를 여러 번(예:
+  4개씩 4프레임) 나눠 순차 전송**한다 — 세션/누적 대기 상태는 두지 않는다: ADD 프레임 하나가
+  도착할 때마다 `mavlink_bridge_app`이 그 시점 캐시 전체를 즉시 PX4로 재업로드하며, 매 단계가
+  독립적으로 완결된 유효 미션이다(예: 4개만 반영된 상태에서도 바로 비행 가능, 16개가 다 모여야
+  "시작"되는 게이트는 없음). `HOVER`는 웨이포인트 배열 항목이 아니라 별도 비행모드 명령이라
+  16개 용량을 잠식하지 않는다. 원형 촬영 밀도 요구량이 16개보다 많은 지점을 필요로 하는지는
   별도 검토가 필요하다.
 - `MISSION_ITEM_INT`(INT 업로드 경로)의 frame 호환성 코드 수정은 완료(2026-07-13,
   legacy와 동일하게 GLOBAL_RELATIVE_ALT 전환). 다만 INT 경로 자체의 실물 FC
