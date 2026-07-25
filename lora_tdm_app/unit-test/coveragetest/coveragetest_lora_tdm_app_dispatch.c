@@ -223,7 +223,26 @@ void Test_ProcessCommandPacket_UplinkStatus_Routed_NoFalsePositive(void)
     LORA_TDM_APP_Data.PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_OK;
     LORA_TDM_APP_ProcessCommandPacket((CFE_SB_Buffer_t *)&Msg);
 
-    UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.PendingUplinkFeedback, LORA_TDM_APP_UPLINK_FB_OK);
+    UtAssert_INT32_NEQ((int)LORA_TDM_APP_Data.PendingUplinkFeedback, LORA_TDM_APP_UPLINK_FB_SEQ_FAIL);
+}
+
+/* BL-55(2026-07-25): ROUTED(3)는 UFB_APPLIED(0x0E)를 명시 세팅해야 함 —
+ * UFB_OK와 "성공"/"pending 결과 없음"을 구분하지 못하던 모호성 해소 */
+void Test_ProcessCommandPacket_UplinkStatus_Routed_SetsUfbApplied(void)
+{
+    UPLINK_APP_StatusTlm_t Msg;
+    CFE_SB_MsgId_t          MsgId;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.LastCommandResult = 3U; /* UPLINK_APP_RESULT_ROUTED */
+
+    MsgId = CFE_SB_ValueToMsgId(LORA_TDM_APP_UPLINK_STATUS_MID_VALUE);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+
+    LORA_TDM_APP_Data.PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_OK;
+    LORA_TDM_APP_ProcessCommandPacket((CFE_SB_Buffer_t *)&Msg);
+
+    UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.PendingUplinkFeedback, LORA_TDM_APP_UPLINK_FB_APPLIED);
 }
 
 void Test_ProcessCommandPacket_UplinkStatus_RejectState(void)
@@ -358,6 +377,7 @@ void UtTest_Setup(void)
     ADD_TEST(ProcessCommandPacket_UplinkStatus_RejectSequence);
     ADD_TEST(ProcessCommandPacket_UplinkStatus_CachesSeqAndBootCount);
     ADD_TEST(ProcessCommandPacket_UplinkStatus_Routed_NoFalsePositive);
+    ADD_TEST(ProcessCommandPacket_UplinkStatus_Routed_SetsUfbApplied);
     ADD_TEST(ProcessCommandPacket_UplinkStatus_RejectState);
     ADD_TEST(ProcessCommandPacket_UplinkStatus_Duplicate_NoLatchOverride);
     ADD_TEST(ProcessCommandPacket_UplinkStatus_Success);

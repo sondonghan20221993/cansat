@@ -2,6 +2,7 @@
 #include "lora_tdm_app_dispatch.h"
 #include "lora_tdm_app_utils.h"
 #include "lora_tdm_app_eventids.h"
+#include "lora_tdm_app_internal.h"
 #include "serial_baud.h"
 
 #include <errno.h>
@@ -122,7 +123,7 @@ static uint32 GetTimeMs(void)
 
 /* ---- RX window: read until timeout or newline/frame 완성 ---- */
 
-static void RunRxWindow(void)
+void LORA_TDM_APP_RunRxWindow(void)
 {
     ssize_t Rc;
     char    C;
@@ -246,7 +247,7 @@ static void RunRxWindow(void)
 
 /* ---- TX downlink ---- */
 
-static void RunTx(void)
+void LORA_TDM_APP_RunTx(void)
 {
     char  Line[LORA_TDM_APP_LINE_BUF_LEN];
     int   Len;
@@ -413,8 +414,8 @@ void LORA_TDM_APP_RunCycle(void)
         LORA_TDM_APP_Data.LoRaFd = OpenSerial();
     }
 
-    RunTx();
-    RunRxWindow();
+    LORA_TDM_APP_RunTx();
+    LORA_TDM_APP_RunRxWindow();
 
     NowMs = GetTimeMs();
     LORA_TDM_APP_UpdateLinkState(&LORA_TDM_APP_Data, NowMs);

@@ -165,6 +165,13 @@ void LORA_TDM_APP_ProcessCommandPacket(CFE_SB_Buffer_t *SBBufPtr)
         {
             LORA_TDM_APP_Data.PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_REJECT_FLIGHT_MODE;
         }
+        /* BL-55(2026-07-25): ROUTED(3, 성공)를 명시 세팅 — UFB_OK가 "성공"과
+         * "보고할 pending 결과 없음"을 구분 못 하는 모호성 해소. ROUTE뿐 아니라
+         * 이 UFB 메커니즘을 공유하는 모든 명령 클래스에 공통 적용(class 무관). */
+        else if (StatusMsg->LastCommandResult == 3U)  /* ROUTED */
+        {
+            LORA_TDM_APP_Data.PendingUplinkFeedback = LORA_TDM_APP_UPLINK_FB_APPLIED;
+        }
         /* UPLINK_APP_RESULT_DUPLICATE = 14 (BL-01): 4x 재전송 슬롯의 중복
          * 도착. replay가 아니므로 SEQ_FAIL로 오귀속하지 않고 무시한다 —
          * PendingUplinkFeedback은 직전 값(성공 시 OK)을 그대로 유지.

@@ -1,4 +1,5 @@
 #include "lora_tdm_app_coveragetest_common.h"
+#include "lora_tdm_app_internal.h"
 #include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
@@ -99,6 +100,52 @@ void Test_RunCycle_RxReadFailClosesFd(void)
 
     UT_SetDeferredRetcode(UT_KEY(CFE_SB_ReceiveBuffer), 1, CFE_SB_NO_MESSAGE);
     LORA_TDM_APP_RunCycle();
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.LoRaFd, -1);
+}
+
+/* BL-60(2026-07-25): LORA_TDM_APP_RunTx()를 RunCycle 경유 없이 직접 호출해
+ * write 실패(closed fd -> EBADF) 경로를 검증 — _internal.h로 노출된 함수를
+ * UT가 직접 부른다(기존 Test_RunCycle_TxWriteFailClosesFd와 동일 원칙, 간접
+ * 호출 대신 직접 호출로 커버리지 갭을 메운다). */
+void Test_RunTx_Direct_WriteFailClosesFd(void)
+{
+    int Fd;
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Init(), CFE_SUCCESS);
+
+    LORA_TDM_APP_Data.UseV2Downlink = 0;
+    UT_SetDefaultReturnValue(UT_KEY(LORA_TDM_APP_BuildFcDownlinkLine), 10);
+    UT_SetDefaultReturnValue(UT_KEY(LORA_TDM_APP_BuildShDownlinkLine), 10);
+
+    Fd = open("/dev/null", O_WRONLY);
+    UtAssert_True(Fd >= 0, "open /dev/null for close-then-use setup");
+    close(Fd); /* 닫힌 fd 재사용 -> write()가 EBADF로 실패 보장 */
+    LORA_TDM_APP_Data.LoRaFd = Fd;
+
+    LORA_TDM_APP_RunTx();
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.LoRaFd, -1);
+}
+
+/* BL-60(2026-07-25): LORA_TDM_APP_RunRxWindow()를 RunCycle 경유 없이 직접
+ * 호출해 read 실패(closed fd -> EBADF) 경로를 검증. */
+void Test_RunRxWindow_Direct_ReadFailClosesFd(void)
+{
+    int                Fd;
+    CFE_TIME_SysTime_t FakeTime;
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Init(), CFE_SUCCESS);
+
+    memset(&FakeTime, 0, sizeof(FakeTime));
+    FakeTime.Seconds = 100U;
+    UT_SetDataBuffer(UT_KEY(CFE_TIME_GetTime), &FakeTime, sizeof(FakeTime), false);
+
+    Fd = open("/dev/null", O_WRONLY); /* write-only -> read()가 EBADF로 실패 보장 */
+    UtAssert_True(Fd >= 0, "open /dev/null write-only");
+    LORA_TDM_APP_Data.LoRaFd = Fd;
+
+    LORA_TDM_APP_RunRxWindow();
 
     UtAssert_INT32_EQ(LORA_TDM_APP_Data.LoRaFd, -1);
 }
@@ -324,6 +371,8 @@ void UtTest_Setup(void)
     ADD_TEST(RunCycle_TxWriteFailClosesFd);
     ADD_TEST(RunCycle_UseV2Downlink_SendsDl2Only);
     ADD_TEST(RunCycle_RxReadFailClosesFd);
+    ADD_TEST(RunTx_Direct_WriteFailClosesFd);
+    ADD_TEST(RunRxWindow_Direct_ReadFailClosesFd);
     ADD_TEST(RunRxWindow_LineSpansAcrossWindows);
     ADD_TEST(RunRxWindow_Ack2MagicDispatchesToBinaryHandler);
     ADD_TEST(RunRxWindow_Up2FrameSpansAcrossWindows);

@@ -33,6 +33,9 @@
 #define LORA_TDM_APP_UPLINK_FB_REJECT_VIEWPOINT  11
 #define LORA_TDM_APP_UPLINK_FB_REJECT_COUNTER    12 /* counter management scope/action 오류(§18.4.6.7, BL-CTR) */
 #define LORA_TDM_APP_UPLINK_FB_REJECT_FLIGHT_MODE 13 /* flight mode payload 오류(BL-44, §18.4.6.8) */
+#define LORA_TDM_APP_UPLINK_FB_APPLIED             0x0E /* ROUTED(성공) 명시 세팅 — UFB_OK와의 모호성 해소(BL-55).
+                                                          * spec §9.2: 최초 0x0C로 배정했으나 REJECT_COUNTER(12=0x0C)와
+                                                          * 충돌 발견돼 0x0E로 정정(behavior_spec.md 2026-07-25). */
 
 /* Link state values */
 #define LORA_TDM_APP_LINK_DISCONNECTED         0

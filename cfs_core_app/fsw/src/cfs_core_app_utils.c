@@ -3,6 +3,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -77,6 +78,21 @@ static void CFS_CORE_APP_UpdateStateCache(CFS_CORE_APP_StateCache_t *Cache,
     Cache->Stale       = Msg->Stale;
     Cache->ErrorCode   = Msg->ErrorCode;
     Cache->Received    = true;
+}
+
+/* BL-59(2026-07-25): FC_STATE_PREFIX_t는 실제 수치 필드가 없어 isfinite()
+ * 검증은 디스패치 지점에서 전체 타입으로 재캐스팅해야 한다. Attitude/EkfLocal
+ * 2종만 대상(GPS는 int32 고정소수점, EkfStatus는 Flags뿐이라 NaN/Inf 불가). */
+static bool CFS_CORE_APP_AttitudeFieldsFinite(const FC_ATTITUDE_TLM_t *Msg)
+{
+    return isfinite(Msg->RollRad) && isfinite(Msg->PitchRad) && isfinite(Msg->YawRad) &&
+           isfinite(Msg->RollspeedRps) && isfinite(Msg->PitchspeedRps) && isfinite(Msg->YawspeedRps);
+}
+
+static bool CFS_CORE_APP_EkfLocalFieldsFinite(const FC_EKF_LOCAL_TLM_t *Msg)
+{
+    return isfinite(Msg->X_m) && isfinite(Msg->Y_m) && isfinite(Msg->Z_m) &&
+           isfinite(Msg->Vx_mps) && isfinite(Msg->Vy_mps) && isfinite(Msg->Vz_mps);
 }
 
 static bool CFS_CORE_APP_StateExpired(const CFS_CORE_APP_StateCache_t *Cache, uint32 NowMs, uint32 TimeoutMs)
@@ -207,11 +223,27 @@ void CFS_CORE_APP_ProcessStateMessage(CFE_SB_Buffer_t *SBBufPtr)
     }
     else if (CFE_SB_MsgIdToValue(MsgId) == CFS_CORE_APP_FC_ATTITUDE_STATE_MID_VALUE)
     {
+        const FC_ATTITUDE_TLM_t *AttitudeMsg = (const FC_ATTITUDE_TLM_t *)MsgPtr;
+
         CFS_CORE_APP_UpdateStateCache(&CFS_CORE_APP_Data.AttitudeState, (const CFS_CORE_APP_GenericStateTlm_t *)MsgPtr, NowMs);
+        if (!CFS_CORE_APP_AttitudeFieldsFinite(AttitudeMsg))
+        {
+            CFS_CORE_APP_Data.AttitudeState.Valid = false;
+            CFE_EVS_SendEvent(CFS_CORE_APP_NONFINITE_VALUE_EID, CFE_EVS_EventType_ERROR,
+                              "CFS_CORE_APP: non-finite value in AttitudeState telemetry, marked invalid");
+        }
     }
     else if (CFE_SB_MsgIdToValue(MsgId) == CFS_CORE_APP_FC_EKF_LOCAL_STATE_MID_VALUE)
     {
+        const FC_EKF_LOCAL_TLM_t *EkfLocalMsg = (const FC_EKF_LOCAL_TLM_t *)MsgPtr;
+
         CFS_CORE_APP_UpdateStateCache(&CFS_CORE_APP_Data.LocalState, (const CFS_CORE_APP_GenericStateTlm_t *)MsgPtr, NowMs);
+        if (!CFS_CORE_APP_EkfLocalFieldsFinite(EkfLocalMsg))
+        {
+            CFS_CORE_APP_Data.LocalState.Valid = false;
+            CFE_EVS_SendEvent(CFS_CORE_APP_NONFINITE_VALUE_EID, CFE_EVS_EventType_ERROR,
+                              "CFS_CORE_APP: non-finite value in EkfLocalState telemetry, marked invalid");
+        }
     }
     else if (CFE_SB_MsgIdToValue(MsgId) == CFS_CORE_APP_FC_GPS_RAW_STATE_MID_VALUE)
     {

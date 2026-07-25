@@ -4,6 +4,7 @@
 
 #include "cfs_core_app_coveragetest_common.h"
 #include <fcntl.h>
+#include <math.h>
 #include <signal.h>
 #include <stdlib.h>
 #include <sys/stat.h>
@@ -747,7 +748,7 @@ void Test_CFS_CORE_APP_UpdateHealth_AttitudeStale(void)
 /* 정상 타임스탬프 → 캐시 갱신 */
 void Test_CFS_CORE_APP_TimestampCheck_Normal(void)
 {
-    CFS_CORE_APP_GenericStateTlm_t Msg;
+    FC_ATTITUDE_TLM_t Msg; /* BL-59: full type — dispatch re-casts to check isfinite() */
     CFE_SB_MsgId_t                 MsgId;
     uint32                         NowMs = 5000;
 
@@ -770,7 +771,7 @@ void Test_CFS_CORE_APP_TimestampCheck_Normal(void)
 /* 미래 타임스탬프 (NowMs + TOLERANCE + 100000ms) → 반드시 거부 */
 void Test_CFS_CORE_APP_TimestampCheck_FutureTooFar(void)
 {
-    CFS_CORE_APP_GenericStateTlm_t Msg;
+    FC_ATTITUDE_TLM_t Msg; /* BL-59: full type — dispatch re-casts to check isfinite() */
     CFE_SB_MsgId_t                 MsgId;
     CFE_TIME_SysTime_t             FakeTime;
     UT_CheckEvent_t                Evt;
@@ -802,7 +803,7 @@ void Test_CFS_CORE_APP_TimestampCheck_FutureTooFar(void)
 /* 허용 한계 경계: NowMs + TOLERANCE 정확히 → 허용 */
 void Test_CFS_CORE_APP_TimestampCheck_FutureBoundary(void)
 {
-    CFS_CORE_APP_GenericStateTlm_t Msg;
+    FC_ATTITUDE_TLM_t Msg; /* BL-59: full type — dispatch re-casts to check isfinite() */
     CFE_SB_MsgId_t                 MsgId;
     CFE_TIME_SysTime_t             FakeTime;
 
@@ -889,7 +890,7 @@ void Test_CFS_CORE_APP_TimestampCheck_EKF_Rejected(void)
 /* 타임스탬프 거부가 시퀀스 검사보다 먼저 실행됨 확인 */
 void Test_CFS_CORE_APP_TimestampCheck_BeforeSeqCheck(void)
 {
-    CFS_CORE_APP_GenericStateTlm_t Msg;
+    FC_ATTITUDE_TLM_t Msg; /* BL-59: full type — dispatch re-casts to check isfinite() */
     CFE_SB_MsgId_t                 MsgId;
     CFE_TIME_SysTime_t             FakeTime;
 
@@ -914,6 +915,148 @@ void Test_CFS_CORE_APP_TimestampCheck_BeforeSeqCheck(void)
     /* 타임스탬프 검사가 먼저 실행 → timestamp count만 증가, seq count는 0 유지 */
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.TimestampRejectedCount, 1);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.SeqRejectedCount,       0);
+}
+
+/* BL-59(2026-07-25): Attitude 필드에 NaN이 섞이면 Valid=false로 강제되고
+ * NONFINITE_VALUE_EID가 발생해야 한다. */
+void Test_CFS_CORE_APP_NonFinite_Attitude_MarksInvalid(void)
+{
+    FC_ATTITUDE_TLM_t Msg;
+    CFE_SB_MsgId_t     MsgId;
+    UT_CheckEvent_t    Evt;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.TimestampMs = 100;
+    Msg.Seq         = 1;
+    Msg.Valid       = 1;
+    Msg.RollRad     = NAN; /* 비정상 값 주입 */
+    Msg.PitchRad    = 0.1f;
+    Msg.YawRad      = 0.2f;
+    MsgId           = CFE_SB_ValueToMsgId(CFS_CORE_APP_FC_ATTITUDE_STATE_MID_VALUE);
+
+    memset(&CFS_CORE_APP_Data.AttitudeState, 0, sizeof(CFS_CORE_APP_Data.AttitudeState));
+
+    UT_CHECKEVENT_SETUP(&Evt, CFS_CORE_APP_NONFINITE_VALUE_EID, NULL);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+    CFS_CORE_APP_ProcessStateMessage((CFE_SB_Buffer_t *)&Msg);
+
+    UtAssert_BOOL_FALSE(CFS_CORE_APP_Data.AttitudeState.Valid);
+    UtAssert_INT32_EQ(Evt.MatchCount, 1);
+}
+
+/* Inf도 동일하게 걸러야 한다(속도 필드) */
+void Test_CFS_CORE_APP_NonFinite_Attitude_Inf_MarksInvalid(void)
+{
+    FC_ATTITUDE_TLM_t Msg;
+    CFE_SB_MsgId_t     MsgId;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.TimestampMs   = 100;
+    Msg.Seq           = 1;
+    Msg.Valid         = 1;
+    Msg.YawspeedRps   = INFINITY;
+    MsgId             = CFE_SB_ValueToMsgId(CFS_CORE_APP_FC_ATTITUDE_STATE_MID_VALUE);
+
+    memset(&CFS_CORE_APP_Data.AttitudeState, 0, sizeof(CFS_CORE_APP_Data.AttitudeState));
+
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+    CFS_CORE_APP_ProcessStateMessage((CFE_SB_Buffer_t *)&Msg);
+
+    UtAssert_BOOL_FALSE(CFS_CORE_APP_Data.AttitudeState.Valid);
+}
+
+/* 전부 유한값이면 Valid는 메시지의 Valid(1)를 그대로 유지 */
+void Test_CFS_CORE_APP_Finite_Attitude_KeepsValid(void)
+{
+    FC_ATTITUDE_TLM_t Msg;
+    CFE_SB_MsgId_t     MsgId;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.TimestampMs = 100;
+    Msg.Seq         = 1;
+    Msg.Valid       = 1;
+    Msg.RollRad     = 0.05f;
+    MsgId           = CFE_SB_ValueToMsgId(CFS_CORE_APP_FC_ATTITUDE_STATE_MID_VALUE);
+
+    memset(&CFS_CORE_APP_Data.AttitudeState, 0, sizeof(CFS_CORE_APP_Data.AttitudeState));
+
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+    CFS_CORE_APP_ProcessStateMessage((CFE_SB_Buffer_t *)&Msg);
+
+    UtAssert_BOOL_TRUE(CFS_CORE_APP_Data.AttitudeState.Valid);
+}
+
+/* BL-59: EkfLocal 필드에 NaN이 섞이면 Valid=false로 강제되어야 한다 */
+void Test_CFS_CORE_APP_NonFinite_EkfLocal_MarksInvalid(void)
+{
+    FC_EKF_LOCAL_TLM_t Msg;
+    CFE_SB_MsgId_t      MsgId;
+    UT_CheckEvent_t     Evt;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.TimestampMs = 100;
+    Msg.Seq         = 1;
+    Msg.Valid       = 1;
+    Msg.X_m         = 1.0f;
+    Msg.Vz_mps      = NAN; /* 비정상 값 주입 */
+    MsgId           = CFE_SB_ValueToMsgId(CFS_CORE_APP_FC_EKF_LOCAL_STATE_MID_VALUE);
+
+    memset(&CFS_CORE_APP_Data.LocalState, 0, sizeof(CFS_CORE_APP_Data.LocalState));
+
+    UT_CHECKEVENT_SETUP(&Evt, CFS_CORE_APP_NONFINITE_VALUE_EID, NULL);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+    CFS_CORE_APP_ProcessStateMessage((CFE_SB_Buffer_t *)&Msg);
+
+    UtAssert_BOOL_FALSE(CFS_CORE_APP_Data.LocalState.Valid);
+    UtAssert_INT32_EQ(Evt.MatchCount, 1);
+}
+
+/* 전부 유한값이면 EkfLocal Valid는 그대로 유지 */
+void Test_CFS_CORE_APP_Finite_EkfLocal_KeepsValid(void)
+{
+    FC_EKF_LOCAL_TLM_t Msg;
+    CFE_SB_MsgId_t      MsgId;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.TimestampMs = 100;
+    Msg.Seq         = 1;
+    Msg.Valid       = 1;
+    Msg.X_m         = 1.0f;
+    Msg.Y_m         = 2.0f;
+    Msg.Z_m         = -3.0f;
+    MsgId           = CFE_SB_ValueToMsgId(CFS_CORE_APP_FC_EKF_LOCAL_STATE_MID_VALUE);
+
+    memset(&CFS_CORE_APP_Data.LocalState, 0, sizeof(CFS_CORE_APP_Data.LocalState));
+
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+    CFS_CORE_APP_ProcessStateMessage((CFE_SB_Buffer_t *)&Msg);
+
+    UtAssert_BOOL_TRUE(CFS_CORE_APP_Data.LocalState.Valid);
+}
+
+/* BL-59: 헬스 체크는 !Valid || Stale 로직을 재사용하므로, NaN으로 Valid=false가
+ * 되면 UpdateHealth가 자연히 해당 상태를 무효로 취급해야 한다(회귀 확인). */
+void Test_CFS_CORE_APP_NonFinite_Attitude_ReflectsInHealthCheck(void)
+{
+    FC_ATTITUDE_TLM_t Msg;
+    CFE_SB_MsgId_t     MsgId;
+
+    memset(&CFS_CORE_APP_Data.GpsState, 0, sizeof(CFS_CORE_APP_Data.GpsState));
+    memset(&CFS_CORE_APP_Data.EkfState, 0, sizeof(CFS_CORE_APP_Data.EkfState));
+    memset(&CFS_CORE_APP_Data.LocalState, 0, sizeof(CFS_CORE_APP_Data.LocalState));
+    memset(&CFS_CORE_APP_Data.AttitudeState, 0, sizeof(CFS_CORE_APP_Data.AttitudeState));
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.TimestampMs = 100;
+    Msg.Seq         = 1;
+    Msg.Valid       = 1;
+    Msg.RollRad     = NAN;
+    MsgId           = CFE_SB_ValueToMsgId(CFS_CORE_APP_FC_ATTITUDE_STATE_MID_VALUE);
+
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetMsgId), &MsgId, sizeof(MsgId), false);
+    CFS_CORE_APP_ProcessStateMessage((CFE_SB_Buffer_t *)&Msg);
+
+    UtAssert_BOOL_FALSE(CFS_CORE_APP_Data.AttitudeState.Valid);
 }
 
 /* ForcePublish=false일 때 주기 미충족이면 게시 안 함 */
@@ -2448,7 +2591,7 @@ void Test_CFS_CORE_APP_UpdateHealth_StabilityTimerReset(void)
 /* 정상: 첫 수신 → 캐시 갱신, seq +1 증가 → 정상 갱신 (갭 없음) */
 void Test_CFS_CORE_APP_SeqCheck_Normal(void)
 {
-    CFS_CORE_APP_GenericStateTlm_t Msg;
+    FC_ATTITUDE_TLM_t Msg; /* BL-59: full type — dispatch re-casts to check isfinite() */
     CFE_SB_MsgId_t                 MsgId;
 
     memset(&Msg, 0, sizeof(Msg));
@@ -2482,7 +2625,7 @@ void Test_CFS_CORE_APP_SeqCheck_Normal(void)
 void Test_CFS_CORE_APP_SeqCheck_Gap(void)
 {
     UT_CheckEvent_t                Evt;
-    CFS_CORE_APP_GenericStateTlm_t Msg;
+    FC_ATTITUDE_TLM_t Msg; /* BL-59: full type — dispatch re-casts to check isfinite() */
     CFE_SB_MsgId_t                 MsgId;
 
     memset(&Msg, 0, sizeof(Msg));
@@ -2512,7 +2655,7 @@ void Test_CFS_CORE_APP_SeqCheck_Gap(void)
 /* 첫 수신 시 seq 갭 체크 없음 */
 void Test_CFS_CORE_APP_SeqCheck_Gap_FirstReceive(void)
 {
-    CFS_CORE_APP_GenericStateTlm_t Msg;
+    FC_ATTITUDE_TLM_t Msg; /* BL-59: full type — dispatch re-casts to check isfinite() */
     CFE_SB_MsgId_t                 MsgId;
 
     memset(&Msg, 0, sizeof(Msg));
@@ -2536,7 +2679,7 @@ void Test_CFS_CORE_APP_SeqCheck_Gap_FirstReceive(void)
 void Test_CFS_CORE_APP_SeqCheck_Duplicate(void)
 {
     UT_CheckEvent_t                Evt;
-    CFS_CORE_APP_GenericStateTlm_t Msg;
+    FC_ATTITUDE_TLM_t Msg; /* BL-59: full type — dispatch re-casts to check isfinite() */
     CFE_SB_MsgId_t                 MsgId;
 
     memset(&Msg, 0, sizeof(Msg));
@@ -2564,7 +2707,7 @@ void Test_CFS_CORE_APP_SeqCheck_Duplicate(void)
 void Test_CFS_CORE_APP_SeqCheck_Regression(void)
 {
     UT_CheckEvent_t                Evt;
-    CFS_CORE_APP_GenericStateTlm_t Msg;
+    FC_ATTITUDE_TLM_t Msg; /* BL-59: full type — dispatch re-casts to check isfinite() */
     CFE_SB_MsgId_t                 MsgId;
 
     memset(&Msg, 0, sizeof(Msg));
@@ -3281,7 +3424,7 @@ void Test_CFS_CORE_APP_Expiry_ArrivalStale_Expires(void)
  * 메시지는 거부하지 않고 새 기준으로 캐시 갱신. */
 void Test_CFS_CORE_APP_TimebaseShift_DetectsFcReboot(void)
 {
-    CFS_CORE_APP_GenericStateTlm_t Msg;
+    FC_ATTITUDE_TLM_t Msg; /* BL-59: full type — dispatch re-casts to check isfinite() */
     CFE_SB_MsgId_t                 MsgId;
     CFE_TIME_SysTime_t             FakeTime;
     UT_CheckEvent_t                Evt;
@@ -3381,6 +3524,12 @@ void UtTest_Setup(void)
     ADD_TEST(CFS_CORE_APP_TimestampCheck_GPS_Rejected);
     ADD_TEST(CFS_CORE_APP_TimestampCheck_EKF_Rejected);
     ADD_TEST(CFS_CORE_APP_TimestampCheck_BeforeSeqCheck);
+    ADD_TEST(CFS_CORE_APP_NonFinite_Attitude_MarksInvalid);
+    ADD_TEST(CFS_CORE_APP_NonFinite_Attitude_Inf_MarksInvalid);
+    ADD_TEST(CFS_CORE_APP_Finite_Attitude_KeepsValid);
+    ADD_TEST(CFS_CORE_APP_NonFinite_EkfLocal_MarksInvalid);
+    ADD_TEST(CFS_CORE_APP_Finite_EkfLocal_KeepsValid);
+    ADD_TEST(CFS_CORE_APP_NonFinite_Attitude_ReflectsInHealthCheck);
     ADD_TEST(CFS_CORE_APP_UpdateHealth_PeriodicRateLimit);
     ADD_TEST(CFS_CORE_APP_ProcessStateMessage_GetMsgIdError);
     ADD_TEST(CFS_CORE_APP_ReportHousekeeping_Fields);
