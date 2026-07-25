@@ -1619,7 +1619,12 @@ GPS 스냅샷은 그 순간의 GPS 노이즈·수렴 상태·fix quality에 좌�
 FC가 발행하는 `MISSION_ITEM_REACHED`(마지막 waypoint seq)를 다운링크로 관측한 시점.
 
 **CORRECTING — 보정 계산(지상)**:
-1. 누적 샘플에 최소자승 원 피팅 → 실측 중심(cx, cy)·반지름(r). 유효 샘플이 3개 미만이면
+1. **MAD 기반 2단계 이상치 제거 + 원피팅(2026-07-26 확정)**: ① 전체 샘플로 1차 원피팅 →
+   각 점의 잔차(점-원 거리) 계산 → ② 잔차의 MAD(median absolute deviation) 기준
+   **3.0배 초과 잔차를 이상치로 제거**(돌풍 등 국소 교란 대응, 근거: Survey Review 2025
+   "RNWTLSEC-MAD", arXiv 2508.03720 "Outlier Detection Algorithm for Circle Fitting" — 두
+   문헌 모두 2.5~3.5배 범위 채택, 중간값인 3.0배로 확정) → ③ 남은 점으로 재피팅 →
+   최종 실측 중심(cx, cy)·반지름(r). 이상치 제거 후 유효 샘플이 3개 미만이면
    피팅하지 않고 원본(lap 1) route로 lap 2를 재비행(폴백).
 2. 계획 waypoint 배열에도 동일 피팅 → 계획 중심(cx_plan, cy_plan), 각도
    `θ_i = atan2(Y_i − cy_plan, X_i − cx_plan)`.
