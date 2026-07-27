@@ -1,8 +1,10 @@
-# 4개 앱 spec-vs-code 전수 검증 결과 — 2026-07-27
+# 4개 앱 spec-vs-code 전수 검증 결과 — 2026-07-27 (✅ 완료, 2026-07-27)
 
 > mavlink_bridge_app / cfs_core_app / uplink_app / lora_tdm_app 각각에 대해
 > notes/*_behavior_spec.md 등 스펙 문서와 fsw 소스 전체, 관련 python 툴/테스트를 대조.
-> 코드 수정 없음 — 순수 조사 결과만 기록.
+> 작성 당시엔 코드 수정 없이 순수 조사 결과만 기록했으나, 이후 이 조사에서 나온
+> 항목 전부 BACKLOG.md BL-63~69로 해소·종결됨(코드 수정 3건, 문서 정정 3건,
+> GUI 이관 1건) — 상세는 `notes/temp/BACKLOG.md`의 BL-63~69 참조.
 
 ## 요약
 
