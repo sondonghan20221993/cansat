@@ -205,7 +205,7 @@ def main() -> int:
         if serial is None:
             print("error: pyserial required for lora-serial: pip install pyserial", file=sys.stderr)
             return 1
-        frame = build_lora_frame(args.sequence, config_payload)
+        frame = build_lora_frame(args.sequence, config_payload, (1 if args.force else 0) | (args.auth << 6))
         print(f"sending via {args.serial_path} at {args.baudrate} baud")
         print(f"frame: {frame}")
         with serial.Serial(args.serial_path, args.baudrate, timeout=2.0) as port:

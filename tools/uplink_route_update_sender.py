@@ -263,12 +263,12 @@ def main() -> int:
         packet = build_command_packet(UPLINK_APP_PROCESS_UPLINK_CC, proxy_payload)
         send_packet(packet, args.host, args.port)
     elif args.transport == "lora-text":
-        print(build_lora_uplink_frame(args.sequence, route_payload))
+        print(build_lora_uplink_frame(args.sequence, route_payload, flags=flags))
     else:
         if not args.serial_path:
             print("error: --serial-path is required for lora-serial transport", file=sys.stderr)
             return 1
-        frame_line = build_lora_uplink_frame(args.sequence, route_payload)
+        frame_line = build_lora_uplink_frame(args.sequence, route_payload, flags=flags)
         print(f"sending via serial {args.serial_path} at {args.baudrate} baud")
         print(f"frame: {frame_line}")
         send_lora_serial(frame_line, args.serial_path, args.baudrate)
