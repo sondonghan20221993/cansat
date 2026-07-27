@@ -1773,8 +1773,10 @@ void Test_CFS_CORE_APP_ResetCounter_PersistsZero(void)
 
     setenv("CFS_CORE_APP_STATE_FILE_PATH", Path, 1);
 
-    /* 파일에 카운터 7을 저장해 둠 */
+    /* 파일에 3개 앱 카운터 전부 저장해 둠 (BL-65: 대칭 리셋 검증) */
     CFS_CORE_APP_Data.BridgeRestartCount = 7;
+    CFS_CORE_APP_Data.UplinkRestartCount = 3;
+    CFS_CORE_APP_Data.LoraRestartCount   = 5;
     CFS_CORE_APP_SaveState();
 
     memset(&Msg, 0, sizeof(Msg));
@@ -1782,11 +1784,17 @@ void Test_CFS_CORE_APP_ResetCounter_PersistsZero(void)
 
     CFS_CORE_APP_ProcessRecoveryCommand(&Msg);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.BridgeRestartCount, 0);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.UplinkRestartCount, 0);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.LoraRestartCount, 0);
 
-    /* 파일도 0으로 갱신됐는지 — 7을 다시 넣고 로드해 0이 나와야 함 */
+    /* 파일도 0으로 갱신됐는지 — 값을 다시 넣고 로드해 0이 나와야 함 */
     CFS_CORE_APP_Data.BridgeRestartCount = 7;
+    CFS_CORE_APP_Data.UplinkRestartCount = 3;
+    CFS_CORE_APP_Data.LoraRestartCount   = 5;
     CFS_CORE_APP_LoadState();
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.BridgeRestartCount, 0);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.UplinkRestartCount, 0);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.LoraRestartCount, 0);
 
     unlink(Path);
     unsetenv("CFS_CORE_APP_STATE_FILE_PATH");
@@ -3040,6 +3048,12 @@ void Test_CFS_CORE_APP_ProcessRecoveryCommand_ResetCounter(void)
     CFS_CORE_APP_Data.CmdCounter                    = 0;
     CFS_CORE_APP_Data.SystemHealthTlm.RecoveryRequested = 0;
     CFS_CORE_APP_Data.BridgeRestartCount            = 5;
+    /* BL-65: Uplink/Lora 카운터+대기 타이머도 대칭적으로 리셋돼야 함 */
+    CFS_CORE_APP_Data.UplinkRestartCount            = 4;
+    CFS_CORE_APP_Data.LoraRestartCount              = 6;
+    CFS_CORE_APP_Data.NextBridgeRestartMs           = 1000;
+    CFS_CORE_APP_Data.NextUplinkRestartMs           = 2000;
+    CFS_CORE_APP_Data.NextLoraRestartMs             = 3000;
 
     CFS_CORE_APP_ProcessRecoveryCommand(&Msg);
 
@@ -3047,6 +3061,11 @@ void Test_CFS_CORE_APP_ProcessRecoveryCommand_ResetCounter(void)
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.CmdCounter, 1);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.SystemHealthTlm.RecoveryRequested, 1);
     UtAssert_INT32_EQ((int)CFS_CORE_APP_Data.BridgeRestartCount, 0);
+    UtAssert_INT32_EQ((int)CFS_CORE_APP_Data.UplinkRestartCount, 0);
+    UtAssert_INT32_EQ((int)CFS_CORE_APP_Data.LoraRestartCount, 0);
+    UtAssert_UINT32_EQ(CFS_CORE_APP_Data.NextBridgeRestartMs, 0);
+    UtAssert_UINT32_EQ(CFS_CORE_APP_Data.NextUplinkRestartMs, 0);
+    UtAssert_UINT32_EQ(CFS_CORE_APP_Data.NextLoraRestartMs, 0);
 }
 
 void Test_CFS_CORE_APP_ProcessRecoveryCommand_RestartBridge(void)

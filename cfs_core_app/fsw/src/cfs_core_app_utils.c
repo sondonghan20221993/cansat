@@ -1000,8 +1000,16 @@ void CFS_CORE_APP_ProcessRecoveryCommand(const CFS_CORE_APP_RecoveryCmdTlm_t *Ms
     switch (Msg->RecoveryAction)
     {
         case CFS_CORE_APP_RECOVERY_ACTION_RESET_COUNTER:
-            CFS_CORE_APP_Data.RecoveryStartMs    = 0;
-            CFS_CORE_APP_Data.BridgeRestartCount = 0;
+            /* BL-65(2026-07-27): bridge뿐 아니라 uplink/lora 카운터+대기
+             * 타이머도 대칭 리셋 — 기존엔 bridge만 지워져 지상 RESET_COUNTER
+             * 명령이 운영자 기대와 다르게 동작했음. */
+            CFS_CORE_APP_Data.RecoveryStartMs     = 0;
+            CFS_CORE_APP_Data.BridgeRestartCount  = 0;
+            CFS_CORE_APP_Data.UplinkRestartCount  = 0;
+            CFS_CORE_APP_Data.LoraRestartCount    = 0;
+            CFS_CORE_APP_Data.NextBridgeRestartMs = 0;
+            CFS_CORE_APP_Data.NextUplinkRestartMs = 0;
+            CFS_CORE_APP_Data.NextLoraRestartMs   = 0;
             CFS_CORE_APP_SaveState(); /* BL-43: 리셋값 파일 동기화 */
             CFE_EVS_SendEvent(CFS_CORE_APP_RECOVERY_CMD_EID, CFE_EVS_EventType_INFORMATION,
                               "CFS_CORE_APP: recovery cmd RESET_COUNTER seq=%u target=%u reason=%u token=%lu",
