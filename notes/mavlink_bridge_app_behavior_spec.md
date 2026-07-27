@@ -82,11 +82,10 @@
 
 업로드 시작 조건:
 - FC 링크가 CONNECTED 상태 (Heartbeat 수신 완료)
-- FC가 ARMED 상태가 아님 (`IsArmed == 0`)
 
 FC 링크가 연결되지 않은 상태에서 `ROUTE_UPDATE_MID`가 수신되면 업로드를 건너뛰고 EVS 오류 이벤트를 발생시킨다.
 
-FC가 ARMED 상태이면 업로드를 수행하지 않고 `MAVLINK_BRIDGE_APP_ARMED_WARN_EID` (EID 12) EVS 경고를 발생시킨다. ARMED 여부는 FC Heartbeat의 `base_mode` bit7 (0x80)으로 판단한다.
+**⚠️ ARMED 차단 정책 전면 폐지(BL-56, 2026-07-25, 2026-07-27 문서 정정)**: 과거엔 "FC가 ARMED 상태(`IsArmed == 1`)이면 업로드를 차단하고 `MAVLINK_BRIDGE_APP_ARMED_WARN_EID`(EID 12) EVS 경고를 발생"시켰으나, `current=1` 재개-인덱스 메커니즘으로 인덱스 리셋 문제가 해결되며 이 제약 자체가 전면 폐지됨(`mavlink_bridge_app_utils.c:507-510` 주석 참조) — REPLACE 포함 4종 연산 전부 ARMED 상태에서도 허용된다. `MAVLINK_BRIDGE_APP_ARMED_WARN_EID`는 정의만 남은 죽은 코드. REPLACE의 "실수 파급 범위가 크다"는 위험은 기체측 가드 대신 **GUI 재확인 다이얼로그**(전송 전 항상 표시)로 완화하는 쪽으로 책임이 이동했다. ARMED 여부 자체는 여전히 FC Heartbeat의 `base_mode` bit7(0x80)로 판단 가능하나, 업로드 허용/차단 판단엔 더 이상 쓰이지 않는다.
 
 업로드 진행 중에 새 `ROUTE_UPDATE_MID`가 수신되면 별도 cancel handshake 없이 `MissionUploadState`와 pending waypoint buffer를 새 경로로 덮어쓰고 `MISSION_CLEAR_ALL`부터 재시작한다.
 
@@ -94,13 +93,16 @@ FC가 ARMED 상태이면 업로드를 수행하지 않고 `MAVLINK_BRIDGE_APP_AR
 
 `ROUTE_UPDATE_MID` payload의 `RouteType` 필드(= `UPLINK_APP_RouteOpType_t`)에 따라 Pending buffer 구성 방식이 결정된다.
 
+**⚠️ BL-56(2026-07-25)에서 3종 → 4종으로 재정의됨(2026-07-27 문서 정정)**: 과거엔 REPLACE/APPEND(count)/DELETE(count, 마지막 N개 삭제) 3종이었으나, 실제 코드(`mavlink_bridge_app_utils.c:6-9`)는 아래처럼 **REPLACE/ADD/DELETE(index)/MODIFY(신규)** 4종이며 DELETE 의미론도 완전히 바뀌었다.
+
 | 값 | 이름 | Pending buffer 구성 방식 |
 | --- | --- | --- |
 | `1` | `REPLACE` | `Msg->Waypoints[0..N-1]`을 그대로 복사. Active cache 무시. |
-| `2` | `APPEND` | Active cache를 먼저 복사한 뒤 `Msg->Waypoints`를 이어 붙임. 합계가 `MAX_WAYPOINTS`를 초과하면 MAX에서 절단하고 `MAVLINK_BRIDGE_APP_MISSION_UPLOAD_INF_EID` EVS 경고 발생. |
-| `3` | `DELETE` | Active cache에서 마지막 `WaypointCount`개를 제거한 결과를 복사. `WaypointCount >= ActiveCount`이면 0개 업로드(빈 미션). |
+| `2` | `ADD` | Active cache를 먼저 복사한 뒤 `Msg->Waypoints`를 끝에 이어 붙임(중간 삽입 불가, 필요 시 MODIFY/DELETE 조합). 합계가 `MAX_WAYPOINTS`를 초과하면 MAX에서 절단하고 `MAVLINK_BRIDGE_APP_MISSION_UPLOAD_INF_EID` EVS 경고 발생. |
+| `3` | `DELETE` | **(옛 "마지막 count개 삭제"가 아니라) index 기반 단일 삭제**로 변경됨. `Msg->WaypointCount` 필드를 index로 재해석(`IndexOrCount = Msg->WaypointCount`, `mavlink_bridge_app_utils.c:493`) — 해당 index 하나만 제거하고 뒷 인덱스를 한 칸씩 당김. `index >= ActiveCount`면 range 오류로 거부. `index == ActiveResumeIndex`(현재 진행 중인 목표점)면 REJECT_ROUTE로 거부, 그 외엔 뒷 인덱스가 당겨지는 만큼 `ActiveResumeIndex`도 보정된다. |
+| `4` | `MODIFY` | (신규) 동일하게 index 기반 — 해당 슬롯 하나(좌표뿐 아니라 `CmdType`/`Param1~4` 전체)를 통째로 교체. `index == ActiveResumeIndex`(진행 중인 목표점)도 허용됨(장애물 회피 등 의도된 긴급 수정, 사용자 책임). |
 
-Pending buffer가 결정되면 세 연산 모두 동일한 `MISSION_CLEAR_ALL → MISSION_COUNT → ...` 핸드셰이크를 수행한다.
+Pending buffer가 결정되면 네 연산 모두 동일한 `MISSION_CLEAR_ALL → MISSION_COUNT → ...` 핸드셰이크를 수행한다.
 
 Active cache(`ActiveWaypointX/Y/Z`, `ActiveWaypointCount`)는 `MISSION_ACK ACCEPTED` 수신 시에만 Pending buffer 내용으로 갱신된다(§9.2 참조). 연산 실패 시 Active cache는 변경되지 않는다.
 
@@ -186,8 +188,8 @@ FC → mavlink_bridge_app : MISSION_ACK      (result=MAV_MISSION_ACCEPTED)
 | `current` | 0 (첫 번째 항목도 0, SET_CURRENT_ITEM으로 별도 지정) |
 | `autocontinue` | 1 |
 | `param1..4` | 0.0 (hold time, acceptance radius 등 미사용) |
-| `x` (lat) | `(int32)(WpLat * 1e7)` — degE7. `WpLat = RefLat + local X(m) 기반 delta` (§13.1 공식과 동일, legacy `MISSION_ITEM`과 동일 계산식) |
-| `y` (lon) | `(int32)(WpLon * 1e7)` — degE7. 동일 방식 |
+| `x` (lat) | `Waypoints[i].LatE7`(int32, degE7) 그대로 기입(2026-07-27 정정) — **BL-56(2026-07-25)에서 local X/Y(m)→RefLat/RefLon 기반 변환 로직 자체가 삭제됨**(`utils.c:404-433` 주석). 기존 표는 "RefLat + local X 기반 delta"였으나 낡음, 항상 절대좌표 LatE7을 그대로 씀 |
+| `y` (lon) | `Waypoints[i].LonE7`(int32, degE7) 그대로 기입 — 동일하게 로컬→전역 변환 없이 절대좌표 직결 |
 | `z` | `Waypoints[i].Z` (float meters, relative altitude, 부호 반전 없음 — GLOBAL_RELATIVE_ALT는 이미 altitude-positive) |
 | `mission_type` | `MAV_MISSION_TYPE_MISSION` (= 0) |
 
@@ -406,7 +408,9 @@ FC 상태 메시지 파싱 직후 `isfinite()` 검사로 걸러 **SB 게시 자�
 
 ### 13.1 MAV_FRAME_LOCAL_NED → GLOBAL_RELATIVE_ALT 변환
 
-ArduPilot은 미션 아이템에서 `MAV_FRAME_LOCAL_NED` (= 1)을 거부한다 (`MISSION_ACK result=2 = MAV_MISSION_UNSUPPORTED_FRAME`). `MAV_FRAME_GLOBAL_RELATIVE_ALT` (= 3)를 사용해야 한다.
+**⚠️ 이 섹션의 "기준점/변환 공식" 부분은 BL-56(2026-07-25)으로 대부분 폐기된 역사적 기록이다(2026-07-27 정정)**: `ROUTE_WAYPOINT_t`가 local X/Y(m) 필드를 아예 없애고 `LatE7`/`LonE7`(절대좌표)만 갖는 구조로 바뀌면서, 아래의 "FC 최신 GLOBAL_POSITION_INT를 기준점(RefLat/RefLon)으로 삼아 로컬 X/Y를 위경도로 환산"하는 변환 로직 자체가 `mavlink_bridge_app_utils.c`에서 삭제됐다(§7 표 참조). GPS 없을 때 `(0,0)` 기준으로 변환하던 것도 더 이상 해당 없음 — 좌표는 지상국이 이미 절대좌표로 만들어 보내고 기체는 그대로 씀. `frame = MAV_FRAME_GLOBAL_RELATIVE_ALT` 자체는 지금도 맞지만, 아래 "기준점"·"변환 공식" 하위 절은 **더 이상 코드와 일치하지 않는 이전 설계**로만 참조할 것.
+
+ArduPilot은 미션 아이템에서 `MAV_FRAME_LOCAL_NED` (= 1)을 거부한다 (`MISSION_ACK result=2 = MAV_MISSION_UNSUPPORTED_FRAME`). `MAV_FRAME_GLOBAL_RELATIVE_ALT` (= 3)를 사용해야 한다(이 문장 자체는 여전히 유효).
 
 #### 기준점
 
@@ -522,15 +526,22 @@ python3 legacy/tools/mission_upload_diag.py --port /dev/serial0 --baud 57600
 
 ## 15. 미구현 사항
 
+**⚠️ 2026-07-27 정정**: 아래 "INT 경로 GLOBAL_RELATIVE_ALT 변환 미구현" 항목은
+같은 문서 §7/§13.1.1과 자기모순이었음(spec_code_review_2026-07-27 §4-5) —
+코드 확인 결과(`utils.c:426`, `SendMissionItemInt`) §7/§13.1.1이 맞고 이
+항목이 낡은 잔재 문구라 제거함. BL-56(2026-07-25) 이후로는 애초에 INT/legacy
+양쪽 경로 모두 §13.1/§13.1.1의 local-NED 변환 로직 자체가 삭제되고 절대좌표
+(LatE7/LonE7)를 직결하므로, "GLOBAL_RELATIVE_ALT 변환"이라는 프레이밍 자체가
+구식이다 — 상세는 §7 표 및 §13.1 상단 정정 참조.
+
 - FC 현재 미션 항목 변경 (`MAV_CMD_DO_SET_MISSION_CURRENT`)
-- Landing route 업로드
+- Landing route 업로드 — **BL-56(2026-07-25) 확인**: 별도 landing route 캐시 자체가 애초에 존재한 적 없음(`utils.c:715` 주석 — "RouteType=1 MISSION 고정, FC에 landing 세그먼트 개념 없음"). 이 항목은 없는 개념에 대한 미구현이라 실질 의미 없음.
 - 업로드 완료 후 자동 미션 시작
-- INT 경로 (msg 73)에서 `MAV_FRAME_GLOBAL_RELATIVE_ALT` 변환
 
 다음 항목은 구현 완료되었다:
 
-- mid-flight 경로 변경 안전 검사 → FC ARMED 상태 시 업로드 차단 구현 (`UpdateFromHeartbeat`, `IsArmed` 필드, `MAVLINK_BRIDGE_APP_ARMED_WARN_EID`)
-- **Legacy 경로(msg 39)** 한정 Global mission frame (`MAV_FRAME_GLOBAL_RELATIVE_ALT`) 변환 및 업로드 (`SendMissionItem`, `mavlink_bridge_app_utils.c:368`). INT 경로(msg 73, `SendMissionItemInt`)는 위 미구현 항목대로 `MAV_FRAME_LOCAL_NED` 그대로 송신한다 — 두 항목은 서로 다른 경로를 가리키므로 모순이 아니다.
+- **⚠️ mid-flight 경로 변경 안전 검사(ARMED 차단)는 2026-07-27 기준 더 이상 사실이 아님** — BL-56(2026-07-25)에서 전면 폐지됨(§5 상단 정정 참조). `MAVLINK_BRIDGE_APP_ARMED_WARN_EID`는 정의만 남은 죽은 코드.
+- Global mission frame (`MAV_FRAME_GLOBAL_RELATIVE_ALT`) 자체는 legacy(msg 39)/INT(msg 73) 양쪽 경로 모두 적용돼 있으나, **좌표 변환 방식이 BL-56으로 바뀜** — RefLat/RefLon 기반 local→global 변환은 삭제되고 절대좌표(LatE7/LonE7)를 그대로 사용(§7/§13.1 상단 정정 참조).
 
 ## 16. FC SYSTEM_TIME 수신 및 시각 동기 설계
 
@@ -685,9 +696,11 @@ void CFE_TIME_ExternalGPS(CFE_TIME_SysTime_t NewTime, int16 NewLeaps);   /* cfe_
 
 영상 프레임 ↔ 텔레메트리 로그 대조 용도 기준 ~100 ms급이면 충분하다는 전제. PPS급 정밀도가 필요해지면 별도 하드웨어(GPS PPS 직결)로 이관한다.
 
-## 17. MAVLink 파서 STX 이스케이프 결함 (P1, 수정 방안 확정 · 코드 미적용)
+## 17. MAVLink 파서 STX 이스케이프 결함 (P1, 수정 방안 확정 · ✅ 코드 적용 완료)
 
-### 17.1 결함
+**⚠️ 2026-07-27 정정**: 부제의 "코드 미적용"은 오기였다 — 실제로는 이미 적용되어 있음(`ProcessReceivedByte`, `mavlink_bridge_app_utils.c:1875-1893`에서 STX 체크가 `MAVLINK_PARSE_WAIT_STX` 상태에서만 수행되도록 가드됨, §17.2 "채택 방안"과 일치). 관련 완료 노트 `mavlink_stx_reentry_parser_bug_completed.md`가 맞고 이 부제 표시가 틀렸었다. 아래 §17.1(결함 서술)은 **수정 전 상태에 대한 역사적 기록**으로 읽을 것 — 현재 코드에는 해당하지 않는다.
+
+### 17.1 결함 (수정 전 — 역사적 기록)
 
 `MAVLINK_BRIDGE_APP_ProcessReceivedByte()`(`mavlink_bridge_app_utils.c:1549`)는 함수 진입부에서 **모든 수신 바이트에 대해, 파서 상태와 무관하게** STX 검사를 수행한다:
 

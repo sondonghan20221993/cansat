@@ -45,8 +45,8 @@ FC 상태 + 시스템 헬스를 **하나의 프레임**으로 매 TDM 주기 전
 | 0 | magic | u8 | `0xD2` |
 | 1 | len | u8 | magic부터 CRC 직전까지 길이 (확장 블록 포함) |
 | 2 | seq | u16 | DownlinkSeq (성공마다 +1, wrap 허용) |
-| 4 | flags | u8 | bit0=SysTime 블록 첨부, bit1=위치 saturate 발생, bit2~7 예약(0) |
-| 5 | ufb | u8 | UplinkFeedback — 0x00 OK / 0x01 CRC_FAIL / 0x02 SEQ_FAIL / 0x03 STATE_BLOCKED(health gate 차단, 2026-07-21) / 0x04 FAILED / 0x05 REJECT_VERSION / 0x06 REJECT_CLASS / 0x07 REJECT_LENGTH / 0x08 ROUTE_MISS / 0x09 REJECT_ROUTE / 0x0A REJECT_CHECKSUM / 0x0B REJECT_VIEWPOINT (0x04~0x0B는 BL-11, 2026-07-22 추가 — 상세: `lora_tdm_app_behavior_spec.md` §9.2) |
+| 4 | flags | u8 | bit0=SysTime 블록 첨부, bit1=위치 saturate 발생, bit2=waypoint readback 페이지 첨부(2026-07-23, §4.3), bit3~7 예약(0) |
+| 5 | ufb | u8 | UplinkFeedback — 0x00 OK / 0x01 CRC_FAIL / 0x02 SEQ_FAIL / 0x03 STATE_BLOCKED(health gate 차단, 2026-07-21) / 0x04 FAILED / 0x05 REJECT_VERSION / 0x06 REJECT_CLASS / 0x07 REJECT_LENGTH / 0x08 ROUTE_MISS / 0x09 REJECT_ROUTE / 0x0A REJECT_CHECKSUM / 0x0B REJECT_VIEWPOINT / 0x0C REJECT_COUNTER(BL-CTR, 2026-07-22) / 0x0D REJECT_FLIGHT_MODE(BL-44, 2026-07-24) / 0x0E UFB_APPLIED(라우팅 성공 명시 확인, BL-55, 2026-07-25 — `LastCommandResult==ROUTED`) (0x04~0x0B는 BL-11, 2026-07-22 추가 — 상세: `lora_tdm_app_behavior_spec.md` §9.2) |
 | 6 | ts | u32 | FC 상태 캐시 TimestampMs (FC boot ms) |
 | 10 | roll, pitch, yaw | i16 ×3 | rad ×10⁴ (±3.2767 rad → ±π 커버) |
 | 16 | x, y, z | i16 ×3 | cm (±327.67m, §4.1 saturation) |
@@ -134,8 +134,19 @@ BL-03에서 확립한 "새 필드는 항상 끝에 추가"(tail 오프셋 불변
 | page_index | u8 | 0-base 현재 페이지 |
 | total_pages | u8 | 전체 페이지 수 |
 | waypoints_in_page | u8 | 이 페이지에 실제 담긴 waypoint 수(1 또는 2 — 마지막 페이지 홀수 개수 대응) |
-| waypoint[0] | float×3 | X/Y/Z (12바이트) |
-| waypoint[1] | float×3 | X/Y/Z (12바이트, `waypoints_in_page==1`이면 0으로 패딩) |
+| waypoint[0] | i32+i32+float | LatE7+LonE7+Z (12바이트) |
+| waypoint[1] | i32+i32+float | LatE7+LonE7+Z (12바이트, `waypoints_in_page==1`이면 0으로 패딩) |
+
+**BL-61(2026-07-25) 재설계**: waypoint 좌표가 최초 설계의 로컬
+X/Y/Z(float×3)에서 **절대좌표 LatE7(i32)+LonE7(i32)+Z(float)**로
+변경됨(BL-56에서 route 업로드 자체가 항상 절대좌표만 쓰는 것으로
+확정되며 readback도 대칭 적용). `CmdType`/`Param1~4`는 페이지에
+싣지 않고 지상 재구성 시 기본값(`CmdType=16`/`MAV_CMD_NAV_WAYPOINT`,
+`Param1~4=0.0`)으로 복원 — waypoint 1개 크기는 12바이트로 기존과
+동일해 페이지당 2개/28바이트 구조는 불변. 기체 인코더는
+`lora_tdm_app_utils.c`, 지상 디코더는 `bridge/lora_downlink_decoder.py`
+(및 openMCT `lora_protocol_v2.py`)의 `decode_dl2`/`encode_dl2`
+waypoint 블록 처리 참조.
 
 총 28바이트/사이클. `page_index`가 `total_pages-1`에 도달하는 사이클을
 마지막으로 자동 종료(기체 쪽 `ReadbackPending=false`). 지상은
