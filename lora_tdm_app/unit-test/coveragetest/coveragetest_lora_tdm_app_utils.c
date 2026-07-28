@@ -744,7 +744,8 @@ void Test_BuildDl2Frame_NoWaypointPending_Excluded(void)
     UtAssert_True((Buf[4] & LORA_TDM_APP_DL2_FLAG_WAYPOINT) == 0, "flags bit2 not set");
 }
 
-/* ProcessRouteSnapshot: 16개 waypoint 수신 → 8페이지 산정, pending=1 */
+/* ProcessRouteSnapshot: 전체 미션(ROUTE_MAX_WAYPOINTS개) waypoint 수신 →
+ * 페이지 수 산정, pending=1 (BL-70, 2026-07-28: 16->37 확장, 심볼릭 상수 기준) */
 void Test_ProcessRouteSnapshot_FullMission(void)
 {
     LORA_TDM_APP_RouteSnapshotTlm_t Msg;
@@ -752,12 +753,12 @@ void Test_ProcessRouteSnapshot_FullMission(void)
     memset(&LORA_TDM_APP_Data, 0, sizeof(LORA_TDM_APP_Data));
     memset(&Msg, 0, sizeof(Msg));
     Msg.RouteType     = 1;
-    Msg.WaypointCount = 16;
+    Msg.WaypointCount = (uint8)ROUTE_MAX_WAYPOINTS;
 
     LORA_TDM_APP_ProcessRouteSnapshot(&Msg);
 
-    UtAssert_INT32_EQ(LORA_TDM_APP_Data.RouteWaypointCount, 16);
-    UtAssert_INT32_EQ(LORA_TDM_APP_Data.RouteTotalPages, 8);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.RouteWaypointCount, (int32)ROUTE_MAX_WAYPOINTS);
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.RouteTotalPages, (int32)((ROUTE_MAX_WAYPOINTS + 1) / 2));
     UtAssert_INT32_EQ(LORA_TDM_APP_Data.RoutePageIndex, 0);
     UtAssert_INT32_EQ(LORA_TDM_APP_Data.RouteReadbackPending, 1);
 }

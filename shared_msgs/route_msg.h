@@ -3,7 +3,7 @@
 
 #include "cfe_msg_hdr.h"
 
-#define ROUTE_MAX_WAYPOINTS 16
+#define ROUTE_MAX_WAYPOINTS 37
 
 /* BL-56(2026-07-25): wire-level 직렬화 크기 — sizeof(ROUTE_WAYPOINT_t)는 정렬 패딩으로
  * 이 값보다 커질 수 있으므로 길이 검증에는 반드시 이 상수를 쓴다(구조체 캐스팅/sizeof 금지). */

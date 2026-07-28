@@ -65,7 +65,7 @@ typedef struct
     uint64                    TimeUnixUsec;
 } MAVLINK_BRIDGE_APP_SysTimeTlm_t;
 
-#define MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS 16U
+#define MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS 37U
 
 typedef ROUTE_WAYPOINT_t MAVLINK_BRIDGE_APP_WaypointMirror_t;
 typedef ROUTE_UPDATE_TLM_t MAVLINK_BRIDGE_APP_RouteUpdateMirror_t;

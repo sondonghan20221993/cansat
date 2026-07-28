@@ -1875,8 +1875,10 @@ void Test_DownloadComplete_PublishesReadbackMid(void)
 }
 
 /* 16개 초과 미션은 16개로 클램프 (버퍼 오버플로 없이 완주) */
-void Test_DownloadCount_ClampedTo16(void)
+void Test_DownloadCount_ClampedToMax(void)
 {
+    /* BL-70(2026-07-28): ROUTE_MAX_WAYPOINTS 16->37 확장 — 클램프 경계값도
+     * 심볼릭 상수 기준으로 검증(하드코딩된 16 대신 MAX+여유분 항목 전송). */
     uint8  CountPayload[2];
     uint8  CountFrame[24];
     uint8  ItemPayload[38];
@@ -1886,6 +1888,7 @@ void Test_DownloadCount_ClampedTo16(void)
     uint8  i;
     uint32 FloatBits;
     float  Alt = 1.0f;
+    const uint16 SendCount = (uint16)MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS + 3U;
 
     UT_SetGpsReference(100000000, 1000000000);
 
@@ -1893,7 +1896,7 @@ void Test_DownloadCount_ClampedTo16(void)
     MAVLINK_BRIDGE_APP_Data.MissionDownloadState     = (uint8)MAVLINK_BRIDGE_MISSION_DOWNLOAD_WAIT_COUNT;
     MAVLINK_BRIDGE_APP_Data.MissionDownloadTimeoutMs = 0x40000000U;
 
-    UT_WriteU16LE(&CountPayload[0], 20U);
+    UT_WriteU16LE(&CountPayload[0], SendCount);
     Len = UT_BuildMavFrameGeneric(CountFrame, (uint8)UT_MISSION_COUNT_MSGID,
                                   (uint8)UT_MISSION_COUNT_CRC_EXTRA, CountPayload, sizeof(CountPayload));
     (void)UT_FeedSerialCaptureTx(CountFrame, Len, OutBuf, sizeof(OutBuf));
@@ -1903,7 +1906,7 @@ void Test_DownloadCount_ClampedTo16(void)
     UT_WriteU32LE(&ItemPayload[24], FloatBits);
     UT_WriteU16LE(&ItemPayload[30], 16U);
 
-    for (i = 0; i < 20U; i++)
+    for (i = 0; i < (uint8)SendCount; i++)
     {
         UT_WriteU16LE(&ItemPayload[28], (uint16)i);
         MAVLINK_BRIDGE_APP_Data.MissionDownloadTimeoutMs = 0x40000000U;
@@ -1914,7 +1917,8 @@ void Test_DownloadCount_ClampedTo16(void)
 
     UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionDownloadState,
                       (int32)MAVLINK_BRIDGE_MISSION_DOWNLOAD_IDLE);
-    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.FcMissionReadbackTlm.WaypointCount, 16);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.FcMissionReadbackTlm.WaypointCount,
+                      (int32)MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS);
 }
 
 /* timeout → IDLE + 백오프 재시도 예약(간격 2배) */
@@ -2225,7 +2229,7 @@ void UtTest_Setup(void)
     ADD_TEST(SetLinkState_Disconnect_CancelsPendingRetry);
     ADD_TEST(UploadComplete_TriggersReadback);
     ADD_TEST(DownloadComplete_PublishesReadbackMid);
-    ADD_TEST(DownloadCount_ClampedTo16);
+    ADD_TEST(DownloadCount_ClampedToMax);
     ADD_TEST(DownloadTimeout_SchedulesBackoffRetry);
     ADD_TEST(BackoffDoubles_To5sCap);
     ADD_TEST(RetryFires_WhenDue);
