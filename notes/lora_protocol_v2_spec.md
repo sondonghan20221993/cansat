@@ -135,8 +135,17 @@ BL-03에서 확립한 "새 필드는 항상 끝에 추가"(tail 오프셋 불변
 | page_index | u8 | 0-base 현재 페이지 |
 | total_pages | u8 | 전체 페이지 수 |
 | waypoints_in_page | u8 | 이 페이지에 실제 담긴 waypoint 수(1 또는 2 — 마지막 페이지 홀수 개수 대응) |
-| waypoint[0] | i32+i32+float | LatE7+LonE7+Z (12바이트) |
-| waypoint[1] | i32+i32+float | LatE7+LonE7+Z (12바이트, `waypoints_in_page==1`이면 0으로 패딩) |
+| waypoint[0] | u8+i32+i32+float | **CmdType+LatE7+LonE7+Z (13바이트, 2026-07-28 확장)** |
+| waypoint[1] | u8+i32+i32+float | CmdType+LatE7+LonE7+Z (13바이트, `waypoints_in_page==1`이면 0으로 패딩) |
+
+**CmdType 추가 확정(2026-07-28, BL-71)**: 기존엔 좌표(LatE7/LonE7/Z)만 담아 지상이 "이 지점이
+실제로 WAYPOINT인지 LOITER(호버류)인지"를 readback으로 구분할 방법이 없었음(사용자가 지도에서
+시작/호버/랜딩 구분을 요구하며 발견) — waypoint당 **CmdType(u8, MAVLink MAV_CMD 값, 업로드
+포맷과 동일하게 첫 필드로 추가)** 1바이트씩 추가. 블록 크기 28→30바이트, 프레임 전체
+86→88바이트(SysTime 포함 시), 에어타임 35.8→36.7ms — TX 슬롯(50ms) 대비 13.3ms 여유 유지,
+대역폭 압박 없음 확인(37개×19페이지 readback 총 시간도 페이지 수 불변이라 그대로 ~1.9초).
+Param1~4는 여전히 생략(readback 시 0.0 기본값 복원) — CmdType만으로 지상 GUI가 WAYPOINT(16)/
+LOITER_UNLIM(17)/LOITER_TIME(19) 등을 구분해 지도에 표시할 수 있어 충분.
 
 **BL-61(2026-07-25) 재설계**: waypoint 좌표가 최초 설계의 로컬
 X/Y/Z(float×3)에서 **절대좌표 LatE7(i32)+LonE7(i32)+Z(float)**로
