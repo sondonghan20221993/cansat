@@ -169,6 +169,8 @@ waypoint 블록 처리 참조.
 
 ## 5. UP2 — 업링크 명령 프레임 (지상 → 기체)
 
+> 📦 **payload 내부 바이트 맵**: [`uplink_payload_map.html`](uplink_payload_map.html) — 아래 `payload` 구간을 command_class 8종별로 펼친 시각화(CONFIG/ROUTE_UPDATE/VIEWPOINT/RECOVERY/MODE/DIAGNOSTIC/COUNTER_MGMT/FLIGHT_MODE + 라우팅 목적지·거부코드 표). 근거는 `uplink_app_utils.c` 파서 구현 (2026-07-28).
+
 v1 `UP,<version>,<class>,<seq>,<flags>,<payload_hex>,<crc16>\n`의 바이너리 대체. hex 인코딩 폐지로 payload가 원본 크기 그대로 실린다 (v1 대비 payload 구간 50% 절감).
 
 | offset | 필드 | 형식 | 의미 |
