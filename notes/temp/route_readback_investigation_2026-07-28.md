@@ -35,6 +35,24 @@
   `MAVLINK_BRIDGE_APP: [wp %u] lat=... lon=... alt=... cmd=...` 로그와
   1:1 비교해서 정확히 몇 번 seq에서 왜 빠지는지 특정할 것.
 
+## 배제된 가설 — CmdType 기반 필터링 (2026-07-28 코드 정독으로 확인)
+"시작/호버 지점이 타입 때문에 걸러진다"는 가설은 **배제됨**. 5단계 전부 확인:
+1. `mavlink_bridge_app_utils.c:1804-1819` MISSION_ITEM_INT 수신 — 받은 항목
+   전부 저장, CmdType 검사 없음
+2. `PublishFcMissionReadback()` — 전부 게시(ROUTE_MAX_WAYPOINTS 한도 clamp만)
+3. `cfs_core_app_utils.c:122` `SetRouteCacheWaypoints` — 통째로 memcpy
+4. `lora_tdm_app_utils.c:988` `ProcessRouteSnapshot` — 2개씩 페이징만, 필터 없음
+5. 지상 `RouteReadbackAssembler.feed()` — 페이지 순서대로 concat
+→ 남은 가능성은 (A) FC가 MISSION_COUNT로 주는 개수 자체가 적음,
+  (B) 지도에 그려지는데 라벨이 없어 못 알아봄.
+
+## ⚠️ 다음 조사 착수점 — 지도에 `cmd=0` 마커가 뜸 (2026-07-28 사용자 확인)
+- `cmd=0`은 유효한 MAV_CMD가 아님. 펌웨어 인코더(`lora_tdm_app_utils.c:284,288`)가
+  `InPage < 1`/`InPage < 2`일 때 CmdType 자리에 0을 써넣는 **패딩 값**과 일치.
+- 즉 실제 웨이포인트가 아니라 빈 슬롯이 지상에 그려지고 있을 가능성 →
+  `wp_in_page` 처리 또는 `RouteWaypointCount`/`RouteTotalPages` 정합성부터 볼 것.
+- 사용자 지시로 상세 확인은 보류(2026-07-28) — 재개 시 여기부터 시작.
+
 ## 부수 발견 — CmdType 라벨 매핑이 3종류뿐
 - `mapRouteGUI/plugin.js`의 `CMD_TYPE_LABELS`는 `16=WAYPOINT`,
   `17/19=LOITER(호버)`만 정의. TAKEOFF(22)/LAND(21)/RTL(20) 등은
