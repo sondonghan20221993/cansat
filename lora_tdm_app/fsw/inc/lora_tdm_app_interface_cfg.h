@@ -34,7 +34,7 @@
 #define LORA_TDM_APP_DL2_FLAG_SYSTIME       0x01u
 /* waypoint readback 확장 블록(§4.3, 2026-07-23) — 꼬리 필드 뒤, CRC 직전.
  * route_type(1)+page_index(1)+total_pages(1)+waypoints_in_page(1)+waypoint[2]×12 = 28B */
-#define LORA_TDM_APP_DL2_WAYPOINT_BLOCK_LEN 28u
+#define LORA_TDM_APP_DL2_WAYPOINT_BLOCK_LEN 30u
 #define LORA_TDM_APP_DL2_FLAG_WAYPOINT      0x04u
 #define LORA_TDM_APP_DL2_WAYPOINTS_PER_PAGE 2u
 /* SysTime+waypoint 확장 모두 포함 시 최대 프레임 총 길이(CRC 포함) */

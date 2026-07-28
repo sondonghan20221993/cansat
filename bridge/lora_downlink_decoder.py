@@ -33,12 +33,12 @@ DL2_TAIL_LEN = 3           # uplink_last_seq(u16)+uplink_boot_count(u8) — BL-0
 DL2_FLAG_SYSTIME = 0x01
 DL2_FLAG_POS_SATURATED = 0x02
 # waypoint readback(2026-07-23, spec §4.3) — 꼬리 필드 뒤/CRC 앞, SysTime과 독립 첨부 가능
-# BL-61(2026-07-25) 재설계: 좌표(LatE7 i32 + LonE7 i32 + Z float)만 담음, CmdType/Param1~4 생략
-# (readback 재구성 시 CmdType=16/NAV_WAYPOINT, Param1~4=0.0 기본값 복원). waypoint 1개=12바이트로 크기 불변.
+# BL-71(2026-07-28) 재설계: CmdType(u8)+LatE7(i32)+LonE7(i32)+Z(float) 담음(BL-61의
+# LatE7/LonE7/Z 12바이트에 CmdType 선두 추가, 13바이트/waypoint) — Param1~4는 여전히 생략
+# (readback 재구성 시 Param1~4=0.0 기본값 복원).
 DL2_FLAG_WAYPOINT = 0x04
-DL2_WAYPOINT_BLOCK_LEN = 28  # route_type+page_index+total_pages+waypoints_in_page(1×4) + waypoint[2]×12
+DL2_WAYPOINT_BLOCK_LEN = 30  # route_type+page_index+total_pages+waypoints_in_page(1×4) + waypoint[2]×13 (BL-71: CmdType+LatE7+LonE7+Z)
 DL2_WAYPOINTS_PER_PAGE = 2
-DL2_WP_READBACK_CMD_TYPE = 16    # MAV_CMD_NAV_WAYPOINT — readback 페이지엔 CmdType 없음, 복원 시 기본값
 DL2_WP_READBACK_PARAM_DEFAULT = 0.0
 
 ANGLE_SCALE = 1.0e4        # i16 rad*1e4
@@ -87,7 +87,7 @@ class Dl2Frame:
     wp_route_type: Optional[int] = None
     wp_page_index: Optional[int] = None
     wp_total_pages: Optional[int] = None
-    wp_waypoints: Optional[List[tuple]] = None  # [(lat_e7:int, lon_e7:int, z:float), ...] 이 페이지에 담긴 것만(1~2개)
+    wp_waypoints: Optional[List[tuple]] = None  # [(cmd_type:int, lat_e7:int, lon_e7:int, z:float), ...] 이 페이지에 담긴 것만(1~2개)
 
     @property
     def pos_saturated(self) -> bool:
@@ -137,8 +137,9 @@ def decode_dl2(frame: bytes) -> Dl2Frame:
     if flags & DL2_FLAG_WAYPOINT and len(frame) >= wp_offset + DL2_WAYPOINT_BLOCK_LEN + 2:
         (wp_route_type, wp_page_index, wp_total_pages, wp_in_page) = struct.unpack_from(
             "<BBBB", frame, wp_offset)
-        wp0 = struct.unpack_from("<iif", frame, wp_offset + 4)
-        wp1 = struct.unpack_from("<iif", frame, wp_offset + 4 + 12)
+        # BL-71(2026-07-28): (cmd_type, lat_e7, lon_e7, z) — CmdType(u8) 선두 추가, 13바이트/waypoint.
+        wp0 = struct.unpack_from("<Biif", frame, wp_offset + 4)
+        wp1 = struct.unpack_from("<Biif", frame, wp_offset + 4 + 13)
         wp_waypoints = [wp0, wp1][:max(wp_in_page, 0)]
 
     return Dl2Frame(
@@ -188,11 +189,11 @@ def encode_dl2(frame: Dl2Frame) -> bytes:
         buf += struct.pack("<Q", frame.sys_time_unix_usec)
     buf += struct.pack("<HB", frame.uplink_last_seq & 0xFFFF, frame.uplink_boot_count & 0xFF)
     if frame.wp_waypoints is not None:
-        wps = list(frame.wp_waypoints) + [(0, 0, 0.0)] * (2 - len(frame.wp_waypoints))
+        wps = list(frame.wp_waypoints) + [(0, 0, 0, 0.0)] * (2 - len(frame.wp_waypoints))
         buf += struct.pack("<BBBB", frame.wp_route_type or 0, frame.wp_page_index or 0,
                            frame.wp_total_pages or 0, len(frame.wp_waypoints))
-        buf += struct.pack("<iif", *wps[0])
-        buf += struct.pack("<iif", *wps[1])
+        buf += struct.pack("<Biif", *wps[0])
+        buf += struct.pack("<Biif", *wps[1])
     buf += struct.pack("<H", crc16_ccitt(bytes(buf)))
     return bytes(buf)
 

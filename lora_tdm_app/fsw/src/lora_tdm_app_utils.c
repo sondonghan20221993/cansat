@@ -277,15 +277,18 @@ int LORA_TDM_APP_BuildDl2Frame(uint8 *Buf, size_t BufLen, const LORA_TDM_APP_Dat
         Buf[WaypointOffset + 2] = AppData->RouteTotalPages;
         Buf[WaypointOffset + 3] = InPage;
 
-        /* BL-61(2026-07-25): DL2 waypoint 페이지 좌표 포맷 — LatE7(int32)+LonE7(int32)+Z(float)
-         * 12바이트/waypoint(이전 3-float 레이아웃과 총 크기 동일). CmdType/Param1~4는
-         * 의도적으로 생략(지상/openMCT가 기본값 NAV_WAYPOINT=16/0으로 복원). */
-        PutI32LE(&Buf[WaypointOffset + 4],  (InPage >= 1U) ? AppData->RouteWaypoints[StartIdx].LatE7 : 0);
-        PutI32LE(&Buf[WaypointOffset + 8],  (InPage >= 1U) ? AppData->RouteWaypoints[StartIdx].LonE7 : 0);
-        PutFloatLE(&Buf[WaypointOffset + 12], (InPage >= 1U) ? AppData->RouteWaypoints[StartIdx].Z : 0.0f);
-        PutI32LE(&Buf[WaypointOffset + 16], (InPage >= 2U) ? AppData->RouteWaypoints[StartIdx + 1U].LatE7 : 0);
-        PutI32LE(&Buf[WaypointOffset + 20], (InPage >= 2U) ? AppData->RouteWaypoints[StartIdx + 1U].LonE7 : 0);
-        PutFloatLE(&Buf[WaypointOffset + 24], (InPage >= 2U) ? AppData->RouteWaypoints[StartIdx + 1U].Z : 0.0f);
+        /* BL-71(2026-07-28): DL2 waypoint 페이지 포맷 — CmdType(u8)+LatE7(int32)+LonE7(int32)+
+         * Z(float) 13바이트/waypoint(BL-61의 12바이트 LatE7+LonE7+Z에 CmdType 선두 추가 —
+         * 지상이 위치 기반으로 시작/호버/랜딩을 임의 추측하던 문제 해소). Param1~4는
+         * 여전히 생략(지상/openMCT가 기본값 0.0으로 복원). */
+        Buf[WaypointOffset + 4] = (InPage >= 1U) ? AppData->RouteWaypoints[StartIdx].CmdType : 0U;
+        PutI32LE(&Buf[WaypointOffset + 5],  (InPage >= 1U) ? AppData->RouteWaypoints[StartIdx].LatE7 : 0);
+        PutI32LE(&Buf[WaypointOffset + 9],  (InPage >= 1U) ? AppData->RouteWaypoints[StartIdx].LonE7 : 0);
+        PutFloatLE(&Buf[WaypointOffset + 13], (InPage >= 1U) ? AppData->RouteWaypoints[StartIdx].Z : 0.0f);
+        Buf[WaypointOffset + 17] = (InPage >= 2U) ? AppData->RouteWaypoints[StartIdx + 1U].CmdType : 0U;
+        PutI32LE(&Buf[WaypointOffset + 18], (InPage >= 2U) ? AppData->RouteWaypoints[StartIdx + 1U].LatE7 : 0);
+        PutI32LE(&Buf[WaypointOffset + 22], (InPage >= 2U) ? AppData->RouteWaypoints[StartIdx + 1U].LonE7 : 0);
+        PutFloatLE(&Buf[WaypointOffset + 26], (InPage >= 2U) ? AppData->RouteWaypoints[StartIdx + 1U].Z : 0.0f);
     }
 
     Flags |= Saturated ? 0x02u : 0x00u;

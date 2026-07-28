@@ -678,11 +678,14 @@ void Test_BuildDl2Frame_WaypointPageIncluded(void)
     LORA_TDM_APP_Data.RouteWaypointCount   = 3;
     LORA_TDM_APP_Data.RouteTotalPages      = 2;
     LORA_TDM_APP_Data.RoutePageIndex       = 0;
-    /* BL-61(2026-07-25): waypoint당 LatE7(int32)+LonE7(int32)+Z(float) 12바이트 —
-     * CmdType/Param1~4는 페이지에 담기지 않는다(지상/openMCT가 기본값 복원). */
+    /* BL-71(2026-07-28): waypoint당 CmdType(u8)+LatE7(int32)+LonE7(int32)+Z(float)
+     * 13바이트로 확장(기존 BL-61의 12바이트 LatE7+LonE7+Z에 CmdType 선두 추가) —
+     * Param1~4는 여전히 페이지에 안 담김(지상/openMCT가 기본값 0.0 복원). */
+    LORA_TDM_APP_Data.RouteWaypoints[0].CmdType = 17; /* MAV_CMD_NAV_LOITER_UNLIM */
     LORA_TDM_APP_Data.RouteWaypoints[0].LatE7 = 1500000;
     LORA_TDM_APP_Data.RouteWaypoints[0].LonE7 = 2500000;
     LORA_TDM_APP_Data.RouteWaypoints[0].Z     = 3.5f;
+    LORA_TDM_APP_Data.RouteWaypoints[1].CmdType = 16; /* MAV_CMD_NAV_WAYPOINT */
     LORA_TDM_APP_Data.RouteWaypoints[1].LatE7 = 4500000;
     LORA_TDM_APP_Data.RouteWaypoints[1].LonE7 = 5500000;
     LORA_TDM_APP_Data.RouteWaypoints[1].Z     = 6.5f;
@@ -698,14 +701,18 @@ void Test_BuildDl2Frame_WaypointPageIncluded(void)
     UtAssert_INT32_EQ(Buf[Offset + 2], 2);  /* total_pages */
     UtAssert_INT32_EQ(Buf[Offset + 3], 2);  /* waypoints_in_page (풀 페이지) */
 
-    /* wp0.LatE7 int32 LE @ Offset+4 */
-    UtAssert_INT32_EQ((int32)(Buf[Offset + 4] | (Buf[Offset + 5] << 8) |
-                               (Buf[Offset + 6] << 16) | (Buf[Offset + 7] << 24)),
+    /* wp0.CmdType u8 @ Offset+4 */
+    UtAssert_INT32_EQ(Buf[Offset + 4], 17);
+    /* wp0.LatE7 int32 LE @ Offset+5 */
+    UtAssert_INT32_EQ((int32)(Buf[Offset + 5] | (Buf[Offset + 6] << 8) |
+                               (Buf[Offset + 7] << 16) | (Buf[Offset + 8] << 24)),
                        1500000);
-    /* wp0.LonE7 int32 LE @ Offset+8 */
-    UtAssert_INT32_EQ((int32)(Buf[Offset + 8] | (Buf[Offset + 9] << 8) |
-                               (Buf[Offset + 10] << 16) | (Buf[Offset + 11] << 24)),
+    /* wp0.LonE7 int32 LE @ Offset+9 */
+    UtAssert_INT32_EQ((int32)(Buf[Offset + 9] | (Buf[Offset + 10] << 8) |
+                               (Buf[Offset + 11] << 16) | (Buf[Offset + 12] << 24)),
                        2500000);
+    /* wp1.CmdType u8 @ Offset+17 (4 header + 13 wp0) */
+    UtAssert_INT32_EQ(Buf[Offset + 17], 16);
 }
 
 /* 마지막 페이지가 홀수개일 때 waypoints_in_page=1, 두번째 슬롯은 0 패딩 */
