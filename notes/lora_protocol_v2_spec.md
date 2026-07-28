@@ -97,7 +97,8 @@ lora_tdm이 구독하는 부분만 남아있었음 — 이번에 구독 추가�
 2026-07-23, `notes/temp/runtime_test_session_2026-07-22.md` "waypoint조회는
 왜 없지" 참조). mission route 상한 16개×12바이트(X/Y/Z float)=192바이트로
 현재 air rate(2.4KB/s)에서 <1초 — 별도 대역폭 상향 불요, 여러 사이클에
-나눠 보내는 페이징만으로 충분.
+나눠 보내는 페이징만으로 충분. **상한 37개로 확장 확정(2026-07-28)**: 37개×12바이트=444바이트,
+페이지당 2개 고정이라 19페이지×100ms≈1.9초 — 여전히 대역폭 압박 없음(상세: `mission_app_runtime_spec.md`).
 
 **트리거**: 기존 `DIAGNOSTIC` 클래스(class=6) 재사용, 신규 MID 없음.
 `DIAGNOSTIC_CMD_TLM_t.DiagTarget`으로 대상 앱 구분(기존엔 미사용 필드,

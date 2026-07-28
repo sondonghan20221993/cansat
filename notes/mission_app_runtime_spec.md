@@ -1689,19 +1689,27 @@ waypoint→…→HOVER/LAND).
 > 검증만 하드웨어를 대기한다(BL-44 등록). (구 설계의 reserved 2-pass 플래그 배선은 이 모델에서
 > 불필요해 폐기.)
 
-**알려진 제약(추후 해결 과제)**:
-- **waypoint 개수 상한은 계속 16개(`ROUTE_MAX_WAYPOINTS=16`, 미션 배열 전체 상한, 캐시 기준),
-  단 LoRa 프레임 1개당 담을 수 있는 waypoint 수는 BL-56 구조체 확장(2026-07-25)으로 줄었다**:
+**waypoint 개수 상한 확장 확정(2026-07-28)**: 이착륙+호버 등 필수 지점 35개 + 여유 2개로
+**`ROUTE_MAX_WAYPOINTS`를 16 → 37로 확정**(사용자 결정). 대역폭 검토 완료 — SB 메시지 한도
+(`CFE_MISSION_SB_MAX_SB_MSG_SIZE=32768`) 대비 37개 구조체(~1.2KB)는 여유 충분, LoRa readback도
+프레임 크기가 아니라 페이지(사이클) 수만 늘어나는 구조라(37개→19페이지×100ms≈1.9초) 대역폭
+압박 없음 확인. air rate(2.4KB/s→최대 20KB/s 설정 변경만으로 상향 가능)도 여유 있음. 변경 범위:
+`shared_msgs/route_msg.h`(`ROUTE_MAX_WAYPOINTS`), `cfs_core_app`(`CFS_CORE_APP_ROUTE_MAX_WAYPOINTS`),
+`mavlink_bridge_app`(`MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS`), `uplink_app`
+(`UPLINK_APP_ROUTE_MAX_WAYPOINTS`), openMCT GUI(`MAX_ROUTE_WAYPOINTS`, `mapRouteGUI`/`uplinkGUI`).
+TDD로 각 앱 UT 먼저 갱신(37 경계값 테스트 포함) 후 구현.
+
+**알려진 제약(과거 기록, 참고용)**:
+- **LoRa 프레임 1개당 담을 수 있는 waypoint 수는 BL-56 구조체 확장(2026-07-25)으로 줄었다**:
   구 `ROUTE_WAYPOINT_t`(X/Y/Z, 12바이트)는 `4 + 16×12 = 196`으로 프레임 페이로드(196바이트)에
   정확히 맞았으나, 신 `ROUTE_WAYPOINT_t`(CmdType+Param1~4+LatE7+LonE7+Z, 항상 절대좌표로
-  단순화 후 29바이트)는 프레임당 `(196−4)/29 = 6`개가 한도. **16개를 채우려면 지상국(openMCT)이
-  ADD를 여러 번(예: 4개씩 4프레임, 또는 6+6+4) 나눠 순차 전송**한다 — 세션/누적 대기 상태는
+  단순화 후 29바이트)는 프레임당 `(196−4)/29 = 6`개가 한도. **37개를 채우려면 지상국(openMCT)이
+  ADD를 여러 번(6개씩 6프레임 + 1개, 총 7프레임) 나눠 순차 전송**한다 — 세션/누적 대기 상태는
   두지 않는다: ADD 프레임 하나가
   도착할 때마다 `mavlink_bridge_app`이 그 시점 캐시 전체를 즉시 PX4로 재업로드하며, 매 단계가
-  독립적으로 완결된 유효 미션이다(예: 4개만 반영된 상태에서도 바로 비행 가능, 16개가 다 모여야
+  독립적으로 완결된 유효 미션이다(예: 6개만 반영된 상태에서도 바로 비행 가능, 37개가 다 모여야
   "시작"되는 게이트는 없음). `HOVER`는 웨이포인트 배열 항목이 아니라 별도 비행모드 명령이라
-  16개 용량을 잠식하지 않는다. 원형 촬영 밀도 요구량이 16개보다 많은 지점을 필요로 하는지는
-  별도 검토가 필요하다.
+  용량을 잠식하지 않는다.
 - `MISSION_ITEM_INT`(INT 업로드 경로)의 frame 호환성 코드 수정은 완료(2026-07-13,
   legacy와 동일하게 GLOBAL_RELATIVE_ALT 전환). 다만 INT 경로 자체의 실물 FC
   검증(`MISSION_ACK` accepted 확인)은 FC 점유로 아직 미실행 — 이 보정 기능의

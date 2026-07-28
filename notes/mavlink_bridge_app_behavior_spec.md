@@ -320,7 +320,7 @@ Ref(GLOBAL_POSITION_INT 기준점)가 (0,0)이면 업로드와 동일하게 그�
 **완료 게시**: 다운로드 완료 시 `ROUTE_UPDATE_TLM_t` 레이아웃 그대로
 `FC_MISSION_READBACK_MID(0x1914)`에 실어 게시. `SourceSequence=0`,
 `RouteType=1`(MISSION), `RouteVersion=0`, `Seq`=자체 증가 카운터,
-`WaypointCount=min(N,16)`(초과분 클램프 + WARN). 신규
+`WaypointCount=min(N,ROUTE_MAX_WAYPOINTS)`(37, 2026-07-28 확장 — 초과분 클램프 + WARN). 신규
 `MISSION_READBACK_EID(16)` INFO 발생.
 
 **재시도(백오프)**: 전체 시퀀스가 timeout(3s)으로 실패하면 링크가
