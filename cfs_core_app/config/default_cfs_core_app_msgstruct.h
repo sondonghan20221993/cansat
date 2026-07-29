@@ -32,7 +32,6 @@ typedef struct
     uint8                     CommandCounter;
     uint8                     CommandErrorCounter;
     uint8                     MissionRouteWaypointCount;
-    uint8                     LandingRouteWaypointCount;
     uint32                    PublishCount;
     uint32                    LastPublishTimestampMs;
     uint32                    LastRouteUpdateTimestampMs;

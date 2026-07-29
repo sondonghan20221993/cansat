@@ -60,8 +60,9 @@ typedef enum
 typedef enum
 {
     CFS_CORE_APP_ROUTE_SEGMENT_NONE              = 0,
-    CFS_CORE_APP_ROUTE_SEGMENT_MISSION_EXTENSION = 1,
-    CFS_CORE_APP_ROUTE_SEGMENT_LANDING           = 2
+    CFS_CORE_APP_ROUTE_SEGMENT_MISSION_EXTENSION = 1
+    /* LANDING(=2) 제거(2026-07-29) — 별도 landing route 캐시 개념 자체가
+     * FC에 존재한 적 없음이 BL-56/BL-61에서 확인됨(항상 도달 불가 상태였음). */
 } CFS_CORE_APP_RouteSegmentType_t;
 
 /* BL-41(2026-07-23): CONFIG 영속화 — ActiveConfig 6필드 + ConfigVersion 추가.

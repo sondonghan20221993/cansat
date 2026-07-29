@@ -51,7 +51,7 @@
 | 단계 | 담당 앱 | 동작 |
 | --- | --- | --- |
 | 경로 명령 수신 및 검증 | `uplink_app` | `ROUTE_UPDATE_MID` 게시 |
-| 경로 캐시 저장 | `cfs_core_app` | MissionRoute / LandingRoute 갱신 |
+| 경로 캐시 저장 | `cfs_core_app` | MissionRoute 갱신 |
 | FC 웨이포인트 업로드 | `mavlink_bridge_app` | MAVLink MISSION 업로드 프로토콜 수행 |
 
 `ROUTE_UPDATE_MID` (0x190B)는 `cfs_core_app`과 `mavlink_bridge_app` 모두가 구독한다. 이 MID를 publish하는 생산자(`uplink_app`)는 payload 검증뿐 아니라 FC 업로드 가능성까지 고려해야 한다.

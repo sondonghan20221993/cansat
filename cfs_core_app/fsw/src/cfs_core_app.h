@@ -116,7 +116,6 @@ typedef struct
     CFS_CORE_APP_AppHkCache_t   UplinkAppState;
     CFS_CORE_APP_AppHkCache_t   LoraAppState;
     CFS_CORE_APP_RouteCache_t      MissionRoute;
-    CFS_CORE_APP_RouteCache_t      LandingRoute;
     CFS_CORE_APP_ViewpointCache_t  ViewpointCmd;
     CFS_CORE_APP_HkTlm_t           HkTlm;
     CFS_CORE_APP_SystemHealthTlm_t SystemHealthTlm;
