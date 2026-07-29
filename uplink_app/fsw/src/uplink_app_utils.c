@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <math.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -363,14 +364,19 @@ bool UPLINK_APP_ForwardRecoveryCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
     RecoveryTlm.TimestampMs    = UPLINK_APP_Data.LastRxTimeMs;
     RecoveryTlm.SourceSequence = Cmd->Sequence;
 
-    if (Cmd->PayloadLength >= 8U)
+    /* BL-83(2026-07-28 감사): 이전엔 else가 없어 payload가 짧아도 필드가
+     * 0으로 채워진 채 그대로 발행+true 반환됐다 — 대상 앱은 이를 유효한
+     * "액션=0" 명령으로 오인해 실행한다. 길이 미달은 명시적으로 거부한다. */
+    if (Cmd->PayloadLength < 8U)
     {
-        RecoveryTlm.RecoveryAction   = Cmd->Payload[0];
-        RecoveryTlm.TargetComponent  = Cmd->Payload[1];
-        RecoveryTlm.ReasonCode       = (uint16)Cmd->Payload[2] | ((uint16)Cmd->Payload[3] << 8);
-        RecoveryTlm.RequestToken     = (uint32)Cmd->Payload[4] | ((uint32)Cmd->Payload[5] << 8) |
-                                       ((uint32)Cmd->Payload[6] << 16) | ((uint32)Cmd->Payload[7] << 24);
+        return false;
     }
+
+    RecoveryTlm.RecoveryAction   = Cmd->Payload[0];
+    RecoveryTlm.TargetComponent  = Cmd->Payload[1];
+    RecoveryTlm.ReasonCode       = (uint16)Cmd->Payload[2] | ((uint16)Cmd->Payload[3] << 8);
+    RecoveryTlm.RequestToken     = (uint32)Cmd->Payload[4] | ((uint32)Cmd->Payload[5] << 8) |
+                                   ((uint32)Cmd->Payload[6] << 16) | ((uint32)Cmd->Payload[7] << 24);
 
     CFE_SB_TimeStampMsg(CFE_MSG_PTR(RecoveryTlm.TelemetryHeader));
     return (CFE_SB_TransmitMsg(CFE_MSG_PTR(RecoveryTlm.TelemetryHeader), true) == CFE_SUCCESS);
@@ -559,6 +565,12 @@ bool UPLINK_APP_ForwardConfigCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
     CFE_SB_TimeStampMsg(CFE_MSG_PTR(ConfigTlm.TelemetryHeader));
     Ok = (CFE_SB_TransmitMsg(CFE_MSG_PTR(ConfigTlm.TelemetryHeader), true) == CFE_SUCCESS);
 
+    /* BL-91(2026-07-28 감사): CFE_SB_TransmitMsg가 동기 호출이라 PENDING은 이
+     * 함수 안에서 세팅되자마자 IDLE/REJECTED로 덮여 HK에 절대 노출되지 않는다
+     * (비동기 왕복이 없는 설계상 한계 — 별도 재설계 없이는 관측 불가, 이번엔
+     * 미수정). LastConfigResult=0/1은 순수 로컬 성공/실패 불리언이며
+     * `CFS_CORE_APP_ConfigResult_t`(0=OK,1=BAD_SCOPE...6=BAD_CHECKSUM, 다른
+     * 앱의 richer 코드 공간)와는 무관 — 값 1을 "BAD_SCOPE"로 오독하지 말 것. */
     UPLINK_APP_Data.ConfigPendingState = Ok ? UPLINK_APP_CONFIG_IDLE : UPLINK_APP_CONFIG_REJECTED;
     UPLINK_APP_Data.LastConfigResult   = (uint8)(!Ok);
     return Ok;
@@ -576,13 +588,16 @@ bool UPLINK_APP_ForwardModeCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
     ModeTlm.TimestampMs    = UPLINK_APP_Data.LastRxTimeMs;
     ModeTlm.SourceSequence = Cmd->Sequence;
 
-    if (Cmd->PayloadLength >= 6U)
+    /* BL-83(2026-07-28 감사): else 없이 길이 미달을 통과시키던 것을 명시 거부로 교체 */
+    if (Cmd->PayloadLength < 6U)
     {
-        ModeTlm.ModeAction     = Cmd->Payload[0];
-        ModeTlm.RequestedState = Cmd->Payload[1];
-        ModeTlm.RequestToken   = (uint32)Cmd->Payload[2] | ((uint32)Cmd->Payload[3] << 8) |
-                                 ((uint32)Cmd->Payload[4] << 16) | ((uint32)Cmd->Payload[5] << 24);
+        return false;
     }
+
+    ModeTlm.ModeAction     = Cmd->Payload[0];
+    ModeTlm.RequestedState = Cmd->Payload[1];
+    ModeTlm.RequestToken   = (uint32)Cmd->Payload[2] | ((uint32)Cmd->Payload[3] << 8) |
+                             ((uint32)Cmd->Payload[4] << 16) | ((uint32)Cmd->Payload[5] << 24);
 
     CFE_SB_TimeStampMsg(CFE_MSG_PTR(ModeTlm.TelemetryHeader));
     return (CFE_SB_TransmitMsg(CFE_MSG_PTR(ModeTlm.TelemetryHeader), true) == CFE_SUCCESS);
@@ -600,13 +615,20 @@ bool UPLINK_APP_ForwardDiagnosticCommand(const UPLINK_APP_ProcessUplinkCmd_t *Cm
     DiagTlm.TimestampMs    = UPLINK_APP_Data.LastRxTimeMs;
     DiagTlm.SourceSequence = Cmd->Sequence;
 
-    if (Cmd->PayloadLength >= 6U)
+    /* BL-83(2026-07-28 감사) — 실제 도달 가능한 경로였음: ValidateProxyCommand()는
+     * ROUTE_UPDATE/VIEWPOINT에만 PayloadLength==0 거부를 걸어서 DIAGNOSTIC은
+     * 0바이트 payload도 그대로 통과했고, else가 없던 이전 코드는 그 payload를
+     * DiagAction=0(=LINK_STATUS)으로 채워 그대로 발행 — 요청하지 않은 진단
+     * 동작이 실행됐다. 길이 미달은 명시적으로 거부한다. */
+    if (Cmd->PayloadLength < 6U)
     {
-        DiagTlm.DiagAction   = Cmd->Payload[0];
-        DiagTlm.DiagTarget   = Cmd->Payload[1];
-        DiagTlm.RequestToken = (uint32)Cmd->Payload[2] | ((uint32)Cmd->Payload[3] << 8) |
-                               ((uint32)Cmd->Payload[4] << 16) | ((uint32)Cmd->Payload[5] << 24);
+        return false;
     }
+
+    DiagTlm.DiagAction   = Cmd->Payload[0];
+    DiagTlm.DiagTarget   = Cmd->Payload[1];
+    DiagTlm.RequestToken = (uint32)Cmd->Payload[2] | ((uint32)Cmd->Payload[3] << 8) |
+                           ((uint32)Cmd->Payload[4] << 16) | ((uint32)Cmd->Payload[5] << 24);
 
     CFE_SB_TimeStampMsg(CFE_MSG_PTR(DiagTlm.TelemetryHeader));
     return (CFE_SB_TransmitMsg(CFE_MSG_PTR(DiagTlm.TelemetryHeader), true) == CFE_SUCCESS);
@@ -664,9 +686,11 @@ void UPLINK_APP_LoadState(void)
                           (unsigned long)State.Magic);
         return;
     }
-    if (State.Checksum != (State.Magic + State.LastAcceptedSequence + State.BootCount +
-                           (uint32)State.LastResetReason + (uint32)State.SurvivedMark +
-                           (uint32)State.ShortBootStreak))
+    /* BL-91(2026-07-29 감사): 필드 가산 체크섬은 같은 크기의 두 필드값이
+     * 뒤바뀌는 손상(합계 불변)을 감지 못해 CRC16으로 교체 — 필드별 뒤바뀜/
+     * 비트반전 손상 모두 탐지 가능. Checksum 필드 자체는 범위 밖(마지막). */
+    if (State.Checksum != (uint32)UPLINK_APP_CRC16((const uint8 *)&State,
+                                                    (uint16)offsetof(UPLINK_APP_PersistentState_t, Checksum)))
     {
         CFE_EVS_SendEvent(UPLINK_APP_STATE_CORRUPT_EID, CFE_EVS_EventType_ERROR,
                           "UPLINK_APP: state file checksum mismatch, using defaults");
@@ -768,9 +792,8 @@ void UPLINK_APP_SaveState(void)
     State.SurvivedMark         = UPLINK_APP_Data.SurvivedMark;
     State.ShortBootStreak      = UPLINK_APP_Data.ShortBootStreak;
     State.BootReserved         = 0;
-    State.Checksum             = State.Magic + State.LastAcceptedSequence + State.BootCount +
-                                 (uint32)State.LastResetReason + (uint32)State.SurvivedMark +
-                                 (uint32)State.ShortBootStreak;
+    State.Checksum             = (uint32)UPLINK_APP_CRC16((const uint8 *)&State,
+                                                           (uint16)offsetof(UPLINK_APP_PersistentState_t, Checksum));
 
     snprintf(TmpPath, sizeof(TmpPath), "%s.tmp", StatePath);
 
