@@ -8,8 +8,14 @@
  * 10Hz 시도. 5분 soak 결과로 최종 상한 확정. 실측 완료 전까지 임시값. */
 #define LORA_TDM_APP_CYCLE_PERIOD_MS          100
 #define LORA_TDM_APP_RX_WINDOW_MS             50
-#define LORA_TDM_APP_LINK_LOSS_THRESHOLD      50
+/* BL-88(2026-07-28 감사): 50(=50×100ms=5000ms)이 LINK_TIMEOUT_MS와 정확히
+ * 같아 DISCONNECTED 판정이 항상 먼저 성립하고 DEGRADED 관측 창이 없었다.
+ * spec §7 의도(3s DEGRADED / 5s DISCONNECTED)대로 분리 — 30×100ms=3000ms */
+#define LORA_TDM_APP_LINK_LOSS_THRESHOLD      30
 #define LORA_TDM_APP_LINK_TIMEOUT_MS          5000
+/* BL-87(2026-07-28 감사): 시리얼 재오픈 백오프 — 매 사이클(100ms) 재시도로
+ * LoRa 미연결 부팅 시 SERIAL_OPEN_ERR_EID가 10Hz로 폭주하던 것을 방지 */
+#define LORA_TDM_APP_SERIAL_REOPEN_BACKOFF_MS  1000
 
 /* Packet types */
 #define LORA_TDM_APP_FC_STATE_PACKET_TYPE      1

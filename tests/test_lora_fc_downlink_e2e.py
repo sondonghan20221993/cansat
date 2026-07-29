@@ -51,7 +51,7 @@ def _read_pty_lines(master_fd: int, timeout: float = 0.5) -> list[str]:
 
 
 @pytest.mark.cfs_required
-class LoraFcDownlinkE2ETest:
+class TestLoraFcDownlinkE2E:
     """lora_fc_downlink_app C ServiceLoRa() 실제 출력 검증."""
 
     # LORA-FRAME-001: FC 패킷 포맷 검증

@@ -22,20 +22,25 @@ void Test_UPLINK_APP_ResetCounters(void)
     UPLINK_APP_ResetCountersCmd_t TestMsg;
 
     memset(&TestMsg, 0, sizeof(TestMsg));
-    UPLINK_APP_Data.CmdCounter          = 9;
-    UPLINK_APP_Data.ErrCounter          = 8;
-    UPLINK_APP_Data.AcceptedCount       = 7;
-    UPLINK_APP_Data.RejectedCount       = 6;
-    UPLINK_APP_Data.RoutingFailureCount = 5;
+    UPLINK_APP_Data.CmdCounter           = 9;
+    UPLINK_APP_Data.ErrCounter           = 8;
+    UPLINK_APP_Data.AcceptedCount        = 7;
+    UPLINK_APP_Data.RejectedCount        = 6;
+    UPLINK_APP_Data.RoutingFailureCount  = 5;
+    UPLINK_APP_Data.LastAcceptedSequence = 4321;
 
     UPLINK_APP_ResetCounters(&TestMsg);
 
     UtAssert_INT32_EQ(UPLINK_APP_Data.CmdCounter, 0);
     UtAssert_INT32_EQ(UPLINK_APP_Data.ErrCounter, 0);
-    UtAssert_INT32_EQ(UPLINK_APP_Data.AcceptedCount, 0);
     UtAssert_INT32_EQ(UPLINK_APP_Data.RejectedCount, 0);
     UtAssert_INT32_EQ(UPLINK_APP_Data.RoutingFailureCount, 0);
-    UtAssert_INT32_EQ(UPLINK_APP_Data.LastAcceptedSequence, 0);
+    /* BL-90(2026-07-28 감사) 회귀: AcceptedCount/LastAcceptedSequence는 replay
+     * 방어 상태라 카운터 리셋으로 건드리면 안 됨 — 이 두 값은 리셋 후에도
+     * 그대로 보존돼야 한다(예전엔 둘 다 0으로 초기화돼 부트스트랩 분기가
+     * 다시 열렸음). */
+    UtAssert_INT32_EQ(UPLINK_APP_Data.AcceptedCount, 7);
+    UtAssert_INT32_EQ((int)UPLINK_APP_Data.LastAcceptedSequence, 4321);
 }
 
 void Test_UPLINK_APP_ProcessUplink_Accept(void)
@@ -81,6 +86,33 @@ void Test_UPLINK_APP_ProcessUplink_RejectSequenceReplay(void)
     UtAssert_INT32_EQ(UPLINK_APP_Data.RejectedCount, 1);
     UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_REJECT_SEQUENCE);
     UtAssert_INT32_EQ(UPLINK_APP_Data.LinkState, UPLINK_APP_LINK_DEGRADED);
+}
+
+/* BL-90(2026-07-28 감사) 회귀: ResetCounters 이후에도 replay 방어가 살아있어야
+ * 함 — seq=10을 수락한 뒤 카운터를 리셋하고, 오래된 seq=9로 재전송을 시도하면
+ * 여전히 REPLAY로 거부돼야 한다(예전엔 AcceptedCount가 0으로 리셋돼 부트스트랩
+ * 분기가 열려 이 재전송이 무조건 NEW로 수락됐음). */
+void Test_UPLINK_APP_ProcessUplink_ReplayStillRejectedAfterResetCounters(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+    UPLINK_APP_ResetCountersCmd_t ResetMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_CONFIG;
+    TestMsg.PayloadLength = 0;
+    TestMsg.Sequence      = 9; /* 이미 수락된 10보다 오래된 seq */
+
+    UPLINK_APP_Data.AcceptedCount        = 1;
+    UPLINK_APP_Data.LastAcceptedSequence = 10;
+
+    memset(&ResetMsg, 0, sizeof(ResetMsg));
+    UPLINK_APP_ResetCounters(&ResetMsg);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_REJECT_SEQUENCE);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.RejectedCount, 1);
 }
 
 void Test_UPLINK_APP_ProcessUplink_DuplicateRetransmit(void)
@@ -423,6 +455,50 @@ void Test_UPLINK_APP_ProcessUplink_CounterMgmtForwardFail(void)
     UtAssert_INT32_EQ(UPLINK_APP_Data.ErrCounter, 1);
     UtAssert_INT32_EQ(UPLINK_APP_Data.RejectedCount, 1);
     UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_REJECT_COUNTER);
+}
+
+/* BL-91(2026-07-28 감사) 회귀: scope=UPLINK 성공 시 공통 "routed" 집계
+ * (CmdCounter++ 등)를 건너뛰어야 한다. `UPLINK_APP_ForwardCounterMgmtCommand()`가
+ * 이미 CmdCounter/ErrCounter를 0으로 리셋했다고 가정(그 함수 자체 로직은
+ * utils 테스트에서 별도 검증)하고, 이 테스트는 ProcessUplink()이 그 직후
+ * 다시 1로 되돌리지 않는지만 확인한다 — 예전엔 공통 tail의
+ * `CmdCounter++`/`AcceptedCount++`가 무조건 실행돼 리셋이 무의미해졌다. */
+void Test_UPLINK_APP_ProcessUplink_CounterMgmtScopeUplink_BypassesGenericTail(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t TestMsg;
+
+    memset(&TestMsg, 0, sizeof(TestMsg));
+    TestMsg.Version       = UPLINK_APP_PROTOCOL_VERSION;
+    TestMsg.CommandClass  = UPLINK_APP_CLASS_COUNTER_MGMT;
+    TestMsg.Flags         = TEST_AUTH_LEVEL(3);
+    TestMsg.PayloadLength = 6;
+    TestMsg.Payload[0]    = (uint8)UPLINK_APP_COUNTER_SCOPE_UPLINK;
+    TestMsg.Payload[2]    = 1; /* non-zero request_token */
+    TestMsg.Sequence      = 101; /* LastAcceptedSequence(100)보다 앞이라 NEW로 통과해야 함 */
+
+    UPLINK_APP_Data.CfsHealthReceived = 1U;
+    /* ForwardCounterMgmtCommand()가 이미 리셋했다고 가정한 사후 상태 */
+    UPLINK_APP_Data.CmdCounter           = 0;
+    UPLINK_APP_Data.ErrCounter           = 0;
+    UPLINK_APP_Data.AcceptedCount        = 3;   /* replay 방어 상태 — 이 경로에서도 안 건드려야 함 */
+    UPLINK_APP_Data.LastAcceptedSequence = 100;
+    UPLINK_APP_Data.RejectedCount        = 2;
+    UPLINK_APP_Data.DuplicateCount       = 2;
+    UPLINK_APP_Data.RoutingFailureCount  = 2;
+
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ValidateProxyCommand), true);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ResolveRouteTarget), UPLINK_APP_ROUTE_COUNTER_MGMT);
+    UT_SetDefaultReturnValue(UT_KEY(UPLINK_APP_ForwardCounterMgmtCommand), true);
+
+    UPLINK_APP_ProcessUplink(&TestMsg);
+
+    UtAssert_INT32_EQ(UPLINK_APP_Data.CmdCounter, 0);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.AcceptedCount, 3);
+    UtAssert_INT32_EQ((int)UPLINK_APP_Data.LastAcceptedSequence, 100);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.RejectedCount, 0);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.DuplicateCount, 0);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.RoutingFailureCount, 0);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.LastCommandResult, UPLINK_APP_RESULT_ROUTED);
 }
 
 void Test_UPLINK_APP_ProcessUplink_ViewpointAccept(void)
@@ -1163,6 +1239,7 @@ void UtTest_Setup(void)
     ADD_TEST(UPLINK_APP_ResetCounters);
     ADD_TEST(UPLINK_APP_ProcessUplink_Accept);
     ADD_TEST(UPLINK_APP_ProcessUplink_RejectSequenceReplay);
+    ADD_TEST(UPLINK_APP_ProcessUplink_ReplayStillRejectedAfterResetCounters);
     ADD_TEST(UPLINK_APP_ProcessUplink_DuplicateRetransmit);
     ADD_TEST(UPLINK_APP_ProcessUplink_AcceptedAfterSequenceWraparound);
     ADD_TEST(UPLINK_APP_ProcessUplink_Reject);
@@ -1175,6 +1252,7 @@ void UtTest_Setup(void)
     ADD_TEST(UPLINK_APP_ProcessUplink_RetxIdxBitsDoNotAffectAcceptance);
     ADD_TEST(UPLINK_APP_ProcessUplink_CounterMgmtAccept);
     ADD_TEST(UPLINK_APP_ProcessUplink_CounterMgmtForwardFail);
+    ADD_TEST(UPLINK_APP_ProcessUplink_CounterMgmtScopeUplink_BypassesGenericTail);
     ADD_TEST(UPLINK_APP_ProcessUplink_ViewpointAccept);
     ADD_TEST(UPLINK_APP_ProcessUplink_ViewpointForwardFail);
     ADD_TEST(UPLINK_APP_ProcessUplink_ViewpointParseReject);

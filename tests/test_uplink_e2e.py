@@ -74,7 +74,7 @@ def _make_frame(seq: int, command_class: int = 2, payload: bytes = b"\x01\x00") 
 
 
 @pytest.mark.cfs_required
-class UplinkE2ETest:
+class TestUplinkE2E:
     """cFS uplink_app UDP 경로 end-to-end 테스트."""
 
     # LORA-UP-011: seq 증가 → accept
@@ -83,9 +83,10 @@ class UplinkE2ETest:
         time.sleep(0.05)
         _send_frame(cfs_host, cfs_port, _make_frame(seq=101))
         time.sleep(0.05)
-        # EVS 로그에서 "routed uplink" 2회 확인 (수동 또는 로그 파서로 검증)
-        # 현재는 전송 성공 여부만 확인
-        assert True  # placeholder — EVS 로그 파서 추가 시 갱신
+        # UDP 전송 성공은 수신/수락을 보장하지 않음 — EVS 로그 또는
+        # UPLINK_STATUS_MID HK(AcceptedCount)를 읽는 검증 경로가 아직 없어
+        # BL-106 전까지는 "전송했다"만 확인 가능하고 "수락됐다"는 미검증.
+        pytest.skip("BL-106: EVS/HK 판독 경로 미구현 — 전송만 확인, 수락 여부 미검증")
 
     # LORA-UP-012/013: seq 동일/역행 → C ServiceLoRa에서 거부
     def test_seq_regression_rejected_in_c(self, cfs_host, cfs_port):
@@ -95,9 +96,7 @@ class UplinkE2ETest:
         time.sleep(0.05)
         _send_frame(cfs_host, cfs_port, _make_frame(seq=199))  # 역행
         time.sleep(0.05)
-        # EVS에 "LoRa seq regression" 메시지 2개 확인 필요
-        # 현재는 전송 성공 여부만 확인
-        assert True  # placeholder
+        pytest.skip("BL-106: EVS 로그(\"LoRa seq regression\") 판독 경로 미구현")
 
     # REC-008: seq regression 반복 — reject count 누적
     def test_seq_regression_reject_count_accumulates(self, cfs_host, cfs_port):
@@ -107,12 +106,11 @@ class UplinkE2ETest:
         for _ in range(5):
             _send_frame(cfs_host, cfs_port, _make_frame(seq=base_seq - 1))
             time.sleep(0.02)
-        # UPLINK_STATUS_MID HK의 RejectedCount 또는 EVS 로그로 검증
-        assert True  # placeholder
+        pytest.skip("BL-106: UPLINK_STATUS_MID HK(RejectedCount) 판독 경로 미구현")
 
 
 @pytest.mark.cfs_required
-class UplinkRouteE2ETest:
+class TestUplinkRouteE2E:
     """uplink_app route update C 경로 검증."""
 
     def test_valid_route_update_routed(self, cfs_host, cfs_port):
@@ -129,5 +127,4 @@ class UplinkRouteE2ETest:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
             sock.sendto(pkt, (cfs_host, cfs_port))
         time.sleep(0.1)
-        # EVS: "CFS_CORE_APP: route updated op=1" 확인 필요
-        assert True  # placeholder
+        pytest.skip("BL-106: EVS 로그(\"CFS_CORE_APP: route updated op=1\") 판독 경로 미구현")

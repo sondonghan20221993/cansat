@@ -447,7 +447,7 @@ void Test_UPLINK_APP_ForwardModeCommand(void)
 
     memset(&Cmd, 0, sizeof(Cmd));
     Cmd.Sequence      = 50;
-    Cmd.PayloadLength = 3;
+    Cmd.PayloadLength = 6; /* MODE 최소 길이 */
     Cmd.Payload[0]    = 0x01;
 
     UT_SetDefaultReturnValue(UT_KEY(CFE_SB_TransmitMsg), CFE_SUCCESS);
@@ -456,10 +456,15 @@ void Test_UPLINK_APP_ForwardModeCommand(void)
     UT_SetDefaultReturnValue(UT_KEY(CFE_SB_TransmitMsg), -1);
     UtAssert_BOOL_FALSE(UPLINK_APP_ForwardModeCommand(&Cmd));
 
-    /* zero-length payload path */
-    Cmd.PayloadLength = 0;
+    /* BL-83(2026-07-28 감사) 회귀: 길이 미달(3B, 최소 6B 미만)은 명시적으로
+     * 거부돼야 함 — 예전엔 else가 없어 필드가 0으로 채워진 채 true 반환됐음. */
     UT_SetDefaultReturnValue(UT_KEY(CFE_SB_TransmitMsg), CFE_SUCCESS);
-    UtAssert_BOOL_TRUE(UPLINK_APP_ForwardModeCommand(&Cmd));
+    Cmd.PayloadLength = 3;
+    UtAssert_BOOL_FALSE(UPLINK_APP_ForwardModeCommand(&Cmd));
+
+    /* zero-length payload도 동일하게 거부 */
+    Cmd.PayloadLength = 0;
+    UtAssert_BOOL_FALSE(UPLINK_APP_ForwardModeCommand(&Cmd));
 }
 
 void Test_UPLINK_APP_ForwardDiagnosticCommand(void)
@@ -468,7 +473,7 @@ void Test_UPLINK_APP_ForwardDiagnosticCommand(void)
 
     memset(&Cmd, 0, sizeof(Cmd));
     Cmd.Sequence      = 60;
-    Cmd.PayloadLength = 3;
+    Cmd.PayloadLength = 6; /* DIAGNOSTIC 최소 길이 */
     Cmd.Payload[0]    = 0x02;
 
     UT_SetDefaultReturnValue(UT_KEY(CFE_SB_TransmitMsg), CFE_SUCCESS);
@@ -477,9 +482,40 @@ void Test_UPLINK_APP_ForwardDiagnosticCommand(void)
     UT_SetDefaultReturnValue(UT_KEY(CFE_SB_TransmitMsg), -1);
     UtAssert_BOOL_FALSE(UPLINK_APP_ForwardDiagnosticCommand(&Cmd));
 
-    Cmd.PayloadLength = 0;
+    /* BL-83(2026-07-28 감사) — 실제 도달 가능했던 경로: ValidateProxyCommand()가
+     * DIAGNOSTIC엔 PayloadLength==0 거부를 안 걸어서, 0바이트 DIAGNOSTIC이
+     * 여기까지 통과해 DiagAction=0(LINK_STATUS)으로 조용히 실행됐다. */
     UT_SetDefaultReturnValue(UT_KEY(CFE_SB_TransmitMsg), CFE_SUCCESS);
-    UtAssert_BOOL_TRUE(UPLINK_APP_ForwardDiagnosticCommand(&Cmd));
+    Cmd.PayloadLength = 3;
+    UtAssert_BOOL_FALSE(UPLINK_APP_ForwardDiagnosticCommand(&Cmd));
+
+    Cmd.PayloadLength = 0;
+    UtAssert_BOOL_FALSE(UPLINK_APP_ForwardDiagnosticCommand(&Cmd));
+}
+
+/* BL-83(2026-07-28 감사): ForwardRecoveryCommand는 기존에 전용 테스트가 아예
+ * 없었음 — 길이 미달(else 부재로 필드 0채움+true 반환) 회귀 케이스 신설 */
+void Test_UPLINK_APP_ForwardRecoveryCommand(void)
+{
+    UPLINK_APP_ProcessUplinkCmd_t Cmd;
+
+    memset(&Cmd, 0, sizeof(Cmd));
+    Cmd.Sequence      = 70;
+    Cmd.PayloadLength = 8; /* RECOVERY 최소 길이 */
+    Cmd.Payload[0]    = 0x03;
+
+    UT_SetDefaultReturnValue(UT_KEY(CFE_SB_TransmitMsg), CFE_SUCCESS);
+    UtAssert_BOOL_TRUE(UPLINK_APP_ForwardRecoveryCommand(&Cmd));
+
+    UT_SetDefaultReturnValue(UT_KEY(CFE_SB_TransmitMsg), -1);
+    UtAssert_BOOL_FALSE(UPLINK_APP_ForwardRecoveryCommand(&Cmd));
+
+    UT_SetDefaultReturnValue(UT_KEY(CFE_SB_TransmitMsg), CFE_SUCCESS);
+    Cmd.PayloadLength = 3;
+    UtAssert_BOOL_FALSE(UPLINK_APP_ForwardRecoveryCommand(&Cmd));
+
+    Cmd.PayloadLength = 0;
+    UtAssert_BOOL_FALSE(UPLINK_APP_ForwardRecoveryCommand(&Cmd));
 }
 
 void Test_UPLINK_APP_ForwardCounterMgmtCommand(void)
@@ -1069,6 +1105,7 @@ void UtTest_Setup(void)
     ADD_TEST(UPLINK_APP_UpdateStatusTelemetry_ExposesBootFields);
     ADD_TEST(UPLINK_APP_ForwardModeCommand);
     ADD_TEST(UPLINK_APP_ForwardDiagnosticCommand);
+    ADD_TEST(UPLINK_APP_ForwardRecoveryCommand);
     ADD_TEST(UPLINK_APP_ForwardCounterMgmtCommand);
     ADD_TEST(UPLINK_APP_ParseViewpointPayload);
     ADD_TEST(UPLINK_APP_ForwardViewpointCommand);

@@ -253,7 +253,18 @@ class RouteReadbackAssembler:
         if not event.has_waypoint_page or event.wp_waypoints is None:
             return None
 
-        if self.total_pages != event.wp_total_pages:
+        # BL-92(2026-07-28 감사): total_pages만으로 세션 경계를 판정하면, 이전
+        # 세션과 페이지 수가 같은 경로를 연속으로 조회할 때(흔함 — 같은 미션을
+        # 두 번 조회) 새 세션 시작을 못 알아채 이전 route의 waypoint가 새
+        # 세션 자리에 그대로 남은 채 완성 처리된다. route_type 변화 또는
+        # (이미 진행 중인 세션에서) page_index==0 재수신도 새 세션 시작으로
+        # 간주해 강제 리셋한다.
+        is_new_session = (
+            self.total_pages != event.wp_total_pages
+            or self.route_type != event.wp_route_type
+            or (event.wp_page_index == 0 and len(self._pages) > 0)
+        )
+        if is_new_session:
             # 새 readback 세션 시작(또는 첫 수신) — 이전 진행분 폐기
             self._pages = {}
             self.route_type = event.wp_route_type

@@ -12,7 +12,8 @@
 
 ### 1. VIEWPOINT_CMD (0x190D)
 - **구현**: 페이로드(type/frame/X/Y/Z/Yaw/Pitch/HoldTime) → `ViewpointCmd` 캐시 저장, `VIEWPOINT_EID` 발생
-- **미구현**: 실제 viewpoint 위치 설정/전환 로직 (BL-10 — 활용처 있음만 확정, 방향 미정, 후속설계 필요)
+- **미구현(방향 확정)**: 실제 viewpoint 위치 설정/전환 로직은 짐벌 미탑재로 범위 제외 확정(BL-10)
+- **BL-82 완료(2026-07-29)**: `ProcessViewpointCommand()` 끝에 `CFS_CORE_APP_PublishExecResult(SourceSequence, 3U, false, ViewpointType)` 추가 — `CommandClass=3`(`UPLINK_APP_CLASS_VIEWPOINT`), 명시적 FAILED 회신으로 uplink_app의 무한 ROUTED 대기 해소
 
 ### 2. RECOVERY_CMD (0x190C) — ✅ 구현 완료 (BL-09, 2026-07-21)
 - `cfs_core_app_utils.c:772` `CFS_CORE_APP_ProcessRecoveryCommand()`가 `RecoveryAction`
@@ -28,6 +29,11 @@
   때만) 허용, 그 외 조합은 `TransitionAllowed=false`로 거부 이벤트(`MODE_CMD_EID`,
   ERROR) 발생. 캐시(`LastModeRequestToken`)뿐 아니라 `CurrentModeState`가 실제로
   갱신됨.
+- **BL-81 완료(2026-07-29)**: `ProcessModeCommand()` 끝에
+  `CFS_CORE_APP_PublishExecResult(SourceSequence, 5U, TransitionAllowed, RequestedState)`
+  추가(`CommandClass=5`=`UPLINK_APP_CLASS_MODE`), 거부 분기에 `ErrCounter++` 추가.
+  단, `CurrentModeState`가 다른 로직에서 실제로 읽혀 게이팅에 반영되는지는 이번
+  스코프 밖 — EXEC_RESULT 회신으로 uplink_app의 dead-end만 해소.
 
 ### 4. 타임스탐프 유효성 (§7)
 - **구현**: 미래 타임스탐프 거부(`Msg->TimestampMs > NowMs + 5000ms`)
@@ -36,9 +42,11 @@
 ## 상태
 
 - [x] 명령 페이로드 파싱 (cached)
-- [ ] VIEWPOINT 실행 로직 (BL-10, 방향 미정)
+- [ ] VIEWPOINT 실행 로직 (짐벌 미탑재로 범위 제외 확정, BL-10)
+- [x] VIEWPOINT EXEC_RESULT FAILED 회신 (BL-82 완료 2026-07-29)
 - [x] RECOVERY 필드 검증 및 구분 처리 (BL-09 완료)
 - [x] MODE 상태 전이 검증 (구현 완료 확인)
+- [x] MODE EXEC_RESULT 회신 (BL-81 완료 2026-07-29)
 - [x] 타임스탐프 time base 검증 (**BL-42 완료** 2026-07-24 — 도착시각 만료 + FC 재부팅 감지)
 
 ## 참고

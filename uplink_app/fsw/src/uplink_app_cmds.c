@@ -88,11 +88,14 @@ void UPLINK_APP_ResetCounters(const UPLINK_APP_ResetCountersCmd_t *Cmd)
     (void)Cmd;
     UPLINK_APP_Data.CmdCounter          = 0;
     UPLINK_APP_Data.ErrCounter          = 0;
-    UPLINK_APP_Data.AcceptedCount       = 0;
     UPLINK_APP_Data.RejectedCount       = 0;
     UPLINK_APP_Data.DuplicateCount      = 0;
     UPLINK_APP_Data.RoutingFailureCount = 0;
-    UPLINK_APP_Data.LastAcceptedSequence = 0;
+    /* BL-90(2026-07-28 감사): AcceptedCount/LastAcceptedSequence는 진단용
+     * 카운터가 아니라 replay 방어의 보안 상태다. AcceptedCount==0으로 만들면
+     * CheckSequence()의 부트스트랩 분기(§BL-13)가 다시 열려 임의의 오래된
+     * seq 하나가 무조건 NEW로 수락된다 — 카운터 리셋 명령으로 방어를 우회할
+     * 수 있었다. 두 필드는 리셋 대상에서 제외한다. */
     UPLINK_APP_Data.LastCommandCode     = 0;
     UPLINK_APP_Data.LastCommandResult   = UPLINK_APP_RESULT_NONE;
     UPLINK_APP_Data.LastRouteTarget     = UPLINK_APP_ROUTE_NONE;
@@ -433,6 +436,21 @@ void UPLINK_APP_ProcessUplink(const UPLINK_APP_ProcessUplinkCmd_t *Cmd)
             CFE_EVS_SendEvent(UPLINK_APP_COMMAND_ERR_EID, CFE_EVS_EventType_ERROR,
                               "UPLINK_APP: failed counter management command seq=%u",
                               (unsigned int)Cmd->Sequence);
+            UPLINK_APP_UpdateStatusTelemetry(0);
+            return;
+        }
+
+        /* BL-91(2026-07-28 감사): scope=UPLINK는 로컬 카운터를 그 자리에서 직접
+         * 리셋하는 자기완결 동작이라, 아래 공통 "routed" 집계(CmdCounter++ 등)를
+         * 타면 리셋 직후 바로 1로 되돌아간다. Accepted/Rejected/Duplicate 등은
+         * 손대지 않아 로컬 CC=1 ResetCounters와 비대칭이던 것도 함께 맞춘다 —
+         * scope=UPLINK 성공 시엔 공통 집계를 건너뛴다. */
+        if (Cmd->Payload[0] == (uint8)UPLINK_APP_COUNTER_SCOPE_UPLINK)
+        {
+            UPLINK_APP_Data.RejectedCount       = 0;
+            UPLINK_APP_Data.DuplicateCount      = 0;
+            UPLINK_APP_Data.RoutingFailureCount = 0;
+            UPLINK_APP_Data.LastCommandResult   = UPLINK_APP_RESULT_ROUTED;
             UPLINK_APP_UpdateStatusTelemetry(0);
             return;
         }

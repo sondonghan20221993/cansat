@@ -8,5 +8,8 @@
 #define MAVLINK_BRIDGE_APP_SERIAL_BAUDRATE     921600
 #define MAVLINK_BRIDGE_APP_SB_POLL_TIMEOUT_MS  200
 #define MAVLINK_BRIDGE_APP_READ_CHUNK_SIZE     256
+/* BL-84/C-14(2026-07-28): ServiceSerial()의 read() 루프 상한 — FC가 연속
+ * 스트리밍해도 한 사이클(SB 명령 처리+하트비트 송신) 안에서 굶지 않도록 */
+#define MAVLINK_BRIDGE_APP_MAX_READS_PER_SERVICE 32
 
 #endif
