@@ -178,9 +178,9 @@ v1 `UP,<version>,<class>,<seq>,<flags>,<payload_hex>,<crc16>\n`의 바이너리 
 | 0 | magic | u8 | `0xB2` |
 | 1 | plen | u8 | payload 길이 (0 허용 — payload 없는 명령 유효, v1 규칙 승계) |
 | 2 | version | u8 | 프로토콜 버전 = 2 |
-| 3 | command_class | u8 | `UPLINK_APP_CommandClass_t` (1=CONFIG … 6=DIAGNOSTIC) |
+| 3 | command_class | u8 | `UPLINK_APP_CommandClass_t` — 8종: 1=CONFIG, 2=ROUTE_UPDATE, 3=VIEWPOINT, 4=RECOVERY, 5=MODE, 6=DIAGNOSTIC, 7=COUNTER_MGMT(2026-07-22), 8=FLIGHT_MODE(BL-44, 2026-07-24) |
 | 4 | seq | u16 | 업링크 시퀀스 |
-| 6 | flags | u8 | 예약 (0) |
+| 6 | flags | u8 | bit0=FORCE(`UPLINK_APP_FORCE_FLAG`, health gate 우회), bits[2:1]=RETX_IDX(BL-14, 0~3=재전송 슬롯-1, 진단용), bits[5:3]=예약(0), bits[7:6]=auth_level(0~3, §18.11 권한검증에 필수 — `UPLINK_APP_GetClassRequiredLevel()`은 모든 클래스에 최소 1 이상을 요구하므로 이 필드가 0이면 전 명령이 AUTHZ_BLOCK) |
 | 7 | payload | u8 ×plen | 명령 페이로드 (raw) |
 | 7+plen | crc | u16 | CRC-16/CCITT |
 
@@ -198,17 +198,30 @@ v1 `UP,<version>,<class>,<seq>,<flags>,<payload_hex>,<crc16>\n`의 바이너리 
 
 ## 7. TDM 타이밍 v2
 
-| 파라미터 | v1 | v2 | 근거 |
-| --- | --- | --- | --- |
-| `CYCLE_PERIOD_MS` | 1000 | **200** | DL2 19ms + RX창 + 마진 |
-| `RX_WINDOW_MS` | 300 | **100** | UP2 최대(payload 255B → 262B ≈ 110ms)는 초과 — §7.1 |
-| 실효 다운링크 | ~0.77Hz | **5Hz** | |
-| `LINK_TIMEOUT_MS` | 5000 | 5000 (유지) | 절대시간 기준이라 불변 |
-| `LINK_LOSS_THRESHOLD` (NoAck 연속) | 3 (≈3.9s) | **15** (≈3s) | 주기 단축 보정 — 3 유지 시 0.6s만에 DEGRADED로 과민 |
+> **[2026-07-29 정정]** 아래 표는 이 spec 최초 작성 시점의 설계값(5Hz)이다.
+> 실제로는 BL-15 Stage 4b(2026-07-22, 5분 soak 실측)에서 **10Hz**
+> (`CYCLE_PERIOD_MS=100`/`RX_WINDOW_MS=50`)로 최종 채택되었고, 코드(현재값)가
+> 이 정정을 반영한다. `LINK_LOSS_THRESHOLD`도 BL-88(2026-07-28 감사)에서
+> 100ms 주기 기준 3s로 재조정되어 `30`이다(5Hz 설계 당시 `15`는 200ms 주기
+> 기준값이라 100ms 주기에 그대로 쓰면 1.5s로 과민해짐).
+
+| 파라미터 | v1 | v2 설계값(최초) | **v2 실채택값(BL-15 Stage 4b)** | 근거 |
+| --- | --- | --- | --- | --- |
+| `CYCLE_PERIOD_MS` | 1000 | 200 | **100** | DL2 19ms + RX창 + 마진, 10Hz 5분 soak 통과 |
+| `RX_WINDOW_MS` | 300 | 100 | **50** | UP2 최대(payload 255B → 262B ≈ 110ms)는 초과 — §7.1 |
+| 실효 다운링크 | ~0.77Hz | 5Hz | **10Hz** | |
+| `LINK_TIMEOUT_MS` | 5000 | 5000 (유지) | 5000 (유지) | 절대시간 기준이라 불변 |
+| `LINK_LOSS_THRESHOLD` (NoAck 연속) | 3 (≈3.9s) | 15 (≈3s, 200ms 주기 기준) | **30** (≈3s, 100ms 주기 기준 — BL-88) | 주기 단축 보정 |
 
 ### 7.1 대형 업링크(ROUTE_UPDATE) 분할 수신
 
 RX창 100ms에 들어가는 UP2 최대 크기는 ~240B(에어타임 100ms). payload 255B 프레임은 창을 초과할 수 있으므로, RX 파서는 **줄 단위가 아니라 바이트 스트림 상태머신**으로 구현하여 프레임이 여러 RX창에 걸쳐 수신되는 것을 허용한다 (수신 중간 상태를 주기 간 유지). 이것이 v1 `\n` 줄버퍼 방식과의 가장 큰 구현 차이다.
+
+> **[2026-07-29 정정]** 실채택 `RX_WINDOW_MS`는 50ms(§7 표)라 위 "~240B/100ms"
+> 산정은 설계 당시 값 기준이며 실제 여유는 그보다 작다 — 다만 창을 넘는
+> 프레임을 다중 RX창에 걸쳐 받는 바이트 스트림 상태머신 설계 자체는
+> 창 크기와 무관하게 유효하므로 이 절의 결론(줄버퍼 방식 대신 상태머신
+> 채택)은 그대로 적용된다.
 
 ### 7.2 지상국 타이밍
 
@@ -235,14 +248,14 @@ RX창 100ms에 들어가는 UP2 최대 크기는 ~240B(에어타임 100ms). payl
 
 ## 9. 검증 요구사항
 
-| 항목 | 방법 |
-| --- | --- |
-| DL2 인코딩/디코딩 왕복 | 기체 인코더 ↔ 지상 디코더 단위테스트 (saturation, SysTime 블록 유/무 포함) |
-| UP2 다중 RX창 분할 수신 | 프레임을 임의 지점에서 쪼개 주입하는 UT |
-| CRC/재동기화 | 프레임 중간 바이트 손상 주입 → 재스캔으로 후속 프레임 정상 수신 |
-| v1/v2 공존 | 혼합 스트림 주입 UT |
-| 실링크 5Hz 유지율 | Pi + LR24-F 실물, 1시간 soak — TxCount/RxAckCount 비율, NoAckCount 추이 |
-| 타이밍 | RX창 내 ACK 왕복 실측 (지상 bridge 응답 지연 포함) |
+| 항목 | 방법 | 상태 |
+| --- | --- | --- |
+| DL2 인코딩/디코딩 왕복 | 기체 인코더 ↔ 지상 디코더 단위테스트 (saturation, SysTime 블록 유/무 포함) | ✅ 구현 |
+| UP2 다중 RX창 분할 수신 | 프레임을 임의 지점에서 쪼개 주입하는 UT | ✅ 구현(`RunRxWindow_Up2FrameSpansAcrossWindows`, BL-79) |
+| CRC/재동기화 | 프레임 중간 바이트 손상 주입 → 재스캔으로 후속 프레임 정상 수신 | 🔶 부분(§11.2 참조 — plen 상한만, 완전 재스캔 미착수) |
+| v1/v2 공존 | 혼합 스트림 주입 UT | ✅ 구현(magic 첫바이트 분기) |
+| 실링크 5Hz 유지율 | Pi + LR24-F 실물, 1시간 soak — TxCount/RxAckCount 비율, NoAckCount 추이 | 미실시(실물 하드웨어 필요) |
+| 타이밍 | RX창 내 ACK 왕복 실측 (지상 bridge 응답 지연 포함) | 미실시(실물 하드웨어 필요) |
 
 ## 10. 미결정/후속 항목
 
@@ -265,15 +278,17 @@ RX창 100ms에 들어가는 UP2 최대 크기는 ~240B(에어타임 100ms). payl
   test_systime_flag_set_but_block_missing_returns_none_not_crash`.
   (근거: `notes/temp/dl2_systime_flag_length_crash.md`, 커밋 `c1ec450`)
 
-## 11. 기체 C 수신 구현 세부 (Stage 3 착수 게이트)
+## 11. 기체 C 수신 구현 세부 (Stage 3 착수 게이트) — **구현 완료**(2026-07-29, BL-78/79/86)
 
-`lora_stage_measurement_runbook.md` Stage 3의 3개 선행 게이트를 구현 수준으로 확정한다. 모두 실측과 무관한 로컬 코드/UT 작업이며, 아래 순서대로 진행한다.
+`lora_stage_measurement_runbook.md` Stage 3의 3개 선행 게이트. 아래 §11.1~11.3 모두 `lora_tdm_app.c`/`lora_tdm_app_utils.c`에 구현되어 단위테스트로 감사됨. 단, §11.2가 요구한 "CRC 실패/오버플로 시 폐기된 스트림에서 magic 재스캔"까지는 미착수 — 현재는 plen 상한 검증(BL-86)으로 가장 심각한 증상(정상 프레임 흡수)만 차단한 상태이며, 완전한 바이트 단위 재스캔은 별도 설계가 필요한 더 큰 변경으로 남아있다.
 
-### 11.1 `RunRxWindow` 버퍼 static/전역화
+### 11.1 `RunRxWindow` 버퍼 static/전역화 — ✅ 구현 완료
 
-**현재 결함**: `lora_tdm_app.c:106` `RunRxWindow()`가 `char Buf[LINE_BUF_LEN]`를 호출마다 스택에 재선언 → RX창(현 300ms) 경계를 넘어가는 프레임의 중간 수신 상태가 유실. v2는 payload 255B 프레임이 RX창(100ms)을 초과할 수 있으므로(§7.1) **주기 간 수신 상태 유지가 필수**다.
+**당시 결함(해소됨)**: `lora_tdm_app.c:106` `RunRxWindow()`가 `char Buf[LINE_BUF_LEN]`를 호출마다 스택에 재선언 → RX창(현 300ms) 경계를 넘어가는 프레임의 중간 수신 상태가 유실. v2는 payload 255B 프레임이 RX창(100ms)을 초과할 수 있으므로(§7.1) **주기 간 수신 상태 유지가 필수**다.
 
-**설계**: 파서 상태를 앱 데이터(또는 파일 static)로 승격한 수신 컨텍스트 구조체로 분리한다.
+**구현**: 버퍼(`RxLineBuf`/`RxLineBufLen`)와 파서 상태(`RxFrameMode`/`RxFrameTargetLen`)가 `LORA_TDM_APP_Data`(앱 데이터)로 승격되어 `RunRxWindow()` 호출 경계를 넘어 유지됨(`lora_tdm_app.c:117-264`). 여러 RX창에 걸친 UP2 수신 회귀테스트(`RunRxWindow_Up2FrameSpansAcrossWindows`) 존재.
+
+**설계 대비 실제 구현 차이**: 아래는 최초 설계 당시 구상한 구조체 스케치이며, 실제 구현은 이와 다른 더 단순한 필드 구성(`RxLineBuf`/`RxLineBufLen`/`RxFrameMode`/`RxFrameTargetLen`, `lora_tdm_app.h:100-106`)을 사용한다. 상태 값도 `WAIT_MAGIC/GOT_MAGIC/...` 대신 `LORA_TDM_RXFRAME_NONE/TEXT/ACK2/UP2_HDR/UP2_BODY`(`lora_tdm_app.c:118-122`) 체계다. 아래 코드 블록은 설계 시점 스케치로 참고용으로만 남긴다.
 
 ```c
 typedef struct
@@ -287,23 +302,22 @@ typedef struct
 } LORA_TDM_APP_RxParser_t;
 ```
 
-`RunRxWindow()`는 이 구조체를 **리셋하지 않고** 창마다 이어서 채운다. 프레임 완료(CRC 일치) 또는 리셋 조건에서만 `State=WAIT_MAGIC`, `BodyIndex=0`로 되돌린다. `LORA_TDM_APP_RX_MAX_FRAME`은 UP2 최대(262B, §7.1)를 수용.
+### 11.2 길이 기반 상태머신 (magic-collision 금지) — 🔶 부분 구현(BL-86)
 
-### 11.2 길이 기반 상태머신 (magic-collision 금지)
+mavlink STX 결함(`mavlink_bridge_app_behavior_spec.md` §17)의 재답습을 막는다는 목표. **magic 바이트는 `LORA_TDM_RXFRAME_NONE` 상태에서만 프레임 시작으로 인식**하고, 본문 소비 중(`UP2_BODY`/`ACK2`)에는 magic 값과 무관하게 위치 기반으로 목표 길이(`RxFrameTargetLen`)까지 채운다 — 이 부분은 구현됨(`lora_tdm_app.c:196-264`).
 
-mavlink STX 결함(`mavlink_bridge_app_behavior_spec.md` §17)의 재답습을 막는다. **magic 바이트는 `WAIT_MAGIC` 상태에서만 프레임 시작으로 인식**하고, 본문 소비 중(`READING_BODY`)에는 magic 값과 무관하게 위치 기반으로 `BodyLen`바이트를 채운다.
+- 프레임 경계는 길이 필드(plen)로 확정(§3 재동기화 규칙과 동일) — 구현됨.
+- plen 상한(196B, `UPLINK_FWD_CMD_MAX_PAYLOAD_LENGTH`) 초과 시 즉시 재동기화 — **구현됨(BL-86, 2026-07-29)**: 잡음으로 plen이 커져 유령 프레임이 정상 프레임을 흡수하는 가장 심각한 증상을 차단.
+- **미착수**: CRC 불일치/버퍼 오버플로 시 "폐기된 바이트 스트림에서 다음 magic부터 재스캔"하는 완전한 바이트 단위 재동기화(`bridge/lora_downlink_decoder.py`의 `DownlinkStream`과 동일 규칙 적용)는 아직 구현되지 않음 — 현재는 오버플로 시 버퍼를 통째로 리셋할 뿐 중간 지점 재스캔은 하지 않는다(`lora_tdm_app.c:188-194`). 별도 설계가 필요한 더 큰 변경(BL-86 완료 노트 참조).
+- v1 공존: 첫 바이트가 ASCII면 기존 `\n` 줄버퍼 경로로 분기(§8) — 구현됨.
 
-- 프레임 경계는 `len` 필드로 확정(§3 재동기화 규칙과 동일).
-- CRC 불일치 → 해당 프레임 폐기 후 `WAIT_MAGIC`로 복귀, **버려진 바이트 스트림에서 다음 magic부터 재스캔**(§8 첫 바이트 분기 재적용). 이때 `bridge/lora_downlink_decoder.py`의 `DownlinkStream`(참조 구현)과 **동일한 재동기 규칙**을 따른다. 주의: C는 UP2/ACK2(수신)을, DownlinkStream은 DL2(수신)를 파싱하므로 다른 프레임을 본다 — **공유되는 건 프레이밍 규율(magic 위치, len 기반 경계, CRC 방식, 재동기 알고리즘)이지, 같은 프레임을 양쪽이 파싱하는 게 아니다**.
-- v1 공존: 첫 바이트가 ASCII면 기존 `\n` 줄버퍼 경로로 분기(§8). 즉 이 상태머신은 magic(0xD2/0xB2/0xA2) 진입 시에만 동작.
+### 11.3 CRC16 C ↔ Python 교차검증 UT — ✅ 구현 완료
 
-### 11.3 CRC16 C ↔ Python 교차검증 UT
+`LORA_TDM_APP_Crc16`(`coveragetest_lora_tdm_app_utils.c`)와 Python(`bridge/test_crc16_cross_validation.py`) 양쪽에 CRC-16/CCITT-FALSE `"123456789"` → `0x29B1` 표준 벡터 assert 존재.
 
-**현재 결함**: C `LORA_TDM_APP_Crc16`(`lora_tdm_app_utils.c:21`)와 Python `crc16_ccitt`(`bridge/` 3개 파일에 각각 구현)가 같은 표준 테스트 벡터로 맞대본 적이 없다.
-
-**요구**:
+**당시 요구사항(해소됨)**:
 - 표준 벡터 고정: CRC-16/CCITT-FALSE `"123456789"` → `0x29B1`을 C UT와 Python 테스트 양쪽에 assert.
 - 추가 공유 벡터(빈 입력, 1바이트, 실제 DL2/UP2 본문 샘플 몇 개)를 `tests/`에 공용 픽스처로 두고 C·Python이 동일 기대값을 검증.
 - `bridge/`의 CRC 구현 3중복은 이 기회에 단일 모듈로 통합 검토(§10 참조 구현 정리와 함께).
 
-> 세 게이트 모두 통과 후 §9 검증 요구사항(왕복·분할 수신·재동기·공존)으로 진행한다. 본 절은 설계 확정(2026-07-13)이며 코드는 미착수.
+> 세 게이트 중 §11.1/§11.3은 완전 구현, §11.2는 plen 상한 검증까지만 구현되고 완전한 CRC/오버플로 재스캔은 미착수(BL-86). §9 검증 요구사항(왕복·분할 수신·재동기·공존)은 §11.2 완전 재스캔 구현 후 마저 진행.

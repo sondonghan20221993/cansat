@@ -196,6 +196,39 @@ void Test_UpdateLinkState_Disconnected(void)
     UtAssert_INT32_EQ(LORA_TDM_APP_Data.LinkState, LORA_TDM_APP_LINK_DISCONNECTED);
 }
 
+/* BL-88(2026-07-28 감사) 회귀: NoAckCount는 매 사이클(CYCLE_PERIOD_MS)마다 1씩
+ * 증가하므로 실운용에서 "NoAckCount × CYCLE_PERIOD_MS ≈ Elapsed"로 사실상
+ * 결합돼 있다. 예전 값(LINK_LOSS_THRESHOLD=50)은 50×100=5000ms로
+ * LINK_TIMEOUT_MS(5000)와 정확히 같아, UpdateLinkState()의 DISCONNECTED
+ * 분기가 먼저 걸려 DEGRADED가 관측될 wall-clock 창이 아예 없었다.
+ * 이 테스트는 그 산술 자체(창이 실제로 존재하는지)와, 사이클 시뮬레이션으로
+ * 실제 DEGRADED 도달을 함께 확인한다. */
+void Test_UpdateLinkState_DegradedWindowExistsBeforeDisconnected(void)
+{
+    uint32 Cycle;
+
+    /* 핵심 회귀: DEGRADED 임계 도달 시각이 DISCONNECTED 임계보다 반드시 빨라야 함 */
+    UtAssert_True((LORA_TDM_APP_LINK_LOSS_THRESHOLD * LORA_TDM_APP_CYCLE_PERIOD_MS) <
+                      LORA_TDM_APP_LINK_TIMEOUT_MS,
+                  "DEGRADED 임계 도달 시각(%lu ms)이 DISCONNECTED(%lu ms)보다 빨라야 함",
+                  (unsigned long)(LORA_TDM_APP_LINK_LOSS_THRESHOLD * LORA_TDM_APP_CYCLE_PERIOD_MS),
+                  (unsigned long)LORA_TDM_APP_LINK_TIMEOUT_MS);
+
+    /* 사이클 시뮬레이션: NoAckCount와 Elapsed를 실운용처럼 함께 증가시켜
+     * LINK_LOSS_THRESHOLD 사이클째(=3000ms, TIMEOUT 5000ms 이내)에 실제로
+     * DEGRADED에 도달하는지 확인 */
+    LORA_TDM_APP_Data.NoAckCount         = 0;
+    LORA_TDM_APP_Data.LastAckTimestampMs = 1000;
+
+    for (Cycle = 1; Cycle <= LORA_TDM_APP_LINK_LOSS_THRESHOLD; Cycle++)
+    {
+        LORA_TDM_APP_Data.NoAckCount = Cycle;
+        LORA_TDM_APP_UpdateLinkState(&LORA_TDM_APP_Data, 1000U + Cycle * LORA_TDM_APP_CYCLE_PERIOD_MS);
+    }
+
+    UtAssert_INT32_EQ(LORA_TDM_APP_Data.LinkState, LORA_TDM_APP_LINK_DEGRADED);
+}
+
 void Test_UpdateLinkState_FirstObservation_NoEvent(void)
 {
     /* BL-04: 부팅 직후 첫 호출은 전이가 아니므로 이벤트 없음(LinkStateInitialized==0) */
@@ -737,6 +770,28 @@ void Test_BuildDl2Frame_WaypointPageLastOdd(void)
     UtAssert_INT32_EQ(Buf[Offset + 3], 1);  /* waypoints_in_page — 마지막 홀수 */
 }
 
+/* RoutePageIndex가 RouteTotalPages를 초과해 StartIdx > RouteWaypointCount가
+ * 되는 방어적 케이스 — uint8 뺄셈 언더플로(wrap) 없이 waypoints_in_page=0으로
+ * 클램프되어야 한다(회귀 확인). */
+void Test_BuildDl2Frame_PageIndexBeyondCount_ClampsToZero(void)
+{
+    uint8 Buf[LORA_TDM_APP_DL2_MAX_FRAME_LEN];
+    int   Len;
+    uint8 Offset;
+
+    memset(&LORA_TDM_APP_Data, 0, sizeof(LORA_TDM_APP_Data));
+    LORA_TDM_APP_Data.RouteReadbackPending = 1;
+    LORA_TDM_APP_Data.RouteWaypointCount   = 3;
+    LORA_TDM_APP_Data.RouteTotalPages      = 2;
+    LORA_TDM_APP_Data.RoutePageIndex       = 5; /* StartIdx=10 > RouteWaypointCount(3) */
+
+    Len = LORA_TDM_APP_BuildDl2Frame(Buf, sizeof(Buf), &LORA_TDM_APP_Data);
+    UtAssert_True(Len > 0, "빌드 성공(언더플로 없이)");
+
+    Offset = LORA_TDM_APP_DL2_BASE_LEN + LORA_TDM_APP_DL2_TAIL_LEN;
+    UtAssert_INT32_EQ(Buf[Offset + 3], 0);  /* waypoints_in_page — 클램프돼 0 */
+}
+
 /* RouteReadbackPending=0(기본)이면 flags bit2 미설정, 블록 미첨부 — 회귀 확인 */
 void Test_BuildDl2Frame_NoWaypointPending_Excluded(void)
 {
@@ -908,6 +963,84 @@ void Test_ProcessRxBinaryFrame_Ack2_SeqMismatch(void)
 
     UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.SeqFailCount, 1);
     UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.RxAckCount, 1);
+}
+
+/* BL-80(2026-07-28 감사) 회귀: DownlinkSeq가 65536을 넘어 LastSentSeq가 무절단
+ * uint32(65543)인데 ACK2 SeqEcho는 16비트 폭(7)뿐이라, (uint16) 캐스팅 없이
+ * 비교하면 65543 != 7이라 정상 ACK도 SEQ_FAIL로 오판된다. */
+void Test_ProcessRxBinaryFrame_Ack2_SeqWrapAroundNoFalseFail(void)
+{
+    uint8  Buf[5];
+    uint16 Crc;
+
+    Buf[0] = LORA_TDM_APP_ACK2_MAGIC;
+    PutU16LE_Test(&Buf[1], 7); /* SeqEcho: 16비트 폭, wrap 후의 낮은 seq */
+    Crc = LORA_TDM_APP_Crc16(Buf, 3);
+    PutU16LE_Test(&Buf[3], Crc);
+
+    LORA_TDM_APP_Data.LastSentSeq  = 65536U + 7U; /* DownlinkSeq가 이미 한 바퀴 돈 상태 */
+    LORA_TDM_APP_Data.DownlinkSeq  = 65536U + 8U;
+    LORA_TDM_APP_Data.SeqFailCount = 0;
+
+    LORA_TDM_APP_ProcessRxBinaryFrame(Buf, sizeof(Buf), &LORA_TDM_APP_Data);
+
+    UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.SeqFailCount, 0);
+    UtAssert_INT32_EQ((int)LORA_TDM_APP_Data.RxAckCount, 1);
+}
+
+/* ---- ProcessRxBinaryFrame: UP2 → ForwardUp2ToUplinkApp Flags 전달 (BL-73 회귀) ----
+ *
+ * 2026-07-28 감사에서 발견: ForwardUp2ToUplinkApp()이 FwdCmd.Flags를 항상 0으로
+ * 하드코딩해, UP2(v2 바이너리) 경로로 들어온 명령의 auth_level(bits[7:6])/FORCE
+ * (bit0)/RETX_IDX(bits[2:1])가 전부 유실됐다. uplink_app 쪽 auth_level 요구는
+ * 모든 클래스가 최소 1 이상이라, v2 경로의 전 명령이 AUTHZ_BLOCK으로 거부되던
+ * 치명 버그. 이 테스트는 UP2 magic 프레임의 flags가 SB로 발행되는
+ * LORA_TDM_APP_UplinkFwdCmd_t.Flags에 그대로 실리는지 확인한다. */
+
+static int32 UT_CaptureUplinkFwdFlags_Hook(void *UserObj, int32 StubRetcode, uint32 CallCount,
+                                            const UT_StubContext_t *Context)
+{
+    const LORA_TDM_APP_UplinkFwdCmd_t *MsgPtr;
+    uint8                             *CapturedFlags = UserObj;
+
+    if (Context->ArgCount > 0)
+    {
+        MsgPtr = UT_Hook_GetArgValueByName(Context, "MsgPtr", const LORA_TDM_APP_UplinkFwdCmd_t *);
+        if (MsgPtr != NULL && CapturedFlags != NULL)
+        {
+            *CapturedFlags = MsgPtr->Flags;
+        }
+    }
+
+    return StubRetcode;
+}
+
+void Test_ProcessRxBinaryFrame_Up2_FlagsForwardedToUplinkApp(void)
+{
+    uint8  Buf[16];
+    uint16 Crc;
+    uint8  CapturedFlags = 0xFFU; /* sentinel — 훅이 안 불리면 이 값 그대로 남아 실패 */
+    const uint8 ExpectedFlags = 0xC5U; /* auth_level=3(bits7:6=11)|RETX_IDX=2(bits2:1=10)|FORCE(bit0=1) */
+
+    Buf[0] = LORA_TDM_APP_UP2_MAGIC;
+    Buf[1] = 3;    /* plen */
+    Buf[2] = 2;    /* version */
+    Buf[3] = 1;    /* command_class */
+    PutU16LE_Test(&Buf[4], 55); /* seq */
+    Buf[6] = ExpectedFlags;
+    Buf[7] = 0xAA;
+    Buf[8] = 0xBB;
+    Buf[9] = 0xCC;
+    Crc = LORA_TDM_APP_Crc16(Buf, 7 + 3);
+    PutU16LE_Test(&Buf[10], Crc);
+
+    UT_SetHookFunction(UT_KEY(CFE_SB_TransmitMsg), UT_CaptureUplinkFwdFlags_Hook, &CapturedFlags);
+
+    LORA_TDM_APP_ProcessRxBinaryFrame(Buf, 12, &LORA_TDM_APP_Data);
+
+    UT_SetHookFunction(UT_KEY(CFE_SB_TransmitMsg), NULL, NULL);
+
+    UtAssert_UINT32_EQ(CapturedFlags, ExpectedFlags);
 }
 
 /* ---- ParseUp2Frame — lora_protocol_v2_spec.md §5 ---- */
@@ -1481,6 +1614,7 @@ void UtTest_Setup(void)
     ADD_TEST(BuildDl2Frame_SysTimeValid_BufferOnlyBaseSize_Fallback);
     ADD_TEST(BuildDl2Frame_WaypointPageIncluded);
     ADD_TEST(BuildDl2Frame_WaypointPageLastOdd);
+    ADD_TEST(BuildDl2Frame_PageIndexBeyondCount_ClampsToZero);
     ADD_TEST(BuildDl2Frame_NoWaypointPending_Excluded);
     ADD_TEST(ProcessRouteSnapshot_FullMission);
     ADD_TEST(ProcessRouteSnapshot_Empty);
@@ -1491,6 +1625,8 @@ void UtTest_Setup(void)
     ADD_TEST(ParseAck2Frame_TooShort);
     ADD_TEST(ProcessRxBinaryFrame_Ack2_SeqMatch_NoFalseFail);
     ADD_TEST(ProcessRxBinaryFrame_Ack2_SeqMismatch);
+    ADD_TEST(ProcessRxBinaryFrame_Ack2_SeqWrapAroundNoFalseFail);
+    ADD_TEST(ProcessRxBinaryFrame_Up2_FlagsForwardedToUplinkApp);
     ADD_TEST(ParseUp2Frame_ValidWithPayload);
     ADD_TEST(ParseUp2Frame_ZeroPayload);
     ADD_TEST(ParseUp2Frame_CrcFail);
@@ -1525,6 +1661,7 @@ void UtTest_Setup(void)
     ADD_TEST(BuildShDownlinkLine_Basic);
     ADD_TEST(UpdateLinkState_Connected);
     ADD_TEST(UpdateLinkState_Degraded);
+    ADD_TEST(UpdateLinkState_DegradedWindowExistsBeforeDisconnected);
     ADD_TEST(UpdateLinkState_Disconnected);
     ADD_TEST(UpdateLinkState_FirstObservation_NoEvent);
     ADD_TEST(UpdateLinkState_ConnectedToDegraded_FiresLinkDegradedEid);
