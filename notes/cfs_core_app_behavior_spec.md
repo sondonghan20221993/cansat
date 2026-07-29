@@ -52,13 +52,13 @@
 `cfs_core_app`의 현재 구현 책임은 다음과 같다.
 
 - bridge HK, FC 상태 메시지, 경로 갱신, viewpoint/config 명령, 앱 명령/HK 메시지 구독
-- 수신된 최신 bridge, attitude, local, GPS, EKF, mission-route, landing-route 데이터 캐시
+- 수신된 최신 bridge, attitude, local, GPS, EKF, mission-route 데이터 캐시
 - 구독된 상태 메시지의 timestamp/sequence 유효성 검사 (미래 timestamp·중복·역행·갭 감지)
 - 구독된 상태 메시지 수신 시마다 시스템 헬스 재계산
 - 입력이 없을 때 주기적으로 시스템 헬스 재계산
 - `SYSTEM_HEALTH_MID` 게시 (per-input 상태 구조 포함)
-- bridge 타임아웃 지속 시 `mavlink_bridge_app` 재시작 시도 (최대 3회) 및 FAILED 에스컬레이션
-- uplink_app·lora_tdm_app HK 수신 시각 추적, 5초 타임아웃 시 DEGRADED 보고 + bridge와 동일 패턴 자동 재시작 (5초 간격, 최대 3회 — §13.6/§13.7)
+- bridge 타임아웃 지속 시 `mavlink_bridge_app` 재시작 시도 (5초 쿨다운, 무한 재시도 — BL-38) 및 FAILED 에스컬레이션
+- uplink_app·lora_tdm_app HK 수신 시각 추적, 5초 타임아웃 시 DEGRADED 보고 + bridge와 동일 패턴 자동 재시작 (5초 간격, 무한 재시도 — §13.6/§13.7, BL-38)
 - RECOVERY 명령(`RECOVERY_CMD_MID`) 수신 시 action별 처리(§17), MODE 명령(`MODE_CMD_MID`) 수신 시 상태 전이 검증 후 모드 갱신(§17)
 - config 명령으로 런타임 타임아웃/게시주기 파라미터 변경 (pending/active 이중버퍼)
 - viewpoint 명령 캐시
@@ -170,7 +170,7 @@ bridge 명령/오류 카운터와 바이트 카운터는 헬스 분류에 사용
 | --- | --- | --- |
 | `TimestampMs` | `uint32` | 경로 캐시 타임스탬프 |
 | `SourceSequence` | `uint32` | 추적용 캐시 |
-| `RouteType` | `uint8` | mission-route 또는 landing-route 선택 |
+| `RouteType` | `uint8` | route_op(REPLACE/ADD/DELETE/MODIFY) 값 — 옛 mission/landing 세그먼트 선택 개념은 2026-07-29 제거됨(§16) |
 | `RouteVersion` | `uint8` | 캐시 |
 | `WaypointCount` | `uint8` | 캐시 및 HK에 보고 |
 | `Waypoints[]` | 배열 | 캐시 |
@@ -216,8 +216,7 @@ bridge 캐시는 다음을 저장한다.
 
 앱은 다음을 유지한다.
 
-- mission-route 캐시 1개
-- landing-route 캐시 1개
+- mission-route 캐시 1개(`LandingRoute` 캐시는 2026-07-29 제거 — FC에 landing 세그먼트 개념 자체가 없어 항상 도달 불가 상태였음, BL-56/BL-61)
 
 각 경로 캐시는 다음을 저장한다.
 
@@ -247,7 +246,6 @@ bridge 캐시는 다음을 저장한다.
 | `CFS_CORE_APP_FAILED_ESCALATION_MS` | `30000` | bridge 타임아웃 지속 시 FAILED 에스컬레이션 임계값 |
 | `CFS_CORE_APP_TIMESTAMP_MAX_FUTURE_MS` | `5000` | 미래 timestamp 거부 임계값 |
 | `CFS_CORE_APP_BRIDGE_RESTART_INTERVAL_MS` | `5000` | bridge 재시작 시도 간격 |
-| `CFS_CORE_APP_BRIDGE_MAX_RESTARTS` | `3` | bridge 재시작 최대 횟수 |
 
 attitude/local/gps/ekf/bridge 타임아웃 및 게시 주기(`PROTOTYPE_PERIOD_MS`)는 init 시 `ActiveConfig` 기본값으로 로드되며, `CONFIG_CMD_MID`로 런타임 변경 가능하다(§17, §21.2). 헬스 평가는 상수가 아닌 `ActiveConfig` 값을 사용한다.
 
@@ -427,7 +425,7 @@ GPS 가용성(만료 / `Valid == 0` / `Stale != 0`)은 **HealthState를 저하�
 - `RECOVERY` 생성 (단, 타임아웃이 `FAILED_ESCALATION_MS(30000)` 이상 지속되면 `FAILED`로 에스컬레이션 — §12.9)
 - `FAULT_BRIDGE_TIMEOUT` 생성
 - `RecoveryRequested = 1` 설정
-- `BRIDGE_RESTART_INTERVAL_MS(5000)` 경과마다 `mavlink_bridge_app` 재시작 시도(`CFE_ES_RestartApp`), 최대 `BRIDGE_MAX_RESTARTS(3)`회. 시도 시 `BRIDGE_RESTART_EID` 발생 (§14.4)
+- `BRIDGE_RESTART_INTERVAL_MS(5000)` 경과마다 `mavlink_bridge_app` 재시작 시도(`CFE_ES_RestartApp`), 횟수 상한 없이 쿨다운만으로 빈도 제한(BL-38, 2026-07-23 — `MAX_RESTARTS` 제거). 시도 시 `BRIDGE_RESTART_EID` 발생 (§14.4)
 - bridge 타임아웃이 더 높은 우선순위를 가지므로 EKF 오류 보고 억제
 - 비-bridge 분기로 전이 시 `RecoveryStartMs`/`BridgeRestartCount`/`NextBridgeRestartMs`는 0으로 리셋
 
@@ -512,7 +510,7 @@ GPS 가용성(만료 / `Valid == 0` / `Stale != 0`)은 **HealthState를 저하�
 - `DEGRADED` 생성
 - `FAULT_UPLINK_TIMEOUT` 생성
 - `RecoveryRequested = 0`
-- **자동 재시작** (2026-07 구현, bridge와 동일 패턴 — `cfs_core_app_utils.c:353-384`): 타임아웃 지속 시 `UPLINK_RESTART_INTERVAL_MS(5000)` 간격으로 `CFE_ES_RestartApp("uplink_app")` 시도, 최대 `UPLINK_MAX_RESTARTS(3)`회. 시도마다 `UPLINK_RESTART_EID (15)` 발생. 타임아웃 해소 또는 상위 우선순위 fault 발생 시 카운터 리셋
+- **자동 재시작** (2026-07 구현, bridge와 동일 패턴 — `cfs_core_app_utils.c:353-384`): 타임아웃 지속 시 `UPLINK_RESTART_INTERVAL_MS(5000)` 간격으로 `CFE_ES_RestartApp("uplink_app")` 시도, 횟수 상한 없이 쿨다운만으로 빈도 제한(BL-38, 2026-07-23 — `MAX_RESTARTS` 제거). 시도마다 `UPLINK_RESTART_EID (15)` 발생. 타임아웃 해소 또는 상위 우선순위 fault 발생 시 카운터 리셋
 
 `UplinkAppState.LastHkRxMs`는 HK를 수신한 시점의 `NowMs` (cFS wall-clock ms)로 갱신된다. uplink_app의 내부 timestamp를 사용하지 않는다.
 
@@ -530,7 +528,7 @@ GPS 가용성(만료 / `Valid == 0` / `Stale != 0`)은 **HealthState를 저하�
 - `DEGRADED` 생성
 - `FAULT_LORA_TIMEOUT` 생성
 - `RecoveryRequested = 0`
-- **자동 재시작** (2026-07 구현, bridge와 동일 패턴 — `cfs_core_app_utils.c:385-415`): 타임아웃 지속 시 `LORA_RESTART_INTERVAL_MS(5000)` 간격으로 `CFE_ES_RestartApp("lora_tdm_app")` 시도, 최대 `LORA_MAX_RESTARTS(3)`회. 시도마다 `LORA_RESTART_EID (16)` 발생. 타임아웃 해소 또는 상위 우선순위 fault 발생 시 카운터 리셋
+- **자동 재시작** (2026-07 구현, bridge와 동일 패턴 — `cfs_core_app_utils.c:385-415`): 타임아웃 지속 시 `LORA_RESTART_INTERVAL_MS(5000)` 간격으로 `CFE_ES_RestartApp("lora_tdm_app")` 시도, 횟수 상한 없이 쿨다운만으로 빈도 제한(BL-38, 2026-07-23 — `MAX_RESTARTS` 제거). 시도마다 `LORA_RESTART_EID (16)` 발생. 타임아웃 해소 또는 상위 우선순위 fault 발생 시 카운터 리셋
 
 ## 14. 시작, 입력 손실, 복구 동작
 
@@ -574,7 +572,7 @@ bridge 타임아웃이 최우선 순위를 가지므로, 유효한 bridge HK가 
 구현된 복구 조치:
 
 - bridge 타임아웃 시 `SYSTEM_HEALTH_MID`에 `RecoveryRequested = 1` 설정
-- bridge 타임아웃이 `BRIDGE_RESTART_INTERVAL_MS(5000)` 이상 지속되면 `CFE_ES_GetAppIDByName("mavlink_bridge_app")` 후 `CFE_ES_RestartApp()`로 bridge 앱 재시작 시도. 인터벌마다 1회, 최대 `BRIDGE_MAX_RESTARTS(3)`회. `BridgeRestartCount` 증가, `BRIDGE_RESTART_EID` 발생
+- bridge 타임아웃이 `BRIDGE_RESTART_INTERVAL_MS(5000)` 이상 지속되면 `CFE_ES_GetAppIDByName("mavlink_bridge_app")` 후 `CFE_ES_RestartApp()`로 bridge 앱 재시작 시도. 인터벌마다 1회, 횟수 상한 없이 쿨다운만으로 빈도 제한(BL-38, 2026-07-23 — `MAX_RESTARTS` 제거). `BridgeRestartCount` 증가(누계 기록용, 상한 아님), `BRIDGE_RESTART_EID` 발생
 - bridge 타임아웃이 `FAILED_ESCALATION_MS(30000)` 이상 지속되면 `HealthState = FAILED`
 
 bridge 앱 외 다른 앱·FC·센서·시리얼 장치에 대한 능동 복구는 구현되어 있지 않다.
@@ -618,7 +616,6 @@ HK 요청 시 앱은 다음을 보고한다.
 - 명령 카운터
 - 명령 오류 카운터
 - mission route waypoint 수
-- landing route waypoint 수
 - 게시 횟수
 - 마지막 게시 타임스탬프
 - 마지막 경로 갱신 타임스탬프
@@ -628,13 +625,14 @@ HK 요청 시 앱은 다음을 보고한다.
 
 ## 16. 경로 처리 규칙
 
-mission route와 landing route는 독립적으로 캐시된다.
-허용된 경로 갱신 시마다 선택된 경로 캐시의 `UpdateCount`가 증가한다.
+허용된 경로 갱신 시마다 mission route 캐시의 `UpdateCount`가 증가한다.
 
 경로 캐시 입력은 2채널이다 (BL-41 route, 2026-07-23):
 
-- `ROUTE_UPDATE_MID`(0x190B) — 지상국 발 경로 갱신. `RouteType`으로
-  mission(1)/landing(2) 캐시 선택 (기존 동작).
+- `ROUTE_UPDATE_MID`(0x190B) — 지상국 발 경로 갱신. `RouteType`은 route_op
+  (REPLACE=1/ADD=2/DELETE=3/MODIFY=4, BL-61)이며 항상 `MissionRoute`
+  캐시 대상(mission/landing 캐시 선택 개념은 BL-56에서 애초에 존재한 적
+  없었음이 확인돼 폐기됨).
 - `FC_MISSION_READBACK_MID`(0x1914) — **FC 실물 미션 readback**
   (mavlink_bridge_app 게시, mavlink spec §10). `RouteType` 검사 없이
   **`MissionRoute` 캐시 고정 갱신**(FC에 landing 세그먼트 개념 없음),
@@ -666,9 +664,9 @@ mission route와 landing route는 독립적으로 캐시된다.
 추가로 별도 MID로 수신·처리하는 명령:
 
 - **`CONFIG_CMD_MID` (0x190E)** — 런타임 config 명령 (`CFS_CORE_APP_ProcessConfigCommand`). payload 헤더(`ConfigScope`/`ConfigVersion`/`ParameterId`/`ValueType`/`ValueLength`/`Checksum`) + `uint32` 값을 단계 검증: ① 길이 ② scope(`CONFIG_SCOPE=1`) ③ version(`CONFIG_VERSION=1`) ④ checksum ⑤ 값 범위(`PARAM_MIN_MS 100` ~ `PARAM_MAX_MS 60000`). 통과 시 `ActiveConfig` 기반 `PendingConfig`에 6개 파라미터(attitude/local/gps/ekf/bridge 타임아웃, publish 주기) 중 해당 항목 기록 → 교차 검증 → `PreviousConfig` 백업 후 `ActiveConfig`로 활성화, `ConfigGeneration` 증가. 각 실패는 `ConfigPendingState=REJECTED` + `LastConfigResult`(BAD_LENGTH/SCOPE/VERSION/CHECKSUM/VALUE/PARAM)로 기록. (§21.2) **scope 불일치는 다른 앱 대상 브로드캐스트이므로 EXEC_RESULT를 발행하지 않음**(그 외 실패/성공은 전부 발행, BL-08).
-- **`VIEWPOINT_CMD_MID` (0x190D)** — viewpoint 명령 (`CFS_CORE_APP_ProcessViewpointCommand`). type/frame/X/Y/Z/Yaw/Pitch/HoldTime를 `ViewpointCmd` 캐시에 저장(`Valid=true`)하고 `VIEWPOINT_EID` 발생. 실제 실행은 미구현(캐시만).
+- **`VIEWPOINT_CMD_MID` (0x190D)** — viewpoint 명령 (`CFS_CORE_APP_ProcessViewpointCommand`). type/frame/X/Y/Z/Yaw/Pitch/HoldTime를 `ViewpointCmd` 캐시에 저장(`Valid=true`)하고 `VIEWPOINT_EID` 발생. 실제 실행은 짐벌 미탑재로 범위 제외 확정(BL-10). **`EXEC_RESULT_MID`로 uplink_app에 명시적 FAILED 회신**(2026-07-29, BL-82) — `CommandClass=3`(`UPLINK_APP_CLASS_VIEWPOINT`), uplink_app의 무한 ROUTED 대기를 해소.
 - **`RECOVERY_CMD_MID` (0x190C)** — 복구 명령 (`CFS_CORE_APP_ProcessRecoveryCommand`, `cfs_core_app_utils.c:740-`). `RecoveryAction` 6종을 switch 분기 처리: `RESET_COUNTER`는 `RecoveryStartMs`뿐 아니라 `BridgeRestartCount`/`UplinkRestartCount`/`LoraRestartCount`/`NextBridgeRestartMs`/`NextUplinkRestartMs`/`NextLoraRestartMs`를 전부 대칭 리셋(BL-65, 2026-07-27 — 이전엔 bridge 카운터만 리셋해 지상 명령이 운영자 기대와 다르게 동작하던 비대칭 버그가 있었음), **`RESTART_BRIDGE`/`RESTART_UPLINK`/`RESTART_LORA`는 실제로 `CFE_ES_RestartApp()`를 호출**해 해당 앱을 재시작함(2026-07-21, BL-09 — 이전엔 로그만 찍었음; 자동 재시작(bridge/uplink/lora timeout) 로직과 동일 메커니즘을 지상 명령으로 즉시 트리거, 자동 경로의 인터벌/최대재시도 게이트는 적용 안 함), **`PARSER_RESET`/`SERIAL_RECONNECT`도 실제로 연결됨**(2026-07-22, P1-a) — `mavlink_bridge_app`의 기존 `CMD_MID`(`0x18A0`)를 신규 MID 신설 없이 FcnCode로 재사용(`PARSER_RESET_CC=3`/`SERIAL_RECONNECT_CC=4`, `mavlink_bridge_app` 자신이 NOOP/RESET_COUNTERS/MISSION_QUERY를 구분하던 방식과 동일 관례)해 `CFS_CORE_APP_SendBridgeCtrlCmd()`로 발행 → `mavlink_bridge_app`이 실제 `ResetParser()`/`CloseSerial()+OpenSerial()`을 호출, unknown action은 ERROR 이벤트로 거부. 모든 경로에서 `RecoveryRequestedCount` 증가, `RECOVERY_CMD_EID (13)` 발생 (seq/target/reason/token 포함); RESTART 3종은 추가로 각각 `BRIDGE_RESTART_EID(10)`/`UPLINK_RESTART_EID(15)`/`LORA_RESTART_EID(16)`도 발생. **모든 action 분기 후 `EXEC_RESULT_MID`로 uplink_app에 회신**(2026-07-22, BL-08) — RESTART 3종은 앱을 못 찾으면 FAILED, unknown action도 FAILED로 회신한다. **⚠️ `PARSER_RESET`/`SERIAL_RECONNECT`는 "항상 OK"가 아님(2026-07-27 정정)**: `CFS_CORE_APP_SendBridgeCtrlCmd()`의 반환값(`Ok`)을 그대로 `GenericResult`에 반영하므로, `mavlink_bridge_app`으로의 발행 자체가 실패하면(예: SB send 실패) 이 두 action도 FAILED로 회신될 수 있다 — 발행이 성공한 경우에만 OK. `RESET_COUNTER`는 SB 발행 없이 로컬 처리라 항상 OK. `DetailCode`엔 세 action 공통으로 `RecoveryAction` 원값을 싣는다.
-- **`MODE_CMD_MID` (0x190F)** — 모드 명령 (`CFS_CORE_APP_ProcessModeCommand`, `cfs_core_app_utils.c:786-829`). 상태 전이 검증 구현됨 (2026-07): `ENTER`는 NORMAL→RECOVERY, `EXIT`는 RECOVERY→NORMAL만 허용, 허용 전이는 `CurrentModeState` 갱신 + `MODE_CMD_EID (14)` INFO, 불허 조합은 REJECTED ERROR 이벤트.
+- **`MODE_CMD_MID` (0x190F)** — 모드 명령 (`CFS_CORE_APP_ProcessModeCommand`, `cfs_core_app_utils.c:786-829`). 상태 전이 검증 구현됨 (2026-07): `ENTER`는 NORMAL→RECOVERY, `EXIT`는 RECOVERY→NORMAL만 허용, 허용 전이는 `CurrentModeState` 갱신 + `MODE_CMD_EID (14)` INFO, 불허 조합은 REJECTED ERROR 이벤트(`ErrCounter++`). **`EXEC_RESULT_MID`로 uplink_app에 회신**(2026-07-29, BL-81) — `CommandClass=5`(`UPLINK_APP_CLASS_MODE`), `TransitionAllowed`/`RequestedState` 반영. 단, `CurrentModeState`가 다른 로직에서 실제로 읽혀 게이팅에 반영되는지는 이번 스코프 밖(EXEC_RESULT 회신으로 uplink_app dead-end만 해소).
 
 NOOP/RESET은 명령 길이 검사(`VerifyCmdLength`)로 유효성을 검사한다. 텔레메트리 상태 입력은 길이 검사를 하지 않는다. 알 수 없는 함수/MID는 명령 오류 카운터를 증가시킨다.
 
@@ -689,7 +687,7 @@ NOOP/RESET은 명령 길이 검사(`VerifyCmdLength`)로 유효성을 검사한�
 - 헬스 상태 전이 이벤트 (`HealthTransition`)
 - 주기 게시 rate limit (`PeriodicRateLimit`)
 - timestamp 검사: 정상 / 미래 초과 거부 / 경계값 / GPS·EKF 거부 / seq 검사 전 평가
-- mission-route / landing-route 캐시 갱신, bridge HK 캐시 갱신
+- mission-route 캐시 갱신, bridge HK 캐시 갱신
 - config 명령: attitude timeout·publish period 적용, bad checksum/scope/version/param 거부
 - service prototype 실행 경로, 초기화 성공, 구독 오류 시 초기화 실패, NOOP, 카운터 리셋
 
@@ -745,7 +743,7 @@ EVS 이벤트는 `HealthState` 값이 변경될 때마다 발생하며, 형식�
 - `FAILED` 헬스 출력 상태 → bridge 타임아웃 `FAILED_ESCALATION_MS(30000)` 초과 시 생성 (§12.9)
 - 시퀀스 중복/역행/갭 감지 → `SEQ_ERR_EID`/`SEQ_GAP_EID`, `SeqRejectedCount`/`SeqGapCount` (§7.1)
 - 미래 타임스탬프 거부 → `TIMESTAMP_ERR_EID`, `TimestampRejectedCount` (§7.1)
-- bridge 앱 능동 재시작 → `CFE_ES_RestartApp`, 최대 `BRIDGE_MAX_RESTARTS(3)`회 (§14.4)
+- bridge 앱 능동 재시작 → `CFE_ES_RestartApp`, 횟수 상한 없이 쿨다운만으로 빈도 제한(BL-38, §14.4)
 - 앱 재시작 후 마지막 헬스 상태 지속 → `STATE_FILE_PATH` 파일 영속화 (§14.5)
 - 런타임 config 적용 → `CONFIG_CMD_MID` pending/active 이중버퍼 (§17, §21.2)
 - viewpoint 명령 수신 캐시 → `VIEWPOINT_CMD_MID` (§17)
@@ -787,7 +785,7 @@ EVS 이벤트는 `HealthState` 값이 변경될 때마다 발생하며, 형식�
 현재 상태:
 
 - `cfs_core_app` config 적용: **구현됨** (6개 타임아웃/주기 파라미터, checksum·범위 검증 포함)
-- `telemetry_app` 등 다른 mission 앱의 config 적용 end-to-end는 별도 확인 필요
+- 다른 mission 앱(`mavlink_bridge_app`/`uplink_app`/`lora_tdm_app`)의 config 적용 end-to-end는 별도 확인 필요
 
 의미:
 

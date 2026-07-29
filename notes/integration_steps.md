@@ -10,7 +10,7 @@
 - `lora_tdm_app`
 - `uplink_app`
 
-`telemetry_app`과 `img_app`은 현재 baseline app set에 포함하지 않는다.
+`img_app`은 현재 baseline app set에 포함하지 않는다. `telemetry_app`은 저장소에서 제거되었다(미배포 skeleton 앱, 실제 publisher 없는 죽은 MONITOR_MID 계약만 남아 있었음).
 
 ## 목표
 

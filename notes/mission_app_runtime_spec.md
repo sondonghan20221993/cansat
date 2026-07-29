@@ -32,7 +32,8 @@
 **배포 현황 (2026-06-17 기준):**
 - **배포됨** (`cpu1_cfe_es_startup.scr`): `mavlink_bridge_app`(prio50), `cfs_core_app`(55), `uplink_app`(57), `lora_tdm_app`(58) + lab apps(`ci_lab`, `to_lab`, `sch_lab`)
 - **삭제됨**: `lora_fc_downlink_app`(downlink 역할을 `lora_tdm_app`으로 전환 후 저장소에서 제거 — commit `7c080f1`)
-- **미배포·코드 보존**: `telemetry_app`, `legacy/img_app`(`img_app`은 향후 항목으로 `legacy/`로 이동)
+- **미배포·코드 보존**: `legacy/img_app`(`img_app`은 향후 항목으로 `legacy/`로 이동)
+- **삭제됨**: `telemetry_app`(startup 미등록 상태로 방치되던 미배포 skeleton 앱, MONITOR_MID 등 실제 publisher가 없는 죽은 계약만 남아 있어 저장소에서 제거)
 - **SCH_LAB 스케줄**: `mission_defs/tables/cpu1_sch_lab_table.c`로 커스텀 앱 4개 SEND_HK ~1Hz 스케줄링 (2026-06-17 추가)
 
 이 초안에서 별도 구현체가 확정되지 않은 공통 기능은 다음 임시 기준을 따른다.
@@ -2203,7 +2204,9 @@ cFS 상태 및 운영자 인증 수준은 전환을 허용합니다. `uplink_app
 - 허용된 명령 수입니다.
 - 거부된 명령 수입니다.
 - 라우팅 실패 횟수.
-- 활성 전송 ID입니다.
+- 활성 전송 ID입니다(2026-07-29 확인: 현재 uplink_app에 들어오는 물리
+  경로는 `lora_tdm_app` 하나뿐이라 `UPLINK_APP_TRANSPORT_LORA`(0) 상수
+  고정 — 값 판정 로직이 아니라 향후 다중 transport 대비 자리표시자).
 - 업링크 링크 상태: `NOMINAL`, `DEGRADED`, `LOST` 또는 `FAILED`.
 - 마지막으로 유효한 업링크 수신 시각.
 - 구성 보류 중 상태: 유휴, 보류 중, 검증 중 또는 거부됨.
