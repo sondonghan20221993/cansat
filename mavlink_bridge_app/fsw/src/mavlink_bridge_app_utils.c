@@ -363,13 +363,31 @@ static CFE_Status_t MAVLINK_BRIDGE_APP_SendMavlinkV2(uint32 MsgId, const uint8 *
     Frame[11U + PayloadLen] = (uint8)((Crc >> 8) & 0xFFU);
     FrameLen = 12U + PayloadLen;
 
-    WriteRc = write(MAVLINK_BRIDGE_APP_Data.SerialFd, Frame, FrameLen);
-    if (WriteRc != (ssize_t)FrameLen)
+    /* BL-84/C-13(2026-07-28 감사): fd가 O_NONBLOCK인데 `write != FrameLen`으로만
+     * 판정해, tty 출력 버퍼가 찬 상태(연속 프레임 전송 중)에서 부분 write가
+     * 나오면 절반만 나간 프레임이 회선에 남고 재전송/보정이 없어 FC 파서
+     * desync를 유발했다. 잔여 바이트를 마저 쓰고 EINTR은 재시도한다. */
     {
-        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_STREAM_EID, CFE_EVS_EventType_ERROR,
-                          "MAVLINK_BRIDGE_APP: MAVLink tx failed msgid=%lu errno=%d",
-                          (unsigned long)MsgId, errno);
-        return CFE_STATUS_EXTERNAL_RESOURCE_FAIL;
+        size_t Written = 0;
+
+        while (Written < FrameLen)
+        {
+            WriteRc = write(MAVLINK_BRIDGE_APP_Data.SerialFd, &Frame[Written], FrameLen - Written);
+            if (WriteRc > 0)
+            {
+                Written += (size_t)WriteRc;
+                continue;
+            }
+            if (WriteRc < 0 && errno == EINTR)
+            {
+                continue;
+            }
+            /* EAGAIN(출력 버퍼 가득 참) 또는 실제 오류 — 더 기다리지 않고 실패 보고 */
+            CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_STREAM_EID, CFE_EVS_EventType_ERROR,
+                              "MAVLINK_BRIDGE_APP: MAVLink tx failed msgid=%lu errno=%d written=%u/%u",
+                              (unsigned long)MsgId, errno, (unsigned int)Written, (unsigned int)FrameLen);
+            return CFE_STATUS_EXTERNAL_RESOURCE_FAIL;
+        }
     }
 
     return CFE_SUCCESS;
@@ -505,6 +523,18 @@ void MAVLINK_BRIDGE_APP_StartMissionUpload(const MAVLINK_BRIDGE_APP_RouteUpdateM
         return;
     }
 
+    /* BL-85(2026-07-28 감사): readback(WAIT_COUNT/WAIT_ITEM)이 진행 중일 때
+     * ROUTE_UPDATE가 들어오면 두 상태머신이 동시에 MISSION 프로토콜(MISSION_ACK/
+     * MISSION_COUNT/MISSION_REQUEST_INT)을 굴려 서로의 응답을 오인한다 —
+     * 업로드는 타임아웃 3회 후 실패, readback도 오염된다. 상호 배제한다. */
+    if (MAVLINK_BRIDGE_APP_Data.MissionDownloadState != (uint8)MAVLINK_BRIDGE_MISSION_DOWNLOAD_IDLE)
+    {
+        CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_MISSION_UPLOAD_ERR_EID, CFE_EVS_EventType_ERROR,
+                          "MAVLINK_BRIDGE_APP: route update ignored - mission readback in progress state=%u",
+                          (unsigned int)MAVLINK_BRIDGE_APP_Data.MissionDownloadState);
+        return;
+    }
+
     /* BL-56(2026-07-25 최종 확정): ARMED 차단 전면 폐지 — REPLACE 포함 4종 전부 ARMED
      * 허용(current=1 재개-인덱스 메커니즘으로 인덱스 리셋 문제 해결됨). REPLACE의 파급
      * 범위 위험은 GUI 재확인 다이얼로그로 완화(기체측 가드 아님). */
@@ -514,15 +544,24 @@ void MAVLINK_BRIDGE_APP_StartMissionUpload(const MAVLINK_BRIDGE_APP_RouteUpdateM
     if (Msg->RouteType == (uint8)MAVLINK_BRIDGE_ROUTE_OP_ADD)
     {
         /* ADD: active cache 끝에 추가만(중간 삽입 없음), 합계가 MAX 초과 시 절단.
-         * ActiveResumeIndex 불변. */
-        NewCount = ActiveCount + IndexOrCount;
-        if (NewCount > (uint8)MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS)
+         * ActiveResumeIndex 불변.
+         * BL-84/C-12(2026-07-28 감사): ActiveCount/IndexOrCount 둘 다 uint8이라
+         * 합이 uint8 NewCount에 바로 대입되면 256을 넘는 순간(예: 16+250=266)
+         * 조용히 절단(266&0xFF=10)돼 MAX 이하로 보여서 위 절단 경고 분기 자체가
+         * 안 탄다 — 검증 없는 wire 값(IndexOrCount)이 원인이므로 uint16으로
+         * 넓혀서 계산한 뒤 클램프한다. */
         {
-            CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_MISSION_UPLOAD_ERR_EID, CFE_EVS_EventType_ERROR,
-                              "MAVLINK_BRIDGE_APP: add truncated active=%u new=%u max=%u",
-                              (unsigned int)ActiveCount, (unsigned int)IndexOrCount,
-                              (unsigned int)MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS);
-            NewCount = (uint8)MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS;
+            uint16 NewCountWide = (uint16)ActiveCount + (uint16)IndexOrCount;
+
+            if (NewCountWide > (uint16)MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS)
+            {
+                CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_MISSION_UPLOAD_ERR_EID, CFE_EVS_EventType_ERROR,
+                                  "MAVLINK_BRIDGE_APP: add truncated active=%u new=%u max=%u",
+                                  (unsigned int)ActiveCount, (unsigned int)IndexOrCount,
+                                  (unsigned int)MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS);
+                NewCountWide = (uint16)MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS;
+            }
+            NewCount = (uint8)NewCountWide;
         }
         for (i = 0U; i < ActiveCount && i < NewCount; i++)
         {
@@ -1045,7 +1084,11 @@ static CFE_Status_t MAVLINK_BRIDGE_APP_OpenSerial(void)
  * RECOVERY 명령 경유)에서도 수동 트리거할 수 있게 노출. */
 void MAVLINK_BRIDGE_APP_ProcessParserResetCmd(const MAVLINK_BRIDGE_APP_ParserResetCmd_t *Cmd)
 {
-    (void)Cmd;
+    if (!MAVLINK_BRIDGE_APP_VerifyCmdLength(&Cmd->CommandHeader.Msg, sizeof(*Cmd)))
+    {
+        return;
+    }
+
     MAVLINK_BRIDGE_APP_ResetParser();
     MAVLINK_BRIDGE_APP_Data.CmdCounter++;
     CFE_EVS_SendEvent(MAVLINK_BRIDGE_APP_RESET_EID, CFE_EVS_EventType_INFORMATION,
@@ -1057,9 +1100,13 @@ void MAVLINK_BRIDGE_APP_ProcessParserResetCmd(const MAVLINK_BRIDGE_APP_ParserRes
 void MAVLINK_BRIDGE_APP_ProcessSetFlightModeCmd(const MAVLINK_BRIDGE_APP_SetFlightModeCmd_t *Cmd)
 {
     uint8   Payload[MAVLINK_MSG_ID_COMMAND_LONG_LEN];
-    uint32  CustomMode;
     uint8   SubMode;
     bool    Ok;
+
+    if (!MAVLINK_BRIDGE_APP_VerifyCmdLength(&Cmd->CommandHeader.Msg, sizeof(*Cmd)))
+    {
+        return;
+    }
 
     switch (Cmd->FlightMode)
     {
@@ -1081,11 +1128,15 @@ void MAVLINK_BRIDGE_APP_ProcessSetFlightModeCmd(const MAVLINK_BRIDGE_APP_SetFlig
             return;
     }
 
-    CustomMode = ((uint32)MAVLINK_PX4_MAIN_MODE_AUTO << 16) | ((uint32)SubMode << 24);
-
+    /* PX4 Commander의 MAV_CMD_DO_SET_MODE 핸들러는 param2=custom_main_mode,
+     * param3=custom_sub_mode를 각각 작은 enum float로 기대한다(QGC도 동일하게
+     * 전송). HEARTBEAT.custom_mode 패킹 형식((main<<16)|(sub<<24))을 그대로
+     * float로 캐스팅해 param2 하나에 넣던 이전 코드는 PX4가 무효 모드로 보고
+     * MAV_RESULT_DENIED를 반환하는 원인이었다(BL-74, 2026-07-28 감사). */
     memset(Payload, 0, sizeof(Payload));
     MAVLINK_BRIDGE_APP_WriteFloatLE(&Payload[0], MAVLINK_MAV_MODE_FLAG_CUSTOM_MODE_ENABLED);
-    MAVLINK_BRIDGE_APP_WriteFloatLE(&Payload[4], (float)CustomMode);
+    MAVLINK_BRIDGE_APP_WriteFloatLE(&Payload[4], (float)MAVLINK_PX4_MAIN_MODE_AUTO);
+    MAVLINK_BRIDGE_APP_WriteFloatLE(&Payload[8], (float)SubMode);
     MAVLINK_BRIDGE_APP_WriteU16LE(&Payload[28], (uint16)MAVLINK_MAV_CMD_DO_SET_MODE);
     Payload[30] = MAVLINK_BRIDGE_APP_Data.TargetSystemId;
     Payload[31] = MAVLINK_BRIDGE_APP_Data.TargetComponentId;
@@ -1128,7 +1179,11 @@ void MAVLINK_BRIDGE_APP_ProcessSetFlightModeCmd(const MAVLINK_BRIDGE_APP_SetFlig
 
 void MAVLINK_BRIDGE_APP_ProcessSerialReconnectCmd(const MAVLINK_BRIDGE_APP_SerialReconnectCmd_t *Cmd)
 {
-    (void)Cmd;
+    if (!MAVLINK_BRIDGE_APP_VerifyCmdLength(&Cmd->CommandHeader.Msg, sizeof(*Cmd)))
+    {
+        return;
+    }
+
     MAVLINK_BRIDGE_APP_CloseSerial();
     (void)MAVLINK_BRIDGE_APP_OpenSerial();
     MAVLINK_BRIDGE_APP_Data.CmdCounter++;
@@ -1138,6 +1193,10 @@ void MAVLINK_BRIDGE_APP_ProcessSerialReconnectCmd(const MAVLINK_BRIDGE_APP_Seria
 
 static void MAVLINK_BRIDGE_APP_PublishAttitude(uint32 BridgeTimestampMs)
 {
+    /* MAVLink v2 trims trailing zero payload bytes(예: yawspeed==0.0f인 호버
+     * 상태) — SYS_TIME과 동일하게 zero-extend 후 디코드해야 정상 프레임을
+     * 폐기하지 않는다(BL-76, 2026-07-28 감사). */
+    uint8                             Payload[MAVLINK_ATTITUDE_PAYLOAD_LEN] = {0};
     MAVLINK_BRIDGE_APP_AttitudeTlm_t *Tlm;
     float                             RollRad;
     float                             PitchRad;
@@ -1146,7 +1205,7 @@ static void MAVLINK_BRIDGE_APP_PublishAttitude(uint32 BridgeTimestampMs)
     float                             PitchspeedRps;
     float                             YawspeedRps;
 
-    if (MAVLINK_BRIDGE_APP_Parser.PayloadLen != MAVLINK_ATTITUDE_PAYLOAD_LEN)
+    if (MAVLINK_BRIDGE_APP_Parser.PayloadLen > MAVLINK_ATTITUDE_PAYLOAD_LEN)
     {
         MAVLINK_BRIDGE_APP_RecordLengthError(MAVLINK_MSG_ID_ATTITUDE,
                                              MAVLINK_BRIDGE_APP_Parser.PayloadLen,
@@ -1154,12 +1213,14 @@ static void MAVLINK_BRIDGE_APP_PublishAttitude(uint32 BridgeTimestampMs)
         return;
     }
 
-    RollRad       = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[4]);
-    PitchRad      = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[8]);
-    YawRad        = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[12]);
-    RollspeedRps  = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[16]);
-    PitchspeedRps = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[20]);
-    YawspeedRps   = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[24]);
+    memcpy(Payload, MAVLINK_BRIDGE_APP_Parser.Payload, MAVLINK_BRIDGE_APP_Parser.PayloadLen);
+
+    RollRad       = MAVLINK_BRIDGE_APP_ReadFloatLE(&Payload[4]);
+    PitchRad      = MAVLINK_BRIDGE_APP_ReadFloatLE(&Payload[8]);
+    YawRad        = MAVLINK_BRIDGE_APP_ReadFloatLE(&Payload[12]);
+    RollspeedRps  = MAVLINK_BRIDGE_APP_ReadFloatLE(&Payload[16]);
+    PitchspeedRps = MAVLINK_BRIDGE_APP_ReadFloatLE(&Payload[20]);
+    YawspeedRps   = MAVLINK_BRIDGE_APP_ReadFloatLE(&Payload[24]);
 
     if (!MAVLINK_BRIDGE_APP_ValuesFinite6(RollRad, PitchRad, YawRad, RollspeedRps, PitchspeedRps, YawspeedRps))
     {
@@ -1169,7 +1230,7 @@ static void MAVLINK_BRIDGE_APP_PublishAttitude(uint32 BridgeTimestampMs)
 
     Tlm = &MAVLINK_BRIDGE_APP_Data.AttitudeTlm;
 
-    Tlm->TimestampMs   = MAVLINK_BRIDGE_APP_ReadU32LE(&MAVLINK_BRIDGE_APP_Parser.Payload[0]);
+    Tlm->TimestampMs   = MAVLINK_BRIDGE_APP_ReadU32LE(&Payload[0]);
     Tlm->Seq           = ++MAVLINK_BRIDGE_APP_Data.SequenceCounter;
     Tlm->Valid         = 1;
     Tlm->Stale         = 0;
@@ -1198,6 +1259,8 @@ static void MAVLINK_BRIDGE_APP_PublishAttitude(uint32 BridgeTimestampMs)
 
 static void MAVLINK_BRIDGE_APP_PublishEkfLocal(uint32 BridgeTimestampMs)
 {
+    /* v2 trailing-zero trim 대응 zero-extend — BL-76 참조 */
+    uint8                             Payload[MAVLINK_LOCAL_POSITION_NED_PAYLOAD_LEN] = {0};
     MAVLINK_BRIDGE_APP_EkfLocalTlm_t *Tlm;
     float                             X_m;
     float                             Y_m;
@@ -1206,7 +1269,7 @@ static void MAVLINK_BRIDGE_APP_PublishEkfLocal(uint32 BridgeTimestampMs)
     float                             Vy_mps;
     float                             Vz_mps;
 
-    if (MAVLINK_BRIDGE_APP_Parser.PayloadLen != MAVLINK_LOCAL_POSITION_NED_PAYLOAD_LEN)
+    if (MAVLINK_BRIDGE_APP_Parser.PayloadLen > MAVLINK_LOCAL_POSITION_NED_PAYLOAD_LEN)
     {
         MAVLINK_BRIDGE_APP_RecordLengthError(MAVLINK_MSG_ID_LOCAL_POSITION_NED,
                                              MAVLINK_BRIDGE_APP_Parser.PayloadLen,
@@ -1214,12 +1277,14 @@ static void MAVLINK_BRIDGE_APP_PublishEkfLocal(uint32 BridgeTimestampMs)
         return;
     }
 
-    X_m    = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[4]);
-    Y_m    = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[8]);
-    Z_m    = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[12]);
-    Vx_mps = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[16]);
-    Vy_mps = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[20]);
-    Vz_mps = MAVLINK_BRIDGE_APP_ReadFloatLE(&MAVLINK_BRIDGE_APP_Parser.Payload[24]);
+    memcpy(Payload, MAVLINK_BRIDGE_APP_Parser.Payload, MAVLINK_BRIDGE_APP_Parser.PayloadLen);
+
+    X_m    = MAVLINK_BRIDGE_APP_ReadFloatLE(&Payload[4]);
+    Y_m    = MAVLINK_BRIDGE_APP_ReadFloatLE(&Payload[8]);
+    Z_m    = MAVLINK_BRIDGE_APP_ReadFloatLE(&Payload[12]);
+    Vx_mps = MAVLINK_BRIDGE_APP_ReadFloatLE(&Payload[16]);
+    Vy_mps = MAVLINK_BRIDGE_APP_ReadFloatLE(&Payload[20]);
+    Vz_mps = MAVLINK_BRIDGE_APP_ReadFloatLE(&Payload[24]);
 
     if (!MAVLINK_BRIDGE_APP_ValuesFinite6(X_m, Y_m, Z_m, Vx_mps, Vy_mps, Vz_mps))
     {
@@ -1229,7 +1294,7 @@ static void MAVLINK_BRIDGE_APP_PublishEkfLocal(uint32 BridgeTimestampMs)
 
     Tlm = &MAVLINK_BRIDGE_APP_Data.EkfLocalTlm;
 
-    Tlm->TimestampMs = MAVLINK_BRIDGE_APP_ReadU32LE(&MAVLINK_BRIDGE_APP_Parser.Payload[0]);
+    Tlm->TimestampMs = MAVLINK_BRIDGE_APP_ReadU32LE(&Payload[0]);
     Tlm->Seq         = ++MAVLINK_BRIDGE_APP_Data.SequenceCounter;
     Tlm->Valid       = 1;
     Tlm->Stale       = 0;
@@ -1258,13 +1323,15 @@ static void MAVLINK_BRIDGE_APP_PublishEkfLocal(uint32 BridgeTimestampMs)
 
 static void MAVLINK_BRIDGE_APP_PublishGlobalPositionAsLocal(uint32 BridgeTimestampMs)
 {
+    /* v2 trailing-zero trim 대응 zero-extend — BL-76 참조 (hdg==0 등) */
+    uint8                             Payload[MAVLINK_GLOBAL_POSITION_INT_PAYLOAD_LEN] = {0};
     MAVLINK_BRIDGE_APP_EkfLocalTlm_t *Tlm;
     int32                             RelativeAltMm;
     int16                             VxCms;
     int16                             VyCms;
     int16                             VzCms;
 
-    if (MAVLINK_BRIDGE_APP_Parser.PayloadLen != MAVLINK_GLOBAL_POSITION_INT_PAYLOAD_LEN)
+    if (MAVLINK_BRIDGE_APP_Parser.PayloadLen > MAVLINK_GLOBAL_POSITION_INT_PAYLOAD_LEN)
     {
         MAVLINK_BRIDGE_APP_RecordLengthError(MAVLINK_MSG_ID_GLOBAL_POSITION_INT,
                                              MAVLINK_BRIDGE_APP_Parser.PayloadLen,
@@ -1272,14 +1339,16 @@ static void MAVLINK_BRIDGE_APP_PublishGlobalPositionAsLocal(uint32 BridgeTimesta
         return;
     }
 
+    memcpy(Payload, MAVLINK_BRIDGE_APP_Parser.Payload, MAVLINK_BRIDGE_APP_Parser.PayloadLen);
+
     Tlm = &MAVLINK_BRIDGE_APP_Data.EkfLocalTlm;
 
-    RelativeAltMm = MAVLINK_BRIDGE_APP_ReadI32LE(&MAVLINK_BRIDGE_APP_Parser.Payload[16]);
-    VxCms         = (int16)MAVLINK_BRIDGE_APP_ReadU16LE(&MAVLINK_BRIDGE_APP_Parser.Payload[20]);
-    VyCms         = (int16)MAVLINK_BRIDGE_APP_ReadU16LE(&MAVLINK_BRIDGE_APP_Parser.Payload[22]);
-    VzCms         = (int16)MAVLINK_BRIDGE_APP_ReadU16LE(&MAVLINK_BRIDGE_APP_Parser.Payload[24]);
+    RelativeAltMm = MAVLINK_BRIDGE_APP_ReadI32LE(&Payload[16]);
+    VxCms         = (int16)MAVLINK_BRIDGE_APP_ReadU16LE(&Payload[20]);
+    VyCms         = (int16)MAVLINK_BRIDGE_APP_ReadU16LE(&Payload[22]);
+    VzCms         = (int16)MAVLINK_BRIDGE_APP_ReadU16LE(&Payload[24]);
 
-    Tlm->TimestampMs = MAVLINK_BRIDGE_APP_ReadU32LE(&MAVLINK_BRIDGE_APP_Parser.Payload[0]);
+    Tlm->TimestampMs = MAVLINK_BRIDGE_APP_ReadU32LE(&Payload[0]);
     Tlm->Seq         = ++MAVLINK_BRIDGE_APP_Data.SequenceCounter;
     Tlm->Valid       = 1;
     Tlm->Stale       = 0;
@@ -1471,30 +1540,42 @@ static void MAVLINK_BRIDGE_APP_HandleFrameComplete(uint32 RxTimestampMs, uint8 C
     if (MAVLINK_BRIDGE_APP_Parser.MsgId == MAVLINK_MSG_ID_HEARTBEAT &&
         MAVLINK_BRIDGE_APP_Parser.PayloadLen >= MAVLINK_MSG_ID_HEARTBEAT_LEN)
     {
-        uint8 AutopilotType = MAVLINK_BRIDGE_APP_Parser.Payload[5];
-        /* Lock onto the first FC heartbeat (ArduPilot=3, PX4=12); ignore cameras/peripherals */
-        if (MAVLINK_BRIDGE_APP_Data.TargetSystemId == 0 &&
-            (AutopilotType == 3 || AutopilotType == 12))
+        /* BL-77(2026-07-28 감사): 다른 모든 msgid는 CRC 검증 후에만 상태를
+         * 갱신하는데 HEARTBEAT만 CRC 계산 없이 SysId 락온+CONNECTED 승격+
+         * IsArmed 갱신을 수행했다. 재동기화 중 노이즈로 msgid=0(HEARTBEAT)이
+         * 우연히 나오면 엉뚱한 SysId에 락온될 수 있었음. */
+        ComputedCrc = MAVLINK_BRIDGE_APP_ComputeFrameCrc(&MAVLINK_BRIDGE_APP_Parser, MAVLINK_HEARTBEAT_CRC_EXTRA);
+        if (ComputedCrc == ReceivedCrc)
         {
-            MAVLINK_BRIDGE_APP_Data.TargetSystemId    = MAVLINK_BRIDGE_APP_Parser.SysId;
-            MAVLINK_BRIDGE_APP_Data.TargetComponentId = MAVLINK_BRIDGE_APP_Parser.CompId;
+            uint8 AutopilotType = MAVLINK_BRIDGE_APP_Parser.Payload[5];
+            /* Lock onto the first FC heartbeat (ArduPilot=3, PX4=12); ignore cameras/peripherals */
+            if (MAVLINK_BRIDGE_APP_Data.TargetSystemId == 0 &&
+                (AutopilotType == 3 || AutopilotType == 12))
+            {
+                MAVLINK_BRIDGE_APP_Data.TargetSystemId    = MAVLINK_BRIDGE_APP_Parser.SysId;
+                MAVLINK_BRIDGE_APP_Data.TargetComponentId = MAVLINK_BRIDGE_APP_Parser.CompId;
+            }
+            if (MAVLINK_BRIDGE_APP_Parser.SysId == MAVLINK_BRIDGE_APP_Data.TargetSystemId)
+            {
+                MAVLINK_BRIDGE_APP_Data.LastRxTimestampMs = RxTimestampMs;
+                MAVLINK_BRIDGE_APP_SetLinkState(MAVLINK_BRIDGE_LINK_CONNECTED);
+                MAVLINK_BRIDGE_APP_UpdateFromHeartbeat(
+                    MAVLINK_BRIDGE_APP_Parser.Payload[6],
+                    MAVLINK_BRIDGE_APP_Parser.Payload[7]);
+            }
         }
-        if (MAVLINK_BRIDGE_APP_Parser.SysId == MAVLINK_BRIDGE_APP_Data.TargetSystemId)
+        else
         {
-            MAVLINK_BRIDGE_APP_Data.LastRxTimestampMs = RxTimestampMs;
-            MAVLINK_BRIDGE_APP_SetLinkState(MAVLINK_BRIDGE_LINK_CONNECTED);
-            MAVLINK_BRIDGE_APP_UpdateFromHeartbeat(
-                MAVLINK_BRIDGE_APP_Parser.Payload[6],
-                MAVLINK_BRIDGE_APP_Parser.Payload[7]);
+            MAVLINK_BRIDGE_APP_RecordParseError(MAVLINK_BRIDGE_ERROR_PARSE_FAIL);
         }
     }
     else if (MAVLINK_BRIDGE_APP_Parser.MsgId == MAVLINK_MSG_ID_COMMAND_ACK)
     {
         ComputedCrc = MAVLINK_BRIDGE_APP_ComputeFrameCrc(&MAVLINK_BRIDGE_APP_Parser, MAVLINK_COMMAND_ACK_CRC_EXTRA);
-        if (ComputedCrc == ReceivedCrc && MAVLINK_BRIDGE_APP_Parser.PayloadLen >= 10U)
+        if (ComputedCrc == ReceivedCrc && MAVLINK_BRIDGE_APP_Parser.PayloadLen >= 3U)
         {
-            uint16 Command = MAVLINK_BRIDGE_APP_ReadU16LE(&MAVLINK_BRIDGE_APP_Parser.Payload[8]);
-            uint8  Result  = MAVLINK_BRIDGE_APP_Parser.Payload[0];
+            uint16 Command = MAVLINK_BRIDGE_APP_ReadU16LE(&MAVLINK_BRIDGE_APP_Parser.Payload[0]);
+            uint8  Result  = MAVLINK_BRIDGE_APP_Parser.Payload[2];
 
             if (Command == MAVLINK_CMD_SET_MESSAGE_INTERVAL)
             {
@@ -1991,10 +2072,14 @@ static void MAVLINK_BRIDGE_APP_HandleReceivedBytes(const uint8 *Buffer, ssize_t 
 {
     ssize_t Index;
 
+    /* BL-84/C-10(2026-07-28 감사): 예전엔 여기서 CRC/msgid 무관하게 아무
+     * 바이트나 받으면 CONNECTED로 승격시켜, 보율 미스매치/케이블 노이즈로
+     * 쓰레기 바이트만 들어와도 STALE/DEGRADED 판정이 발동하지 않았다.
+     * CONNECTED 승격은 각 msgid 핸들러가 CRC 통과 프레임에서만 수행하므로
+     * (HEARTBEAT/ATTITUDE/... 참조) 여기서는 제거한다. */
     MAVLINK_BRIDGE_APP_Data.LastRxTimestampMs = TimestampMs;
     MAVLINK_BRIDGE_APP_Data.BytesReceived += (uint32)Length;
     MAVLINK_BRIDGE_APP_Data.LastErrorCode = MAVLINK_BRIDGE_ERROR_NONE;
-    MAVLINK_BRIDGE_APP_SetLinkState(MAVLINK_BRIDGE_LINK_CONNECTED);
 
     for (Index = 0; Index < Length; ++Index)
     {
@@ -2472,11 +2557,29 @@ void MAVLINK_BRIDGE_APP_ServiceSerial(void)
         MAVLINK_BRIDGE_APP_StartFcMissionReadback();
     }
 
+    /* BL-84/C-14(2026-07-28 감사): 예전엔 이 루프가 무제한이라 FC가 계속
+     * 데이터를 밀어넣으면 SB 명령 처리와 하트비트 송신이 굶었다 — 사이클당
+     * 읽기 횟수에 상한을 둔다. EINTR도 링크다운으로 오인하지 않고 재시도한다. */
     SawData = false;
-    while ((ReadSize = read(MAVLINK_BRIDGE_APP_Data.SerialFd, RxBuffer, sizeof(RxBuffer))) > 0)
     {
-        SawData = true;
-        MAVLINK_BRIDGE_APP_HandleReceivedBytes(RxBuffer, ReadSize, NowMs);
+        int ReadIterations = 0;
+
+        while (ReadIterations < MAVLINK_BRIDGE_APP_MAX_READS_PER_SERVICE)
+        {
+            ReadSize = read(MAVLINK_BRIDGE_APP_Data.SerialFd, RxBuffer, sizeof(RxBuffer));
+            if (ReadSize > 0)
+            {
+                SawData = true;
+                MAVLINK_BRIDGE_APP_HandleReceivedBytes(RxBuffer, ReadSize, NowMs);
+                ReadIterations++;
+                continue;
+            }
+            if (ReadSize < 0 && errno == EINTR)
+            {
+                continue; /* 카운터 안 올리고 재시도 — 시그널은 반복 상한과 무관 */
+            }
+            break;
+        }
     }
 
     if (SawData)

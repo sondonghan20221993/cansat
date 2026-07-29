@@ -125,6 +125,27 @@ void Test_StartMissionUpload_LinkNotConnected(void)
                       (int32)MAVLINK_BRIDGE_MISSION_UPLOAD_IDLE);
 }
 
+/* BL-85(2026-07-28 감사) 회귀: readback(WAIT_COUNT/WAIT_ITEM) 진행 중엔
+ * ROUTE_UPDATE를 무시해야 함 — 두 MISSION 프로토콜 상태머신이 동시에 굴러가는
+ *것을 막는다. */
+void Test_StartMissionUpload_IgnoredWhenReadbackInProgress(void)
+{
+    MAVLINK_BRIDGE_APP_RouteUpdateMirror_t Msg;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.RouteType     = 1U;
+    Msg.WaypointCount = 1;
+    MAVLINK_BRIDGE_APP_Data.LinkState           = MAVLINK_BRIDGE_LINK_CONNECTED;
+    MAVLINK_BRIDGE_APP_Data.IsArmed             = 0;
+    MAVLINK_BRIDGE_APP_Data.MissionDownloadState = (uint8)MAVLINK_BRIDGE_MISSION_DOWNLOAD_WAIT_COUNT;
+    MAVLINK_BRIDGE_APP_Data.MissionUploadState   = (uint8)MAVLINK_BRIDGE_MISSION_UPLOAD_IDLE;
+
+    MAVLINK_BRIDGE_APP_StartMissionUpload(&Msg);
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionUploadState,
+                      (int32)MAVLINK_BRIDGE_MISSION_UPLOAD_IDLE);
+}
+
 /* -----------------------------------------------------------------------
  * StartMissionUpload REPLACE / ADD / DELETE / MODIFY 동작 테스트(BL-56)
  * ----------------------------------------------------------------------- */
@@ -203,6 +224,38 @@ void Test_StartMissionUpload_AddTruncated(void)
     MAVLINK_BRIDGE_APP_StartMissionUpload(&Msg);
 
     /* max에서 잘려야 함 */
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount,
+                      (int32)MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS);
+}
+
+/* BL-84/C-12(2026-07-28 감사) 회귀: ActiveCount(16)+WaypointCount(250, 검증 없는
+ * wire 값)=266이 uint8 NewCount에 그대로 대입되면 266&0xFF=10으로 조용히
+ * 절단돼 MAX(37) 이하로 보여서 절단 경고 분기 자체가 안 타고, 기존 16개마저
+ * 10개로 줄어드는 조용한 미션 손상이 발생했다. uint16으로 넓혀 계산하면
+ * MAX로 클램프돼야 한다(10이 아니라 37). */
+void Test_StartMissionUpload_Add_Uint8OverflowClampedNotWrapped(void)
+{
+    MAVLINK_BRIDGE_APP_RouteUpdateMirror_t Msg;
+    uint8 i;
+
+    memset(&Msg, 0, sizeof(Msg));
+    Msg.RouteType     = 2U; /* ROUTE_OP_ADD */
+    Msg.WaypointCount = 250; /* IndexOrCount — ActiveCount(16)와 합하면 266, uint8 wrap 시 10 */
+
+    MAVLINK_BRIDGE_APP_Data.LinkState           = MAVLINK_BRIDGE_LINK_CONNECTED;
+    MAVLINK_BRIDGE_APP_Data.IsArmed             = 0;
+    MAVLINK_BRIDGE_APP_Data.ActiveWaypointCount = 16U;
+    for (i = 0; i < 16U; i++)
+    {
+        MAVLINK_BRIDGE_APP_Data.ActiveWaypointLatE7[i] = (int32)i;
+    }
+
+    MAVLINK_BRIDGE_APP_StartMissionUpload(&Msg);
+
+    /* 버그였다면 10(=266&0xFF, 기존 16개보다도 적음), 수정 후엔 MAX로 클램프 */
+    UtAssert_True(MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount != 10,
+                  "uint8 wrap으로 10이 되면 안 됨 (실제 %d)",
+                  (int)MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount);
     UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.MissionUploadWpCount,
                       (int32)MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS);
 }
@@ -1131,6 +1184,179 @@ void Test_SysTime_ZeroClockIgnored(void)
     UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ParseErrorCount, 0);
 }
 
+/* 임의 msgid/crc_extra로 MAVLink v2 프레임 생성 (UT_BuildSysTimeFrame의 범용판) —
+ * BL-75/76/77 회귀테스트가 SYS_TIME 외 msgid(COMMAND_ACK/ATTITUDE/HEARTBEAT)로
+ * 프레임을 만들 때 사용. CRC 바이트가 STX와 겹치면 seq를 바꿔가며 재시도. */
+static size_t UT_BuildV2Frame(uint8 *Frame, uint8 MsgId, uint8 CrcExtra, const uint8 *Payload, uint8 PayloadLen,
+                               bool CorruptCrc)
+{
+    uint16 Crc;
+    uint8  Seq;
+    uint8  i;
+
+    for (Seq = 0;; Seq++)
+    {
+        Crc = 0xFFFFU;
+        UT_MavCrcAccumulate(PayloadLen, &Crc);
+        UT_MavCrcAccumulate(0, &Crc); /* incompat */
+        UT_MavCrcAccumulate(0, &Crc); /* compat */
+        UT_MavCrcAccumulate(Seq, &Crc);
+        UT_MavCrcAccumulate(1, &Crc);  /* sysid */
+        UT_MavCrcAccumulate(1, &Crc);  /* compid */
+        UT_MavCrcAccumulate(MsgId, &Crc);
+        UT_MavCrcAccumulate(0, &Crc);  /* msgid mid */
+        UT_MavCrcAccumulate(0, &Crc);  /* msgid high */
+        for (i = 0; i < PayloadLen; i++)
+        {
+            UT_MavCrcAccumulate(Payload[i], &Crc);
+        }
+        UT_MavCrcAccumulate(CrcExtra, &Crc);
+
+        if (CorruptCrc)
+        {
+            Crc ^= 0x0101U;
+        }
+
+        if ((Crc & 0xFFU) != 0xFDU && (Crc & 0xFFU) != 0xFEU &&
+            (Crc >> 8)    != 0xFDU && (Crc >> 8)    != 0xFEU)
+        {
+            break;
+        }
+    }
+
+    Frame[0] = 0xFD;
+    Frame[1] = PayloadLen;
+    Frame[2] = 0;
+    Frame[3] = 0;
+    Frame[4] = Seq;
+    Frame[5] = 1;
+    Frame[6] = 1;
+    Frame[7] = MsgId;
+    Frame[8] = 0;
+    Frame[9] = 0;
+    memcpy(&Frame[10], Payload, PayloadLen);
+    Frame[10 + PayloadLen]     = (uint8)(Crc & 0xFFU);
+    Frame[10 + PayloadLen + 1] = (uint8)(Crc >> 8);
+
+    return (size_t)(10 + PayloadLen + 2);
+}
+
+/* mavlink_bridge_app_utils.c의 동일 상수(파일-로컬 #define이라 테스트에서
+ * 직접 참조 불가 — 값만 미러링, 어긋나면 두 곳 다 확인) */
+#define UT_COMMAND_ACK_MSGID     77U
+#define UT_COMMAND_ACK_CRC_EXTRA 143U
+
+#define UT_HEARTBEAT_MSGID     0U
+#define UT_HEARTBEAT_CRC_EXTRA 50U
+
+/* ---- HEARTBEAT CRC 검증 회귀테스트 (BL-77, 2026-07-28 감사) ----
+ * 유효한 CRC의 PX4(autopilot=12) 하트비트 → TargetSystemId 락온 +
+ * CONNECTED 승격 + IsArmed 갱신까지 정상 수행돼야 함(정상 경로 회귀 확인). */
+void Test_Heartbeat_ValidCrc_LocksTargetAndConnects(void)
+{
+    uint8  Payload[9];
+    uint8  Frame[32];
+    size_t Len;
+
+    memset(Payload, 0, sizeof(Payload));
+    Payload[4] = 2U;    /* type = quadrotor */
+    Payload[5] = 12U;   /* autopilot = PX4 */
+    Payload[6] = 0x80U; /* base_mode: armed bit set */
+    Payload[7] = 4U;    /* system_status = ACTIVE */
+    Payload[8] = 3U;    /* mavlink_version */
+
+    MAVLINK_BRIDGE_APP_Data.TargetSystemId    = 0;
+    MAVLINK_BRIDGE_APP_Data.TargetComponentId = 0;
+    MAVLINK_BRIDGE_APP_Data.LinkState         = 0;
+    MAVLINK_BRIDGE_APP_Data.ParseErrorCount   = 0;
+
+    Len = UT_BuildV2Frame(Frame, UT_HEARTBEAT_MSGID, UT_HEARTBEAT_CRC_EXTRA, Payload, sizeof(Payload), false);
+    UT_FeedSerial(Frame, Len);
+
+    UtAssert_INT32_EQ((int)MAVLINK_BRIDGE_APP_Data.TargetSystemId, 1);
+    UtAssert_INT32_EQ((int)MAVLINK_BRIDGE_APP_Data.LinkState, (int)MAVLINK_BRIDGE_LINK_CONNECTED);
+    UtAssert_INT32_EQ((int)MAVLINK_BRIDGE_APP_Data.IsArmed, 1);
+}
+
+/* CRC 불일치 하트비트 → TargetSystemId 락온/IsArmed 갱신은 거부돼야 함
+ * (이전엔 CRC 검증 자체가 없어 노이즈에도 락온됐음). LinkState는 여기서
+ * 검증하지 않음 — `HandleReceivedBytes()`가 CRC/msgid 무관하게 아무 바이트나
+ * 받으면 CONNECTED로 승격시키는 별개의 버그(BL-84/C-10, 미수정)가 있어
+ * HEARTBEAT CRC 검증과 무관하게 이 필드는 항상 CONNECTED로 관측됨 —
+ * BL-84에서 수정 후 이 테스트에 LinkState 검증 추가할 것. */
+void Test_Heartbeat_BadCrc_RejectedNoLockNoConnect(void)
+{
+    uint8  Payload[9];
+    uint8  Frame[32];
+    size_t Len;
+
+    memset(Payload, 0, sizeof(Payload));
+    Payload[4] = 2U;
+    Payload[5] = 12U;
+    Payload[6] = 0x80U;
+    Payload[7] = 4U;
+    Payload[8] = 3U;
+
+    MAVLINK_BRIDGE_APP_Data.TargetSystemId    = 0;
+    MAVLINK_BRIDGE_APP_Data.TargetComponentId = 0;
+    MAVLINK_BRIDGE_APP_Data.LinkState         = 0;
+    MAVLINK_BRIDGE_APP_Data.IsArmed           = 0;
+    MAVLINK_BRIDGE_APP_Data.ParseErrorCount   = 0;
+
+    Len = UT_BuildV2Frame(Frame, UT_HEARTBEAT_MSGID, UT_HEARTBEAT_CRC_EXTRA, Payload, sizeof(Payload), true);
+    UT_FeedSerial(Frame, Len);
+
+    UtAssert_INT32_EQ((int)MAVLINK_BRIDGE_APP_Data.TargetSystemId, 0);
+    UtAssert_INT32_EQ((int)MAVLINK_BRIDGE_APP_Data.IsArmed, 0);
+    UtAssert_True(MAVLINK_BRIDGE_APP_Data.ParseErrorCount >= 1, "parse error recorded");
+    /* BL-84/C-10(2026-07-28) 수정 후: HandleReceivedBytes가 더 이상 무조건
+     * CONNECTED로 승격시키지 않으므로, CRC 실패한 HEARTBEAT만으로는 LinkState가
+     * 그대로 유지돼야 함(BL-77 작성 시엔 C-10 미수정이라 이 assert를 보류했었음) */
+    UtAssert_INT32_EQ((int)MAVLINK_BRIDGE_APP_Data.LinkState, 0);
+}
+
+/* ---- COMMAND_ACK 필드 오프셋 회귀테스트 (BL-75, 2026-07-28 감사) ----
+ * 이전 코드는 command@Payload[8]/result@Payload[0]으로 읽었으나 실제 wire는
+ * command(u16)@0-1/result(u8)@2. Command=MAVLINK_CMD_SET_MESSAGE_INTERVAL(511)/
+ * Result=ACCEPTED(0)로 프레임을 만들어 StreamRequestAckCount가 실제로
+ * 증가하는지 확인한다(오프셋이 틀리면 Command!=511로 읽혀 이 분기를 안 탐). */
+void Test_CommandAck_FieldOffsetCorrect(void)
+{
+    uint8  Payload[10] = {0xFF, 0x01, /* command = 511 = MAVLINK_CMD_SET_MESSAGE_INTERVAL (LE) */
+                          0,           /* result = MAV_RESULT_ACCEPTED */
+                          0, 0, 0, 0,  /* progress + result_param2 */
+                          0, 0};       /* target_system, target_component */
+    uint8  Frame[32];
+    size_t Len;
+
+    MAVLINK_BRIDGE_APP_Data.StreamRequestAckCount = 0;
+
+    Len = UT_BuildV2Frame(Frame, UT_COMMAND_ACK_MSGID, UT_COMMAND_ACK_CRC_EXTRA, Payload, sizeof(Payload),
+                          false);
+    UT_FeedSerial(Frame, Len);
+
+    UtAssert_INT32_EQ((int)MAVLINK_BRIDGE_APP_Data.StreamRequestAckCount, 1);
+}
+
+/* base-only(3바이트, v2 확장필드 trim) ACK도 정상 처리돼야 함 — 예전엔
+ * `>= 10U` 조건 때문에 전부 RecordParseError로 계상됐음. */
+void Test_CommandAck_BaseOnly3ByteAccepted(void)
+{
+    uint8  Payload[3] = {0xFF, 0x01, 0}; /* command=511, result=ACCEPTED */
+    uint8  Frame[32];
+    size_t Len;
+
+    MAVLINK_BRIDGE_APP_Data.StreamRequestAckCount = 0;
+    MAVLINK_BRIDGE_APP_Data.ParseErrorCount       = 0;
+
+    Len = UT_BuildV2Frame(Frame, UT_COMMAND_ACK_MSGID, UT_COMMAND_ACK_CRC_EXTRA, Payload, sizeof(Payload),
+                          false);
+    UT_FeedSerial(Frame, Len);
+
+    UtAssert_INT32_EQ((int)MAVLINK_BRIDGE_APP_Data.StreamRequestAckCount, 1);
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ParseErrorCount, 0);
+}
+
 /* CRC 불일치 → parse error 기록, 필드 미갱신 */
 void Test_SysTime_CrcFail(void)
 {
@@ -1536,6 +1762,87 @@ void Test_PublishAttitude_FiniteValuesAccepted(void)
     UtAssert_INT32_EQ((int32)MAVLINK_BRIDGE_APP_Data.NonFiniteValueCount, 0);
 }
 
+/* ---- BL-76(2026-07-28) 회귀: v2 trailing-zero trim된 프레임도 정상 디코드 ----
+ * 마지막 필드(yawspeed/vz/hdg)가 정확히 0.0이면 MAVLink v2 송신측이 그 바이트를
+ * 트림해 페이로드가 짧게 옴 — 실제 규격 동작. 예전 코드는 `PayloadLen != 28`을
+ * 엄격 비교해 이런 정상 프레임을 폐기했다. */
+
+#define UT_GLOBAL_POSITION_INT_MSGID     33U
+#define UT_GLOBAL_POSITION_INT_CRC_EXTRA 104U
+
+/* yawspeed(offset 24, 마지막 필드) == 0 → 24바이트로 트림 → 정상 디코드돼야 함 */
+void Test_PublishAttitude_TrimmedYawspeedZero_Accepted(void)
+{
+    uint8  Payload[24]; /* yawspeed 필드(마지막 4B) 트림됨 */
+    uint8  Frame[64];
+    size_t Len;
+    float  Roll = 0.1f;
+
+    memset(Payload, 0, sizeof(Payload));
+    UT_WriteU32LE(&Payload[0], 7000U);
+    memcpy(&Payload[4], &Roll, sizeof(float));
+
+    MAVLINK_BRIDGE_APP_Data.AttitudeTlm.Valid   = 0;
+    MAVLINK_BRIDGE_APP_Data.ParseErrorCount     = 0;
+
+    Len = UT_BuildMavFrameGeneric(Frame, (uint8)UT_ATTITUDE_MSGID, (uint8)UT_ATTITUDE_CRC_EXTRA,
+                                  Payload, sizeof(Payload));
+    UT_FeedSerial(Frame, Len);
+
+    UtAssert_INT32_EQ((int32)MAVLINK_BRIDGE_APP_Data.AttitudeTlm.Valid, 1);
+    UtAssert_True(MAVLINK_BRIDGE_APP_Data.AttitudeTlm.RollRad == Roll, "trimmed frame decoded, roll passthrough");
+    UtAssert_True(MAVLINK_BRIDGE_APP_Data.AttitudeTlm.YawspeedRps == 0.0f, "trimmed field zero-extended");
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ParseErrorCount, 0);
+}
+
+/* vz(offset 24, 마지막 필드) == 0 → 24바이트로 트림 → 정상 디코드돼야 함 */
+void Test_PublishEkfLocal_TrimmedVzZero_Accepted(void)
+{
+    uint8  Payload[24];
+    uint8  Frame[64];
+    size_t Len;
+    float  X = 1.5f;
+
+    memset(Payload, 0, sizeof(Payload));
+    UT_WriteU32LE(&Payload[0], 7100U);
+    memcpy(&Payload[4], &X, sizeof(float));
+
+    MAVLINK_BRIDGE_APP_Data.EkfLocalTlm.Valid = 0;
+    MAVLINK_BRIDGE_APP_Data.ParseErrorCount   = 0;
+
+    Len = UT_BuildMavFrameGeneric(Frame, (uint8)UT_LOCAL_POSITION_NED_MSGID,
+                                  (uint8)UT_LOCAL_POSITION_NED_CRC_EXTRA, Payload, sizeof(Payload));
+    UT_FeedSerial(Frame, Len);
+
+    UtAssert_INT32_EQ((int32)MAVLINK_BRIDGE_APP_Data.EkfLocalTlm.Valid, 1);
+    UtAssert_True(MAVLINK_BRIDGE_APP_Data.EkfLocalTlm.X_m == X, "trimmed frame decoded, x passthrough");
+    UtAssert_True(MAVLINK_BRIDGE_APP_Data.EkfLocalTlm.Vz_mps == 0.0f, "trimmed field zero-extended");
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ParseErrorCount, 0);
+}
+
+/* hdg(offset 26, 마지막 필드, u16) == 0 → 26바이트로 트림 → 정상 디코드돼야 함 */
+void Test_PublishGlobalPositionAsLocal_TrimmedHdgZero_Accepted(void)
+{
+    uint8  Payload[26]; /* hdg(u16) 트림됨 */
+    uint8  Frame[64];
+    size_t Len;
+
+    memset(Payload, 0, sizeof(Payload));
+    UT_WriteU32LE(&Payload[0], 7200U);
+    UT_WriteU32LE(&Payload[16], 2000U); /* relative_alt = 2000mm (양수라 부호 무관) */
+
+    MAVLINK_BRIDGE_APP_Data.EkfLocalTlm.Valid = 0;
+    MAVLINK_BRIDGE_APP_Data.ParseErrorCount   = 0;
+
+    Len = UT_BuildMavFrameGeneric(Frame, (uint8)UT_GLOBAL_POSITION_INT_MSGID,
+                                  (uint8)UT_GLOBAL_POSITION_INT_CRC_EXTRA, Payload, sizeof(Payload));
+    UT_FeedSerial(Frame, Len);
+
+    UtAssert_INT32_EQ((int32)MAVLINK_BRIDGE_APP_Data.EkfLocalTlm.Valid, 1);
+    UtAssert_True(MAVLINK_BRIDGE_APP_Data.EkfLocalTlm.Z_m == -2.0f, "trimmed frame decoded, alt passthrough");
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ParseErrorCount, 0);
+}
+
 /* 페이로드 바이트에 STX_V1(0xFE)/STX_V2(0xFD) 값이 포함돼도 파서가 프레임
  * 중간에 재진입(리셋)하지 않고 정상 완주하는지 회귀 확인.
  * (파서가 상태 무관하게 모든 바이트를 STX로 검사하던 버그의 재발 방지) */
@@ -1637,8 +1944,12 @@ void Test_RequestTelemetryStreams_SkippedWhenNoTarget(void)
 void Test_ProcessParserResetCmd_IncrementsCmdCounter(void)
 {
     MAVLINK_BRIDGE_APP_ParserResetCmd_t Cmd;
+    size_t                              MsgSize;
 
     memset(&Cmd, 0, sizeof(Cmd));
+    MsgSize = sizeof(Cmd);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetSize), &MsgSize, sizeof(MsgSize), false);
+
     MAVLINK_BRIDGE_APP_Data.CmdCounter = 5;
 
     MAVLINK_BRIDGE_APP_ProcessParserResetCmd(&Cmd);
@@ -1646,11 +1957,32 @@ void Test_ProcessParserResetCmd_IncrementsCmdCounter(void)
     UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.CmdCounter, 6);
 }
 
+/* VerifyCmdLength 실패 시 ProcessParserResetCmd → 즉시 반환 (CmdCounter 갱신 없음) */
+void Test_ProcessParserResetCmd_LengthCheckFail(void)
+{
+    MAVLINK_BRIDGE_APP_ParserResetCmd_t Cmd;
+    size_t                              WrongSize;
+
+    memset(&Cmd, 0, sizeof(Cmd));
+    WrongSize = sizeof(Cmd) + 1U;
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetSize), &WrongSize, sizeof(WrongSize), false);
+
+    MAVLINK_BRIDGE_APP_Data.CmdCounter = 5;
+
+    MAVLINK_BRIDGE_APP_ProcessParserResetCmd(&Cmd);
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.CmdCounter, 5);
+}
+
 void Test_ProcessSerialReconnectCmd_ClosesFdAndIncrementsCmdCounter(void)
 {
     MAVLINK_BRIDGE_APP_SerialReconnectCmd_t Cmd;
+    size_t                                  MsgSize;
 
     memset(&Cmd, 0, sizeof(Cmd));
+    MsgSize = sizeof(Cmd);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetSize), &MsgSize, sizeof(MsgSize), false);
+
     MAVLINK_BRIDGE_APP_Data.CmdCounter = 5;
     MAVLINK_BRIDGE_APP_Data.SerialFd   = -1;
 
@@ -1659,6 +1991,24 @@ void Test_ProcessSerialReconnectCmd_ClosesFdAndIncrementsCmdCounter(void)
     UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.CmdCounter, 6);
     /* OpenSerial()은 테스트 환경에 실장치가 없어 실패 → SerialFd -1 유지 */
     UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.SerialFd, -1);
+}
+
+/* VerifyCmdLength 실패 시 ProcessSerialReconnectCmd → 즉시 반환 (CmdCounter 갱신·재연결 시도 없음) */
+void Test_ProcessSerialReconnectCmd_LengthCheckFail(void)
+{
+    MAVLINK_BRIDGE_APP_SerialReconnectCmd_t Cmd;
+    size_t                                  WrongSize;
+
+    memset(&Cmd, 0, sizeof(Cmd));
+    WrongSize = sizeof(Cmd) + 1U;
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetSize), &WrongSize, sizeof(WrongSize), false);
+
+    MAVLINK_BRIDGE_APP_Data.CmdCounter = 5;
+    MAVLINK_BRIDGE_APP_Data.SerialFd   = -1;
+
+    MAVLINK_BRIDGE_APP_ProcessSerialReconnectCmd(&Cmd);
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.CmdCounter, 5);
 }
 
 /* -----------------------------------------------------------------------
@@ -2030,13 +2380,17 @@ void Test_ReconnectResetsBackoff(void)
 #define UT_MISSION_SET_CURRENT_FRAME_LEN 16U /* 10(header) + 4(payload) + 2(crc) */
 
 /* HOVER: DO_SET_MODE 1프레임만, custom_mode=(AUTO<<16)|(LOITER<<24) */
+/* BL-74(2026-07-28) 회귀: param2=custom_main_mode(u8을 float로, offset 14),
+ * param3=custom_sub_mode(offset 18) — PX4 Commander가 실제로 읽는 필드.
+ * HEARTBEAT.custom_mode 패킹 형식을 param2 하나에 우겨넣던 이전 인코딩은
+ * PX4가 무효 모드로 판정해 MAV_RESULT_DENIED를 반환하는 원인이었다. */
 void Test_ProcessSetFlightModeCmd_Hover(void)
 {
     MAVLINK_BRIDGE_APP_SetFlightModeCmd_t Cmd;
     int                                   Sv[2];
     uint8                                 OutBuf[128];
     ssize_t                               CapLen;
-    uint32                                CustomMode;
+    size_t                                MsgSize;
 
     UtAssert_INT32_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, Sv), 0);
     UtAssert_INT32_EQ(fcntl(Sv[1], F_SETFL, O_NONBLOCK), 0);
@@ -2048,6 +2402,8 @@ void Test_ProcessSetFlightModeCmd_Hover(void)
     memset(&Cmd, 0, sizeof(Cmd));
     Cmd.SourceSequence = 50;
     Cmd.FlightMode      = 0; /* HOVER */
+    MsgSize = sizeof(Cmd);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetSize), &MsgSize, sizeof(MsgSize), false);
 
     MAVLINK_BRIDGE_APP_ProcessSetFlightModeCmd(&Cmd);
 
@@ -2059,21 +2415,21 @@ void Test_ProcessSetFlightModeCmd_Hover(void)
     UtAssert_True(CapLen == (ssize_t)UT_COMMAND_LONG_FRAME_LEN,
                   "DO_SET_MODE 1프레임만 전송 (got %ld bytes)", (long)CapLen);
     UtAssert_True(OutBuf[7] == (uint8)UT_COMMAND_LONG_MSGID, "msgid == COMMAND_LONG");
-    CustomMode = (uint32)UT_ReadFloatLE(&OutBuf[14]);
-    UtAssert_INT32_EQ((int)CustomMode, (int)((4U << 16) | (3U << 24))); /* AUTO/LOITER */
+    UtAssert_True(UT_ReadFloatLE(&OutBuf[14]) == 4.0f, "param2(custom_main_mode) == AUTO(4)");
+    UtAssert_True(UT_ReadFloatLE(&OutBuf[18]) == 3.0f, "param3(custom_sub_mode) == AUTO_LOITER(3)");
     UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ExecResultTlm.SourceSequence, 50);
     UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ExecResultTlm.GenericResult, (int32)EXEC_RESULT_GENERIC_OK);
 }
 
-/* WAYPOINT: DO_SET_MODE + MISSION_SET_CURRENT 2프레임, custom_mode=(AUTO<<16)|(MISSION<<24) */
+/* WAYPOINT: DO_SET_MODE + MISSION_SET_CURRENT 2프레임, param2=AUTO(4)/param3=MISSION(4) */
 void Test_ProcessSetFlightModeCmd_Waypoint(void)
 {
     MAVLINK_BRIDGE_APP_SetFlightModeCmd_t Cmd;
     int                                   Sv[2];
     uint8                                 OutBuf[128];
     ssize_t                               CapLen;
-    uint32                                CustomMode;
     uint16                                SeqEcho;
+    size_t                                MsgSize;
 
     UtAssert_INT32_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, Sv), 0);
     UtAssert_INT32_EQ(fcntl(Sv[1], F_SETFL, O_NONBLOCK), 0);
@@ -2086,6 +2442,8 @@ void Test_ProcessSetFlightModeCmd_Waypoint(void)
     Cmd.SourceSequence      = 51;
     Cmd.FlightMode          = 1; /* WAYPOINT */
     Cmd.WaypointStartIndex  = 7;
+    MsgSize = sizeof(Cmd);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetSize), &MsgSize, sizeof(MsgSize), false);
 
     MAVLINK_BRIDGE_APP_ProcessSetFlightModeCmd(&Cmd);
 
@@ -2098,8 +2456,8 @@ void Test_ProcessSetFlightModeCmd_Waypoint(void)
                   "DO_SET_MODE + MISSION_SET_CURRENT 2프레임 (got %ld bytes)", (long)CapLen);
 
     UtAssert_True(OutBuf[7] == (uint8)UT_COMMAND_LONG_MSGID, "1st frame msgid == COMMAND_LONG");
-    CustomMode = (uint32)UT_ReadFloatLE(&OutBuf[14]);
-    UtAssert_INT32_EQ((int)CustomMode, (int)((4U << 16) | (4U << 24))); /* AUTO/MISSION */
+    UtAssert_True(UT_ReadFloatLE(&OutBuf[14]) == 4.0f, "param2(custom_main_mode) == AUTO(4)");
+    UtAssert_True(UT_ReadFloatLE(&OutBuf[18]) == 4.0f, "param3(custom_sub_mode) == AUTO_MISSION(4)");
 
     UtAssert_True(OutBuf[UT_COMMAND_LONG_FRAME_LEN + 7] == (uint8)UT_MISSION_SET_CURRENT_MSGID,
                   "2nd frame msgid == MISSION_SET_CURRENT");
@@ -2108,14 +2466,14 @@ void Test_ProcessSetFlightModeCmd_Waypoint(void)
     UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ExecResultTlm.GenericResult, (int32)EXEC_RESULT_GENERIC_OK);
 }
 
-/* LAND: DO_SET_MODE 1프레임만, custom_mode=(AUTO<<16)|(LAND<<24) */
+/* LAND: DO_SET_MODE 1프레임만, param2=AUTO(4)/param3=LAND(6) */
 void Test_ProcessSetFlightModeCmd_Land(void)
 {
     MAVLINK_BRIDGE_APP_SetFlightModeCmd_t Cmd;
     int                                   Sv[2];
     uint8                                 OutBuf[128];
     ssize_t                               CapLen;
-    uint32                                CustomMode;
+    size_t                                MsgSize;
 
     UtAssert_INT32_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, Sv), 0);
     UtAssert_INT32_EQ(fcntl(Sv[1], F_SETFL, O_NONBLOCK), 0);
@@ -2127,6 +2485,8 @@ void Test_ProcessSetFlightModeCmd_Land(void)
     memset(&Cmd, 0, sizeof(Cmd));
     Cmd.SourceSequence = 52;
     Cmd.FlightMode      = 2; /* LAND */
+    MsgSize = sizeof(Cmd);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetSize), &MsgSize, sizeof(MsgSize), false);
 
     MAVLINK_BRIDGE_APP_ProcessSetFlightModeCmd(&Cmd);
 
@@ -2136,18 +2496,21 @@ void Test_ProcessSetFlightModeCmd_Land(void)
     MAVLINK_BRIDGE_APP_Data.SerialFd = -1;
 
     UtAssert_True(CapLen == (ssize_t)UT_COMMAND_LONG_FRAME_LEN, "DO_SET_MODE 1프레임만");
-    CustomMode = (uint32)UT_ReadFloatLE(&OutBuf[14]);
-    UtAssert_INT32_EQ((int)CustomMode, (int)((4U << 16) | (6U << 24))); /* AUTO/LAND */
+    UtAssert_True(UT_ReadFloatLE(&OutBuf[14]) == 4.0f, "param2(custom_main_mode) == AUTO(4)");
+    UtAssert_True(UT_ReadFloatLE(&OutBuf[18]) == 6.0f, "param3(custom_sub_mode) == AUTO_LAND(6)");
 }
 
 /* 잘못된 flight_mode(>2) → 전송 없음, EXEC_RESULT FAILED */
 void Test_ProcessSetFlightModeCmd_InvalidMode(void)
 {
     MAVLINK_BRIDGE_APP_SetFlightModeCmd_t Cmd;
+    size_t                                MsgSize;
 
     memset(&Cmd, 0, sizeof(Cmd));
     Cmd.SourceSequence = 53;
     Cmd.FlightMode      = 3; /* invalid */
+    MsgSize = sizeof(Cmd);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetSize), &MsgSize, sizeof(MsgSize), false);
 
     MAVLINK_BRIDGE_APP_Data.ExecResultTlm.GenericResult = (uint8)EXEC_RESULT_GENERIC_OK; /* 이전 값과 구분 */
 
@@ -2161,16 +2524,38 @@ void Test_ProcessSetFlightModeCmd_InvalidMode(void)
 void Test_ProcessSetFlightModeCmd_SendFails(void)
 {
     MAVLINK_BRIDGE_APP_SetFlightModeCmd_t Cmd;
+    size_t                                MsgSize;
 
     memset(&Cmd, 0, sizeof(Cmd));
     Cmd.SourceSequence = 54;
     Cmd.FlightMode      = 0; /* HOVER */
+    MsgSize = sizeof(Cmd);
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetSize), &MsgSize, sizeof(MsgSize), false);
 
     MAVLINK_BRIDGE_APP_Data.SerialFd = -1; /* 닫힌 fd -> write 실패 */
 
     MAVLINK_BRIDGE_APP_ProcessSetFlightModeCmd(&Cmd);
 
     UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ExecResultTlm.GenericResult, (int32)EXEC_RESULT_GENERIC_FAILED);
+}
+
+/* VerifyCmdLength 실패 시 ProcessSetFlightModeCmd → 즉시 반환 (전송/ExecResult 갱신 없음) */
+void Test_ProcessSetFlightModeCmd_LengthCheckFail(void)
+{
+    MAVLINK_BRIDGE_APP_SetFlightModeCmd_t Cmd;
+    size_t                                WrongSize;
+
+    memset(&Cmd, 0, sizeof(Cmd));
+    Cmd.SourceSequence = 55;
+    Cmd.FlightMode      = 0; /* HOVER */
+    WrongSize = sizeof(Cmd) + 1U;
+    UT_SetDataBuffer(UT_KEY(CFE_MSG_GetSize), &WrongSize, sizeof(WrongSize), false);
+
+    MAVLINK_BRIDGE_APP_Data.ExecResultTlm.SourceSequence = 0;
+
+    MAVLINK_BRIDGE_APP_ProcessSetFlightModeCmd(&Cmd);
+
+    UtAssert_INT32_EQ(MAVLINK_BRIDGE_APP_Data.ExecResultTlm.SourceSequence, 0);
 }
 
 void UtTest_Setup(void)
@@ -2180,6 +2565,7 @@ void UtTest_Setup(void)
     ADD_TEST(ProcessSetFlightModeCmd_Land);
     ADD_TEST(ProcessSetFlightModeCmd_InvalidMode);
     ADD_TEST(ProcessSetFlightModeCmd_SendFails);
+    ADD_TEST(ProcessSetFlightModeCmd_LengthCheckFail);
     ADD_TEST(UpdateFromHeartbeat_Armed);
     ADD_TEST(UpdateFromHeartbeat_Disarmed);
     ADD_TEST(UpdateFromHeartbeat_OtherBitsIgnored);
@@ -2188,9 +2574,11 @@ void UtTest_Setup(void)
     ADD_TEST(StartMissionUpload_AllowedWhenArmed);
     ADD_TEST(StartMissionUpload_AllowedWhenDisarmed);
     ADD_TEST(StartMissionUpload_LinkNotConnected);
+    ADD_TEST(StartMissionUpload_IgnoredWhenReadbackInProgress);
     ADD_TEST(StartMissionUpload_Replace);
     ADD_TEST(StartMissionUpload_Add);
     ADD_TEST(StartMissionUpload_AddTruncated);
+    ADD_TEST(StartMissionUpload_Add_Uint8OverflowClampedNotWrapped);
     ADD_TEST(StartMissionUpload_Delete);
     ADD_TEST(StartMissionUpload_Delete_IndexOutOfRange);
     ADD_TEST(StartMissionUpload_Delete_RejectedWhenTargetIsActiveResumeIndex);
@@ -2237,6 +2625,10 @@ void UtTest_Setup(void)
     ADD_TEST(ReconnectResetsBackoff);
     ADD_TEST(RecordParseError);
     ADD_TEST(RecordParseError_Cumulative);
+    ADD_TEST(Heartbeat_ValidCrc_LocksTargetAndConnects);
+    ADD_TEST(Heartbeat_BadCrc_RejectedNoLockNoConnect);
+    ADD_TEST(CommandAck_FieldOffsetCorrect);
+    ADD_TEST(CommandAck_BaseOnly3ByteAccepted);
     ADD_TEST(SysTime_FullPayload);
     ADD_TEST(SysTime_TrimmedPayload);
     ADD_TEST(SysTime_ZeroClockIgnored);
@@ -2247,9 +2639,14 @@ void UtTest_Setup(void)
     ADD_TEST(PublishAttitude_NaNRejected);
     ADD_TEST(PublishEkfLocal_InfRejected);
     ADD_TEST(PublishAttitude_FiniteValuesAccepted);
+    ADD_TEST(PublishAttitude_TrimmedYawspeedZero_Accepted);
+    ADD_TEST(PublishEkfLocal_TrimmedVzZero_Accepted);
+    ADD_TEST(PublishGlobalPositionAsLocal_TrimmedHdgZero_Accepted);
     ADD_TEST(ProcessReceivedByte_StxByteInPayload_NoReentry);
     ADD_TEST(RequestTelemetryStreams_SendsSixStreamRequests);
     ADD_TEST(RequestTelemetryStreams_SkippedWhenNoTarget);
     ADD_TEST(ProcessParserResetCmd_IncrementsCmdCounter);
+    ADD_TEST(ProcessParserResetCmd_LengthCheckFail);
     ADD_TEST(ProcessSerialReconnectCmd_ClosesFdAndIncrementsCmdCounter);
+    ADD_TEST(ProcessSerialReconnectCmd_LengthCheckFail);
 }
