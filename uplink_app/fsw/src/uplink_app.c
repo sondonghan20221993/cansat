@@ -56,6 +56,8 @@ CFE_Status_t UPLINK_APP_Init(void)
     UPLINK_APP_Data.RunStatus = CFE_ES_RunStatus_APP_RUN;
     /* BL-43: 첫 부팅(상태파일 없음)은 "생존" 취급 — streak 오탐 방지 */
     UPLINK_APP_Data.PrevSurvivedMark = 1;
+    /* BL-92: 단일 transport(LoRa) 고정 — uplink_app.h 주석 참조 */
+    UPLINK_APP_Data.ActiveTransportId = UPLINK_APP_TRANSPORT_LORA;
 
     Status = CFE_EVS_Register(NULL, 0, CFE_EVS_EventFilter_BINARY);
     if (Status != CFE_SUCCESS)

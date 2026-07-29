@@ -12,6 +12,12 @@
 #include "uplink_app_msg.h"
 #include "uplink_app_msgids.h"
 
+/* BL-92(2026-07-29 감사): ActiveTransportId — spec §18.7이 요구하는 "활성
+ * 전송 채널 식별"용이나, 실제로 uplink_app에 들어오는 물리 경로는
+ * lora_tdm_app 하나뿐(UPLINK_APP_CMD_MID publisher가 lora_tdm_app 단독,
+ * 2026-07-29 확인)이라 값을 판정할 다중 transport 자체가 없다. 상수 고정. */
+#define UPLINK_APP_TRANSPORT_LORA  0U
+
 typedef struct
 {
     uint8                  CmdCounter;

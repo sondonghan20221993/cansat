@@ -8,6 +8,7 @@ void Test_UPLINK_APP_Init(void)
 {
     UtAssert_INT32_EQ(UPLINK_APP_Init(), CFE_SUCCESS);
     UtAssert_INT32_EQ(UPLINK_APP_Data.RunStatus, CFE_ES_RunStatus_APP_RUN);
+    UtAssert_INT32_EQ(UPLINK_APP_Data.ActiveTransportId, UPLINK_APP_TRANSPORT_LORA);
 }
 
 /* Subscribe #2(SEND_HK) 실패 */
