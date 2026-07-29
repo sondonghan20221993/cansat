@@ -114,7 +114,8 @@ class ConsistencyTest(unittest.TestCase):
         프로토타입 상태임이 문서화된 것."""
         count = 0
         for path in CAMERA_DIR.iterdir():
-            count += path.read_text().count("TODO(bench)")
+            if path.is_file():
+                count += path.read_text().count("TODO(bench)")
         self.assertGreaterEqual(count, 5)
 
     def test_chrony_allows_camera_subnet(self):

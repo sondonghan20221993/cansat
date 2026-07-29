@@ -140,6 +140,43 @@ class RouteReadbackAssemblerTest(unittest.TestCase):
         result = asm.feed(e2)
         self.assertEqual(result, [(16, 2, 2, 2.0), (16, 3, 3, 3.0)])
 
+    def test_new_session_same_total_pages_does_not_mix_with_stale_page(self):
+        """BL-92(2026-07-28 감사) 회귀: 이전 세션이 완료된 뒤 같은 total_pages로
+        새 세션이 시작되면(흔함 — 같은 페이지 수인 경로를 연속 조회), page_index
+        만으로 새 세션임을 알아채지 못해 이전 세션의 stale waypoint가 새 세션
+        결과에 섞여 나가면 안 된다."""
+        asm = RouteReadbackAssembler()
+
+        # 1차 세션: 2페이지 전부 수신해 완료
+        e1p0 = make_base_frame(wp_route_type=1, wp_page_index=0, wp_total_pages=2,
+                                wp_waypoints=[(16, 1, 1, 1.0)])
+        e1p0.flags |= DL2_FLAG_WAYPOINT
+        e1p1 = make_base_frame(wp_route_type=1, wp_page_index=1, wp_total_pages=2,
+                                wp_waypoints=[(16, 2, 2, 2.0)])
+        e1p1.flags |= DL2_FLAG_WAYPOINT
+        asm.feed(e1p0)
+        result1 = asm.feed(e1p1)
+        self.assertEqual(result1, [(16, 1, 1, 1.0), (16, 2, 2, 2.0)])
+
+        # 2차 세션: 같은 total_pages(2)로 재조회 — page_index=0부터 다시 옴
+        e2p0 = make_base_frame(wp_route_type=1, wp_page_index=0, wp_total_pages=2,
+                                wp_waypoints=[(16, 9, 9, 9.0)])
+        e2p0.flags |= DL2_FLAG_WAYPOINT
+        result2 = asm.feed(e2p0)
+
+        # 버그였다면: _pages[1]에 1차 세션의 stale (16,2,2,2.0)이 남아있어
+        # len(_pages)>=2가 되며 즉시 "완료" 처리되고, 그 안에 stale 데이터가
+        # 섞인다. 수정 후엔 새 세션으로 리셋돼 아직 page1 미수신 상태(미완료).
+        self.assertIsNone(result2, "stale page와 섞여 조기 완료되면 안 됨")
+        self.assertEqual(asm.progress, "1/2")
+
+        # 2차 세션 page1까지 받으면 새 데이터로만 완성돼야 함
+        e2p1 = make_base_frame(wp_route_type=1, wp_page_index=1, wp_total_pages=2,
+                                wp_waypoints=[(16, 8, 8, 8.0)])
+        e2p1.flags |= DL2_FLAG_WAYPOINT
+        result2b = asm.feed(e2p1)
+        self.assertEqual(result2b, [(16, 9, 9, 9.0), (16, 8, 8, 8.0)])
+
     def test_ignores_non_waypoint_frame(self):
         asm = RouteReadbackAssembler()
         event = make_base_frame()

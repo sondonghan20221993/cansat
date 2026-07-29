@@ -2832,6 +2832,11 @@ void Test_CFS_CORE_APP_ProcessViewpointCommand(void)
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.ViewpointCmd.SourceSequence, 7);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.ViewpointCmd.ViewpointType, 1);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.ViewpointCmd.HoldTimeMs, 2000);
+    /* BL-82(2026-07-28 감사) 회귀: 캐시 저장만 하고 EXEC_RESULT를 발행하지 않아
+     * uplink_app이 영원히 ROUTED에 머물던 dead-end. BL-10(짐벌 미탑재로 범위
+     * 제외)에 따라 실제 실행 대신 명시적 FAILED 회신만 확인한다. */
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ExecResultTlm.SourceSequence, 7);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ExecResultTlm.GenericResult, (int32)EXEC_RESULT_GENERIC_FAILED);
 }
 
 /* uplink_app HK 수신 → UplinkAppState.Received=true, LastHkRxMs 갱신 */
@@ -3245,12 +3250,17 @@ void Test_CFS_CORE_APP_ProcessModeCommand_EnterRecovery(void)
 
     CFS_CORE_APP_Data.CurrentModeState = CFS_CORE_APP_MODE_STATE_NORMAL;
     CFS_CORE_APP_Data.CmdCounter       = 0;
+    Msg.SourceSequence                 = 61;
 
     CFS_CORE_APP_ProcessModeCommand(&Msg);
 
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.CurrentModeState, CFS_CORE_APP_MODE_STATE_RECOVERY);
     UtAssert_INT32_EQ((int)CFS_CORE_APP_Data.LastModeRequestToken, 0x1111);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.CmdCounter, 1);
+    /* BL-81(2026-07-28 감사) 회귀: 전이 성공 시 EXEC_RESULT가 실제로 발행돼야
+     * uplink_app이 ROUTED에서 벗어나 EXECUTED_OK를 받을 수 있음 */
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ExecResultTlm.SourceSequence, 61);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ExecResultTlm.GenericResult, (int32)EXEC_RESULT_GENERIC_OK);
 }
 
 void Test_CFS_CORE_APP_ProcessModeCommand_ExitRecovery(void)
@@ -3263,11 +3273,14 @@ void Test_CFS_CORE_APP_ProcessModeCommand_ExitRecovery(void)
 
     CFS_CORE_APP_Data.CurrentModeState = CFS_CORE_APP_MODE_STATE_RECOVERY;
     CFS_CORE_APP_Data.CmdCounter       = 0;
+    Msg.SourceSequence                 = 62;
 
     CFS_CORE_APP_ProcessModeCommand(&Msg);
 
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.CurrentModeState, CFS_CORE_APP_MODE_STATE_NORMAL);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.CmdCounter, 1);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ExecResultTlm.SourceSequence, 62);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ExecResultTlm.GenericResult, (int32)EXEC_RESULT_GENERIC_OK);
 }
 
 void Test_CFS_CORE_APP_ProcessModeCommand_InvalidTransition(void)
@@ -3280,12 +3293,19 @@ void Test_CFS_CORE_APP_ProcessModeCommand_InvalidTransition(void)
 
     CFS_CORE_APP_Data.CurrentModeState = CFS_CORE_APP_MODE_STATE_NORMAL;
     CFS_CORE_APP_Data.CmdCounter       = 0;
+    CFS_CORE_APP_Data.ErrCounter       = 0;
+    Msg.SourceSequence                 = 63;
 
     CFS_CORE_APP_ProcessModeCommand(&Msg);
 
-    /* 전이 불허 -> 상태 불변 */
+    /* 전이 불허 -> 상태 불변. BL-81 회귀: 거부돼도 EXEC_RESULT는 발행돼야
+     * uplink_app이 ROUTED에 무기한 머물지 않고(FAILED 회신), ErrCounter도
+     * 증가해야 함 */
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.CurrentModeState, CFS_CORE_APP_MODE_STATE_NORMAL);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.CmdCounter, 1);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ErrCounter, 1);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ExecResultTlm.SourceSequence, 63);
+    UtAssert_INT32_EQ(CFS_CORE_APP_Data.ExecResultTlm.GenericResult, (int32)EXEC_RESULT_GENERIC_FAILED);
 }
 
 void Test_CFS_CORE_APP_ProcessModeCommand_UnknownState(void)
@@ -3328,8 +3348,11 @@ void Test_CFS_CORE_APP_ProcessDiagnosticCommand_RouteReadback(void)
 
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.CmdCounter, 1);
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.RouteSnapshotTlm.WaypointCount, 3);
+    /* BL-89(2026-07-28 감사) 회귀: RouteType이 route_op REPLACE(=1)와 겹치던
+     * MISSION_EXTENSION 대신 route_op 어디와도 안 겹치는 NONE(0)이어야 함 —
+     * 그래야 수신측(lora_tdm_app/지상)이 readback을 REPLACE 연산으로 오독 안 함 */
     UtAssert_INT32_EQ(CFS_CORE_APP_Data.RouteSnapshotTlm.RouteType,
-                      (int32)CFS_CORE_APP_ROUTE_SEGMENT_MISSION_EXTENSION);
+                      (int32)CFS_CORE_APP_ROUTE_SEGMENT_NONE);
     UtAssert_True(CFS_CORE_APP_Data.RouteSnapshotTlm.Waypoints[0].LatE7 == 1, "waypoint 0 LatE7 복사됨");
     UtAssert_True(CFS_CORE_APP_Data.RouteSnapshotTlm.Waypoints[2].Z == 3.0f, "waypoint 2 Z 복사됨");
 }

@@ -57,8 +57,14 @@ typedef struct
     uint32 RxCmdCount;
     uint16 RxErrorCount;
     uint16 NoAckCount;
+    bool   AckReceivedThisCycle; /* BL-78: 사이클별 ACK 수신 판정 — 누적 RxAckCount로
+                                  * 판정하면 첫 ACK 이후 영원히 참이 돼 NoAckCount가
+                                  * 다시는 증가하지 않는 문제(2026-07-28 감사)를 막음.
+                                  * RunRxWindow() 진입 시 false로 리셋, ACK/ACK2 수신 시 true. */
     uint16 SeqFailCount;
     uint32 LastAckTimestampMs;
+    uint32 LastSerialOpenAttemptMs; /* BL-87: 재오픈 백오프 — 매 사이클(100ms) 재시도로
+                                     * 인한 EVS ERROR 이벤트 폭주 방지(1초 간격으로 제한) */
     uint8  PendingUplinkFeedback;
     uint8  LinkStateInitialized; /* BL-04: 첫 관측(부팅 직후)은 전이 이벤트 대상 아님 */
 

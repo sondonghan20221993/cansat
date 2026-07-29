@@ -130,6 +130,10 @@ void LORA_TDM_APP_RunRxWindow(void)
     uint32  DeadlineMs;
     uint32  NowMs;
 
+    /* BL-78: 이번 사이클의 ACK 수신 여부를 새로 판정 시작. 누적 RxAckCount로
+     * 판정하면 첫 ACK 이후 영원히 0이 아니게 되어 DEGRADED 감지가 죽는다. */
+    LORA_TDM_APP_Data.AckReceivedThisCycle = false;
+
     DeadlineMs = GetTimeMs() + LORA_TDM_APP_RX_WINDOW_MS;
 
     while (true)
@@ -148,7 +152,14 @@ void LORA_TDM_APP_RunRxWindow(void)
         Rc = read(LORA_TDM_APP_Data.LoRaFd, &C, 1);
         if (Rc == 0)
         {
-            break; /* 이번 폴에 데이터 없음 (정상) */
+            /* BL-79(2026-07-28 감사): OpenSerial()이 VMIN=0/VTIME=0을 설정한 뒤
+             * O_NONBLOCK을 도로 해제해, 이 조합의 read()는 데이터가 없으면
+             * 블로킹 fd에서도 즉시 0을 반환한다(POSIX 표준 동작). 예전엔 여기서
+             * break해 50ms RX 창이 사실상 1회 폴링이 되어, DL2 송신 직후 아직
+             * 도착 안 한 ACK를 다음 사이클까지(~100ms) 놓쳤다. 짧게 쉬고
+             * 데드라인까지 계속 폴링해야 창이 실제로 유지된다. */
+            OS_TaskDelay(1);
+            continue;
         }
         if (Rc < 0)
         {
@@ -217,6 +228,21 @@ void LORA_TDM_APP_RunRxWindow(void)
                 if (LORA_TDM_APP_Data.RxLineBufLen == 2)
                 {
                     uint8 Plen = (uint8)LORA_TDM_APP_Data.RxLineBuf[1];
+
+                    /* BL-86(2026-07-28 감사): plen 상한 미검증 시 잡음으로
+                     * plen>246이 되면 목표길이(7+plen+2)가 저장 상한
+                     * (LINE_BUF_LEN-1=255)을 넘어 영원히 미완성 — 그 사이 도착한
+                     * 정상 프레임들이 이 유령 프레임 본문으로 흡수된 뒤 오버플로
+                     * 리셋된다(최대 255B 소실). 실제 최대 페이로드는
+                     * UPLINK_FWD_CMD_MAX_PAYLOAD_LENGTH(196, shared_msgs/
+                     * uplink_fwd_cmd_msg.h) — 이를 넘으면 즉시 재동기화한다. */
+                    if (Plen > 196U)
+                    {
+                        LORA_TDM_APP_Data.RxLineBufLen = 0;
+                        LORA_TDM_APP_Data.RxFrameMode  = LORA_TDM_RXFRAME_NONE;
+                        break;
+                    }
+
                     LORA_TDM_APP_Data.RxFrameTargetLen = (uint16)(7u + (uint16)Plen + 2u);
                     LORA_TDM_APP_Data.RxFrameMode      = LORA_TDM_RXFRAME_UP2_BODY;
                 }
@@ -238,8 +264,8 @@ void LORA_TDM_APP_RunRxWindow(void)
         }
     }
 
-    /* No ACK received this cycle */
-    if (LORA_TDM_APP_Data.RxAckCount == 0 && LORA_TDM_APP_Data.NoAckCount < 0xFFFF)
+    /* No ACK received this cycle (BL-78: 사이클별 플래그 기준, 누적 카운터 아님) */
+    if (!LORA_TDM_APP_Data.AckReceivedThisCycle && LORA_TDM_APP_Data.NoAckCount < 0xFFFF)
     {
         LORA_TDM_APP_Data.NoAckCount++;
     }
@@ -411,7 +437,16 @@ void LORA_TDM_APP_RunCycle(void)
 
     if (LORA_TDM_APP_Data.LoRaFd < 0)
     {
-        LORA_TDM_APP_Data.LoRaFd = OpenSerial();
+        NowMs = GetTimeMs();
+        /* BL-87(2026-07-28 감사): 매 사이클(100ms) 재오픈 시도가 실패할 때마다
+         * OpenSerial() 내부에서 SERIAL_OPEN_ERR_EID ERROR 이벤트를 냈다
+         * (EVS 필터 미등록이라 억제도 없음) — LoRa 미연결 부팅 시 10Hz로 폭주.
+         * 1초 백오프로 재시도 빈도 자체를 낮춘다. */
+        if ((NowMs - LORA_TDM_APP_Data.LastSerialOpenAttemptMs) >= LORA_TDM_APP_SERIAL_REOPEN_BACKOFF_MS)
+        {
+            LORA_TDM_APP_Data.LastSerialOpenAttemptMs = NowMs;
+            LORA_TDM_APP_Data.LoRaFd                  = OpenSerial();
+        }
     }
 
     LORA_TDM_APP_RunTx();

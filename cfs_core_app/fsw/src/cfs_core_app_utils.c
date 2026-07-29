@@ -811,6 +811,12 @@ void CFS_CORE_APP_ProcessViewpointCommand(const CFS_CORE_APP_ViewpointCmdTlm_t *
                       (unsigned int)Msg->ViewpointType, (unsigned int)Msg->SourceSequence,
                       (double)Msg->X, (double)Msg->Y, (double)Msg->Z,
                       (unsigned int)Msg->HoldTimeMs);
+
+    /* BL-82(2026-07-28 감사): 캐시에 저장만 하고 어디서도 소비하지 않아 uplink_app이
+     * 영원히 ROUTED에 머물던 dead-end. BL-10(2026-07-24)에서 짐벌 미탑재로 VIEWPOINT
+     * 실행 자체가 범위 제외 확정됐으므로, 여기서는 기능 구현 대신 "미구현"임을
+     * 명시적으로 실패 회신한다 — CommandClass=3=UPLINK_APP_CLASS_VIEWPOINT. */
+    CFS_CORE_APP_PublishExecResult(Msg->SourceSequence, 3U, false, (uint8)Msg->ViewpointType);
 }
 
 /* BL-41(2026-07-23): 테스트 환경에서 상태 파일 경로를 주입할 수 있도록
@@ -1149,11 +1155,18 @@ void CFS_CORE_APP_ProcessModeCommand(const CFS_CORE_APP_ModeCmdTlm_t *Msg)
     }
     else
     {
+        CFS_CORE_APP_Data.ErrCounter++;
         CFE_EVS_SendEvent(CFS_CORE_APP_MODE_CMD_EID, CFE_EVS_EventType_ERROR,
                           "CFS_CORE_APP: mode cmd REJECTED seq=%u action=%u state=%u current=%u",
                           (unsigned int)Msg->SourceSequence, (unsigned int)Msg->ModeAction,
                           (unsigned int)Msg->RequestedState, (unsigned int)CFS_CORE_APP_Data.CurrentModeState);
     }
+
+    /* BL-81(2026-07-28 감사): 이전엔 여기서 EXEC_RESULT를 발행하지 않아
+     * uplink_app이 이 명령에 대해 영원히 ROUTED에 머물렀다(EXECUTED_OK/FAILED
+     * 수신 불가) — RECOVERY/CONFIG와 동일하게 결과를 회신한다.
+     * CommandClass=5는 UPLINK_APP_CLASS_MODE(uplink_app_msgdefs.h)와 값 일치. */
+    CFS_CORE_APP_PublishExecResult(Msg->SourceSequence, 5U, TransitionAllowed, (uint8)Msg->RequestedState);
 }
 
 /* waypoint readback(2026-07-23): DIAGNOSTIC_CMD_MID을 lora_tdm_app과
@@ -1185,7 +1198,13 @@ void CFS_CORE_APP_ProcessDiagnosticCommand(const CFS_CORE_APP_DiagnosticCmdTlm_t
     Snapshot->Seq            = CFS_CORE_APP_Data.MissionRoute.UpdateCount;
     Snapshot->TimestampMs    = CFS_CORE_APP_Data.MissionRoute.TimestampMs;
     Snapshot->SourceSequence = Msg->SourceSequence;
-    Snapshot->RouteType      = CFS_CORE_APP_ROUTE_SEGMENT_MISSION_EXTENSION;
+    /* BL-89(2026-07-28 감사): RouteSnapshotTlm_t는 ROUTE_UPDATE_TLM_t(shared_msgs/
+     * route_msg.h)를 재사용한 구조체라 같은 오프셋의 RouteType이 ROUTE_UPDATE
+     * 문맥에서는 route_op(REPLACE=1/ADD=2/DELETE=3/MODIFY=4, BL-61 이후)를
+     * 의미한다. 예전엔 여기서 `MISSION_EXTENSION`(=1)을 넣어 수신측(lora_tdm_app
+     * → 지상)이 이 readback 스냅샷을 "REPLACE 연산"으로 오독할 수 있었다.
+     * route_op 어떤 값과도 안 겹치는 0(NONE, "연산 아님·순수 조회")을 사용한다. */
+    Snapshot->RouteType      = CFS_CORE_APP_ROUTE_SEGMENT_NONE;
     Snapshot->RouteVersion   = CFS_CORE_APP_Data.MissionRoute.RouteVersion;
     Snapshot->WaypointCount  = CFS_CORE_APP_Data.MissionRoute.WaypointCount;
     Snapshot->Reserved       = 0;

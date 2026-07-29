@@ -178,9 +178,9 @@ v1 `UP,<version>,<class>,<seq>,<flags>,<payload_hex>,<crc16>\n`의 바이너리 
 | 0 | magic | u8 | `0xB2` |
 | 1 | plen | u8 | payload 길이 (0 허용 — payload 없는 명령 유효, v1 규칙 승계) |
 | 2 | version | u8 | 프로토콜 버전 = 2 |
-| 3 | command_class | u8 | `UPLINK_APP_CommandClass_t` (1=CONFIG … 6=DIAGNOSTIC) |
+| 3 | command_class | u8 | `UPLINK_APP_CommandClass_t` — 8종: 1=CONFIG, 2=ROUTE_UPDATE, 3=VIEWPOINT, 4=RECOVERY, 5=MODE, 6=DIAGNOSTIC, 7=COUNTER_MGMT(2026-07-22), 8=FLIGHT_MODE(BL-44, 2026-07-24) |
 | 4 | seq | u16 | 업링크 시퀀스 |
-| 6 | flags | u8 | 예약 (0) |
+| 6 | flags | u8 | bit0=FORCE(`UPLINK_APP_FORCE_FLAG`, health gate 우회), bits[2:1]=RETX_IDX(BL-14, 0~3=재전송 슬롯-1, 진단용), bits[5:3]=예약(0), bits[7:6]=auth_level(0~3, §18.11 권한검증에 필수 — `UPLINK_APP_GetClassRequiredLevel()`은 모든 클래스에 최소 1 이상을 요구하므로 이 필드가 0이면 전 명령이 AUTHZ_BLOCK) |
 | 7 | payload | u8 ×plen | 명령 페이로드 (raw) |
 | 7+plen | crc | u16 | CRC-16/CCITT |
 

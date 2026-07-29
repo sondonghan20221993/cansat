@@ -30,6 +30,12 @@ void MAV_BRIDGE_APP_Main(void)
         if (Status == CFE_SUCCESS)
         {
             MAVLINK_BRIDGE_APP_TaskPipe(SBBufPtr);
+            /* BL-84/C-11(2026-07-28 감사): 예전엔 ServiceSerial()이 SB
+             * 타임아웃(Status==CFE_SB_TIME_OUT) 때만 호출돼, 파이프에 명령이
+             * 연속으로 들어오면(HK 요청+ROUTE_UPDATE+CONFIG 버스트 등) 그동안
+             * 시리얼을 전혀 안 읽어 921600 baud에서 tty 버퍼 오버런 위험이
+             * 있었다. 메시지 처리 후에도 매 회전 시리얼을 서비스한다. */
+            MAVLINK_BRIDGE_APP_ServiceSerial();
         }
         else if (Status == CFE_SB_TIME_OUT)
         {

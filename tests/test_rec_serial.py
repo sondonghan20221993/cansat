@@ -36,7 +36,7 @@ def pty_pair():
 
 
 @pytest.mark.cfs_required
-class SerialRecoveryTest:
+class TestSerialRecovery:
 
     # REC-001: LoRa serial open 실패 → cFS 앱 alive 유지 (crash 없음)
     def test_lora_serial_open_failure_no_crash(self):

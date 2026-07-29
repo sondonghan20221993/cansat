@@ -624,8 +624,9 @@ void LORA_TDM_APP_ProcessRxLine(const char *Line, LORA_TDM_APP_Data_t *AppData)
                                   (unsigned long)AppData->LastSentSeq, (unsigned long)SeqEcho);
             }
             AppData->RxAckCount++;
-            AppData->NoAckCount         = 0;
-            AppData->LastAckTimestampMs = UtilsGetTimeMs();
+            AppData->NoAckCount           = 0;
+            AppData->AckReceivedThisCycle = true; /* BL-78 */
+            AppData->LastAckTimestampMs   = UtilsGetTimeMs();
         }
         else
         {
@@ -659,7 +660,7 @@ static void ForwardUp2ToUplinkApp(const LORA_TDM_APP_Up2Decoded_t *Decoded, LORA
     FwdCmd.Version       = Decoded->Version;
     FwdCmd.CommandClass  = Decoded->CommandClass;
     FwdCmd.PayloadLength = Decoded->PayloadLen;
-    FwdCmd.Flags         = 0;
+    FwdCmd.Flags         = Decoded->Flags;
     FwdCmd.Sequence      = Decoded->Seq;
     if (Decoded->PayloadLen > 0)
     {
@@ -672,7 +673,7 @@ static void ForwardUp2ToUplinkApp(const LORA_TDM_APP_Up2Decoded_t *Decoded, LORA
         CrcBuf[0] = Decoded->Version;
         CrcBuf[1] = Decoded->CommandClass;
         CrcBuf[2] = Decoded->PayloadLen;
-        CrcBuf[3] = 0;
+        CrcBuf[3] = Decoded->Flags;
         CrcBuf[4] = (uint8)(Decoded->Seq & 0xFF);
         CrcBuf[5] = (uint8)(Decoded->Seq >> 8);
         if (Decoded->PayloadLen > 0)
@@ -704,7 +705,12 @@ void LORA_TDM_APP_ProcessRxBinaryFrame(const uint8 *Buf, size_t Len, LORA_TDM_AP
     {
         if (LORA_TDM_APP_ParseAck2Frame(Buf, Len, &SeqEcho) == LORA_TDM_ACK_OK)
         {
-            if (SeqEcho != AppData->LastSentSeq)
+            /* BL-80(2026-07-28 감사): DL2 프레임엔 (uint16)DownlinkSeq만 실리고
+             * ACK2 SeqEcho도 16비트 폭이라, 비교 대상 LastSentSeq(uint32 무절단)와
+             * 직접 비교하면 DownlinkSeq가 65536을 넘는 순간(10Hz 기준 약 1시간
+             * 49분) 정상 ACK도 매번 SEQ_FAIL로 오판된다. spec §4의 seq wrap
+             * 허용 규정에 맞춰 양쪽 다 (uint16)로 캐스팅해 비교한다. */
+            if ((uint16)SeqEcho != (uint16)AppData->LastSentSeq)
             {
                 AppData->SeqFailCount++;
                 CFE_EVS_SendEvent(LORA_TDM_APP_SEQ_FAIL_EID, CFE_EVS_EventType_ERROR,
@@ -712,8 +718,9 @@ void LORA_TDM_APP_ProcessRxBinaryFrame(const uint8 *Buf, size_t Len, LORA_TDM_AP
                                   (unsigned long)AppData->LastSentSeq, (unsigned long)SeqEcho);
             }
             AppData->RxAckCount++;
-            AppData->NoAckCount         = 0;
-            AppData->LastAckTimestampMs = UtilsGetTimeMs();
+            AppData->NoAckCount           = 0;
+            AppData->AckReceivedThisCycle = true; /* BL-78 */
+            AppData->LastAckTimestampMs   = UtilsGetTimeMs();
         }
         else
         {
