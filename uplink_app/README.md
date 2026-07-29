@@ -83,7 +83,7 @@ UP,<version>,<command_class>,<sequence>,<flags>,<payload_hex>,<crc16_hex>
 
 ## 미구현
 
-- **viewpoint FC 실행**: `cfs_core_app`이 viewpoint 명령을 캐시하지만, FC에 MAVLink 명령으로 전달하는 로직이 없음
+- **viewpoint FC 실행**: `cfs_core_app`이 viewpoint 명령을 캐시하지만, FC에 MAVLink 명령으로 전달하는 로직이 없음 — 짐벌 미탑재로 범위 제외 확정(BL-10, 2026-07-24). 대신 `EXEC_RESULT_MID`로 uplink_app에 명시적 FAILED 회신(BL-82, 2026-07-29)해 무한 ROUTED 대기는 해소됨
 
 ## Python bridge 대체 현황
 

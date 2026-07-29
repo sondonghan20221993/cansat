@@ -77,8 +77,9 @@ def main() -> int:
     parser.add_argument("--token", type=int, default=1, help="request_token (Level 3 non-zero 필수)")
     args = parser.parse_args()
 
+    waypoint_index = args.waypoint_index if args.mode == "waypoint" else 0
     flags = args.auth << 6
-    fm_payload = build_flight_mode_payload(MODE_NAMES[args.mode], args.waypoint_index, args.token)
+    fm_payload = build_flight_mode_payload(MODE_NAMES[args.mode], waypoint_index, args.token)
     uplink_payload = build_process_uplink_payload(args.sequence, fm_payload, flags)
     packet = build_command_packet(UPLINK_APP_PROCESS_UPLINK_CC, uplink_payload)
 

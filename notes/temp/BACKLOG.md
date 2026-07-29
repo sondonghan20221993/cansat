@@ -35,14 +35,19 @@ CONFIG(3개 앱 전부)+RECOVERY(cfs_core_app) 배선. `BL-05`도 함께 해소.
 ✅BL-03 다운링크에 seq+boot_count 동봉 — 완료(2026-07-22, v2/DL2, v1 제외)
   ├─ ✅BL-12 부트카운터 — 완료(2026-07-22)
   ├─ ✅BL-13 모듈러 seq 비교 — 완료(2026-07-22)
-  └─ BL-14 재전송 인덱스(선택, 미착수 — RF 마진 진단용, 정확성에 필수 아님)
+  └─ ✅BL-14 재전송 인덱스 — 완료(2026-07-22, 상세표 참조)
 ✅BL-09 cfs_core_app RECOVERY 명령 실제 연결 (+BL-25) — 부분 완료(2026-07-21)
 ✅BL-26/27/28  매직넘버 C↔Python 교차검증 테스트 — 완료(2026-07-21, openMCT)
 ```
 
-**2026-07-22 기준**: 위 목록의 "바로 진행 가능" 항목 **전부 완료** (BL-14 제외,
-명시적으로 선택사항). "고민 필요"(BL-17/19)도 전부 완료. 남은 것은
-"추후 결정 필요"(BL-10/15) 뿐 — 전부 사용자 결정 또는 하드웨어(Pi) 필요.
+**2026-07-29 정정**: 아래 "2026-07-22 기준" 문단은 그 시점 기준이라 BL-14를
+"제외"로 잘못 표기하고 있었음(실제로는 같은 날 BL-14도 완료) — 위 목록에서
+바로잡음. BL-10도 이후(2026-07-24) "짐벌 미탑재로 범위 제외 확정"으로
+종결됐음 — 상세표(§ 아래 표) BL-10 항목 참조, 더는 "미정"이 아님.
+
+**2026-07-22 기준**: 위 목록의 "바로 진행 가능" 항목 **전부 완료**. "고민
+필요"(BL-17/19)도 전부 완료. 남은 것은 "추후 결정 필요"(BL-15, Pi 실측 필요)
+뿐.
 
 ### 🤔 고민 필요 (별도 기록, 결정 전까지 보류)
 
@@ -65,7 +70,7 @@ CONFIG(3개 앱 전부)+RECOVERY(cfs_core_app) 배선. `BL-05`도 함께 해소.
 ✅BL-05 BL-08과 함께 해소(2026-07-22)
 ✅BL-02 RunTx UFB 리셋 유지 확정 — 완료(2026-07-22)
 ✅BL-11 UFB 라디오 바이트 코드표 확정 — 완료(2026-07-22)
-BL-10   VIEWPOINT 캐시 — "활용처 있음"만 정함, 뭘 할지는 미정
+✅BL-10 VIEWPOINT 캐시 — 제외 확정(2026-07-24, 짐벌 미탑재) + EXEC_RESULT FAILED 회신(BL-82, 2026-07-29)
 BL-15   5Hz 상향 — "필요하다"만 정함, 실측 전엔 상한 미정(Pi 필요)
 ```
 
@@ -134,7 +139,7 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 | ~~**BL-100**~~ | ✅ **완료(2026-07-29, 같은 파일 작업 중 함께 정정)**. UP2 command_class 행을 "(1=CONFIG…6=DIAGNOSTIC)"에서 8종 전체 나열(1=CONFIG…7=COUNTER_MGMT/2026-07-22, 8=FLIGHT_MODE/BL-44)로 교체 — 같은 파일 §5 "8종별로 펼친 시각화" 서술과 이제 일치 | 동 H-8 |
 | **BL-101** | 🔴 **ARMED 시 미션 업로드 차단 — 폐지됐는데 README 잔존(안전 오판 소지)**. 코드 정답은 차단 없음(`mavlink_bridge_app_utils.c:2510`, `IsArmed` 세팅만, BL-56). `mavlink_bridge_app/README.md:49`가 "ARMED면 차단+ARMED_WARN_EID(12)"로 기재 — 2-pass 보정(호버 중 REPLACE)이 이 차단과 충돌해 폐지된 것이므로 README를 믿으면 **운용 안전 판단 오류** | 동 H-9 |
 | **BL-102** | ⚪ **Medium 문서 불일치 10건 일괄**. ① RestartApp 앱 이름 대소문자(`cfs_core_app_behavior_spec.md:515,533,577` 소문자 — BL-40이 고친 버그가 spec에 잔존) ② state 경로 앞슬래시(`cfs_core_app/README.md:36`, ENOENT로 실패했던 경로) ③ stale timeout 3초/실제1초(`mavlink_bridge_app/README.md:28`) ④ UFB 코드 12종/실제15종(`lora_tdm_app/README.md:28,47`) ⑤ mavlink_bridge fcncode 목록 누락(`README.md:6,58`, SET_FLIGHT_MODE=5 안 보임) ⑥ uplink HK MID 오기(`README.md:37`, `0x18D1`은 SEND_HK 명령 MID) ⑦ baud 57600/실제921600(`integration_steps.md:426,436`, **재통합 절차서라 따라하면 검증 단계 오판**) ⑧ lora_tdm baud 하드코딩 서술 오류(`uplink_lora_test_status.md:21`, BL-19로 이미 해소) ⑨ route 세그먼트 거리검증 문서 잔존(`uplink_app/README.md:29`, BL-56 폐지) ⑩ FC 펌웨어 ArduPilot 잔존(`fc_telemetry_rate_1_2hz_duplicate_completed.md:17` vs 같은 파일 :37,:44 PX4 — 자기모순, `camera/README.md`의 `ardupilot_msp_osd.param` 파일명도 확인 필요) | 동 M-1~M-10 |
-| **BL-103** | ⚪ **문서 위생 Low 7건 일괄**. ① `_completed` 접미사인데 미체크 항목 잔존 20개 파일(대부분 코드는 이미 구현됨, `runtime_test_session_2026-07-22_completed.md`만 실기 잔여로 실제 미완 가능성) — `_designed`/`_implemented` 분리 권장 ② `lora_downlink_5hz_cap_2026-07-21_completed.md` 결론이 BL-15로 뒤집혔는데 "BL-15로 대체됨" 배너 없음 ③ UP2 payload 255B는 구현 불가(`lora_tdm_app.c:220`, 버퍼 상한 255B, 심볼 `LORA_TDM_APP_RX_MAX_FRAME` 자체가 코드에 없음 — spec을 196B 기준으로 정정 또는 버퍼 264B로 확대) ④ `spec_code_audit.md`(2026-06-16)가 v1 스냅샷인데 다른 노트가 근거로 링크 중 — "현행값 아님" 배너 필요 ⑤ `BACKLOG.md` 요약 절(2026-07-21시점)과 상세표가 BL-11/14/15에서 충돌 ⑥ `README.md` 기능표에 FLIGHT_MODE/COUNTER_MGMT/waypoint readback/route op 4종/권한검증 누락, 반대로 `uplink_app/README.md:75`는 viewpoint를 "미구현"으로 오기(BL-10 "범위 제외"가 정확) | 동 L-1~L-7 |
+| **BL-103** | ⚪ **문서 위생 Low 7건 일괄**. ① `_completed` 접미사인데 미체크 항목 잔존 20개 파일(대부분 코드는 이미 구현됨, `runtime_test_session_2026-07-22_completed.md`만 실기 잔여로 실제 미완 가능성) — `_designed`/`_implemented` 분리 권장 ② `lora_downlink_5hz_cap_2026-07-21_completed.md` 결론이 BL-15로 뒤집혔는데 "BL-15로 대체됨" 배너 없음 ③ UP2 payload 255B는 구현 불가(`lora_tdm_app.c:220`, 버퍼 상한 255B, 심볼 `LORA_TDM_APP_RX_MAX_FRAME` 자체가 코드에 없음 — spec을 196B 기준으로 정정 또는 버퍼 264B로 확대) ④ `spec_code_audit.md`(2026-06-16)가 v1 스냅샷인데 다른 노트가 근거로 링크 중 — "현행값 아님" 배너 필요 ⑤ ✅ **해소(2026-07-29)**: `BACKLOG.md` 요약 절과 상세표의 BL-10/14/15 충돌 정정 완료(§요약 절 참조) ⑥ ✅ **해소(2026-07-29)**: `uplink_app/README.md`의 viewpoint "미구현" 오기를 BL-10(범위 제외 확정)+BL-82(EXEC_RESULT FAILED 회신) 반영으로 정정. `README.md` 기능표 4종 누락은 여전히 미해결 | 동 L-1~L-7 |
 
 ---
 
@@ -154,7 +159,7 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 
 | ID | 내용 | 근거 |
 |---|---|---|
-| ~~**BL-12**~~ | ✅ **완료(2026-07-22)**. 기체측 영속화(`uplink_app` 8비트 `BootCount`, `/cf/uplink_app_state.bin`) + BL-03에서 DL2 동봉/지상 `_BootCountTracker` anomaly 감지까지 완결 | T5 |
+| ~~**BL-12**~~ | ✅ **완료(2026-07-22)**. 기체측 영속화(`uplink_app` 8비트 `BootCount`, `/cf/uplink_app_state.bin`) + BL-03에서 DL2 동봉/지상 `_BootCountTracker` anomaly 감지까지 완결. **T5의 업링크 방향(UP2에 boot_count 태그, 재생공격 차단)은 2026-07-29 종결(미착수 확정)** — BL-46(2026-07-24)과 동일하게 근거리 적대적 RF 공격자를 위협모델에서 제외하기로 해 실익 없음, 프레임 크기/파서 재작업 비용 대비 불필요 판정 | T5 |
 | ~~**BL-13**~~ | ✅ **완료(2026-07-22)**. `UPLINK_APP_CheckSequence()`를 모듈러 윈도우(`diff=(uint16)(seq-last); diff<0x8000`)로 변경 — 65535 wrap 해소. 회귀 UT 99/99(cmds) PASS | T6 / 문제3 |
 | ~~**BL-14**~~ | ✅ **완료(2026-07-22)**. `Flags` `bits[2:1]=RETX_IDX`(0~3=슬롯-1, 0=최초 전송이라 구 프레임 하위호환) 확정 — spec §18.4.3.1 Flags 표에 기록(이때 bit[0] FORCE_FLAG 미반영 stale도 함께 정정). 기체(`uplink_app`): 수락/중복 EVS 이벤트에 `retx=` 표기만(검증 미사용, HK/DL2 변경 없음). 지상(openMCT `fc_serial_ws_server.py`): 큐를 프레임 문자열→구성요소 저장으로 바꿔 슬롯마다 flags+CRC 재조립. 회귀: uplink_app_cmds 110/110, openMCT pytest 56/56(신규 RetxIndexFlushTest 포함) | T9 | 완료 |
 | ~~**BL-15**~~ | ✅ **최종 확정(2026-07-27) — 100ms(10Hz) 유지 승인**. 실측(2026-07-22) Stage 4a(150ms)·4b(100ms) 둘 다 PASS(100ms 손실 0.00%, 9.97pkt/s), 마진(사이클=RX윈도우×2 구조, 100ms 사이클에 RX 50ms) 실측상 문제 없음 확인됨 — `mission_cfg.h`에 커밋된 현재 배포값(100ms/RX 50/임계 50) 그대로 확정, 200ms 원복 안 함. CONFIG 파라미터화는 운용 요구 생기면 추후 진행(죽은 설정 방지 원칙 유지) | 이관됨(2026-07-23), 사용자 확정(2026-07-27) |
@@ -174,6 +179,7 @@ BL-15(5Hz 실측), BL-22, BL-31~37
 | ~~**BL-22**~~ | ✅ **유지 결론(2026-07-22 실측 근거)** — FC가 `/dev/serial0`(PL011 ttyAMA0) **921600** 보레이트 사용 중, PL011 고속 보레이트는 UART 클럭 48MHz 상향이 필요한 구성이라 "기각된 가설의 잔재"가 아니라 현 FC 링크 의존 설정일 가능성 높음. 제거 이득 없음+회귀 위험 → 유지 | `selfaudit` B-1 / 실측 |
 | **BL-104** | mavlink_bridge Low 7건 일괄 — ① `if (Byte > MAVLINK_MAX_PAYLOAD_LEN)`에서 `Byte`는 uint8/상수 255U라 항상 거짓인 죽은 검사(`_utils.c:1902`, 실오버플로는 없음) ② `PublishFcMissionReadback()`이 매 게시마다 `CFE_MSG_Init()` 호출해 TLM 시퀀스가 리셋됨(:734, Init은 1회만) ③ `Count` 초과분 `Waypoints[]` 미소거로 이전 잔여값 전송(:741-744) ④ `ProcessSerialReconnectCmd`가 `OpenSerial()` 반환값을 버리고 실패해도 성공 톤 이벤트 발행(:1129-1137) ⑤ `ReconnectIntervalMs` 최상위 필드가 죽은 필드, 실제는 `ActiveConfig.` 쪽만 사용(`.h:26`) ⑥ REPLACE로 waypoint 수가 줄면 `ActiveResumeIndex`가 범위 밖이라 FC가 seq 0부터 재개(:427, 추정) | `full_audit_2026-07-28` §2 C-23~28 |
 | **BL-105** | lora_tdm/cfs_core/uplink Low 8건 일괄 — ① v1 모드 waypoint readback이 영구 pending, v2 전환 시 stale route 재송출(`lora_tdm_app.c:280-291`) ② `sscanf("%[^,]")` 폭 미지정, `LINE_BUF_LEN` 상향 시 스택 오버플로 위험(`_utils.c:502`) ③ ms 타임스탬프 uint32 롤오버(≈49.7일) 시 `Elapsed=0`으로 링크 끊김 누락, 모듈러 뺄셈 필요(`_utils.c:414-421`) ④ `UpdateStateCache()`가 거부한 메시지의 finite 검사 부작용이 유효 캐시에 적용됨(`cfs_core_app_utils.c:228-246`) ⑤ `route_msg.h:29` `SourceSequence`만 uint32(타 5개 메시지는 uint16, wire 감사 함정) ⑥ cfs_core 파이프 깊이 16에 고레이트 스트림 4종+전 명령 채널 집중, 명령 메시지 조용한 drop 가능(`default_cfs_core_app_internal_cfg_values.h:4`, mavlink_bridge는 32) ⑦ 지상 디코더가 SYSTIME 길이 부족 시 조용히 `sys_time=None` 처리, `DecodeError`가 맞음(`lora_downlink_decoder.py:125`) ⑧ `encode_dl2`가 waypoint 3개 이상이면 초과분을 조용히 버림(:192, 테스트/시뮬 전용) | 동 C-29~31,33,34~37 |
+| ~~**BL-106**~~ | ✅ **완료(2026-07-29)**. `full_audit_2026-07-29.md` 2순위 경미 코드 문제 2건 수정. ① `tools/uplink_flight_mode_sender.py` — docstring상 "HOVER/LAND는 waypoint-index 0 고정" 규약이 코드에 강제 안 돼 있어 임의 인덱스로 실행 가능했던 것을, `main()`에서 `mode != "waypoint"`면 `waypoint_index`를 무조건 0으로 강제하도록 수정. ② `camera/correlate_video_telemetry.py:95-96` — 콘솔 출력용 `datetime.fromtimestamp(start_ms/1000)`에 `tz=timezone.utc` 미지정으로 로컬시간대 표기돼 UTC로 오인될 여지가 있던 것을 `tz=timezone.utc` 명시로 수정 | `full_audit_2026-07-29` 2순위 |
 
 ---
 

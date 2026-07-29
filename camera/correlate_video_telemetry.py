@@ -92,8 +92,8 @@ def correlate(video_path: Path, csv_path: Path, out_path: Path) -> int:
     duration_s = video_duration_sec(video_path)
     end_ms = start_ms + int(duration_s * 1000)
 
-    start_dt = datetime.fromtimestamp(start_ms / 1000)
-    end_dt = datetime.fromtimestamp(end_ms / 1000)
+    start_dt = datetime.fromtimestamp(start_ms / 1000, tz=timezone.utc)
+    end_dt = datetime.fromtimestamp(end_ms / 1000, tz=timezone.utc)
     print(f"영상: {video_path.name}")
     print(f"시작 시각 소스: {source}")
     print(f"구간: {start_dt.isoformat()} ~ {end_dt.isoformat()} ({duration_s:.1f}초)")
