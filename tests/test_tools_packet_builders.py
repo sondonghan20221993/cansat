@@ -1,8 +1,10 @@
 """
-tools/query_fc_mission.py, tools/telemetry_app_e2e_sender.py 단위 테스트
+tools/query_fc_mission.py, tools/mavlink_bridge_cmd_test.py,
+tools/telemetry_app_e2e_sender.py 단위 테스트
 
 검증 항목:
  - build_cfs_command: CFS 커맨드 패킷 구조 및 XOR 체크섬
+ - mavlink_bridge_cmd_test.build_cfs_command: payload 포함 커맨드 패킷 구조
  - ccsds_primary: CCSDS 주 헤더 빌드
  - send_monitor / send_hk 패킷 구조
 """
@@ -12,6 +14,7 @@ import unittest
 from unittest.mock import patch, call
 
 from tools.query_fc_mission import build_cfs_command, MAVLINK_BRIDGE_CMD_MID, MISSION_QUERY_CC
+from tools.mavlink_bridge_cmd_test import build_cfs_command as build_cfs_command_with_payload
 from legacy.tools.telemetry_app_e2e_sender import ccsds_primary, MONITOR_MID, SEND_HK_MID
 
 
@@ -50,6 +53,36 @@ class BuildCfsCommandTest(unittest.TestCase):
         for b in pkt:
             xor ^= b
         self.assertEqual(xor, 0xFF)
+
+
+class BuildCfsCommandWithPayloadTest(unittest.TestCase):
+    """tools/mavlink_bridge_cmd_test.py -- payload가 있는 커맨드(SET_FLIGHT_MODE
+    등)도 no-payload 케이스와 동일한 체크섬/헤더 규칙을 지키는지 확인."""
+
+    def setUp(self):
+        self._payload = bytes([0x12, 0x34, 0x00, 0x01])
+        self._pkt = build_cfs_command_with_payload(0x18A0, 5, self._payload)
+
+    def test_total_length(self):
+        self.assertEqual(len(self._pkt), 8 + len(self._payload))
+
+    def test_data_length_field(self):
+        data_len = struct.unpack_from('>H', self._pkt, 4)[0]
+        self.assertEqual(data_len, 2 + len(self._payload) - 1)
+
+    def test_payload_preserved(self):
+        self.assertEqual(self._pkt[8:], self._payload)
+
+    def test_checksum_valid(self):
+        xor = 0
+        for b in self._pkt:
+            xor ^= b
+        self.assertEqual(xor, 0xFF)
+
+    def test_no_payload_matches_query_fc_mission_builder(self):
+        # payload 없이 호출하면 query_fc_mission.build_cfs_command와 동일 결과여야 함
+        pkt = build_cfs_command_with_payload(MAVLINK_BRIDGE_CMD_MID, MISSION_QUERY_CC)
+        self.assertEqual(pkt, build_cfs_command(MAVLINK_BRIDGE_CMD_MID, MISSION_QUERY_CC))
 
 
 class CcsdsPrimaryTest(unittest.TestCase):
