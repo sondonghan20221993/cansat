@@ -55,4 +55,5 @@ RunCam WiFiLink V2 (기체측, 영상)
 
 - LR24-F 투명 모드에서 2.4KB/s 대역폭이 QGC 기본 스트림 레이트(자세/위치 등 5Hz 유지 시)를
   감당하는지 실측 필요 — `docs/payload-spec.md`의 메시지별 레이트 참조.
-- LR24-F가 RADIO_STATUS(RSSI 등) MAVLink 라디오 상태 메시지를 자체 주입하는지 확인 필요.
+- LR24-F가 RADIO_STATUS(RSSI 등) MAVLink 라디오 상태 메시지를 자체 주입하는지 확인 필요
+  (공식 스펙 페이지에 명시 없음, 상세는 `docs/payload-spec.md` "사용 모듈" 참조).

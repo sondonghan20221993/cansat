@@ -8,6 +8,13 @@ QGC가 수신할 MAVLink 메시지 구성과, 구 DL2 커스텀 프레임과의 
 **MicoAir LR24-F** (2.4GHz LoRa FHSS, UART 57600, 투명 전송/plug-and-play PX4 호환).
 전송률 4단계 조절 가능: **2.4K(기본)/4K/8K/20K Byte/s**.
 
+- 공식 스펙(micoair.com): 사거리 10km 이상(15km 표기), 출력 27dBm(500mW), USB CP2102 채택
+  QGroundControl(Android 포함) 호환 명시.
+- **RATE 설정 방법**: `MicoAssistant` 전용 소프트웨어에서 `RATE` 파라미터 수정 후 WRITE로 저장
+  (4KB/s 상향 시 이 절차 사용).
+- **RSSI/링크 상태 노출 여부는 공식 페이지에 명시 없음** — `RADIO_STATUS` MAVLink 메시지를
+  자체 주입하는지 실측 확인 필요(아래 "확인 필요" 참조).
+
 ## 대역폭 전제
 
 기본값 2.4KB/s 기준 — 구 DL2 기본 프레임(50B, SysTime 포함 58B)을
@@ -97,6 +104,8 @@ LR24-F를 4KB/s로 설정하면 마진이 이전 DL2 실측(76%)에 근접한 63
 ## 확인 필요
 
 - LR24-F 투명 모드 통과 시 MAVLink 메시지 프레이밍(0xFD 등)이 그대로 유지되는지 실측.
+- LR24-F가 RSSI/링크 상태를 MAVLink `RADIO_STATUS`로 자체 주입하는지 — 공식 스펙 페이지에
+  명시 없어 실측/`MicoAssistant` 설정으로 확인 필요.
 - 위 계산치는 이론값 — 실제 LR24-F 프로토콜 오버헤드(FHSS 호핑, 자체 헤더 등) 포함 시
   유효 처리량이 명목 2.4KB/s보다 낮을 수 있어 실측 필수.
 - 10Hz 상향분(자세/위치/GPS) 실기체 soak 테스트로 패킷 손실률 확인.
