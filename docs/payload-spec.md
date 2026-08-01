@@ -33,19 +33,40 @@ LR24-F air rate 2.4KB/s, UART 57600 — 구 DL2 기본 프레임(50B, SysTime �
 | `STATUSTEXT` | PX4 경고/에러 텍스트 | 이벤트 발생 시 | `cfs_core_app` health 판정 공백을 부분적으로 대체 |
 | `EKF_STATUS_REPORT` | EKF 신뢰도 | 1Hz | mavlink_bridge_app이 원래 수신하던 항목, DL2엔 미포함이었음 |
 
-## 레이트 배분안 (초안)
+## 대역폭 예산 (계산치, 실측 전)
 
-| 항목 | 레이트 |
-| --- | --- |
-| ATTITUDE, LOCAL_POSITION_NED, GPS_RAW_INT | 5Hz (구 DL2와 동일 유지) |
-| BATTERY_STATUS, VFR_HUD, RC_CHANNELS, EKF_STATUS_REPORT | 1~2Hz |
-| SYSTEM_TIME | 1Hz |
-| STATUSTEXT | 이벤트 기반 (레이트 설정 대상 아님) |
+MAVLink v2 프레임 오버헤드 12B(STX/LEN/INCOMPAT/COMPAT/SEQ/SYSID/COMPID/MSGID×3/CRC×2,
+서명 없음) + 메시지별 payload. LR24-F 예산 2.4KB/s = 2400B/s.
 
-실측 후 2.4KB/s 초과 시 저빈도 항목부터 레이트 하향.
+| 메시지 | payload(B) | 프레임 크기(B) | 레이트 | 대역폭(B/s) |
+| --- | --- | --- | --- | --- |
+| `HEARTBEAT` | 9 | 21 | 1Hz | 21 |
+| `ATTITUDE` | 28 | 40 | 5Hz | 200 |
+| `LOCAL_POSITION_NED` | 28 | 40 | 5Hz | 200 |
+| `GPS_RAW_INT` | 30 | 42 | 5Hz | 210 |
+| `SYSTEM_TIME` | 12 | 24 | 1Hz | 24 |
+| `BATTERY_STATUS` | 36 | 48 | 1Hz | 48 |
+| `VFR_HUD` | 20 | 32 | 2Hz | 64 |
+| `RC_CHANNELS` | 42 | 54 | 1Hz | 54 |
+| `EKF_STATUS_REPORT` | 26 | 38 | 1Hz | 38 |
+| `STATUSTEXT` | ~54 | ~66 | 이벤트성, 예산 제외 | - |
+| **합계(기준안)** | | | | **≈ 859 B/s** (2400 B/s의 36%, 여유 ≈ 1541 B/s) |
+
+## 레이트 배분안
+
+| 항목 | 레이트 | 근거 |
+| --- | --- | --- |
+| ATTITUDE, LOCAL_POSITION_NED, GPS_RAW_INT | **10Hz로 상향** | 기준안(5Hz) 기준 859B/s로 여유 1541B/s 확보 — 세 메시지 5→10Hz 증분 +610B/s해도 합계 ≈ 1469B/s(2400의 61%), 마진 충분 |
+| BATTERY_STATUS, VFR_HUD, RC_CHANNELS, EKF_STATUS_REPORT | 1~2Hz 유지 | 안전/보조 정보, 고빈도 불필요 |
+| SYSTEM_TIME, HEARTBEAT | 1Hz 유지 | |
+| STATUSTEXT | 이벤트 기반 | |
+
+10Hz 상향 후 합계 ≈ **1469 B/s (2400 B/s의 61%)**, 마진 ≈ 931 B/s(39%).
+실측 전 계산치이므로 필드테스트에서 실제 패킷 손실률/지연 확인 후 조정.
 
 ## 확인 필요
 
 - LR24-F 투명 모드 통과 시 MAVLink 메시지 프레이밍(0xFD 등)이 그대로 유지되는지 실측.
-- 5Hz 자세/위치 + 1~2Hz 보조 메시지 합산 에어타임이 2.4KB/s 내에 들어오는지 실측
-  (구 DL2 50~58B@5Hz ≈ 250~290B/s 대비 MAVLink 표준 메시지는 페이로드가 더 큼).
+- 위 계산치는 이론값 — 실제 LR24-F 프로토콜 오버헤드(FHSS 호핑, 자체 헤더 등) 포함 시
+  유효 처리량이 명목 2.4KB/s보다 낮을 수 있어 실측 필수.
+- 10Hz 상향분(자세/위치/GPS) 실기체 soak 테스트로 패킷 손실률 확인.
