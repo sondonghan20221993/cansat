@@ -13,23 +13,32 @@ Raspberry Pi를 컴패니언 컴퓨터로 사용할 수 없게 됨에 따라 cFS
 FC (PX4)
     ↕ UART (MAVLink, 투명 전송)
 LR24-F (기체측, 2.4GHz LoRa FHSS, 2.4KB/s, UART 57600)
-    ↕ 무선
-LR24-F (지상측)
-    ↕ UART/USB 시리얼
-QGroundControl (지상 PC)
+    ↕ 무선(LoRa)
+LR24-F (지상측) ─ UART/USB 시리얼 ─▶ 지상 PC
+                                        ├─ QGroundControl     (MAVLink 직결, 조종/미션)
+                                        └─ Open MCT (선택)     (MAVLink 브리지 → WebSocket, 커스텀 시각화)
+
+RunCam WiFiLink V2 (기체측, 영상)
+    ↕ 무선(WiFi, 독립 링크)
+지상 PC
+    └─ fpv4win                          (FPV 영상 뷰어, 위 텔레메트리 경로와 무관)
 ```
 
 - FC가 뿌리는 MAVLink 스트림을 LR24-F가 **투명 전송(transparent UART)** 모드로
   무선 중계 — 커스텀 프레이밍/프로토콜 계층 불필요.
 - QGC가 지상측 LR24-F를 시리얼 포트로 잡아 표준 MAVLink 연결로 인식.
 - 미션 업로드/다운로드, 텔레메트리 표시, RC/배터리 모니터링 전부 QGC 내장 기능으로 처리.
+- Open MCT 병행 시 QGC와 시리얼 포트를 동시에 못 열므로 `mavlink-router`/`mavproxy` 등으로
+  포트를 앞단에서 나눠 QGC·openMCT 브리지 각각 별도 UDP 엔드포인트로 공급해야 함.
+- FPV 영상(RunCam WiFiLink V2 + `fpv4win`)은 LoRa/MAVLink 경로와 별개의 WiFi 링크 —
+  통합 작업 불필요, 지상 PC에서 병행 실행만 하면 됨.
 
 ## 폐기되는 구성요소
 
 | 구성요소 | 사유 |
 | --- | --- |
 | `cfs-telemetry-app` (4개 cFS 앱 전체) | 컴패니언 컴퓨터(Pi) 전제, Pi 사용 불가로 무의미 |
-| `openMCT` 레포 (`fc_serial_ws_server.py`, `lora_protocol_v2.py`) | DL2/UP2/ACK2 커스텀 프레임 파싱 목적, QGC가 표준 MAVLink로 대체 |
+| `openMCT` 레포의 기존 코드 (`fc_serial_ws_server.py`, `lora_protocol_v2.py`) | DL2/UP2/ACK2 커스텀 프레임 파싱 목적, 더 이상 불필요 — Open MCT를 커스텀 시각화용으로 병행할 경우 표준 MAVLink 디코딩 브리지로 재작성 필요 (아래 "신규 아키텍처" 참조) |
 | DL2 다운링크 커스텀 프로토콜 | MAVLink 표준 메시지로 대체 (`docs/payload-spec.md` 참조) |
 | TDM 슬롯 타이밍(CYCLE/RX WINDOW) | 양방향 스트림인 MAVLink에는 불필요 |
 
