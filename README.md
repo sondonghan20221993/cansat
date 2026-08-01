@@ -1,52 +1,42 @@
 # 시스템 명세 문서
 
-이 저장소는 전체 시스템에 대한 명세 문서 프레임워크를 포함한다.
+이 저장소는 전체 시스템에 대한 명세 문서를 포함한다.
 
-문서 흐름은 다음과 같다.
-
-`전체 목표 -> 아키텍처 -> 인터페이스 -> 모듈 상세 -> 검증`
+**2026-08-02**: Raspberry Pi 컴패니언 컴퓨터를 쓸 수 없게 되어 cFS 기반
+아키텍처(구 01/03/04/07/08번 문서, `cfs-telemetry-app`/`openMCT` 레포)를
+폐기하고 QGroundControl 기반으로 전환했다. 상세는
+[`docs/02-system-architecture.md`](docs/02-system-architecture.md) 참조.
 
 ## 저장소 구조
 
 ```text
 docs/
-  01-system-requirements.md
-  02-system-architecture.md
-  03-interface-specification.md
-  04-repository-map.md
+  02-system-architecture.md   QGC 기반 아키텍처
+  payload-spec.md             MAVLink 페이로드 구성
   modules/
     05-reconstruction-requirements.md
     06-pose-frame-alignment-requirements.md
-    07-cfs-integration-requirements.md
-  verification/
-    08-verification-plan.md
+  module-ownership-guide.md
 ```
 
 ## 문서 읽기 순서
 
-1. [시스템 요구사항](docs/01-system-requirements.md)
-2. [시스템 아키텍처](docs/02-system-architecture.md)
-3. [인터페이스 명세](docs/03-interface-specification.md)
-4. [리포 대응표 — 논리 모듈 ↔ 구현 리포](docs/04-repository-map.md)
-5. [복원 모듈 요구사항](docs/modules/05-reconstruction-requirements.md)
-6. [Pose / Frame 정렬 요구사항](docs/modules/06-pose-frame-alignment-requirements.md)
-7. [cFS 연동 요구사항](docs/modules/07-cfs-integration-requirements.md)
-8. [검증 계획](docs/verification/08-verification-plan.md)
-9. [모듈 담당 가이드](docs/module-ownership-guide.md)
+1. [시스템 아키텍처](docs/02-system-architecture.md)
+2. [페이로드 명세](docs/payload-spec.md)
+3. [복원 모듈 요구사항](docs/modules/05-reconstruction-requirements.md)
+4. [Pose / Frame 정렬 요구사항](docs/modules/06-pose-frame-alignment-requirements.md)
+5. [모듈 담당 가이드](docs/module-ownership-guide.md)
 
 ## 역할 분리 기반 개발 구조
 
-이 저장소는 3D mapping, pose alignment, cFS integration 기능을 병렬로 개발한 뒤, 공통 아키텍처 문서와 인터페이스 문서를 통해 통합할 수 있도록 구성되어 있다.
+이 저장소는 3D mapping, pose alignment 기능을 병렬로 개발한 뒤, 공통 아키텍처 문서를 통해 통합할 수 있도록 구성되어 있다.
 
 ### 문서별 담당 범위
 
-- `docs/01-system-requirements.md`: 시스템 수준 목표, 공통 규칙, 전역 제약조건
 - `docs/02-system-architecture.md`: 모듈 구성, 책임, end-to-end 흐름
-- `docs/03-interface-specification.md`: 모듈 간 공유되는 계약
+- `docs/payload-spec.md`: FC↔지상 MAVLink 페이로드 구성, 레이트
 - `docs/modules/05-reconstruction-requirements.md`: 3D reconstruction 모듈 요구사항
 - `docs/modules/06-pose-frame-alignment-requirements.md`: frame 및 calibration 로직
-- `docs/modules/07-cfs-integration-requirements.md`: cFS app 동작, SB, timer, config, event
-- `docs/verification/08-verification-plan.md`: 모듈별 및 통합 검증 전략
 
 ### 개발 원칙
 
