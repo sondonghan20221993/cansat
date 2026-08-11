@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest tests/test_lora_uplink_bridge.py -v)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(cd \"\\\\\\\\wsl.localhost\\\\Ubuntu\\\\home\\\\sdh2983\\\\cfs-telemetry-app\")",
+      "Bash(.venv/bin/python *)",
+      "PowerShell(cd C:\\\\Users\\\\sdh97\\\\Documents\\\\GitHub\\\\cfs-telemetry-app; $python = Resolve-Path \".venv\\\\Scripts\\\\python.exe\"; & $python -m pytest tests/ -v)",
+      "Bash(wsl *)",
+      "Edit(notes/**)",
+      "Bash(find \"\\\\\\\\wsl.localhost\\\\Ubuntu\\\\home\\\\sdh2983\\\\cfs-telemetry-app\" -name \"*.py\")",
+      "Bash(ls *)",
+      "Read(///wsl.localhost/Ubuntu/home/**)",
+      "Bash(rsync -a --delete cfs-telemetry-app/mavlink_bridge_app/fsw/ cFS_clean/apps/mavlink_bridge_app/fsw/)",
+      "Bash(rsync -a --delete cfs-telemetry-app/mavlink_bridge_app/config/ cFS_clean/apps/mavlink_bridge_app/config/)",
+      "Bash(git *)",
+      "Read(//home/sdh2983/.claude/**)",
+      "Read(//home/sdh2983/**)",
+      "Bash(apt-cache search *)",
+      "Bash(find \"\\\\\\\\wsl.localhost\\\\Ubuntu\\\\home\\\\sdh2983\\\\cfs-telemetry-app\" -name \"*mavlink_bridge_app.c\" -o -name \"*lora_fc_downlink_app.c\" -o -name \"*cfs_core_app.c\" -o -name \"*uplink_app.c\")",
+      "Bash(xargs grep -l \"ServicePrototype\")",
+      "Read(//c/Users/sdh97/Documents/GitHub/cansat_2/**)",
+      "Bash(dir \"C:\\\\Users\\\\sdh97\\\\Documents\\\\GitHub\\\\cansat_2\")",
+      "Bash(dir \"\\\\\\\\wsl.localhost\\\\Ubuntu\\\\home\\\\sdh2983\\\\cfs-telemetry-app\")",
+      "Bash(dir \"C:\\\\Users\\\\sdh97\\\\Desktop\\\\캔위성\\\\mct\\\\my_openmct_app\")",
+      "Bash(dir C:\\\\Users\\\\sdh97\\\\Desktop\\\\캔위성\\\\mct\\\\my_openmct_app\\\\src *)",
+      "Bash(dir C:\\\\Users\\\\sdh97\\\\Desktop\\\\캔위성\\\\mct\\\\my_openmct_app\\\\src\\\\plugins *)",
+      "Bash(dir C:\\\\Users\\\\sdh97\\\\Desktop\\\\캔위성\\\\mct\\\\my_openmct_app\\\\src\\\\plugins\\\\cfsRealtime *)"
+    ]
+  }
+}

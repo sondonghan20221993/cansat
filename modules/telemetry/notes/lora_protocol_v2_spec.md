@@ -1,0 +1,323 @@
+# LoRa 링크 프로토콜 v2 명세 (바이너리) — 초안
+
+작성: 2026-07-13. 상태: **구현·배포됨 (2026-07)** — `lora_tdm_app`에 DL2(`BuildDl2Frame`, SysTime 확장 블록 포함)/UP2(`ParseUp2Frame`)/ACK2(`ParseAck2Frame`) 구현, CONFIG `PARAM_DOWNLINK_PROTOCOL`(0=v1/1=v2)로 런타임 전환. Stage 3 타이밍(CYCLE 200ms) 적용 완료. (구 상태: 설계 확정 전 초안)
+
+## 1. 목적
+
+현행 텍스트(CSV/hex) 프로토콜을 바이너리로 교체하여:
+
+1. 다운링크 실효 갱신율 0.77Hz → **5Hz** (TDM 주기 1000ms → 200ms)
+2. FC/SH 패킷의 last-wins 슬롯 경합 제거 (**통합 프레임**)
+3. 업링크 긴급 명령(RECOVERY 등) 최악 대기 1.3s → 0.2s
+4. 향후 필드 추가 여유 확보 (SysTime UTC 등 — `mavlink_bridge_app_behavior_spec.md` §16)
+
+하드웨어 전제: MicoAir **LR24-F** (2.4GHz LoRa FHSS, air rate 기본 2.4KByte/s, UART 57600, 투명 전송).
+에어타임 근거: v2 통합 프레임 46B ≈ 19ms, v1 FC 텍스트 ~130B ≈ 54ms @2.4KB/s.
+
+## 2. 범위
+
+- 다운링크 통합 프레임(DL2), 업링크 명령 프레임(UP2), ACK 프레임(ACK2)의 wire format
+- TDM 타이밍 v2 및 링크 상태 임계값 재조정
+- v1 텍스트 프로토콜과의 공존/이행 절차
+
+다루지 않음: SB MID 계약(불변), uplink_app 내부 검증, LR24-F 모듈 설정 자체.
+
+## 3. 공통 규칙
+
+| 항목 | 값 |
+| --- | --- |
+| 바이트 오더 | Little-endian (기존 MAVLink 파싱 관례와 동일) |
+| CRC | 기존 `LORA_TDM_APP_Crc16()` (CRC-16/CCITT, poly 0x1021) 재사용. 대상 = magic부터 payload 끝까지 (CRC 자신 제외) |
+| 프레임 구분 | 첫 바이트 magic. v1 텍스트('F','S','A','U' = ASCII)와 겹치지 않는 값 사용 → 수신기가 v1/v2 즉시 판별 |
+| 재동기화 | magic 스캔. len 필드로 프레임 경계 확정, CRC 실패 시 해당 바이트부터 재스캔 |
+| 종단 문자 | 없음 (v1의 `\n` 종단 폐지 — 바이너리 페이로드에 0x0A 등장 가능) |
+
+magic 할당: DL2=`0xD2`, UP2=`0xB2`, ACK2=`0xA2`.
+
+## 4. DL2 — 다운링크 통합 프레임 (기체 → 지상)
+
+> 📡 **인터랙티브 바이트 맵**: [`lora_frame_map.html`](lora_frame_map.html) — DL2/UP2/ACK2/v1 프레임의 바이트 레이아웃을 필드 그룹 색상으로 시각화(호버 시 offset·형식·의미 판독, SysTime·waypoint 확장 토글). 이 §4~§6 표를 그대로 렌더한 것 (BL-47, 2026-07-24).
+
+FC 상태 + 시스템 헬스를 **하나의 프레임**으로 매 TDM 주기 전송. v1의 `PacketType` last-wins 스케줄링은 폐지한다.
+
+| offset | 필드 | 형식 | 단위/의미 |
+| --- | --- | --- | --- |
+| 0 | magic | u8 | `0xD2` |
+| 1 | len | u8 | magic부터 CRC 직전까지 길이 (확장 블록 포함) |
+| 2 | seq | u16 | DownlinkSeq (성공마다 +1, wrap 허용) |
+| 4 | flags | u8 | bit0=SysTime 블록 첨부, bit1=위치 saturate 발생, bit2=waypoint readback 페이지 첨부(2026-07-23, §4.3), bit3~7 예약(0) |
+| 5 | ufb | u8 | UplinkFeedback — 0x00 OK / 0x01 CRC_FAIL / 0x02 SEQ_FAIL / 0x03 STATE_BLOCKED(health gate 차단, 2026-07-21) / 0x04 FAILED / 0x05 REJECT_VERSION / 0x06 REJECT_CLASS / 0x07 REJECT_LENGTH / 0x08 ROUTE_MISS / 0x09 REJECT_ROUTE / 0x0A REJECT_CHECKSUM / 0x0B REJECT_VIEWPOINT / 0x0C REJECT_COUNTER(BL-CTR, 2026-07-22) / 0x0D REJECT_FLIGHT_MODE(BL-44, 2026-07-24) / 0x0E UFB_APPLIED(라우팅 성공 명시 확인, BL-55, 2026-07-25 — `LastCommandResult==ROUTED`) (0x04~0x0B는 BL-11, 2026-07-22 추가 — 상세: `lora_tdm_app_behavior_spec.md` §9.2) |
+| 6 | ts | u32 | FC 상태 캐시 TimestampMs (FC boot ms) |
+| 10 | roll, pitch, yaw | i16 ×3 | rad ×10⁴ (±3.2767 rad → ±π 커버) |
+| 16 | x, y, z | i16 ×3 | cm (±327.67m, §4.1 saturation) |
+| 22 | vx, vy, vz | i16 ×3 | cm/s (±327.67m/s) |
+| 28 | lat, lon | i32 ×2 | deg ×10⁷ (v1과 동일) |
+| 36 | alt_mm | i32 | mm |
+| 40 | fix | u8 | GPS fix type |
+| 41 | sats | u8 | SatellitesVisible (2026-07-13 추가 — v1과 동일하게 fix 옆에 배치) |
+| 42 | health | u8 | SystemHealthState |
+| 43 | fault | u8 | FaultCode |
+| 44 | linkstate | u8 | LoRa LinkState |
+| 45 | uplink_last_seq | u16 | 기체가 마지막 수락한 uplink seq (BL-03, 2026-07-22) — 지상 재시작 시 이 값+1부터 재개(자가복구) |
+| 47 | uplink_boot_count | u8 | 기체 부팅 카운터, uint8 wrap (BL-12/BL-03) — 재부팅 감지, 감소 시 지상은 자동거부 대신 "운영자 확인 필요" 플래그만 |
+| 48 | crc | u16 | CRC-16/CCITT |
+
+기본 길이 **50B** (에어타임 ~21ms @2.4KB/s). SysTime 확장 포함 시 58B.
+uplink_last_seq/uplink_boot_count는 SysTime 블록(있으면) 뒤, CRC 앞에 항상 붙는다
+("기존 끝에 추가" 결정, 2026-07-22) — SysTime 유무와 무관하게 CRC 직전 3바이트.
+
+### 4.1 위치 saturation 정책
+
+로컬 x/y/z가 ±327.67m를 초과하면 ±32767로 clamp하고 `flags` bit1을 세운다.
+운용 반경이 상시 327m를 초과하는 미션이 확정되면 x/y를 i32로 승격하는 v2.1을 정의한다 (len 필드로 하위 호환).
+
+### 4.2 SysTime 확장 블록 (선택)
+
+`flags` bit0 = 1이면 offset 45(=sats 추가로 44→45로 밀림)에 8바이트 블록을 삽입하고
+`uplink_last_seq`/`uplink_boot_count`/CRC가 그만큼 뒤로 밀린다(offset 53/55/56):
+
+| 필드 | 형식 | 의미 |
+| --- | --- | --- |
+| sys_time_unix_usec | u64 | FC SYSTEM_TIME 기반 GPS UNIX epoch (µs). `mavlink_bridge` §16.2의 `LastSysTimeUnixUsec` |
+
+**구현 완료 (2026-07-14)** — `notes/temp/gps_time_sync_164_implementation.md`.
+당초 "1Hz(5주기마다 1회) 첨부"로 설계했으나, 실제로는 **캐시에 유효값이 있으면
+매 다운링크 사이클(5Hz)마다 첨부**하도록 단순화 — 8바이트 추가 에어타임이
+100ms RX창 대비 무시 가능한 수준(~1.4ms @57600baud)이라 주기 제한의 실익이
+없고, 매 사이클 최신 캐시값을 실어 보내는 게 구현이 더 단순하고 지연도 낮음.
+유효 시각 미확보(`TimeValid == 0`, mavlink_bridge의 `LastSysTimeUnixUsec == 0`과
+동일 조건) 시 미첨부(47B), 버퍼 부족 시에도 미첨부 폴백.
+전제였던 `FC_SYS_TIME_MID(0x1909)` SB 발행(§16.3)은 이미 구현 완료 상태였고,
+lora_tdm이 구독하는 부분만 남아있었음 — 이번에 구독 추가로 완결.
+
+### 4.3 waypoint readback 확장 블록 (선택, 2026-07-23 신설)
+
+**배경**: 지상에서 mission route를 업로드(`ROUTE_UPDATE` class)할 수는 있었으나
+기체에 실제로 뭐가 올라가 있는지 회수(readback)할 방법이 없었음(설계 결정
+2026-07-23, `notes/temp/runtime_test_session_2026-07-22.md` "waypoint조회는
+왜 없지" 참조). mission route 상한 16개×12바이트(X/Y/Z float)=192바이트로
+현재 air rate(2.4KB/s)에서 <1초 — 별도 대역폭 상향 불요, 여러 사이클에
+나눠 보내는 페이징만으로 충분. **상한 37개로 확장 확정(2026-07-28)**: 37개×12바이트=444바이트,
+페이지당 2개 고정이라 19페이지×100ms≈1.9초 — 여전히 대역폭 압박 없음(상세: `mission_app_runtime_spec.md`).
+
+**트리거**: 기존 `DIAGNOSTIC` 클래스(class=6) 재사용, 신규 MID 없음.
+`DIAGNOSTIC_CMD_TLM_t.DiagTarget`으로 대상 앱 구분(기존엔 미사용 필드,
+lora_tdm_app 단독 구독이라 불필요했으나 cfs_core_app도 구독 대상에
+추가되며 처음 도입):
+
+| DiagTarget | 대상 |
+| --- | --- |
+| 0 (기본값, 하위호환) | `lora_tdm_app` (기존 LINK_STATUS/RX_STATS/TX_STATS) |
+| 1 | `cfs_core_app` (신규) |
+
+`cfs_core_app`의 `DiagAction`(자체 네임스페이스, `CFS_CORE_APP_DiagAction_t`):
+`ROUTE_READBACK_REQUEST = 3`(기존 LOG_LEVEL/LINK_STATUS/CAPTURE_TOGGLE는
+미구현 예약값). 페이로드는 route 종류 지정용 1바이트(현재 mission만
+지원, 값 무시하고 항상 mission 처리 — landing은 향후 확장).
+
+**데이터 흐름**: `cfs_core_app`이 요청 수신 → `MissionRoute` 캐시를
+`ROUTE_SNAPSHOT_MID`(신규, 0x1913, `ROUTE_UPDATE_TLM_t`와 동일 레이아웃
+재사용)로 `lora_tdm_app`에 SB 발행(SB 내부 전송이라 크기 제약 없음,
+192바이트 그대로 1메시지) → `lora_tdm_app`이 로컬 캐시에 저장하고
+페이지 상태(`PageIndex=0`, `TotalPages=ceil(WaypointCount/2)`) 진입 →
+이후 `BuildDl2Frame()` 매 사이클마다 완료 전까지 확장 블록 첨부.
+
+**DL2 확장 블록** (`flags` bit2 = "waypoint 페이지 첨부", 기존 bit0
+SysTime/bit1 saturation과 독립적으로 동시 첨부 가능 — 위치는 **꼬리
+필드(`uplink_last_seq`/`uplink_boot_count`) 뒤, CRC 직전 고정**.
+BL-03에서 확립한 "새 필드는 항상 끝에 추가"(tail 오프셋 불변) 원칙을
+따름 — 최초 설계 시 SysTime과 tail 사이로 잘못 기술했던 것을 구현 중
+정정, 2026-07-23):
+
+| 필드 | 형식 | 의미 |
+| --- | --- | --- |
+| route_type | u8 | `CFS_CORE_APP_ROUTE_SEGMENT_*` (현재 MISSION_EXTENSION=1 고정) |
+| page_index | u8 | 0-base 현재 페이지 |
+| total_pages | u8 | 전체 페이지 수 |
+| waypoints_in_page | u8 | 이 페이지에 실제 담긴 waypoint 수(1 또는 2 — 마지막 페이지 홀수 개수 대응) |
+| waypoint[0] | u8+i32+i32+float | **CmdType+LatE7+LonE7+Z (13바이트, 2026-07-28 확장)** |
+| waypoint[1] | u8+i32+i32+float | CmdType+LatE7+LonE7+Z (13바이트, `waypoints_in_page==1`이면 0으로 패딩) |
+
+**CmdType 추가 확정(2026-07-28, BL-71)**: 기존엔 좌표(LatE7/LonE7/Z)만 담아 지상이 "이 지점이
+실제로 WAYPOINT인지 LOITER(호버류)인지"를 readback으로 구분할 방법이 없었음(사용자가 지도에서
+시작/호버/랜딩 구분을 요구하며 발견) — waypoint당 **CmdType(u8, MAVLink MAV_CMD 값, 업로드
+포맷과 동일하게 첫 필드로 추가)** 1바이트씩 추가. 블록 크기 28→30바이트, 프레임 전체
+86→88바이트(SysTime 포함 시), 에어타임 35.8→36.7ms — TX 슬롯(50ms) 대비 13.3ms 여유 유지,
+대역폭 압박 없음 확인(37개×19페이지 readback 총 시간도 페이지 수 불변이라 그대로 ~1.9초).
+Param1~4는 여전히 생략(readback 시 0.0 기본값 복원) — CmdType만으로 지상 GUI가 WAYPOINT(16)/
+LOITER_UNLIM(17)/LOITER_TIME(19) 등을 구분해 지도에 표시할 수 있어 충분.
+
+**BL-61(2026-07-25) 재설계**: waypoint 좌표가 최초 설계의 로컬
+X/Y/Z(float×3)에서 **절대좌표 LatE7(i32)+LonE7(i32)+Z(float)**로
+변경됨(BL-56에서 route 업로드 자체가 항상 절대좌표만 쓰는 것으로
+확정되며 readback도 대칭 적용). `CmdType`/`Param1~4`는 페이지에
+싣지 않고 지상 재구성 시 기본값(`CmdType=16`/`MAV_CMD_NAV_WAYPOINT`,
+`Param1~4=0.0`)으로 복원 — waypoint 1개 크기는 12바이트로 기존과
+동일해 페이지당 2개/28바이트 구조는 불변. 기체 인코더는
+`lora_tdm_app_utils.c`, 지상 디코더는 `bridge/lora_downlink_decoder.py`
+(및 openMCT `lora_protocol_v2.py`)의 `decode_dl2`/`encode_dl2`
+waypoint 블록 처리 참조.
+
+총 28바이트/사이클. `page_index`가 `total_pages-1`에 도달하는 사이클을
+마지막으로 자동 종료(기체 쪽 `ReadbackPending=false`). 지상은
+`page_index`로 순서 재조립, `total_pages`로 완료 판정(누락 페이지는
+다음 판정 갱신까지 불완전 상태 유지 — 재시도는 지상이 DIAGNOSTIC 요청
+재전송으로 처리, 별도 재전송 프로토콜 없음 — 단순화).
+
+**미완(후속 검토)**: landing route 지원, 페이지 유실 시 지상 쪽
+불완전 상태 UI 표시, ground 측 GUI 패널(현재는 로그/디코더 레벨만).
+
+## 5. UP2 — 업링크 명령 프레임 (지상 → 기체)
+
+> 📦 **payload 내부 바이트 맵**: [`uplink_payload_map.html`](uplink_payload_map.html) — 아래 `payload` 구간을 command_class 8종별로 펼친 시각화(CONFIG/ROUTE_UPDATE/VIEWPOINT/RECOVERY/MODE/DIAGNOSTIC/COUNTER_MGMT/FLIGHT_MODE + 라우팅 목적지·거부코드 표). 근거는 `uplink_app_utils.c` 파서 구현 (2026-07-28).
+
+v1 `UP,<version>,<class>,<seq>,<flags>,<payload_hex>,<crc16>\n`의 바이너리 대체. hex 인코딩 폐지로 payload가 원본 크기 그대로 실린다 (v1 대비 payload 구간 50% 절감).
+
+| offset | 필드 | 형식 | 의미 |
+| --- | --- | --- | --- |
+| 0 | magic | u8 | `0xB2` |
+| 1 | plen | u8 | payload 길이 (0 허용 — payload 없는 명령 유효, v1 규칙 승계) |
+| 2 | version | u8 | 프로토콜 버전 = 2 |
+| 3 | command_class | u8 | `UPLINK_APP_CommandClass_t` — 8종: 1=CONFIG, 2=ROUTE_UPDATE, 3=VIEWPOINT, 4=RECOVERY, 5=MODE, 6=DIAGNOSTIC, 7=COUNTER_MGMT(2026-07-22), 8=FLIGHT_MODE(BL-44, 2026-07-24) |
+| 4 | seq | u16 | 업링크 시퀀스 |
+| 6 | flags | u8 | bit0=FORCE(`UPLINK_APP_FORCE_FLAG`, health gate 우회), bits[2:1]=RETX_IDX(BL-14, 0~3=재전송 슬롯-1, 진단용), bits[5:3]=예약(0), bits[7:6]=auth_level(0~3, §18.11 권한검증에 필수 — `UPLINK_APP_GetClassRequiredLevel()`은 모든 클래스에 최소 1 이상을 요구하므로 이 필드가 0이면 전 명령이 AUTHZ_BLOCK) |
+| 7 | payload | u8 ×plen | 명령 페이로드 (raw) |
+| 7+plen | crc | u16 | CRC-16/CCITT |
+
+수신 처리는 v1과 동일하게 CRC 검증 → `UPLINK_APP_CMD_MID`로 SB 전달. CRC 실패 → `PendingUplinkFeedback = CRC_FAIL`.
+
+## 6. ACK2 — 지상 ACK 프레임 (지상 → 기체)
+
+| offset | 필드 | 형식 |
+| --- | --- | --- |
+| 0 | magic | u8 = `0xA2` |
+| 1 | seq_echo | u16 (마지막 수신 DL2 seq) |
+| 3 | crc | u16 |
+
+5B. v1 `ACK,<seq>\n` 대비 기능 동일 + CRC 보호 추가. seq_echo 검증(SEQ_FAIL 판정)은 기존 §18.11.1 갭 그대로 — 본 spec 범위 외.
+
+## 7. TDM 타이밍 v2
+
+> **[2026-07-29 정정]** 아래 표는 이 spec 최초 작성 시점의 설계값(5Hz)이다.
+> 실제로는 BL-15 Stage 4b(2026-07-22, 5분 soak 실측)에서 **10Hz**
+> (`CYCLE_PERIOD_MS=100`/`RX_WINDOW_MS=50`)로 최종 채택되었고, 코드(현재값)가
+> 이 정정을 반영한다. `LINK_LOSS_THRESHOLD`도 BL-88(2026-07-28 감사)에서
+> 100ms 주기 기준 3s로 재조정되어 `30`이다(5Hz 설계 당시 `15`는 200ms 주기
+> 기준값이라 100ms 주기에 그대로 쓰면 1.5s로 과민해짐).
+
+| 파라미터 | v1 | v2 설계값(최초) | **v2 실채택값(BL-15 Stage 4b)** | 근거 |
+| --- | --- | --- | --- | --- |
+| `CYCLE_PERIOD_MS` | 1000 | 200 | **100** | DL2 19ms + RX창 + 마진, 10Hz 5분 soak 통과 |
+| `RX_WINDOW_MS` | 300 | 100 | **50** | UP2 최대(payload 255B → 262B ≈ 110ms)는 초과 — §7.1 |
+| 실효 다운링크 | ~0.77Hz | 5Hz | **10Hz** | |
+| `LINK_TIMEOUT_MS` | 5000 | 5000 (유지) | 5000 (유지) | 절대시간 기준이라 불변 |
+| `LINK_LOSS_THRESHOLD` (NoAck 연속) | 3 (≈3.9s) | 15 (≈3s, 200ms 주기 기준) | **30** (≈3s, 100ms 주기 기준 — BL-88) | 주기 단축 보정 |
+
+### 7.1 대형 업링크(ROUTE_UPDATE) 분할 수신
+
+RX창 100ms에 들어가는 UP2 최대 크기는 ~240B(에어타임 100ms). payload 255B 프레임은 창을 초과할 수 있으므로, RX 파서는 **줄 단위가 아니라 바이트 스트림 상태머신**으로 구현하여 프레임이 여러 RX창에 걸쳐 수신되는 것을 허용한다 (수신 중간 상태를 주기 간 유지). 이것이 v1 `\n` 줄버퍼 방식과의 가장 큰 구현 차이다.
+
+> **[2026-07-29 정정]** 실채택 `RX_WINDOW_MS`는 50ms(§7 표)라 위 "~240B/100ms"
+> 산정은 설계 당시 값 기준이며 실제 여유는 그보다 작다 — 다만 창을 넘는
+> 프레임을 다중 RX창에 걸쳐 받는 바이트 스트림 상태머신 설계 자체는
+> 창 크기와 무관하게 유효하므로 이 절의 결론(줄버퍼 방식 대신 상태머신
+> 채택)은 그대로 적용된다.
+
+### 7.2 지상국 타이밍
+
+지상국(bridge)은 DL2 수신 직후 RX창이 열려 있는 동안 ACK2/UP2를 송신해야 한다. DL2 수신 완료 시점부터 ~100ms 이내 응답 요구 — 지상 브리지의 처리 지연 예산에 명시.
+
+## 8. v1 공존 및 이행 절차
+
+수신 파서(기체 RX / 지상 bridge 공통)는 첫 바이트로 분기한다:
+
+| 첫 바이트 | 처리 |
+| --- | --- |
+| `0xD2` / `0xB2` / `0xA2` | v2 바이너리 상태머신 |
+| ASCII (`A`,`U`,`F`,`S` 등) | v1 텍스트 파서 (기존 경로 유지) |
+
+이행 순서 (링크 양단 동시 교체 불가 전제):
+
+1. **지상 bridge에 v2 수신 지원 추가** (v1 송신 유지) — 배포
+2. 기체 lora_tdm에 v2 송신(DL2) + v2 수신(UP2/ACK2) 추가, **송신 포맷은 CONFIG 파라미터로 v1/v2 선택** (기본 v1)
+3. ✅ **완료(BL-45, 2026-07-24)**: 컴파일타임 기본값을 v2로 변경 —
+   `LORA_TDM_APP_Init()`에서 memset(=v1) 직후 `UseV2Downlink=1U` 명시 세팅,
+   LoadState가 저장값 있으면 그 위에 덮어씀. 첫 부팅/상태파일 부재 시 v2로 송신.
+   BL-41(2026-07-23) 영속화로 전환값은 재부팅 후에도 유지(runtime spec §12.2).
+4. 안정화 후 v1 송신 경로 제거 (수신 파서의 v1 분기는 진단용으로 존치)
+
+## 9. 검증 요구사항
+
+| 항목 | 방법 | 상태 |
+| --- | --- | --- |
+| DL2 인코딩/디코딩 왕복 | 기체 인코더 ↔ 지상 디코더 단위테스트 (saturation, SysTime 블록 유/무 포함) | ✅ 구현 |
+| UP2 다중 RX창 분할 수신 | 프레임을 임의 지점에서 쪼개 주입하는 UT | ✅ 구현(`RunRxWindow_Up2FrameSpansAcrossWindows`, BL-79) |
+| CRC/재동기화 | 프레임 중간 바이트 손상 주입 → 재스캔으로 후속 프레임 정상 수신 | 🔶 부분(§11.2 참조 — plen 상한만, 완전 재스캔 미착수) |
+| v1/v2 공존 | 혼합 스트림 주입 UT | ✅ 구현(magic 첫바이트 분기) |
+| 실링크 5Hz 유지율 | Pi + LR24-F 실물, 1시간 soak — TxCount/RxAckCount 비율, NoAckCount 추이 | 미실시(실물 하드웨어 필요) |
+| 타이밍 | RX창 내 ACK 왕복 실측 (지상 bridge 응답 지연 포함) | 미실시(실물 하드웨어 필요) |
+
+## 10. 미결정/후속 항목
+
+- x/y i32 승격(v2.1) 트리거가 되는 운용 반경 기준 — 미션 요구 확정 대기
+- FC 스트림 상향(ATTITUDE 10Hz) 시 `CYCLE_PERIOD_MS` 100ms 재검토 — 본 spec 범위 외
+- LR24-F 모듈 설정(air rate/채널/패킷화 지연)의 공식 문서화 — `notes/test_environment.md`에 추가 필요
+- 2.4GHz 대역 간섭: WFB-ng 영상 링크는 5.8GHz 채널 사용 필수 (LR24-F와 대역 분리) — 시스템 통합 노트에 명시 필요
+- ~~참조 구현 미동기화 (2026-07-13)~~ — **해소 (2026-07-13)**: `bridge/lora_downlink_decoder.py`
+  `DL2_BASE_LEN` 44→45, `decode_dl2`/`encode_dl2`에 sats(offset 41) 반영 완료.
+  기체측 C `LORA_TDM_APP_BuildDl2Frame()`(`lora_tdm_app_utils.c`, §4 §11.1/§11.2 게이트와
+  함께 구현)과 오프셋 동일 확인. 남은 것: UP2 인코더/ACK2 파서는 아직 지상 Python에 없음
+  (지상은 UP2 송신/ACK2 수신 쪽), CONFIG로 v1/v2 런타임 전환, 실기체 5Hz 검증.
+- ~~`decode_dl2()` SYSTIME 플래그·길이 불일치 크래시~~ — **해소 (2026-07-14)**:
+  `flags & DL2_FLAG_SYSTIME`은 켜져 있는데 `body_len`이 SysTime 블록 없는 길이인
+  프레임(CRC는 통과)이 들어오면 `struct.unpack_from`이 `struct.error`를 던져 지상
+  다운링크 디코더 프로세스 자체가 죽던 버그. 길이 재검증(`len(frame) >=
+  DL2_BASE_LEN + DL2_SYSTIME_BLOCK_LEN + 2`) 후에만 SysTime 필드를 읽도록 수정 —
+  조건 불충족 시 크래시 대신 `sys_time_unix_usec=None`으로 안전 처리. 회귀테스트:
+  `test_lora_downlink_decoder.py::StreamingTest::
+  test_systime_flag_set_but_block_missing_returns_none_not_crash`.
+  (근거: `notes/temp/dl2_systime_flag_length_crash.md`, 커밋 `c1ec450`)
+
+## 11. 기체 C 수신 구현 세부 (Stage 3 착수 게이트) — **구현 완료**(2026-07-29, BL-78/79/86)
+
+`lora_stage_measurement_runbook.md` Stage 3의 3개 선행 게이트. 아래 §11.1~11.3 모두 `lora_tdm_app.c`/`lora_tdm_app_utils.c`에 구현되어 단위테스트로 감사됨. 단, §11.2가 요구한 "CRC 실패/오버플로 시 폐기된 스트림에서 magic 재스캔"까지는 미착수 — 현재는 plen 상한 검증(BL-86)으로 가장 심각한 증상(정상 프레임 흡수)만 차단한 상태이며, 완전한 바이트 단위 재스캔은 별도 설계가 필요한 더 큰 변경으로 남아있다.
+
+### 11.1 `RunRxWindow` 버퍼 static/전역화 — ✅ 구현 완료
+
+**당시 결함(해소됨)**: `lora_tdm_app.c:106` `RunRxWindow()`가 `char Buf[LINE_BUF_LEN]`를 호출마다 스택에 재선언 → RX창(현 300ms) 경계를 넘어가는 프레임의 중간 수신 상태가 유실. v2는 payload 255B 프레임이 RX창(100ms)을 초과할 수 있으므로(§7.1) **주기 간 수신 상태 유지가 필수**다.
+
+**구현**: 버퍼(`RxLineBuf`/`RxLineBufLen`)와 파서 상태(`RxFrameMode`/`RxFrameTargetLen`)가 `LORA_TDM_APP_Data`(앱 데이터)로 승격되어 `RunRxWindow()` 호출 경계를 넘어 유지됨(`lora_tdm_app.c:117-264`). 여러 RX창에 걸친 UP2 수신 회귀테스트(`RunRxWindow_Up2FrameSpansAcrossWindows`) 존재.
+
+**설계 대비 실제 구현 차이**: 아래는 최초 설계 당시 구상한 구조체 스케치이며, 실제 구현은 이와 다른 더 단순한 필드 구성(`RxLineBuf`/`RxLineBufLen`/`RxFrameMode`/`RxFrameTargetLen`, `lora_tdm_app.h:100-106`)을 사용한다. 상태 값도 `WAIT_MAGIC/GOT_MAGIC/...` 대신 `LORA_TDM_RXFRAME_NONE/TEXT/ACK2/UP2_HDR/UP2_BODY`(`lora_tdm_app.c:118-122`) 체계다. 아래 코드 블록은 설계 시점 스케치로 참고용으로만 남긴다.
+
+```c
+typedef struct
+{
+    uint8  State;                     /* WAIT_MAGIC / GOT_MAGIC / GOT_LEN / READING_BODY / GOT_CRC1 */
+    uint8  Magic;                     /* 0xD2/0xB2/0xA2 — v1 분기는 별도(§8) */
+    uint16 BodyLen;                   /* magic·len 확정 후 남은 본문 길이 */
+    uint16 BodyIndex;                 /* 지금까지 채운 본문 바이트 수 */
+    uint16 Crc;                       /* 누적 CRC (본문 소비하며 갱신) */
+    uint8  Body[LORA_TDM_APP_RX_MAX_FRAME];  /* 정적 최대 프레임 버퍼 */
+} LORA_TDM_APP_RxParser_t;
+```
+
+### 11.2 길이 기반 상태머신 (magic-collision 금지) — 🔶 부분 구현(BL-86)
+
+mavlink STX 결함(`mavlink_bridge_app_behavior_spec.md` §17)의 재답습을 막는다는 목표. **magic 바이트는 `LORA_TDM_RXFRAME_NONE` 상태에서만 프레임 시작으로 인식**하고, 본문 소비 중(`UP2_BODY`/`ACK2`)에는 magic 값과 무관하게 위치 기반으로 목표 길이(`RxFrameTargetLen`)까지 채운다 — 이 부분은 구현됨(`lora_tdm_app.c:196-264`).
+
+- 프레임 경계는 길이 필드(plen)로 확정(§3 재동기화 규칙과 동일) — 구현됨.
+- plen 상한(196B, `UPLINK_FWD_CMD_MAX_PAYLOAD_LENGTH`) 초과 시 즉시 재동기화 — **구현됨(BL-86, 2026-07-29)**: 잡음으로 plen이 커져 유령 프레임이 정상 프레임을 흡수하는 가장 심각한 증상을 차단.
+- **미착수**: CRC 불일치/버퍼 오버플로 시 "폐기된 바이트 스트림에서 다음 magic부터 재스캔"하는 완전한 바이트 단위 재동기화(`bridge/lora_downlink_decoder.py`의 `DownlinkStream`과 동일 규칙 적용)는 아직 구현되지 않음 — 현재는 오버플로 시 버퍼를 통째로 리셋할 뿐 중간 지점 재스캔은 하지 않는다(`lora_tdm_app.c:188-194`). 별도 설계가 필요한 더 큰 변경(BL-86 완료 노트 참조).
+- v1 공존: 첫 바이트가 ASCII면 기존 `\n` 줄버퍼 경로로 분기(§8) — 구현됨.
+
+### 11.3 CRC16 C ↔ Python 교차검증 UT — ✅ 구현 완료
+
+`LORA_TDM_APP_Crc16`(`coveragetest_lora_tdm_app_utils.c`)와 Python(`bridge/test_crc16_cross_validation.py`) 양쪽에 CRC-16/CCITT-FALSE `"123456789"` → `0x29B1` 표준 벡터 assert 존재.
+
+**당시 요구사항(해소됨)**:
+- 표준 벡터 고정: CRC-16/CCITT-FALSE `"123456789"` → `0x29B1`을 C UT와 Python 테스트 양쪽에 assert.
+- 추가 공유 벡터(빈 입력, 1바이트, 실제 DL2/UP2 본문 샘플 몇 개)를 `tests/`에 공용 픽스처로 두고 C·Python이 동일 기대값을 검증.
+- `bridge/`의 CRC 구현 3중복은 이 기회에 단일 모듈로 통합 검토(§10 참조 구현 정리와 함께).
+
+> 세 게이트 중 §11.1/§11.3은 완전 구현, §11.2는 plen 상한 검증까지만 구현되고 완전한 CRC/오버플로 재스캔은 미착수(BL-86). §9 검증 요구사항(왕복·분할 수신·재동기·공존)은 §11.2 완전 재스캔 구현 후 마저 진행.

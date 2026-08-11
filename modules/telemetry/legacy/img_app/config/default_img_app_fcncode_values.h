@@ -1,0 +1,7 @@
+#ifndef DEFAULT_IMG_APP_FCNCODE_VALUES_H
+#define DEFAULT_IMG_APP_FCNCODE_VALUES_H
+
+#define IMG_APP_NOOP_CC           0
+#define IMG_APP_RESET_COUNTERS_CC 1
+
+#endif

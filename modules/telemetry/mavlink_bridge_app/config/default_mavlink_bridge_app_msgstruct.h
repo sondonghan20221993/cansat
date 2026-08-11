@@ -1,0 +1,88 @@
+#ifndef DEFAULT_MAVLINK_BRIDGE_APP_MSGSTRUCT_H
+#define DEFAULT_MAVLINK_BRIDGE_APP_MSGSTRUCT_H
+
+#include "cfe_msg_hdr.h"
+#include "common_types.h"
+#include "mavlink_bridge_app_msgdefs.h"
+#include "bridge_hk_msg.h"
+#include "fc_state_msg.h"
+#include "route_msg.h"
+#include "config_msg.h"
+#include "exec_result_msg.h"
+
+typedef struct
+{
+    CFE_MSG_CommandHeader_t CommandHeader;
+} MAVLINK_BRIDGE_APP_NoopCmd_t;
+
+typedef struct
+{
+    CFE_MSG_CommandHeader_t CommandHeader;
+} MAVLINK_BRIDGE_APP_ResetCountersCmd_t;
+
+typedef struct
+{
+    CFE_MSG_CommandHeader_t CommandHeader;
+} MAVLINK_BRIDGE_APP_MissionQueryCmd_t;
+
+typedef struct
+{
+    CFE_MSG_CommandHeader_t CommandHeader;
+} MAVLINK_BRIDGE_APP_ParserResetCmd_t;
+
+typedef struct
+{
+    CFE_MSG_CommandHeader_t CommandHeader;
+} MAVLINK_BRIDGE_APP_SerialReconnectCmd_t;
+
+/* BL-44(2026-07-24, §18.4.6.8.1): uplink_app의 UPLINK_APP_FlightModeCtrlCmd_t와
+ * 동일 바이트 레이아웃(공유 헤더 아님, counter mgmt류 payload-less 패턴을
+ * SourceSequence+payload 2바이트로 확장 — 양쪽 독립 정의, 레이아웃만 일치 유지). */
+typedef struct
+{
+    CFE_MSG_CommandHeader_t CommandHeader;
+    uint16                  SourceSequence;
+    uint8                   FlightMode;
+    uint8                   WaypointStartIndex;
+} MAVLINK_BRIDGE_APP_SetFlightModeCmd_t;
+
+typedef BRIDGE_HK_TLM_t MAVLINK_BRIDGE_APP_HkTlm_t;
+
+typedef FC_EKF_LOCAL_TLM_t  MAVLINK_BRIDGE_APP_EkfLocalTlm_t;
+typedef FC_ATTITUDE_TLM_t   MAVLINK_BRIDGE_APP_AttitudeTlm_t;
+typedef FC_GPS_RAW_TLM_t    MAVLINK_BRIDGE_APP_GpsRawTlm_t;
+typedef FC_EKF_STATUS_TLM_t MAVLINK_BRIDGE_APP_EkfStatusTlm_t;
+
+typedef struct
+{
+    CFE_MSG_TelemetryHeader_t TelemetryHeader;
+    uint32                    TimestampMs;
+    uint32                    Seq;
+    uint8                     Valid;
+    uint8                     Stale;
+    uint8                     ErrorCode;
+    uint8                     Reserved;
+    uint64                    TimeUnixUsec;
+} MAVLINK_BRIDGE_APP_SysTimeTlm_t;
+
+#define MAVLINK_BRIDGE_APP_ROUTE_MAX_WAYPOINTS 37U
+
+typedef ROUTE_WAYPOINT_t MAVLINK_BRIDGE_APP_WaypointMirror_t;
+typedef ROUTE_UPDATE_TLM_t MAVLINK_BRIDGE_APP_RouteUpdateMirror_t;
+
+/* CONFIG_CMD_MID 수신용 (uplink_app의 UPLINK_APP_ConfigCmdTlm_t와 동일 레이아웃) */
+typedef CONFIG_CMD_TLM_t MAVLINK_BRIDGE_APP_ConfigCmdTlm_t;
+
+typedef EXEC_RESULT_TLM_t MAVLINK_BRIDGE_APP_ExecResultTlm_t;
+
+typedef struct
+{
+    uint8  ConfigScope;
+    uint8  ConfigVersion;
+    uint16 ParameterId;
+    uint8  ValueType;
+    uint8  ValueLength;
+    uint16 Checksum;   /* uint16 additive sum: scope+version+param_id(2B)+value_type+value_length+value_bytes */
+} MAVLINK_BRIDGE_APP_ConfigPayloadHdr_t;
+
+#endif

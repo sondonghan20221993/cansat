@@ -1,0 +1,400 @@
+<title>앱 구조 맵 — cfs-telemetry-app</title>
+<style>
+  :root {
+    --bg:#f4f6f8; --panel:#fff; --panel-2:#eef1f4; --ink:#1b2330; --ink-soft:#566173;
+    --hair:#d5dbe2; --accent:#0f9e8f; --warn:#c2314a;
+    --c-bridge:#b9761f; --c-core:#1a9e73; --c-uplink:#4666c9; --c-lora:#8a5aa8;
+    --c-fc:#c05a1f; --c-ground:#0f8fa0;
+    --mono: ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans: system-ui,-apple-system,"Segoe UI","Malgun Gothic",Roboto,sans-serif;
+    --shadow:0 1px 2px rgba(20,30,45,.06),0 6px 20px rgba(20,30,45,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:#090d13; --panel:#10161f; --panel-2:#0b1119; --ink:#dbe4ef; --ink-soft:#7f8ea3;
+      --hair:#1e2836; --accent:#46d1c3; --warn:#f7768e;
+      --c-bridge:#e0a24a; --c-core:#57d1a0; --c-uplink:#7aa2f7; --c-lora:#c6a0e0;
+      --c-fc:#ff9e64; --c-ground:#46c8d1;
+      --shadow:0 1px 0 rgba(255,255,255,.02),0 10px 30px rgba(0,0,0,.45);
+    }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans);
+         line-height:1.6; -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:1080px; margin:0 auto; padding:36px 22px 80px; }
+
+  header.top { border-bottom:1px solid var(--hair); padding-bottom:22px; }
+  .eyebrow { font-family:var(--mono); font-size:11px; letter-spacing:.18em; text-transform:uppercase;
+             color:var(--accent); margin:0 0 8px; }
+  h1 { font-size:clamp(26px,4.4vw,40px); margin:0; font-weight:650; letter-spacing:-.015em; }
+  .sub { color:var(--ink-soft); margin:10px 0 0; max-width:70ch; }
+  .facts { display:flex; flex-wrap:wrap; gap:8px; margin-top:18px; }
+  .fact { font-family:var(--mono); font-size:11.5px; border:1px solid var(--hair);
+          background:var(--panel-2); color:var(--ink-soft); border-radius:20px; padding:4px 11px; }
+  .fact b { color:var(--ink); font-weight:600; }
+
+  h2 { font-size:21px; margin:46px 0 4px; font-weight:640; letter-spacing:-.01em; }
+  h2 .num { font-family:var(--mono); font-size:12px; color:var(--accent); margin-right:9px;
+            vertical-align:2px; }
+  .lede { color:var(--ink-soft); font-size:14px; margin:0 0 16px; max-width:76ch; }
+  h3 { font-size:15px; margin:26px 0 8px; font-weight:640; }
+
+  .panel { background:var(--panel); border:1px solid var(--hair); border-radius:12px;
+           box-shadow:var(--shadow); padding:18px 20px; }
+
+  /* flow diagram */
+  .flow { display:grid; gap:10px; font-family:var(--mono); font-size:12.5px; }
+  .lane { display:grid; grid-template-columns:150px 1fr; gap:14px; align-items:stretch;
+          background:var(--panel); border:1px solid var(--hair); border-radius:10px; padding:12px 14px; }
+  .lane .who { display:flex; flex-direction:column; gap:3px; justify-content:center;
+               border-left:3px solid var(--c); padding-left:10px; }
+  .lane .who b { font-size:13px; color:var(--ink); }
+  .lane .who span { font-size:10.5px; color:var(--ink-soft); letter-spacing:.03em; }
+  .lane .pipes { display:grid; gap:5px; }
+  .pipe { display:grid; grid-template-columns:20px 1fr; gap:9px; align-items:baseline;
+          color:var(--ink-soft); }
+  .pipe .ar { color:var(--c); font-weight:700; }
+  .pipe code { color:var(--ink); font-family:var(--mono); }
+  .pipe em { font-style:normal; color:var(--ink-soft); }
+
+  /* app cards */
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:14px; }
+  .card { background:var(--panel); border:1px solid var(--hair); border-radius:12px;
+          box-shadow:var(--shadow); padding:16px 18px; border-top:3px solid var(--c); }
+  .card h4 { font-family:var(--mono); font-size:14px; margin:0 0 2px; color:var(--ink); font-weight:650; }
+  .card .role { font-size:12px; color:var(--c); font-family:var(--mono); letter-spacing:.03em;
+                text-transform:uppercase; margin-bottom:9px; }
+  .card ul { margin:0; padding-left:17px; font-size:13.2px; color:var(--ink-soft); }
+  .card ul li { margin:3px 0; }
+  .card ul li b { color:var(--ink); font-weight:600; }
+  .card .mids { margin-top:11px; padding-top:9px; border-top:1px dashed var(--hair);
+                font-family:var(--mono); font-size:11px; color:var(--ink-soft); }
+
+  table { width:100%; border-collapse:collapse; font-size:13px; margin-top:6px; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--hair); vertical-align:top; }
+  th { font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+       color:var(--ink-soft); font-weight:600; }
+  td.m, th.m { font-family:var(--mono); font-size:12px; white-space:nowrap; }
+  td.m { color:var(--accent); }
+  tbody tr:last-child td { border-bottom:none; }
+
+  .grid2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; }
+  .note { border-left:3px solid var(--accent); background:var(--panel-2); padding:11px 15px;
+          border-radius:0 8px 8px 0; font-size:13.2px; color:var(--ink-soft); margin:14px 0; }
+  .note b { color:var(--ink); }
+  .note.warn { border-left-color:var(--warn); }
+
+  .steps { counter-reset:s; display:grid; gap:9px; }
+  .step { display:grid; grid-template-columns:26px 1fr; gap:12px; align-items:start;
+          font-size:13.2px; color:var(--ink-soft); }
+  .step::before { counter-increment:s; content:counter(s); font-family:var(--mono); font-size:11px;
+          width:22px; height:22px; display:grid; place-items:center; border-radius:50%;
+          border:1px solid var(--hair); background:var(--panel-2); color:var(--accent); }
+  .step b { color:var(--ink); font-weight:600; }
+  .step code { font-family:var(--mono); font-size:12px; color:var(--ink); }
+
+  code { font-family:var(--mono); font-size:.92em; }
+  .pill { font-family:var(--mono); font-size:11px; border:1px solid var(--hair);
+          border-radius:5px; padding:1px 6px; background:var(--panel-2); color:var(--ink-soft); }
+
+  footer { margin-top:56px; padding-top:18px; border-top:1px solid var(--hair);
+           font-family:var(--mono); font-size:11.5px; color:var(--ink-soft); line-height:1.8; }
+  footer b { color:var(--ink); }
+
+  @media print {
+    :root { --bg:#fff; --panel:#fff; --panel-2:#f5f7f9; --ink:#12181f; --ink-soft:#4a5361;
+            --hair:#c9d1da; --shadow:none; }
+    body { background:#fff; }
+    .wrap { max-width:none; padding:0; }
+    h2 { break-after:avoid; page-break-after:avoid; margin-top:26px; }
+    .card, .lane, .panel, table, .note { break-inside:avoid; page-break-inside:avoid; }
+    .sec { break-inside:auto; }
+    a { text-decoration:none; color:inherit; }
+    @page { size:A4; margin:14mm 13mm; }
+  }
+
+
+  :root { --bg:#f4f6f8; --panel:#fff; --panel-2:#eef1f4; --ink:#1b2330; --ink-soft:#566173;
+    --hair:#d5dbe2; --accent:#0f9e8f; --warn:#c2314a;
+    --c-bridge:#b9761f; --c-core:#1a9e73; --c-uplink:#4666c9; --c-lora:#8a5aa8;
+    --c-fc:#c05a1f; --c-ground:#0f8fa0;
+    --c-tx:#b9761f; --c-rx:#1a9e73; --c-sb:#4666c9; --c-idle:#8b97a6; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#090d13; --panel:#10161f; --panel-2:#0b1119; --ink:#dbe4ef; --ink-soft:#7f8ea3;
+    --hair:#1e2836; --accent:#46d1c3; --warn:#f7768e;
+    --c-bridge:#e0a24a; --c-core:#57d1a0; --c-uplink:#7aa2f7; --c-lora:#c6a0e0;
+    --c-fc:#ff9e64; --c-ground:#46c8d1;
+    --c-tx:#e0a24a; --c-rx:#57d1a0; --c-sb:#7aa2f7; --c-idle:#5d6b7d;
+    --shadow:0 1px 0 rgba(255,255,255,.02),0 10px 30px rgba(0,0,0,.45); } }
+  :root[data-theme="light"] { --bg:#f4f6f8; --panel:#fff; --panel-2:#eef1f4; --ink:#1b2330; --ink-soft:#566173;
+    --hair:#d5dbe2; --accent:#0f9e8f; --warn:#c2314a;
+    --c-bridge:#b9761f; --c-core:#1a9e73; --c-uplink:#4666c9; --c-lora:#8a5aa8;
+    --c-fc:#c05a1f; --c-ground:#0f8fa0;
+    --c-tx:#b9761f; --c-rx:#1a9e73; --c-sb:#4666c9; --c-idle:#8b97a6; --shadow:0 1px 2px rgba(20,30,45,.06),0 6px 20px rgba(20,30,45,.06); }
+  :root[data-theme="dark"] { --bg:#090d13; --panel:#10161f; --panel-2:#0b1119; --ink:#dbe4ef; --ink-soft:#7f8ea3;
+    --hair:#1e2836; --accent:#46d1c3; --warn:#f7768e;
+    --c-bridge:#e0a24a; --c-core:#57d1a0; --c-uplink:#7aa2f7; --c-lora:#c6a0e0;
+    --c-fc:#ff9e64; --c-ground:#46c8d1;
+    --c-tx:#e0a24a; --c-rx:#57d1a0; --c-sb:#7aa2f7; --c-idle:#5d6b7d;
+    --shadow:0 1px 0 rgba(255,255,255,.02),0 10px 30px rgba(0,0,0,.45); }
+
+  .themebtn { font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+              background:var(--panel-2); color:var(--ink-soft); border:1px solid var(--hair);
+              border-radius:6px; padding:6px 10px; cursor:pointer; margin-top:16px; }
+  .themebtn:hover { color:var(--ink); border-color:var(--accent); }
+
+  /* layer stack */
+  .layers { display:grid; gap:8px; }
+  .layer { display:grid; grid-template-columns:210px 1fr; gap:16px; align-items:baseline;
+           background:var(--panel); border:1px solid var(--hair); border-left:3px solid var(--c);
+           border-radius:9px; padding:12px 16px; }
+  .layer .lname { font-family:var(--mono); font-size:13px; color:var(--c); }
+  .layer .ldesc { font-size:13.2px; color:var(--ink-soft); }
+  .layer .ldesc b { color:var(--ink); }
+
+  /* code block */
+  pre.code { font-family:var(--mono); font-size:12.2px; line-height:1.65; background:var(--panel-2);
+             border:1px solid var(--hair); border-radius:9px; padding:13px 15px; overflow-x:auto;
+             color:var(--ink); margin:4px 0 12px; }
+  pre.code b { color:var(--accent); }
+  pre.code .cm { color:var(--ink-soft); }
+  .loopcard .tag { font-family:var(--mono); font-size:11px; color:var(--c); letter-spacing:.05em;
+                   text-transform:uppercase; margin:0 0 10px; }
+  .loopcard ul { margin:0; padding-left:17px; font-size:13.2px; color:var(--ink-soft); }
+  .loopcard ul li { margin:4px 0; }
+  .loopcard ul li b { color:var(--ink); }
+
+  /* timeline */
+  .axis { display:flex; justify-content:space-between; font-family:var(--mono); font-size:10.5px;
+          color:var(--ink-soft); margin-bottom:5px; }
+  .tl { position:relative; height:46px; background:var(--panel-2); border:1px solid var(--hair);
+        border-radius:8px; overflow:hidden; }
+  .tl + .tlnote { font-size:12px; color:var(--ink-soft); margin:5px 0 16px; }
+  .tl + .tlnote b { color:var(--ink); }
+  .seg { position:absolute; top:0; bottom:0; border-left:2px solid var(--panel);
+         background:color-mix(in srgb, var(--c) 24%, var(--panel));
+         display:flex; flex-direction:column; justify-content:center; gap:1px; padding:0 8px;
+         cursor:pointer; overflow:hidden; }
+  .seg::after { content:""; position:absolute; left:0; right:0; top:0; height:3px; background:var(--c); }
+  .seg:hover, .seg:focus { background:color-mix(in srgb, var(--c) 42%, var(--panel)); outline:none; }
+  .seg .sl { font-size:11.5px; font-weight:600; color:var(--ink); white-space:nowrap; }
+  .seg .sm { font-family:var(--mono); font-size:10px; color:var(--ink-soft); }
+  .readout { margin-top:14px; padding:11px 14px; border:1px solid var(--hair); border-radius:8px;
+             background:var(--panel-2); font-size:13px; color:var(--ink-soft); min-height:62px; }
+  .readout b { color:var(--ink); }
+
+  td.ok, .m.ok { color:#1a9e73; }
+  td.warn, .m.warn { color:var(--warn); }
+  @media (max-width:760px) {
+    .layer { grid-template-columns:1fr; gap:4px; }
+    .seg .sl { font-size:10px; }
+  }
+</style>
+
+<div class="wrap">
+<header class="top">
+  <p class="eyebrow">cfs-telemetry-app · cFS application internals</p>
+  <h1>앱 구조 맵</h1>
+  <p class="sub">cFS 앱 4개가 각각 어떤 파일로 나뉘고, 어떤 루프를 돌며, 무엇을 구독하고 발행하는지. 4개 앱은 같은 골격을 공유하지만 <b>루프 방식이 두 갈래</b>로 갈리고, 그 차이가 각 앱의 성격을 결정한다.</p>
+  <div class="facts">
+    <span class="fact">앱 · <b>4개</b></span>
+    <span class="fact">구현 코드 · <b>~10,400 줄</b></span>
+    <span class="fact">시리얼 점유 · <b>2개 앱</b></span>
+    <span class="fact">영속 상태 파일 · <b>3개 앱</b></span>
+  </div>
+  <button class="themebtn" id="themebtn" type="button">◐ theme</button>
+</header>
+
+<section class="sec">
+<h2><span class="num">01</span>공통 골격 — 파일이 곧 레이어</h2>
+<p class="lede">4개 앱 모두 같은 5개 파일 역할로 나뉜다. cFS 표준 앱 템플릿을 따르되, 이 프로젝트는 <b>도메인 로직을 전부 <code>_utils.c</code>에 모으는</b> 규칙을 일관되게 지킨다.</p>
+
+<div class="layers">
+  <div class="layer" style="--c:var(--c-uplink)">
+    <div class="lname"><code>&lt;app&gt;.c</code></div>
+    <div class="ldesc"><b>수명주기</b> — <code>Main()</code> / <code>Init()</code>. 파이프 생성, MID 구독, 상태 파일 로드, 그리고 <code>CFE_ES_RunLoop</code> 본체.</div>
+  </div>
+  <div class="layer" style="--c:var(--c-core)">
+    <div class="lname"><code>&lt;app&gt;_dispatch.c</code></div>
+    <div class="ldesc"><b>분기</b> — 들어온 SB 메시지의 MID를 보고, 명령이면 FcnCode까지 확인해 핸들러로 넘긴다. 길이 검증도 여기.</div>
+  </div>
+  <div class="layer" style="--c:var(--c-bridge)">
+    <div class="lname"><code>&lt;app&gt;_cmds.c</code></div>
+    <div class="ldesc"><b>명령 핸들러</b> — NOOP / RESET_COUNTERS 같은 표준 명령과 앱 고유 명령의 진입점. 실제 일은 utils에 위임.</div>
+  </div>
+  <div class="layer" style="--c:var(--c-lora)">
+    <div class="lname"><code>&lt;app&gt;_utils.c</code></div>
+    <div class="ldesc"><b>도메인 로직</b> — 파싱·검증·상태머신·프레임 조립·영속화. 앱 코드의 대부분이 여기 있고, 유닛테스트도 이 파일을 겨냥한다.</div>
+  </div>
+  <div class="layer" style="--c:var(--c-ground)">
+    <div class="lname"><code>config/*.h</code></div>
+    <div class="ldesc"><b>계약과 상수</b> — MID 값, 메시지 구조체, 튜닝 파라미터. 코드를 안 고치고 바꿀 수 있는 건 여기 있는 값들뿐이다.</div>
+  </div>
+</div>
+
+<div class="note"><b>코드 무게중심</b> — 구현 줄 수의 약 <b>절반이 <code>_utils.c</code> 한 파일</b>에 몰린다(mavlink_bridge 2,511줄 / lora_tdm 1,152줄 / cfs_core 1,202줄 / uplink 953줄+cmds 511줄). 테스트가 utils 함수 단위로 붙어 있어 지금은 작동하지만, 파일 하나가 계속 커지는 방향이라는 건 알고 있을 만하다.</div>
+</section>
+
+<section class="sec">
+<h2><span class="num">02</span>루프가 두 갈래인 이유</h2>
+<p class="lede">"SB 메시지가 오면 처리한다"와 "정해진 시각에 무선을 쏜다"는 요구가 다르다. 전자는 이벤트 구동, 후자는 시간 구동이라 루프 모양이 갈린다.</p>
+
+<div class="grid2">
+  <div class="panel loopcard" style="--c:var(--c-core)">
+    <h3 style="margin-top:0">유형 A — SB 대기 + 타임아웃 주기작업</h3>
+    <div class="tag">mavlink_bridge · cfs_core · uplink</div>
+<pre class="code">while (RunLoop) {
+    Status = ReceiveBuffer(pipe, <b>200ms</b>);
+    if (SUCCESS)   TaskPipe(msg);      <span class="cm">// 메시지 처리</span>
+    else if (TIMEOUT) ServiceXxx();    <span class="cm">// 주기 작업</span>
+    else           앱 종료;            <span class="cm">// 파이프 오류</span>
+}</pre>
+    <ul>
+      <li>메시지가 있으면 <b>즉시</b> 처리, 없으면 200ms 만에 깨어나 자기 일을 한다</li>
+      <li>주기 작업 내용: FC 시리얼 서비스(bridge) · 헬스 판정과 앱 감시(core) · 상태 발행과 UDP 폴링(uplink)</li>
+      <li>바쁜 대기가 없고, 트래픽이 몰려도 파이프 깊이(16~32)까지 버퍼링된다</li>
+    </ul>
+  </div>
+
+  <div class="panel loopcard" style="--c:var(--c-lora)">
+    <h3 style="margin-top:0">유형 B — 고정 사이클 (시간 구동)</h3>
+    <div class="tag">lora_tdm</div>
+<pre class="code">while (RunLoop) {
+    OS_TaskDelay(<b>100ms</b>);
+    RunCycle();
+}
+RunCycle() {
+    while (ReceiveBuffer(pipe, <b>POLL</b>)) …  <span class="cm">// 논블로킹 드레인</span>
+    RunTx();                              <span class="cm">// DL2 송신</span>
+    RunRxWindow();                        <span class="cm">// 50ms 수신 창</span>
+    UpdateLinkState();
+}</pre>
+    <ul>
+      <li>SB를 <b>기다리지 않는다</b> — 쌓인 걸 POLL로 훑고 바로 무선 스케줄로 넘어간다</li>
+      <li>무선 타이밍이 SB 트래픽에 흔들리면 안 되기 때문 (TDM 창이 밀리면 지상이 응답할 자리를 잃는다)</li>
+      <li>파이프 깊이 <b>50</b>으로 다른 앱(16~32)보다 깊다 — 한 사이클에 몰아서 비우는 구조라서</li>
+    </ul>
+  </div>
+</div>
+<p class="lede" style="margin-top:12px">타이밍 상세는 <code>notes/tdm_timing_map.html</code>에 시간축으로 펼쳐 두었다.</p>
+</section>
+
+<section class="sec">
+<h2><span class="num">03</span>앱별 내부</h2>
+<div class="cards">
+  <div class="card" style="--c:var(--c-bridge)">
+    <h4>mavlink_bridge_app</h4>
+    <div class="role">유형 A · FC UART 점유</div>
+    <ul>
+      <li><b>주기 작업</b> <code>ServiceSerial()</code> — MAVLink 바이트 파싱, 재연결(1s 간격), HEARTBEAT 송출(1s)</li>
+      <li><b>구독</b> CMD 0x18A0 · SEND_HK · ROUTE_UPDATE 0x190B · CONFIG 0x190E</li>
+      <li><b>발행</b> FC 상태 5종(0x1905~0x1909) · BRIDGE_HK 0x08A0</li>
+      <li><b>고유 상태</b> 미션 업로드 상태머신, readback 백오프, <code>ActiveResumeIndex</code>, <code>FcBaseMode</code></li>
+      <li>파이프 깊이 <b>32</b> — FC 상태를 가장 자주 다루는 앱</li>
+    </ul>
+    <div class="mids">utils 2,511줄 · app 175 · dispatch 76 · cmds 20</div>
+  </div>
+
+  <div class="card" style="--c:var(--c-core)">
+    <h4>cfs_core_app</h4>
+    <div class="role">유형 A · 감독자</div>
+    <ul>
+      <li><b>주기 작업</b> — 캐시 만료 판정, 헬스 종합, 앱별 HK 두절 감시와 재시작(각 최대 3회)</li>
+      <li><b>구독 14종</b>으로 가장 많다 — FC 상태 4종 + 앱 HK 3종 + 명령 6종 + 미션 readback</li>
+      <li><b>발행</b> SYSTEM_HEALTH 0x1904 · ROUTE_SNAPSHOT 0x1913 · HK 0x08C0</li>
+      <li><b>고유 상태</b> 미션 경로 캐시, 재시작 누계, 마지막 FaultCode (파일 영속)</li>
+      <li>만료는 <b>Pi 도착시각</b> 기준, FC 타임스탬프는 순서·재부팅 감지용으로만</li>
+    </ul>
+    <div class="mids">utils 1,202줄 · app 227 · dispatch 108 · cmds 18</div>
+  </div>
+
+  <div class="card" style="--c:var(--c-uplink)">
+    <h4>uplink_app</h4>
+    <div class="role">유형 A · 명령 관문</div>
+    <ul>
+      <li><b>주기 작업</b> — 상태 텔레메트리 발행, 개발용 UDP 경로 폴링</li>
+      <li><b>구독</b> CMD 0x18D0(LoRa가 전달) · SYSTEM_HEALTH · BRIDGE_HK · EXEC_RESULT 0x1912</li>
+      <li><b>발행</b> class별 명령 MID 7종 + UPLINK_STATUS 0x190A</li>
+      <li><b>고유 상태</b> 마지막 수락 seq, 부팅 카운터, 단명부팅 streak (파일 영속)</li>
+      <li>명령 핸들러가 커서 유일하게 <code>_cmds.c</code>가 500줄대로 두껍다</li>
+    </ul>
+    <div class="mids">utils 953줄 · cmds 511 · app 140 · dispatch 95</div>
+  </div>
+
+  <div class="card" style="--c:var(--c-lora)">
+    <h4>lora_tdm_app</h4>
+    <div class="role">유형 B · LoRa UART 점유</div>
+    <ul>
+      <li><b>사이클</b> SB 드레인 → <code>RunTx()</code> → <code>RunRxWindow()</code> → 링크 판정</li>
+      <li><b>구독 10종</b> — FC 상태 5종 + 헬스 + UPLINK_STATUS + CONFIG + DIAGNOSTIC + ROUTE_SNAPSHOT</li>
+      <li><b>발행</b> LINK_STATUS 0x1911 · HK 0x08E0 · 그리고 수신 UP 프레임을 0x18D0으로 전달</li>
+      <li><b>고유 상태</b> DL2 프로토콜 버전(v1/v2), waypoint readback 페이지 진행, 링크 카운터</li>
+      <li>유일하게 <code>app.c</code>가 두껍다(593줄) — 시리얼 열기/닫기와 사이클 로직이 여기 있어서</li>
+    </ul>
+    <div class="mids">utils 1,152줄 · app 593 · dispatch 188 · cmds 57</div>
+  </div>
+</div>
+</section>
+
+<section class="sec">
+<h2><span class="num">04</span>누가 무엇을 구독하는가</h2>
+<p class="lede">앱 간 결합은 오직 이 표다. 같은 MID를 여러 앱이 구독하는 자리(CONFIG, ROUTE_UPDATE)가 이 시스템에서 가장 조심해야 하는 지점 — 한 앱의 해석이 바뀌면 나머지도 같이 봐야 한다.</p>
+<table>
+  <thead><tr><th class="m">MID</th><th>메시지</th><th class="m">발행</th><th class="m">구독</th></tr></thead>
+  <tbody>
+    <tr><td class="m">0x1905~08</td><td>FC 상태 (EKF_LOCAL / ATTITUDE / GPS_RAW / EKF_STATUS)</td><td class="m">bridge</td><td class="m">core, lora</td></tr>
+    <tr><td class="m">0x1909</td><td>FC_SYS_TIME (GPS UNIX epoch)</td><td class="m">bridge</td><td class="m">lora</td></tr>
+    <tr><td class="m">0x1904</td><td>SYSTEM_HEALTH</td><td class="m">core</td><td class="m">lora, uplink</td></tr>
+    <tr><td class="m">0x190B</td><td>ROUTE_UPDATE</td><td class="m">uplink</td><td class="m warn">core <b>+</b> bridge (병렬)</td></tr>
+    <tr><td class="m">0x190E</td><td>CONFIG_CMD</td><td class="m">uplink</td><td class="m warn">core + bridge + lora (scope 분기)</td></tr>
+    <tr><td class="m">0x190C / 0x190F</td><td>RECOVERY_CMD / MODE_CMD</td><td class="m">uplink</td><td class="m">core</td></tr>
+    <tr><td class="m">0x1910</td><td>DIAGNOSTIC_CMD</td><td class="m">uplink</td><td class="m">lora(target 0) / core(target 1)</td></tr>
+    <tr><td class="m">0x1912</td><td>EXEC_RESULT</td><td class="m">core, bridge, lora</td><td class="m">uplink</td></tr>
+    <tr><td class="m">0x1913</td><td>ROUTE_SNAPSHOT (readback)</td><td class="m">core</td><td class="m">lora</td></tr>
+    <tr><td class="m">0x18D0</td><td>UPLINK_CMD (UP 프레임 전달)</td><td class="m">lora</td><td class="m">uplink</td></tr>
+    <tr><td class="m">0x08A0 / 0x08C0 / 0x08D0 / 0x08E0</td><td>앱별 HK</td><td class="m">각 앱</td><td class="m">core (감시·재시작 판단)</td></tr>
+  </tbody>
+</table>
+
+<div class="note"><b>구조체는 공유, 상수는 재선언</b> — 여러 앱이 주고받는 메시지 구조체는 <code>shared_msgs/</code>에 단일 진실로 두지만, MID 값이나 enum 상수는 각 앱 <code>config/</code>에 독립 재선언하는 게 이 프로젝트의 관례다. 필드 추가는 항상 구조체 <b>끝</b>에만 — 기존 오프셋이 움직이면 무선 프레임 호환이 깨진다.</div>
+</section>
+
+<section class="sec">
+<h2><span class="num">05</span>재시작을 견디는 상태</h2>
+<p class="lede">앱 3개가 전원이 나가도 살아남아야 하는 값을 파일로 남긴다. 방식은 세 앱이 동일하다 — <b>매직 + 버전 + 체크섬 + 원자적 rename</b>.</p>
+<div class="grid2">
+  <div class="panel">
+    <table>
+      <thead><tr><th class="m">앱</th><th>남기는 것</th></tr></thead>
+      <tbody>
+        <tr><td class="m">cfs_core</td><td>헬스 상태, 앱별 재시작 누계, 마지막 FaultCode, 런타임 CONFIG</td></tr>
+        <tr><td class="m">uplink</td><td>마지막 수락 seq, 부팅 카운터, 단명부팅 streak</td></tr>
+        <tr><td class="m">lora_tdm</td><td>다운링크 프로토콜(v1/v2) 선택</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="panel">
+    <ul style="font-size:13.2px;color:var(--ink-soft);padding-left:18px;margin:0">
+      <li>경로는 <b>상대경로 <code>cf/</code></b> — 절대경로 <code>/cf/</code>는 OSAL 가상경로 매핑을 안 거쳐 Pi 실파일시스템에서 조용히 실패했던 이력이 있다</li>
+      <li>체크섬 불일치 파일은 로드하지 않고 기본값으로 시작한다</li>
+      <li>부팅 카운터는 다운링크 프레임에 실려 나가 <b>지상이 기체 재부팅을 감지</b>하는 근거가 된다</li>
+    </ul>
+  </div>
+</div>
+</section>
+
+<footer>
+  <div>근거: 각 앱 <b>fsw/src/*.c</b>(Main/Init/Dispatch) · <b>config/*_topicid_values.h</b> · <b>config/*internal_cfg_values.h</b> · <b>shared_msgs/</b> (2026-07-28 코드 기준)</div>
+  <div>같이 보기: <b>notes/tdm_timing_map.html</b>(TDM 타이밍) · <b>notes/lora_frame_map.html</b>(프레임) · <b>notes/uplink_payload_map.html</b>(payload)</div>
+  <div>생성: 2026-07-28</div>
+</footer>
+</div>
+
+<script>
+(function () {
+  document.getElementById("themebtn").addEventListener("click", function () {
+    var cur = document.documentElement.getAttribute("data-theme");
+    var isDark = cur ? cur === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    document.documentElement.setAttribute("data-theme", isDark ? "light" : "dark");
+  });
+})();
+</script>

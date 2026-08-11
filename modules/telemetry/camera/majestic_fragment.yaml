@@ -1,0 +1,20 @@
+# majestic.yaml 병합 조각 — RunCam WiFiLink V2 프로토타입
+# 적용: apply_camera_config.sh가 cli 명령으로 반영 (yaml 직접 병합 아님)
+# 참조: https://openipc.org/majestic-endpoints
+
+osd:
+  enabled: true
+  # 카메라 시계 기반 번인 타임스탬프 (NTP 동기 전에는 상대시간으로만 신뢰)
+  template: "%d.%m.%Y %H:%M:%S"
+  posX: 16
+  posY: 16
+
+records:
+  enabled: true
+  # TODO(bench): SD 마운트 경로 실기기 확인 (/mnt/mmcblk0p1 가정)
+  path: /mnt/mmcblk0p1/records
+  split: 60        # 60초 단위 분할 (파일 유실 최소화)
+  maxUsage: 90     # SD 사용률 90% 도달 시 오래된 파일 삭제
+
+rtsp:
+  enabled: true    # 벤치 검증용 (ffmpeg -i rtsp://<IP>/stream0)

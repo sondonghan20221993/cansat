@@ -1,0 +1,19 @@
+# ArduPilot — WiFiLink V2 MSP DisplayPort OSD 파라미터 (프로토타입)
+# 적용: Mission Planner > Config > Full Parameter List > Load from file
+#
+# TODO(bench): SERIALx 번호는 실제 배선한 FC 포트로 치환 (아래는 SERIAL2=TELEM2 가정)
+# 주의: 해당 UART에 MAVLink 등 다른 프로토콜과 동시 설정 금지
+#       (mavlink_bridge용 Pi 연결 포트와 반드시 분리)
+
+SERIAL2_PROTOCOL,42     # MSP DisplayPort
+SERIAL2_BAUD,115        # 115200
+OSD_TYPE,5              # MSP DisplayPort OSD
+MSP_OPTIONS,0
+
+# OSD 화면 요소 — GPS 절대시각(UTC)을 화면에 표시 (영상-로그 대조 기준)
+OSD1_RTC_DATE_EN,1      # TODO(bench): 펌웨어 버전에 따라 OSD1_CLK_EN 등 명칭 상이 — 확인
+OSD1_GPSLAT_EN,1
+OSD1_GPSLONG_EN,1
+OSD1_SATS_EN,1
+OSD1_BAT_VOLT_EN,1
+OSD1_ALTITUDE_EN,1

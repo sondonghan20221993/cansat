@@ -1,0 +1,372 @@
+<title>TDM 타이밍 맵 — cfs-telemetry-app</title>
+<style>
+  :root {
+    --bg:#f4f6f8; --panel:#fff; --panel-2:#eef1f4; --ink:#1b2330; --ink-soft:#566173;
+    --hair:#d5dbe2; --accent:#0f9e8f; --warn:#c2314a;
+    --c-bridge:#b9761f; --c-core:#1a9e73; --c-uplink:#4666c9; --c-lora:#8a5aa8;
+    --c-fc:#c05a1f; --c-ground:#0f8fa0;
+    --mono: ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans: system-ui,-apple-system,"Segoe UI","Malgun Gothic",Roboto,sans-serif;
+    --shadow:0 1px 2px rgba(20,30,45,.06),0 6px 20px rgba(20,30,45,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:#090d13; --panel:#10161f; --panel-2:#0b1119; --ink:#dbe4ef; --ink-soft:#7f8ea3;
+      --hair:#1e2836; --accent:#46d1c3; --warn:#f7768e;
+      --c-bridge:#e0a24a; --c-core:#57d1a0; --c-uplink:#7aa2f7; --c-lora:#c6a0e0;
+      --c-fc:#ff9e64; --c-ground:#46c8d1;
+      --shadow:0 1px 0 rgba(255,255,255,.02),0 10px 30px rgba(0,0,0,.45);
+    }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans);
+         line-height:1.6; -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:1080px; margin:0 auto; padding:36px 22px 80px; }
+
+  header.top { border-bottom:1px solid var(--hair); padding-bottom:22px; }
+  .eyebrow { font-family:var(--mono); font-size:11px; letter-spacing:.18em; text-transform:uppercase;
+             color:var(--accent); margin:0 0 8px; }
+  h1 { font-size:clamp(26px,4.4vw,40px); margin:0; font-weight:650; letter-spacing:-.015em; }
+  .sub { color:var(--ink-soft); margin:10px 0 0; max-width:70ch; }
+  .facts { display:flex; flex-wrap:wrap; gap:8px; margin-top:18px; }
+  .fact { font-family:var(--mono); font-size:11.5px; border:1px solid var(--hair);
+          background:var(--panel-2); color:var(--ink-soft); border-radius:20px; padding:4px 11px; }
+  .fact b { color:var(--ink); font-weight:600; }
+
+  h2 { font-size:21px; margin:46px 0 4px; font-weight:640; letter-spacing:-.01em; }
+  h2 .num { font-family:var(--mono); font-size:12px; color:var(--accent); margin-right:9px;
+            vertical-align:2px; }
+  .lede { color:var(--ink-soft); font-size:14px; margin:0 0 16px; max-width:76ch; }
+  h3 { font-size:15px; margin:26px 0 8px; font-weight:640; }
+
+  .panel { background:var(--panel); border:1px solid var(--hair); border-radius:12px;
+           box-shadow:var(--shadow); padding:18px 20px; }
+
+  /* flow diagram */
+  .flow { display:grid; gap:10px; font-family:var(--mono); font-size:12.5px; }
+  .lane { display:grid; grid-template-columns:150px 1fr; gap:14px; align-items:stretch;
+          background:var(--panel); border:1px solid var(--hair); border-radius:10px; padding:12px 14px; }
+  .lane .who { display:flex; flex-direction:column; gap:3px; justify-content:center;
+               border-left:3px solid var(--c); padding-left:10px; }
+  .lane .who b { font-size:13px; color:var(--ink); }
+  .lane .who span { font-size:10.5px; color:var(--ink-soft); letter-spacing:.03em; }
+  .lane .pipes { display:grid; gap:5px; }
+  .pipe { display:grid; grid-template-columns:20px 1fr; gap:9px; align-items:baseline;
+          color:var(--ink-soft); }
+  .pipe .ar { color:var(--c); font-weight:700; }
+  .pipe code { color:var(--ink); font-family:var(--mono); }
+  .pipe em { font-style:normal; color:var(--ink-soft); }
+
+  /* app cards */
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:14px; }
+  .card { background:var(--panel); border:1px solid var(--hair); border-radius:12px;
+          box-shadow:var(--shadow); padding:16px 18px; border-top:3px solid var(--c); }
+  .card h4 { font-family:var(--mono); font-size:14px; margin:0 0 2px; color:var(--ink); font-weight:650; }
+  .card .role { font-size:12px; color:var(--c); font-family:var(--mono); letter-spacing:.03em;
+                text-transform:uppercase; margin-bottom:9px; }
+  .card ul { margin:0; padding-left:17px; font-size:13.2px; color:var(--ink-soft); }
+  .card ul li { margin:3px 0; }
+  .card ul li b { color:var(--ink); font-weight:600; }
+  .card .mids { margin-top:11px; padding-top:9px; border-top:1px dashed var(--hair);
+                font-family:var(--mono); font-size:11px; color:var(--ink-soft); }
+
+  table { width:100%; border-collapse:collapse; font-size:13px; margin-top:6px; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--hair); vertical-align:top; }
+  th { font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+       color:var(--ink-soft); font-weight:600; }
+  td.m, th.m { font-family:var(--mono); font-size:12px; white-space:nowrap; }
+  td.m { color:var(--accent); }
+  tbody tr:last-child td { border-bottom:none; }
+
+  .grid2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; }
+  .note { border-left:3px solid var(--accent); background:var(--panel-2); padding:11px 15px;
+          border-radius:0 8px 8px 0; font-size:13.2px; color:var(--ink-soft); margin:14px 0; }
+  .note b { color:var(--ink); }
+  .note.warn { border-left-color:var(--warn); }
+
+  .steps { counter-reset:s; display:grid; gap:9px; }
+  .step { display:grid; grid-template-columns:26px 1fr; gap:12px; align-items:start;
+          font-size:13.2px; color:var(--ink-soft); }
+  .step::before { counter-increment:s; content:counter(s); font-family:var(--mono); font-size:11px;
+          width:22px; height:22px; display:grid; place-items:center; border-radius:50%;
+          border:1px solid var(--hair); background:var(--panel-2); color:var(--accent); }
+  .step b { color:var(--ink); font-weight:600; }
+  .step code { font-family:var(--mono); font-size:12px; color:var(--ink); }
+
+  code { font-family:var(--mono); font-size:.92em; }
+  .pill { font-family:var(--mono); font-size:11px; border:1px solid var(--hair);
+          border-radius:5px; padding:1px 6px; background:var(--panel-2); color:var(--ink-soft); }
+
+  footer { margin-top:56px; padding-top:18px; border-top:1px solid var(--hair);
+           font-family:var(--mono); font-size:11.5px; color:var(--ink-soft); line-height:1.8; }
+  footer b { color:var(--ink); }
+
+  @media print {
+    :root { --bg:#fff; --panel:#fff; --panel-2:#f5f7f9; --ink:#12181f; --ink-soft:#4a5361;
+            --hair:#c9d1da; --shadow:none; }
+    body { background:#fff; }
+    .wrap { max-width:none; padding:0; }
+    h2 { break-after:avoid; page-break-after:avoid; margin-top:26px; }
+    .card, .lane, .panel, table, .note { break-inside:avoid; page-break-inside:avoid; }
+    .sec { break-inside:auto; }
+    a { text-decoration:none; color:inherit; }
+    @page { size:A4; margin:14mm 13mm; }
+  }
+
+
+  :root { --bg:#f4f6f8; --panel:#fff; --panel-2:#eef1f4; --ink:#1b2330; --ink-soft:#566173;
+    --hair:#d5dbe2; --accent:#0f9e8f; --warn:#c2314a;
+    --c-bridge:#b9761f; --c-core:#1a9e73; --c-uplink:#4666c9; --c-lora:#8a5aa8;
+    --c-fc:#c05a1f; --c-ground:#0f8fa0;
+    --c-tx:#b9761f; --c-rx:#1a9e73; --c-sb:#4666c9; --c-idle:#8b97a6; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#090d13; --panel:#10161f; --panel-2:#0b1119; --ink:#dbe4ef; --ink-soft:#7f8ea3;
+    --hair:#1e2836; --accent:#46d1c3; --warn:#f7768e;
+    --c-bridge:#e0a24a; --c-core:#57d1a0; --c-uplink:#7aa2f7; --c-lora:#c6a0e0;
+    --c-fc:#ff9e64; --c-ground:#46c8d1;
+    --c-tx:#e0a24a; --c-rx:#57d1a0; --c-sb:#7aa2f7; --c-idle:#5d6b7d;
+    --shadow:0 1px 0 rgba(255,255,255,.02),0 10px 30px rgba(0,0,0,.45); } }
+  :root[data-theme="light"] { --bg:#f4f6f8; --panel:#fff; --panel-2:#eef1f4; --ink:#1b2330; --ink-soft:#566173;
+    --hair:#d5dbe2; --accent:#0f9e8f; --warn:#c2314a;
+    --c-bridge:#b9761f; --c-core:#1a9e73; --c-uplink:#4666c9; --c-lora:#8a5aa8;
+    --c-fc:#c05a1f; --c-ground:#0f8fa0;
+    --c-tx:#b9761f; --c-rx:#1a9e73; --c-sb:#4666c9; --c-idle:#8b97a6; --shadow:0 1px 2px rgba(20,30,45,.06),0 6px 20px rgba(20,30,45,.06); }
+  :root[data-theme="dark"] { --bg:#090d13; --panel:#10161f; --panel-2:#0b1119; --ink:#dbe4ef; --ink-soft:#7f8ea3;
+    --hair:#1e2836; --accent:#46d1c3; --warn:#f7768e;
+    --c-bridge:#e0a24a; --c-core:#57d1a0; --c-uplink:#7aa2f7; --c-lora:#c6a0e0;
+    --c-fc:#ff9e64; --c-ground:#46c8d1;
+    --c-tx:#e0a24a; --c-rx:#57d1a0; --c-sb:#7aa2f7; --c-idle:#5d6b7d;
+    --shadow:0 1px 0 rgba(255,255,255,.02),0 10px 30px rgba(0,0,0,.45); }
+
+  .themebtn { font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+              background:var(--panel-2); color:var(--ink-soft); border:1px solid var(--hair);
+              border-radius:6px; padding:6px 10px; cursor:pointer; margin-top:16px; }
+  .themebtn:hover { color:var(--ink); border-color:var(--accent); }
+
+  /* layer stack */
+  .layers { display:grid; gap:8px; }
+  .layer { display:grid; grid-template-columns:210px 1fr; gap:16px; align-items:baseline;
+           background:var(--panel); border:1px solid var(--hair); border-left:3px solid var(--c);
+           border-radius:9px; padding:12px 16px; }
+  .layer .lname { font-family:var(--mono); font-size:13px; color:var(--c); }
+  .layer .ldesc { font-size:13.2px; color:var(--ink-soft); }
+  .layer .ldesc b { color:var(--ink); }
+
+  /* code block */
+  pre.code { font-family:var(--mono); font-size:12.2px; line-height:1.65; background:var(--panel-2);
+             border:1px solid var(--hair); border-radius:9px; padding:13px 15px; overflow-x:auto;
+             color:var(--ink); margin:4px 0 12px; }
+  pre.code b { color:var(--accent); }
+  pre.code .cm { color:var(--ink-soft); }
+  .loopcard .tag { font-family:var(--mono); font-size:11px; color:var(--c); letter-spacing:.05em;
+                   text-transform:uppercase; margin:0 0 10px; }
+  .loopcard ul { margin:0; padding-left:17px; font-size:13.2px; color:var(--ink-soft); }
+  .loopcard ul li { margin:4px 0; }
+  .loopcard ul li b { color:var(--ink); }
+
+  /* timeline */
+  .axis { display:flex; justify-content:space-between; font-family:var(--mono); font-size:10.5px;
+          color:var(--ink-soft); margin-bottom:5px; }
+  .tl { position:relative; height:46px; background:var(--panel-2); border:1px solid var(--hair);
+        border-radius:8px; overflow:hidden; }
+  .tl + .tlnote { font-size:12px; color:var(--ink-soft); margin:5px 0 16px; }
+  .tl + .tlnote b { color:var(--ink); }
+  .seg { position:absolute; top:0; bottom:0; border-left:2px solid var(--panel);
+         background:color-mix(in srgb, var(--c) 24%, var(--panel));
+         display:flex; flex-direction:column; justify-content:center; gap:1px; padding:0 8px;
+         cursor:pointer; overflow:hidden; }
+  .seg::after { content:""; position:absolute; left:0; right:0; top:0; height:3px; background:var(--c); }
+  .seg:hover, .seg:focus { background:color-mix(in srgb, var(--c) 42%, var(--panel)); outline:none; }
+  .seg .sl { font-size:11.5px; font-weight:600; color:var(--ink); white-space:nowrap; }
+  .seg .sm { font-family:var(--mono); font-size:10px; color:var(--ink-soft); }
+  .readout { margin-top:14px; padding:11px 14px; border:1px solid var(--hair); border-radius:8px;
+             background:var(--panel-2); font-size:13px; color:var(--ink-soft); min-height:62px; }
+  .readout b { color:var(--ink); }
+
+  td.ok, .m.ok { color:#1a9e73; }
+  td.warn, .m.warn { color:var(--warn); }
+  @media (max-width:760px) {
+    .layer { grid-template-columns:1fr; gap:4px; }
+    .seg .sl { font-size:10px; }
+  }
+</style>
+
+<div class="wrap">
+<header class="top">
+  <p class="eyebrow">cfs-telemetry-app · LoRa half-duplex TDM</p>
+  <h1>TDM 타이밍 맵</h1>
+  <p class="sub">LoRa 모듈은 송신과 수신을 동시에 못 한다. 그래서 <code>lora_tdm_app</code>이 시간을 잘라 <b>송신 슬롯 → 수신 창</b>을 반복하고, 지상국은 프레임을 받은 직후 열려 있는 창 안에 응답해야 한다. 이 페이지는 그 100ms 안에서 실제로 무슨 일이 일어나는지를 시간축으로 편 것이다.</p>
+  <div class="facts">
+    <span class="fact">사이클 · <b>100 ms</b></span>
+    <span class="fact">RX 창 · <b>50 ms</b></span>
+    <span class="fact">실측 · <b>9.97 pkt/s · 손실 0.00%</b></span>
+    <span class="fact">air rate · <b>2.4 KB/s</b></span>
+    <span class="fact">UART · <b>57600 8N1</b></span>
+  </div>
+  <button class="themebtn" id="themebtn" type="button">◐ theme</button>
+</header>
+
+<section class="sec">
+<h2><span class="num">01</span>한 사이클 안의 시간축</h2>
+<p class="lede">가로축 100ms. 기체가 말하는 구간과 듣는 구간이 겹치지 않는 것이 이 설계의 전부다. 막대에 커서를 올리면 근거 값이 표시된다.</p>
+
+<div class="panel">
+  <div class="axis"><span>0 ms</span><span>25</span><span>50</span><span>75</span><span>100 ms</span></div>
+  <div class="tl" id="tl-air"></div>
+  <div class="tlnote">기체 <b>LoRa 무선</b> 관점 — 에어타임 기준</div>
+
+  <div class="tl" id="tl-task"></div>
+  <div class="tlnote">기체 <b>cFS 태스크</b> 관점 — <code>LORA_TDM_APP_RunCycle()</code> 내부 순서</div>
+
+  <div class="tl" id="tl-gnd"></div>
+  <div class="tlnote">지상국 관점 — 프레임 수신 완료 후 <b>응답 가능 구간</b>이 곧 RX 창</div>
+</div>
+
+<div class="note"><b>왜 TX가 먼저인가</b> — 기체가 먼저 말하고 그 직후에 듣는다. 지상국은 자기 시계로 송신 타이밍을 잡는 게 아니라 <b>DL2 프레임 수신을 트리거로</b> 응답한다. 링크가 끊기면 지상은 보낼 타이밍 자체를 잃고, 그게 그대로 무응답(NoAck) 카운트로 잡힌다.</div>
+</section>
+
+<section class="sec">
+<h2><span class="num">02</span>에어타임 예산</h2>
+<p class="lede">air rate 2.4 KB/s = <b>1바이트당 0.417ms</b>. 프레임 크기가 곧 시간이다.</p>
+<div class="grid2">
+  <div class="panel">
+    <h3 style="margin-top:0">프레임별 점유 시간</h3>
+    <table>
+      <thead><tr><th>프레임</th><th class="m">크기</th><th class="m">에어타임</th><th class="m">사이클 대비</th></tr></thead>
+      <tbody>
+        <tr><td>DL2 기본</td><td class="m">50 B</td><td class="m">20.8 ms</td><td class="m">21%</td></tr>
+        <tr><td>DL2 + SysTime</td><td class="m">58 B</td><td class="m">24.2 ms</td><td class="m">24%</td></tr>
+        <tr><td>DL2 + SysTime + waypoint</td><td class="m">88 B</td><td class="m">36.7 ms</td><td class="m">37%</td></tr>
+        <tr><td>ACK2</td><td class="m">5 B</td><td class="m">2.1 ms</td><td class="m">2%</td></tr>
+        <tr><td>UP2 (payload 100B)</td><td class="m">109 B</td><td class="m">45.4 ms</td><td class="m">45%</td></tr>
+        <tr><td>UP2 최대 (payload 196B)</td><td class="m">205 B</td><td class="m" style="color:var(--warn)">85.4 ms</td><td class="m" style="color:var(--warn)">85%</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="panel">
+    <h3 style="margin-top:0">RX 창 50ms에 들어가는 것</h3>
+    <p style="font-size:13.2px;color:var(--ink-soft);margin:0 0 10px">50ms × 2.4KB/s = <b>약 120바이트</b>. 이 선을 넘는 업링크는 한 창에 다 안 들어온다.</p>
+    <table>
+      <tbody>
+        <tr><td>ACK2 (5B)</td><td class="m ok">여유 충분</td></tr>
+        <tr><td>UP2 payload ≤ 111B</td><td class="m ok">한 창에 수신 완료</td></tr>
+        <tr><td>UP2 payload &gt; 111B</td><td class="m warn">여러 창에 걸침 → 상태머신 필수</td></tr>
+        <tr><td>ROUTE_UPDATE 6 waypoint (182B)</td><td class="m warn">2개 창에 걸침</td></tr>
+      </tbody>
+    </table>
+    <div class="note" style="margin-bottom:0"><b>그래서 수신부가 줄 버퍼가 아니다</b> — v1은 <code>\n</code>까지 읽는 줄 단위였지만, v2 수신부는 <b>바이트 스트림 상태머신</b>이다. 프레임이 창 경계에서 잘려도 중간 상태를 다음 사이클로 넘겨 이어붙인다. v1→v2에서 가장 큰 구현 차이.</div>
+  </div>
+</div>
+</section>
+
+<section class="sec">
+<h2><span class="num">03</span>여기까지 온 과정 (실측 이력)</h2>
+<p class="lede">주기는 책상에서 정한 값이 아니라 Pi 실기 soak으로 한 단계씩 내려온 값이다. 각 단계는 손실률 &lt;5%, 관측 레이트 ≥ 목표의 90%, LinkState 유지를 통과해야 다음으로 갔다.</p>
+<table>
+  <thead><tr><th class="m">단계</th><th class="m">사이클 / RX</th><th class="m">목표</th><th class="m">실측</th><th>판정</th></tr></thead>
+  <tbody>
+    <tr><td class="m">Stage 2a</td><td class="m">1000 / 300</td><td class="m">0.77 Hz</td><td class="m">기준선</td><td>v1 텍스트, 슬롯 경합(last-wins) 존재</td></tr>
+    <tr><td class="m">Stage 2c</td><td class="m">400 / 100</td><td class="m">2.2 Hz</td><td class="m">PASS</td><td>v2 착수 게이트 충족</td></tr>
+    <tr><td class="m">Stage 3</td><td class="m">200 / 100</td><td class="m">5 Hz</td><td class="m ok">5.0 Hz · 손실 0%</td><td>DL2 바이너리 전환, LinkState 100% CONNECTED</td></tr>
+    <tr><td class="m">Stage 4a</td><td class="m">150 / 50</td><td class="m">6.7 Hz</td><td class="m ok">PASS</td><td>—</td></tr>
+    <tr><td class="m">Stage 4b</td><td class="m">100 / 50</td><td class="m">10 Hz</td><td class="m ok">9.97 pkt/s · 손실 0.00%</td><td><b>현재 배포값</b> — 200ms 원복 없이 확정(2026-07-27)</td></tr>
+  </tbody>
+</table>
+
+<div class="note warn"><b>구조상 산술이 안 맞는 지점 (미해결 질문)</b> — 메인 루프는 <code>OS_TaskDelay(100ms)</code> <b>뒤에</b> <code>RunCycle()</code>을 부르고, 그 안의 <code>RunRxWindow()</code>는 deadline까지 50ms를 소비한다. 문자 그대로면 한 사이클 = 100 + TX + 50 ≈ 150ms(≈6.7Hz)여야 하는데, 실측은 9.97pkt/s로 100ms 주기에 맞는다. 실측이 우선이므로 위 표는 실측값 기준이며, <b>이 차이의 원인(딜레이 의미, RX 조기 종료 조건 등)은 확인되지 않았다</b>. 코드만 보고 단정하지 않고 열린 항목으로 남긴다.</div>
+
+<div class="note"><b>문서 드리프트</b> — <code>notes/lora_protocol_v2_spec.md §7</code>은 아직 200ms / RX 100ms / 손실 임계 15로 적혀 있다. 현재 코드값은 <b>100 / 50 / 50</b>(<code>default_lora_tdm_app_mission_cfg.h</code>). 이 페이지는 코드 기준.</div>
+</section>
+
+<section class="sec">
+<h2><span class="num">04</span>링크 상태 판정</h2>
+<p class="lede">주기가 짧아지면 같은 "연속 무응답 N회"도 훨씬 빨리 도달한다. 그래서 임계값은 주기를 바꿀 때마다 같이 조정됐다.</p>
+<div class="grid2">
+  <div class="panel">
+    <table>
+      <tbody>
+        <tr><td>연속 무응답 임계</td><td class="m">50회 ≈ 5.0초</td></tr>
+        <tr><td>링크 타임아웃</td><td class="m">5000 ms (절대시간, 주기와 무관)</td></tr>
+        <tr><td>상태</td><td class="m">DISCONNECTED / CONNECTED / DEGRADED</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:12.5px;color:var(--ink-soft);margin:10px 0 0">v1(1000ms 주기)에서는 임계 3회면 ~3.9초였다. 100ms 주기에서 3회를 유지했다면 <b>0.3초 만에 DEGRADED</b>로 떨어지는 과민 상태가 된다 — 임계 50은 그 보정값.</p>
+  </div>
+  <div class="panel">
+    <h3 style="margin-top:0">사이클마다 갱신되는 값</h3>
+    <ul style="font-size:13.2px;color:var(--ink-soft);padding-left:18px;margin:0">
+      <li><b>TxCount</b> — 다운링크 송신 성공 수(= seq 증가)</li>
+      <li><b>RxAckCount / RxCmdCount</b> — 이번 창에 받은 ACK2 / UP2</li>
+      <li><b>NoAckCount</b> — ACK 없이 지나간 사이클 연속 수</li>
+      <li><b>RxErrorCount</b> — CRC 실패 등 폐기 프레임</li>
+      <li><b>LastAckTimestampMs</b> — 타임아웃 판정 기준점</li>
+    </ul>
+    <p style="font-size:12.5px;color:var(--ink-soft);margin:10px 0 0">지상 분석 도구는 <b>통합 seq</b>의 갭으로 손실률을 계산한다. FC/헬스를 source별로 쪼개 계산하면 정상 링크도 ~50% 손실로 오판된다(단일 카운터를 교대 사용하는 설계이기 때문).</p>
+  </div>
+</div>
+</section>
+
+<footer>
+  <div>근거: <b>lora_tdm_app/config/default_lora_tdm_app_mission_cfg.h</b> · <b>lora_tdm_app/fsw/src/lora_tdm_app.c</b>(RunCycle/RunTx/RunRxWindow) · <b>notes/lora_stage_measurement_runbook.md</b>(실측) · <b>notes/lora_protocol_v2_spec.md §7</b></div>
+  <div>같이 보기: <b>notes/lora_frame_map.html</b>(프레임 바이트 맵) · <b>notes/uplink_payload_map.html</b>(payload 맵) · <b>notes/app_structure_map.html</b>(앱 내부 구조)</div>
+  <div>생성: 2026-07-28</div>
+</footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var rd = null;
+
+  // [label, startMs, durMs, colorVar, detail]
+  var AIR = [
+    ["DL2 송신", 0, 36.7, "--c-tx", "DL2 프레임 에어타임. 확장 블록 전부 포함 시 88B × 0.417ms = 36.7ms. 기본 50B면 20.8ms."],
+    ["무선 침묵", 36.7, 13.3, "--c-idle", "송신 종료 ~ RX 창 사이 여유. 지상국 처리 지연을 흡수하는 구간."],
+    ["RX 창 (수신 가능)", 50, 50, "--c-rx", "이 50ms 동안만 기체가 듣는다. 약 120바이트 수용 — ACK2 + 중간 크기 UP2까지."]
+  ];
+  var TASK = [
+    ["SB 파이프 드레인", 0, 6, "--c-sb", "CFE_SB_ReceiveBuffer(POLL)로 쌓인 SB 메시지를 논블로킹으로 전부 처리 — FC 상태 캐시 갱신, CONFIG/DIAGNOSTIC 반영."],
+    ["RunTx()", 6, 37, "--c-tx", "캐시된 FC 상태 + 헬스로 DL2 프레임을 조립해 serial write. 확장 블록 첨부 여부는 이 시점에 결정."],
+    ["RunRxWindow()", 43, 50, "--c-rx", "deadline까지 1바이트씩 read하며 상태머신에 투입. UP2 완성 시 CRC 검증 후 uplink_app으로 SB 전달."],
+    ["링크 상태 갱신", 93, 7, "--c-idle", "UpdateLinkState() — NoAck/타임아웃으로 CONNECTED/DEGRADED 판정."]
+  ];
+  var GND = [
+    ["수신 대기", 0, 36.7, "--c-idle", "기체 DL2가 도착하는 중. 마지막 바이트까지 받아야 CRC 검증이 끝난다."],
+    ["디코딩 · 판단", 36.7, 13.3, "--c-sb", "DL2 디코딩 → ufb 확인 → 보낼 명령이 있으면 UP2 조립. 이 처리 지연이 길면 창을 놓친다."],
+    ["송신 가능 구간", 50, 50, "--c-rx", "ACK2 / UP2를 보낼 수 있는 유일한 시간. 창을 넘기면 기체는 그 사이클을 무응답으로 카운트."]
+  ];
+
+  function build(id, segs) {
+    var host = document.getElementById(id);
+    segs.forEach(function (s) {
+      var d = document.createElement("div");
+      d.className = "seg";
+      d.style.setProperty("--c", "var(" + s[3] + ")");
+      d.style.left = (s[1]) + "%";
+      d.style.width = (s[2]) + "%";
+      d.innerHTML = '<span class="sl">' + s[0] + '</span><span class="sm">' + s[2] + 'ms</span>';
+      d.tabIndex = 0;
+      function show() {
+        rd.innerHTML = '<b>' + s[0] + '</b> · ' + s[1].toFixed(1) + '~' + (s[1] + s[2]).toFixed(1) + 'ms<br>' + s[4];
+      }
+      d.addEventListener("mouseenter", show);
+      d.addEventListener("focus", show);
+      host.appendChild(d);
+    });
+  }
+
+  rd = document.createElement("div");
+  rd.className = "readout";
+  rd.innerHTML = '<b>막대를 가리키세요</b> · 각 구간의 근거와 계산이 여기에 표시됩니다.';
+  document.querySelector(".panel").appendChild(rd);
+
+  build("tl-air", AIR);
+  build("tl-task", TASK);
+  build("tl-gnd", GND);
+
+  document.getElementById("themebtn").addEventListener("click", function () {
+    var cur = document.documentElement.getAttribute("data-theme");
+    var isDark = cur ? cur === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    document.documentElement.setAttribute("data-theme", isDark ? "light" : "dark");
+  });
+})();
+</script>
